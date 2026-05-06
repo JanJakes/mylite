@@ -12,15 +12,23 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
-                                         struct mylite_table_select_table_rowset *rowset);
-static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *scan,
-                                             const struct mylite_select_table *table,
-                                             struct mylite_table_select_table_rowset *rowset);
+static int load_table_select_join_rowset(
+    mylite_stmt *stmt,
+    size_t table_index,
+    struct mylite_table_select_table_rowset *rowset
+);
 
-int mylite_select_load_join_rowsets(mylite_stmt *stmt,
-                                    struct mylite_table_select_table_rowset *rowsets)
-{
+static int append_table_select_join_scan_row(
+    mylite_stmt *stmt,
+    sqlite3_stmt *scan,
+    const struct mylite_select_table *table,
+    struct mylite_table_select_table_rowset *rowset
+);
+
+int mylite_select_load_join_rowsets(
+    mylite_stmt *stmt,
+    struct mylite_table_select_table_rowset *rowsets
+) {
     size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
 
     for (size_t table_index = 0U; table_index < table_count; ++table_index) {
@@ -33,8 +41,7 @@ int mylite_select_load_join_rowsets(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-int mylite_select_copy_sqlite_row(mylite_stmt *stmt, struct mylite_table_select_row *out_row)
-{
+int mylite_select_copy_sqlite_row(mylite_stmt *stmt, struct mylite_table_select_row *out_row) {
     size_t column_count = mylite_select_plan_column_count(&stmt->select_plan);
 
     if (column_count == 0U) {
@@ -61,9 +68,11 @@ int mylite_select_copy_sqlite_row(mylite_stmt *stmt, struct mylite_table_select_
     return MYLITE_OK;
 }
 
-int mylite_select_copy_current_sqlite_column_value(mylite_stmt *stmt, size_t column_index,
-                                                   struct mylite_expression_value *out_value)
-{
+int mylite_select_copy_current_sqlite_column_value(
+    mylite_stmt *stmt,
+    size_t column_index,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_select_column *column = NULL;
     int status = 0;
 
@@ -77,16 +86,20 @@ int mylite_select_copy_current_sqlite_column_value(mylite_stmt *stmt, size_t col
         column = mylite_select_plan_column_const(&stmt->select_plan, column_index, NULL);
         out_value->preserve_temporal_fraction_digits =
             mylite_field_descriptor_preserves_temporal_fraction_digits(
-                column == NULL ? NULL : &column->descriptor);
+                column == NULL ? NULL : &column->descriptor
+            );
         out_value->temporal_type = mylite_field_descriptor_expression_temporal_type(
-            column == NULL ? NULL : &column->descriptor);
+            column == NULL ? NULL : &column->descriptor
+        );
     }
     return status;
 }
 
-static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
-                                         struct mylite_table_select_table_rowset *rowset)
-{
+static int load_table_select_join_rowset(
+    mylite_stmt *stmt,
+    size_t table_index,
+    struct mylite_table_select_table_rowset *rowset
+) {
     const struct mylite_select_table *table =
         mylite_select_plan_table_const(&stmt->select_plan, table_index);
     sqlite3_stmt *scan = NULL;
@@ -103,8 +116,14 @@ static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
         return MYLITE_NOMEM;
     }
 
-    rc = sqlite3_prepare_v3(stmt->database->sqlite, scan_sql, -1, SQLITE_PREPARE_PERSISTENT, &scan,
-                            NULL);
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        scan_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &scan,
+        NULL
+    );
     sqlite3_free(scan_sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(stmt->database);
@@ -122,10 +141,12 @@ static int load_table_select_join_rowset(mylite_stmt *stmt, size_t table_index,
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
-static int append_table_select_join_scan_row(mylite_stmt *stmt, sqlite3_stmt *scan,
-                                             const struct mylite_select_table *table,
-                                             struct mylite_table_select_table_rowset *rowset)
-{
+static int append_table_select_join_scan_row(
+    mylite_stmt *stmt,
+    sqlite3_stmt *scan,
+    const struct mylite_select_table *table,
+    struct mylite_table_select_table_rowset *rowset
+) {
     size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
     size_t table_index = 0U;
     struct mylite_table_select_row row = {

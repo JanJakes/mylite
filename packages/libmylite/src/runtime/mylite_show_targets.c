@@ -14,23 +14,37 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_show_columns_target(mylite_db *database,
-                                    const struct mylite_sql_ast_node *statement,
-                                    struct mylite_show_columns_target *out_target);
+static int copy_show_columns_target(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_show_columns_target *out_target
+);
+
 static int normalize_show_columns_schema_name(char **schema_name);
+
 static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *statement);
-static const struct mylite_sql_ast_node *
-show_columns_filter(const struct mylite_sql_ast_node *statement);
-static const struct mylite_sql_ast_node *
-show_columns_where_expression(const struct mylite_sql_ast_node *statement);
-static int copy_describe_table_target(mylite_db *database,
-                                      const struct mylite_sql_ast_node *statement,
-                                      struct mylite_show_columns_target *out_target);
+
+static const struct mylite_sql_ast_node *show_columns_filter(
+    const struct mylite_sql_ast_node *statement
+);
+
+static const struct mylite_sql_ast_node *show_columns_where_expression(
+    const struct mylite_sql_ast_node *statement
+);
+
+static int copy_describe_table_target(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_show_columns_target *out_target
+);
+
 static char *copy_describe_column_pattern(const struct mylite_sql_ast_node *statement);
-int mylite_show_prepare_columns_statement(mylite_db *database,
-                                          const struct mylite_sql_ast_node *statement,
-                                          mylite_stmt **out_stmt)
-{
+
+int mylite_show_prepare_columns_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     struct mylite_show_columns_target target = {0};
     char *like_pattern = NULL;
     char *sqlite_sql = NULL;
@@ -38,7 +52,10 @@ int mylite_show_prepare_columns_statement(mylite_db *database,
 
     if (status == MYLITE_OK) {
         status = mylite_show_validate_columns_target(
-            database, &target, "SHOW COLUMNS for information_schema tables is not supported");
+            database,
+            &target,
+            "SHOW COLUMNS for information_schema tables is not supported"
+        );
     }
     if (status == MYLITE_OK) {
         like_pattern = copy_show_columns_like_pattern(statement);
@@ -59,7 +76,8 @@ int mylite_show_prepare_columns_statement(mylite_db *database,
                 .full = statement->show_columns_full,
                 .temporary = target.temporary,
             },
-            &sqlite_sql);
+            &sqlite_sql
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -74,19 +92,23 @@ int mylite_show_prepare_columns_statement(mylite_db *database,
     return status;
 }
 
-int mylite_show_prepare_describe_table_statement(mylite_db *database,
-                                                 const struct mylite_sql_ast_node *statement,
-                                                 mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_describe_table_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     struct mylite_show_columns_target target = {0};
     char *column_pattern = NULL;
     char *sqlite_sql = NULL;
     int status = copy_describe_table_target(database, statement, &target);
 
     if (status == MYLITE_OK) {
-        status = mylite_show_validate_columns_target(database, &target,
-                                                     "DESCRIBE for information_schema tables is "
-                                                     "not supported");
+        status = mylite_show_validate_columns_target(
+            database,
+            &target,
+            "DESCRIBE for information_schema tables is "
+            "not supported"
+        );
     }
     if (status == MYLITE_OK) {
         column_pattern = copy_describe_column_pattern(statement);
@@ -95,15 +117,17 @@ int mylite_show_prepare_describe_table_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        status = mylite_show_columns_sql(database,
-                                         &(const struct mylite_show_columns_query){
-                                             .schema_name = target.schema_name,
-                                             .table_name = target.table_name,
-                                             .like_pattern = column_pattern,
-                                             .full = false,
-                                             .temporary = target.temporary,
-                                         },
-                                         &sqlite_sql);
+        status = mylite_show_columns_sql(
+            database,
+            &(const struct mylite_show_columns_query){
+                .schema_name = target.schema_name,
+                .table_name = target.table_name,
+                .like_pattern = column_pattern,
+                .full = false,
+                .temporary = target.temporary,
+            },
+            &sqlite_sql
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -118,10 +142,11 @@ int mylite_show_prepare_describe_table_statement(mylite_db *database,
     return status;
 }
 
-int mylite_show_prepare_index_statement(mylite_db *database,
-                                        const struct mylite_sql_ast_node *statement,
-                                        mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_index_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     const struct mylite_sql_ast_node *where_clause =
         mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_WHERE_CLAUSE);
     struct mylite_show_index_target target = {0};
@@ -141,7 +166,8 @@ int mylite_show_prepare_index_statement(mylite_db *database,
                 .where_expression =
                     where_clause == NULL ? NULL : mylite_ast_child_at(where_clause, 0U),
             },
-            &sqlite_sql);
+            &sqlite_sql
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -155,9 +181,10 @@ int mylite_show_prepare_index_statement(mylite_db *database,
     return status;
 }
 
-int mylite_show_copy_columns_table_target(const struct mylite_show_columns_source_nodes *source,
-                                          struct mylite_show_columns_target *out_target)
-{
+int mylite_show_copy_columns_table_target(
+    const struct mylite_show_columns_source_nodes *source,
+    struct mylite_show_columns_target *out_target
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     int status = mylite_copy_identifier_parts(source->table_name, parts, &part_count);
@@ -202,9 +229,10 @@ cleanup:
     return status;
 }
 
-int mylite_show_copy_columns_selected_schema(mylite_db *database,
-                                             struct mylite_show_columns_target *target)
-{
+int mylite_show_copy_columns_selected_schema(
+    mylite_db *database,
+    struct mylite_show_columns_target *target
+) {
     if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
         (void)mylite_diagnostics_set_error_message(database, "No database selected");
         return MYLITE_EXEC_ERROR;
@@ -217,10 +245,11 @@ int mylite_show_copy_columns_selected_schema(mylite_db *database,
     return normalize_show_columns_schema_name(&target->schema_name);
 }
 
-int mylite_show_validate_columns_target(mylite_db *database,
-                                        struct mylite_show_columns_target *target,
-                                        const char *information_schema_unsupported_message)
-{
+int mylite_show_validate_columns_target(
+    mylite_db *database,
+    struct mylite_show_columns_target *target,
+    const char *information_schema_unsupported_message
+) {
     struct mylite_schema_presence presence;
     bool exists = false;
     int status = mylite_catalog_schema_exists(database, target->schema_name, &presence);
@@ -229,21 +258,29 @@ int mylite_show_validate_columns_target(mylite_db *database,
         return status;
     }
     if (!presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
-                                                         target->schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Unknown database '",
+            target->schema_name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (mylite_ascii_case_equal(target->schema_name, "information_schema")) {
         if (!mylite_information_schema_has_table(target->table_name)) {
             return mylite_information_schema_set_unknown_table_error(database, target->table_name);
         }
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   information_schema_unsupported_message);
+        (void)
+            mylite_diagnostics_set_error_message(database, information_schema_unsupported_message);
         return MYLITE_UNSUPPORTED;
     }
 
-    status = mylite_catalog_temporary_table_exists(database, target->schema_name,
-                                                   target->table_name, &exists);
+    status = mylite_catalog_temporary_table_exists(
+        database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -251,21 +288,27 @@ int mylite_show_validate_columns_target(mylite_db *database,
         target->temporary = true;
         return MYLITE_OK;
     }
-    status = mylite_catalog_persistent_table_exists(database, target->schema_name,
-                                                    target->table_name, &exists);
+    status = mylite_catalog_persistent_table_exists(
+        database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
     if (!exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(database, target->schema_name,
-                                                               target->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            database,
+            target->schema_name,
+            target->table_name
+        );
     }
     target->temporary = false;
     return MYLITE_OK;
 }
 
-void mylite_show_columns_target_deinit(struct mylite_show_columns_target *target)
-{
+void mylite_show_columns_target_deinit(struct mylite_show_columns_target *target) {
     if (target == NULL) {
         return;
     }
@@ -275,10 +318,11 @@ void mylite_show_columns_target_deinit(struct mylite_show_columns_target *target
     *target = (struct mylite_show_columns_target){0};
 }
 
-static int copy_show_columns_target(mylite_db *database,
-                                    const struct mylite_sql_ast_node *statement,
-                                    struct mylite_show_columns_target *out_target)
-{
+static int copy_show_columns_target(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_show_columns_target *out_target
+) {
     const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *possible_schema = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *explicit_schema =
@@ -293,12 +337,15 @@ static int copy_show_columns_target(mylite_db *database,
             .table_name = table_name,
             .explicit_schema = explicit_schema,
         },
-        out_target);
+        out_target
+    );
     if (status != MYLITE_OK) {
         if (status == MYLITE_UNSUPPORTED) {
             (void)mylite_diagnostics_set_error_message(
-                database, "SHOW COLUMNS table names with more than two parts are not "
-                          "supported");
+                database,
+                "SHOW COLUMNS table names with more than two parts are not "
+                "supported"
+            );
         }
         return status;
     }
@@ -308,8 +355,7 @@ static int copy_show_columns_target(mylite_db *database,
     return status;
 }
 
-static int normalize_show_columns_schema_name(char **schema_name)
-{
+static int normalize_show_columns_schema_name(char **schema_name) {
     char *normalized = NULL;
 
     if (schema_name == NULL || *schema_name == NULL ||
@@ -328,8 +374,7 @@ static int normalize_show_columns_schema_name(char **schema_name)
     return MYLITE_OK;
 }
 
-static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *statement)
-{
+static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *literal = show_columns_filter(statement);
 
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
@@ -338,9 +383,9 @@ static char *copy_show_columns_like_pattern(const struct mylite_sql_ast_node *st
     return mylite_show_copy_like_pattern_span(literal);
 }
 
-static const struct mylite_sql_ast_node *
-show_columns_filter(const struct mylite_sql_ast_node *statement)
-{
+static const struct mylite_sql_ast_node *show_columns_filter(
+    const struct mylite_sql_ast_node *statement
+) {
     const struct mylite_sql_ast_node *possible_schema = mylite_ast_child_at(statement, 1U);
 
     if (possible_schema == NULL || possible_schema->kind != MYLITE_SQL_AST_IDENTIFIER) {
@@ -349,9 +394,9 @@ show_columns_filter(const struct mylite_sql_ast_node *statement)
     return mylite_ast_child_at(statement, 2U);
 }
 
-static const struct mylite_sql_ast_node *
-show_columns_where_expression(const struct mylite_sql_ast_node *statement)
-{
+static const struct mylite_sql_ast_node *show_columns_where_expression(
+    const struct mylite_sql_ast_node *statement
+) {
     const struct mylite_sql_ast_node *filter = show_columns_filter(statement);
 
     if (filter == NULL || filter->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
@@ -360,10 +405,11 @@ show_columns_where_expression(const struct mylite_sql_ast_node *statement)
     return mylite_ast_child_at(filter, 0U);
 }
 
-static int copy_describe_table_target(mylite_db *database,
-                                      const struct mylite_sql_ast_node *statement,
-                                      struct mylite_show_columns_target *out_target)
-{
+static int copy_describe_table_target(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_show_columns_target *out_target
+) {
     int status = MYLITE_OK;
 
     *out_target = (struct mylite_show_columns_target){0};
@@ -372,12 +418,15 @@ static int copy_describe_table_target(mylite_db *database,
             .table_name = mylite_ast_child_at(statement, 0U),
             .explicit_schema = NULL,
         },
-        out_target);
+        out_target
+    );
     if (status != MYLITE_OK) {
         if (status == MYLITE_UNSUPPORTED) {
             (void)mylite_diagnostics_set_error_message(
-                database, "DESCRIBE table names with more than two parts are not "
-                          "supported");
+                database,
+                "DESCRIBE table names with more than two parts are not "
+                "supported"
+            );
         }
         return status;
     }
@@ -387,8 +436,7 @@ static int copy_describe_table_target(mylite_db *database,
     return status;
 }
 
-static char *copy_describe_column_pattern(const struct mylite_sql_ast_node *statement)
-{
+static char *copy_describe_column_pattern(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *filter = mylite_ast_child_at(statement, 1U);
 
     if (filter == NULL) {

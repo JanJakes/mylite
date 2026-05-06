@@ -8,7 +8,9 @@
 struct mylite_catalog_column_descriptor_source;
 
 int mylite_select_catalog_apply_column_type_descriptor(
-    mylite_db *database, const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor);
+    mylite_db *database,
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+);
 
 #endif

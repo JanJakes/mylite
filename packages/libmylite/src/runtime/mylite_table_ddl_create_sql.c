@@ -8,16 +8,23 @@
 
 #include <stdlib.h>
 
-static char *build_create_physical_table_sql(mylite_db *database, const char *physical_name,
-                                             const struct mylite_schema_default *schema_default,
-                                             const struct mylite_create_table_plan *plan);
-static const char *
-sqlite_affinity_for_descriptor(const struct mylite_column_type_descriptor *descriptor);
+static char *build_create_physical_table_sql(
+    mylite_db *database,
+    const char *physical_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan
+);
 
-int mylite_table_ddl_create_physical_table(mylite_db *database, const char *schema_name,
-                                           const struct mylite_schema_default *schema_default,
-                                           const struct mylite_create_table_plan *plan)
-{
+static const char *sqlite_affinity_for_descriptor(
+    const struct mylite_column_type_descriptor *descriptor
+);
+
+int mylite_table_ddl_create_physical_table(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan
+) {
     char *physical_name = mylite_catalog_physical_table_name(schema_name, plan->table_name);
     char *sql = NULL;
     int rc = SQLITE_OK;
@@ -42,10 +49,12 @@ int mylite_table_ddl_create_physical_table(mylite_db *database, const char *sche
     return MYLITE_OK;
 }
 
-static char *build_create_physical_table_sql(mylite_db *database, const char *physical_name,
-                                             const struct mylite_schema_default *schema_default,
-                                             const struct mylite_create_table_plan *plan)
-{
+static char *build_create_physical_table_sql(
+    mylite_db *database,
+    const char *physical_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     const char *temporary_keyword = "";
 
@@ -60,7 +69,11 @@ static char *build_create_physical_table_sql(mylite_db *database, const char *ph
     for (size_t index = 0U; index < plan->column_count; ++index) {
         struct mylite_column_type_descriptor descriptor;
         int status = mylite_table_ddl_describe_create_table_column(
-            &plan->columns[index], schema_default, &plan->options, &descriptor);
+            &plan->columns[index],
+            schema_default,
+            &plan->options,
+            &descriptor
+        );
 
         if (status != MYLITE_OK) {
             sqlite3_free(sqlite3_str_finish(sql));
@@ -69,16 +82,20 @@ static char *build_create_physical_table_sql(mylite_db *database, const char *ph
         if (index != 0U) {
             sqlite3_str_append(sql, ",", 1);
         }
-        sqlite3_str_appendf(sql, "\"%w\" %s", plan->columns[index].name,
-                            sqlite_affinity_for_descriptor(&descriptor));
+        sqlite3_str_appendf(
+            sql,
+            "\"%w\" %s",
+            plan->columns[index].name,
+            sqlite_affinity_for_descriptor(&descriptor)
+        );
     }
     sqlite3_str_append(sql, ")", 1);
     return sqlite3_str_finish(sql);
 }
 
-static const char *
-sqlite_affinity_for_descriptor(const struct mylite_column_type_descriptor *descriptor)
-{
+static const char *sqlite_affinity_for_descriptor(
+    const struct mylite_column_type_descriptor *descriptor
+) {
     if (descriptor->integer_type != MYLITE_COLUMN_INTEGER_NONE || descriptor->is_boolean_alias) {
         return "INTEGER";
     }

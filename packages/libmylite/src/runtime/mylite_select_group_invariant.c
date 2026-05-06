@@ -10,41 +10,71 @@
 #include <stdlib.h>
 
 static bool select_expression_children_are_group_invariant(
-    const struct mylite_select_plan *plan, const struct mylite_sql_ast_node *first_child,
-    enum mylite_select_grouping_reference_policy reference_policy);
-static bool
-select_identifier_is_group_invariant(const struct mylite_select_plan *plan,
-                                     const struct mylite_sql_ast_node *identifier,
-                                     enum mylite_select_grouping_reference_policy reference_policy);
-static bool
-select_having_identifier_is_group_invariant(const struct mylite_select_plan *plan,
-                                            const struct mylite_sql_ast_node *identifier);
-static bool
-select_order_identifier_is_group_invariant(const struct mylite_select_plan *plan,
-                                           const struct mylite_sql_ast_node *identifier);
-static bool
-select_column_reference_is_group_invariant(const struct mylite_select_plan *plan,
-                                           const struct mylite_sql_ast_node *identifier);
-static bool select_resolve_column_reference(const struct mylite_select_plan *plan,
-                                            const struct mylite_sql_ast_node *identifier,
-                                            size_t *out_column_index);
-static bool select_column_index_is_functionally_dependent(const struct mylite_select_plan *plan,
-                                                          size_t column_index);
-static bool select_table_is_functionally_determined(const struct mylite_select_plan *plan,
-                                                    const struct mylite_select_table *table);
-static const struct mylite_select_table *
-select_table_for_column_index(const struct mylite_select_plan *plan, size_t column_index);
-static bool select_output_is_grouped_by_key(const struct mylite_select_plan *plan,
-                                            size_t output_index);
-static bool select_expression_is_grouped(const struct mylite_select_plan *plan,
-                                         const struct mylite_sql_ast_node *expression);
-static bool select_group_key_matches_column_output(const struct mylite_select_plan *plan,
-                                                   const struct mylite_select_group_key *group_key,
-                                                   size_t output_index);
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *first_child,
+    enum mylite_select_grouping_reference_policy reference_policy
+);
+
+static bool select_identifier_is_group_invariant(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier,
+    enum mylite_select_grouping_reference_policy reference_policy
+);
+
+static bool select_having_identifier_is_group_invariant(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier
+);
+
+static bool select_order_identifier_is_group_invariant(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier
+);
+
+static bool select_column_reference_is_group_invariant(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier
+);
+
+static bool select_resolve_column_reference(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier,
+    size_t *out_column_index
+);
+
+static bool select_column_index_is_functionally_dependent(
+    const struct mylite_select_plan *plan,
+    size_t column_index
+);
+
+static bool select_table_is_functionally_determined(
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_table *table
+);
+
+static const struct mylite_select_table *select_table_for_column_index(
+    const struct mylite_select_plan *plan,
+    size_t column_index
+);
+
+static bool select_output_is_grouped_by_key(
+    const struct mylite_select_plan *plan,
+    size_t output_index
+);
+
+static bool select_expression_is_grouped(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression
+);
+
+static bool select_group_key_matches_column_output(
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_group_key *group_key,
+    size_t output_index
+);
 
 // NOLINTNEXTLINE(misc-no-recursion)
-bool mylite_select_expression_contains_aggregate(const struct mylite_sql_ast_node *expression)
-{
+bool mylite_select_expression_contains_aggregate(const struct mylite_sql_ast_node *expression) {
     if (expression == NULL) {
         return false;
     }
@@ -64,9 +94,10 @@ bool mylite_select_expression_contains_aggregate(const struct mylite_sql_ast_nod
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-bool mylite_select_output_is_group_invariant(const struct mylite_select_plan *plan,
-                                             size_t output_index)
-{
+bool mylite_select_output_is_group_invariant(
+    const struct mylite_select_plan *plan,
+    size_t output_index
+) {
     const struct mylite_select_output_column *output = NULL;
 
     if (output_index >= plan->output_count) {
@@ -82,8 +113,11 @@ bool mylite_select_output_is_group_invariant(const struct mylite_select_plan *pl
         }
         return select_column_index_is_functionally_dependent(plan, output->column_index);
     }
-    return mylite_select_expression_is_group_invariant(plan, output->expression,
-                                                       MYLITE_SELECT_GROUPING_REFERENCE_SELECT);
+    return mylite_select_expression_is_group_invariant(
+        plan,
+        output->expression,
+        MYLITE_SELECT_GROUPING_REFERENCE_SELECT
+    );
 }
 
 bool mylite_select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
@@ -113,12 +147,18 @@ bool mylite_select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
         return select_identifier_is_group_invariant(plan, expression, reference_policy);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return mylite_select_expression_is_group_invariant(
-            plan, mylite_ast_child_at(expression, 0U), reference_policy);
+            plan,
+            mylite_ast_child_at(expression, 0U),
+            reference_policy
+        );
     case MYLITE_SQL_AST_FUNCTION_CALL: {
         const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
         return select_expression_children_are_group_invariant(
-            plan, arguments == NULL ? NULL : arguments->first_child, reference_policy);
+            plan,
+            arguments == NULL ? NULL : arguments->first_child,
+            reference_policy
+        );
     }
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
@@ -128,21 +168,33 @@ bool mylite_select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
-        return select_expression_children_are_group_invariant(plan, expression->first_child,
-                                                              reference_policy);
+        return select_expression_children_are_group_invariant(
+            plan,
+            expression->first_child,
+            reference_policy
+        );
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         if (mylite_select_subquery_binary_expression_is_in(expression)) {
             return mylite_select_expression_is_group_invariant(
-                plan, mylite_ast_child_at(expression, 0U), reference_policy);
+                plan,
+                mylite_ast_child_at(expression, 0U),
+                reference_policy
+            );
         }
-        return select_expression_children_are_group_invariant(plan, expression->first_child,
-                                                              reference_policy);
+        return select_expression_children_are_group_invariant(
+            plan,
+            expression->first_child,
+            reference_policy
+        );
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
         return true;
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         return mylite_select_expression_is_group_invariant(
-            plan, mylite_ast_child_at(expression, 0U), reference_policy);
+            plan,
+            mylite_ast_child_at(expression, 0U),
+            reference_policy
+        );
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
@@ -190,8 +242,11 @@ bool mylite_select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_INSERT_ROW_ALIAS:
     case MYLITE_SQL_AST_INSERT_ALIAS_COLUMN_LIST:
-        return select_expression_children_are_group_invariant(plan, expression->first_child,
-                                                              reference_policy);
+        return select_expression_children_are_group_invariant(
+            plan,
+            expression->first_child,
+            reference_policy
+        );
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
     case MYLITE_SQL_AST_GROUP_ITEM_LIST:
     case MYLITE_SQL_AST_GROUP_ITEM:
@@ -292,9 +347,10 @@ bool mylite_select_expression_is_group_invariant( // NOLINT(misc-no-recursion)
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static bool select_expression_children_are_group_invariant(
-    const struct mylite_select_plan *plan, const struct mylite_sql_ast_node *first_child,
-    enum mylite_select_grouping_reference_policy reference_policy)
-{
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *first_child,
+    enum mylite_select_grouping_reference_policy reference_policy
+) {
     for (const struct mylite_sql_ast_node *child = first_child; child != NULL;
          child = child->next_sibling) {
         if (!mylite_select_expression_is_group_invariant(plan, child, reference_policy)) {
@@ -340,9 +396,10 @@ static bool select_having_identifier_is_group_invariant( // NOLINT(misc-no-recur
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static bool select_order_identifier_is_group_invariant(const struct mylite_select_plan *plan,
-                                                       const struct mylite_sql_ast_node *identifier)
-{
+static bool select_order_identifier_is_group_invariant(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier
+) {
     size_t output_index = 0U;
     size_t output_matches = 0U;
 
@@ -359,9 +416,10 @@ static bool select_order_identifier_is_group_invariant(const struct mylite_selec
     return select_column_reference_is_group_invariant(plan, identifier);
 }
 
-static bool select_column_reference_is_group_invariant(const struct mylite_select_plan *plan,
-                                                       const struct mylite_sql_ast_node *identifier)
-{
+static bool select_column_reference_is_group_invariant(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier
+) {
     size_t column_index = mylite_select_plan_column_count(plan);
 
     if (!select_resolve_column_reference(plan, identifier, &column_index)) {
@@ -373,10 +431,11 @@ static bool select_column_reference_is_group_invariant(const struct mylite_selec
     return select_column_index_is_functionally_dependent(plan, column_index);
 }
 
-static bool select_resolve_column_reference(const struct mylite_select_plan *plan,
-                                            const struct mylite_sql_ast_node *identifier,
-                                            size_t *out_column_index)
-{
+static bool select_resolve_column_reference(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *identifier,
+    size_t *out_column_index
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     size_t match_count = 0U;
@@ -392,7 +451,13 @@ static bool select_resolve_column_reference(const struct mylite_select_plan *pla
     }
 
     match_count = mylite_select_count_plan_column_parts_matches(
-        plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), out_column_index);
+        plan,
+        parts,
+        part_count,
+        0U,
+        mylite_select_plan_table_count(plan),
+        out_column_index
+    );
     resolved = match_count == 1U;
     for (size_t index = 0U; index < part_count && index < 3U; ++index) {
         free(parts[index]);
@@ -400,17 +465,19 @@ static bool select_resolve_column_reference(const struct mylite_select_plan *pla
     return resolved;
 }
 
-static bool select_column_index_is_functionally_dependent(const struct mylite_select_plan *plan,
-                                                          size_t column_index)
-{
+static bool select_column_index_is_functionally_dependent(
+    const struct mylite_select_plan *plan,
+    size_t column_index
+) {
     const struct mylite_select_table *table = select_table_for_column_index(plan, column_index);
 
     return select_table_is_functionally_determined(plan, table);
 }
 
-static bool select_table_is_functionally_determined(const struct mylite_select_plan *plan,
-                                                    const struct mylite_select_table *table)
-{
+static bool select_table_is_functionally_determined(
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_table *table
+) {
     if (table == NULL) {
         return false;
     }
@@ -429,9 +496,10 @@ static bool select_table_is_functionally_determined(const struct mylite_select_p
     return false;
 }
 
-static const struct mylite_select_table *
-select_table_for_column_index(const struct mylite_select_plan *plan, size_t column_index)
-{
+static const struct mylite_select_table *select_table_for_column_index(
+    const struct mylite_select_plan *plan,
+    size_t column_index
+) {
     size_t table_count = mylite_select_plan_table_count(plan);
 
     for (size_t table_index = 0U; table_index < table_count; ++table_index) {
@@ -445,9 +513,10 @@ select_table_for_column_index(const struct mylite_select_plan *plan, size_t colu
     return NULL;
 }
 
-static bool select_output_is_grouped_by_key(const struct mylite_select_plan *plan,
-                                            size_t output_index)
-{
+static bool select_output_is_grouped_by_key(
+    const struct mylite_select_plan *plan,
+    size_t output_index
+) {
     if (output_index >= plan->output_count) {
         return false;
     }
@@ -465,9 +534,10 @@ static bool select_output_is_grouped_by_key(const struct mylite_select_plan *pla
     return false;
 }
 
-static bool select_expression_is_grouped(const struct mylite_select_plan *plan,
-                                         const struct mylite_sql_ast_node *expression)
-{
+static bool select_expression_is_grouped(
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression
+) {
     for (size_t index = 0U; index < plan->group_key_count; ++index) {
         const struct mylite_select_group_key *group_key = &plan->group_keys[index];
 
@@ -480,10 +550,11 @@ static bool select_expression_is_grouped(const struct mylite_select_plan *plan,
     return false;
 }
 
-static bool select_group_key_matches_column_output(const struct mylite_select_plan *plan,
-                                                   const struct mylite_select_group_key *group_key,
-                                                   size_t output_index)
-{
+static bool select_group_key_matches_column_output(
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_group_key *group_key,
+    size_t output_index
+) {
     size_t group_column_index = mylite_select_plan_column_count(plan);
     const struct mylite_select_output_column *output = &plan->outputs[output_index];
 

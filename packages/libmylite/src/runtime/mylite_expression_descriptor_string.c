@@ -12,49 +12,84 @@
 #include <stdlib.h>
 
 static int infer_make_set_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static uint64_t insert_function_result_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static uint64_t make_set_function_result_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static int make_set_function_members_are_all_null(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, bool *out_all_null,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
-static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node *expression);
-static uint64_t
-elt_function_result_length(mylite_db *database, const struct mylite_select_plan *plan,
-                           const struct mylite_sql_ast_node *expression,
-                           const struct mylite_expression_descriptor_string_callbacks *callbacks);
-static uint64_t
-elt_argument_result_length(mylite_db *database, const struct mylite_select_plan *plan,
-                           const struct mylite_sql_ast_node *expression,
-                           const struct mylite_expression_descriptor_string_callbacks *callbacks);
-static uint64_t expression_text_display_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    bool *out_all_null,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node *expression);
+
+static uint64_t elt_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static uint64_t elt_argument_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static uint64_t expression_text_display_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static uint64_t slice_string_function_result_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static int infer_function_arguments_nullable(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *arguments, bool *out_nullable,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_nullable,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
 
 int mylite_expression_descriptor_infer_slice_string_function(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    bool nullable, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks, bool *out_matched)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    bool nullable,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks,
+    bool *out_matched
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
 
     if (callbacks == NULL || callbacks->infer_expression_descriptor == NULL ||
@@ -69,8 +104,13 @@ int mylite_expression_descriptor_infer_slice_string_function(
     if (mylite_function_name_is_make_set(name)) {
         (void)value;
         (void)nullable;
-        return infer_make_set_function_descriptor(database, plan, expression, out_descriptor,
-                                                  callbacks);
+        return infer_make_set_function_descriptor(
+            database,
+            plan,
+            expression,
+            out_descriptor,
+            callbacks
+        );
     }
 
     *out_descriptor = (struct mylite_field_descriptor){
@@ -86,13 +126,20 @@ int mylite_expression_descriptor_infer_slice_string_function(
 }
 
 static int infer_make_set_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     bool all_members_null = false;
-    int status = make_set_function_members_are_all_null(database, plan, expression,
-                                                        &all_members_null, callbacks);
+    int status = make_set_function_members_are_all_null(
+        database,
+        plan,
+        expression,
+        &all_members_null,
+        callbacks
+    );
     bool nullable = false;
     unsigned int flags = 0U;
     uint64_t length = 0U;
@@ -101,8 +148,13 @@ static int infer_make_set_function_descriptor(
     if (status != MYLITE_OK) {
         return status;
     }
-    status = infer_function_arguments_nullable(database, plan, mylite_ast_child_at(expression, 1U),
-                                               &nullable, callbacks);
+    status = infer_function_arguments_nullable(
+        database,
+        plan,
+        mylite_ast_child_at(expression, 1U),
+        &nullable,
+        callbacks
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -127,16 +179,25 @@ static int infer_make_set_function_descriptor(
     return MYLITE_OK;
 }
 
-static uint64_t
-insert_function_result_length(mylite_db *database, const struct mylite_select_plan *plan,
-                              const struct mylite_sql_ast_node *expression,
-                              const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+static uint64_t insert_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     uint64_t source_length = expression_text_display_length(
-        database, plan, mylite_ast_child_at(arguments, 0U), callbacks);
+        database,
+        plan,
+        mylite_ast_child_at(arguments, 0U),
+        callbacks
+    );
     uint64_t replacement_length = expression_text_display_length(
-        database, plan, mylite_ast_child_at(arguments, 3U), callbacks);
+        database,
+        plan,
+        mylite_ast_child_at(arguments, 3U),
+        callbacks
+    );
 
     if (source_length > UINT64_MAX - replacement_length) {
         return mylite_mysql_long_text_length;
@@ -145,10 +206,11 @@ insert_function_result_length(mylite_db *database, const struct mylite_select_pl
 }
 
 static uint64_t make_set_function_result_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     uint64_t separator_length =
         mylite_expression_descriptor_connection_character_max_length(database);
@@ -159,7 +221,8 @@ static uint64_t make_set_function_result_length(
                                                               arguments->first_child == NULL
                                                           ? NULL
                                                           : arguments->first_child->next_sibling;
-         argument != NULL; argument = argument->next_sibling) {
+         argument != NULL;
+         argument = argument->next_sibling) {
         uint64_t length = elt_argument_result_length(database, plan, argument, callbacks);
 
         if (member_count != 0U) {
@@ -178,10 +241,12 @@ static uint64_t make_set_function_result_length(
 }
 
 static int make_set_function_members_are_all_null(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, bool *out_all_null,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_all_null,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     bool saw_member = false;
 
@@ -189,7 +254,8 @@ static int make_set_function_members_are_all_null(
                                                               arguments->first_child == NULL
                                                           ? NULL
                                                           : arguments->first_child->next_sibling;
-         argument != NULL; argument = argument->next_sibling) {
+         argument != NULL;
+         argument = argument->next_sibling) {
         struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
         int status =
             callbacks->infer_expression_descriptor(database, plan, argument, NULL, &descriptor);
@@ -207,8 +273,7 @@ static int make_set_function_members_are_all_null(
     return MYLITE_OK;
 }
 
-static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node *expression)
-{
+static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node *expression) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     size_t member_count = 0U;
 
@@ -216,7 +281,8 @@ static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node
                                                               arguments->first_child == NULL
                                                           ? NULL
                                                           : arguments->first_child->next_sibling;
-         argument != NULL; argument = argument->next_sibling) {
+         argument != NULL;
+         argument = argument->next_sibling) {
         ++member_count;
     }
     if (member_count <= 1U) {
@@ -225,11 +291,12 @@ static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node
     return (uint64_t)(member_count - 1U);
 }
 
-static uint64_t
-elt_function_result_length(mylite_db *database, const struct mylite_select_plan *plan,
-                           const struct mylite_sql_ast_node *expression,
-                           const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+static uint64_t elt_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     uint64_t result = 0U;
 
@@ -237,7 +304,8 @@ elt_function_result_length(mylite_db *database, const struct mylite_select_plan 
                                                               arguments->first_child == NULL
                                                           ? NULL
                                                           : arguments->first_child->next_sibling;
-         argument != NULL; argument = argument->next_sibling) {
+         argument != NULL;
+         argument = argument->next_sibling) {
         uint64_t length = elt_argument_result_length(database, plan, argument, callbacks);
 
         result = mylite_expression_descriptor_max_u64(result, length);
@@ -245,11 +313,12 @@ elt_function_result_length(mylite_db *database, const struct mylite_select_plan 
     return result;
 }
 
-static uint64_t
-elt_argument_result_length(mylite_db *database, const struct mylite_select_plan *plan,
-                           const struct mylite_sql_ast_node *expression,
-                           const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+static uint64_t elt_argument_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
 
     if (callbacks->infer_expression_descriptor(database, plan, expression, NULL, &descriptor) ==
@@ -271,10 +340,11 @@ elt_argument_result_length(mylite_db *database, const struct mylite_select_plan 
 }
 
 static uint64_t expression_text_display_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     struct mylite_expression_warnings warnings = {0};
     struct mylite_expression_value value = {0};
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
@@ -306,10 +376,12 @@ static uint64_t expression_text_display_length(
 }
 
 static uint64_t slice_string_function_result_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
@@ -319,8 +391,12 @@ static uint64_t slice_string_function_result_length(
         return elt_function_result_length(database, plan, expression, callbacks);
     }
     if (mylite_function_name_is_quote(name)) {
-        return mylite_expression_descriptor_quote_function_result_length(database, plan, expression,
-                                                                         callbacks);
+        return mylite_expression_descriptor_quote_function_result_length(
+            database,
+            plan,
+            expression,
+            callbacks
+        );
     }
     if (mylite_function_name_is_insert(name)) {
         return insert_function_result_length(database, plan, expression, callbacks);
@@ -332,22 +408,26 @@ static uint64_t slice_string_function_result_length(
     if (mylite_function_name_is_concat_ws(name)) {
         return mylite_mysql_text_length;
     }
-    if (source != NULL && callbacks->infer_expression_descriptor(database, plan, source, NULL,
-                                                                 &source_descriptor) == MYLITE_OK) {
+    if (source != NULL &&
+        callbacks->infer_expression_descriptor(database, plan, source, NULL, &source_descriptor) ==
+            MYLITE_OK) {
         return source_descriptor.length;
     }
     return mylite_mysql_text_length;
 }
 
 static int infer_function_arguments_nullable(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *arguments, bool *out_nullable,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_nullable,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     *out_nullable = false;
     for (const struct mylite_sql_ast_node *argument = arguments == NULL ? NULL
                                                                         : arguments->first_child;
-         argument != NULL; argument = argument->next_sibling) {
+         argument != NULL;
+         argument = argument->next_sibling) {
         struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
         int status =
             callbacks->infer_expression_descriptor(database, plan, argument, NULL, &descriptor);

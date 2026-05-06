@@ -3,7 +3,9 @@
 
 #include "mylite_dml_types.h"
 
-int mylite_dml_copy_insert_rows(const struct mylite_sql_ast_node *rows,
-                                struct mylite_insert_values_plan *plan);
+int mylite_dml_copy_insert_rows(
+    const struct mylite_sql_ast_node *rows,
+    struct mylite_insert_values_plan *plan
+);
 
 #endif

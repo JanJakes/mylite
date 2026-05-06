@@ -7,25 +7,36 @@ struct mylite_select_row_order_comparison {
     int comparison;
 };
 
-static int compare_row_values_for_equality(const struct mylite_row_expression_values *left,
-                                           const struct mylite_row_expression_values *right,
-                                           struct mylite_expression_warnings *warnings,
-                                           int *out_truth);
-static int
-compare_row_values_for_null_safe_equality(const struct mylite_row_expression_values *left,
-                                          const struct mylite_row_expression_values *right,
-                                          struct mylite_expression_warnings *warnings,
-                                          int *out_truth);
-static int compare_row_values_for_order(enum mylite_sql_ast_operator operator_kind,
-                                        const struct mylite_row_expression_values *left,
-                                        const struct mylite_row_expression_values *right,
-                                        struct mylite_expression_warnings *warnings,
-                                        int *out_truth);
-static int row_order_comparison_truth(struct mylite_select_row_order_comparison comparison,
-                                      int *out_truth);
+static int compare_row_values_for_equality(
+    const struct mylite_row_expression_values *left,
+    const struct mylite_row_expression_values *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+);
 
-bool mylite_select_row_expression_values_has_null(const struct mylite_row_expression_values *values)
-{
+static int compare_row_values_for_null_safe_equality(
+    const struct mylite_row_expression_values *left,
+    const struct mylite_row_expression_values *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+);
+
+static int compare_row_values_for_order(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_row_expression_values *left,
+    const struct mylite_row_expression_values *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+);
+
+static int row_order_comparison_truth(
+    struct mylite_select_row_order_comparison comparison,
+    int *out_truth
+);
+
+bool mylite_select_row_expression_values_has_null(
+    const struct mylite_row_expression_values *values
+) {
     if (values == NULL) {
         return false;
     }
@@ -37,11 +48,13 @@ bool mylite_select_row_expression_values_has_null(const struct mylite_row_expres
     return false;
 }
 
-int mylite_select_compare_row_values(enum mylite_sql_ast_operator operator_kind,
-                                     const struct mylite_row_expression_values *left,
-                                     const struct mylite_row_expression_values *right,
-                                     struct mylite_expression_warnings *warnings, int *out_truth)
-{
+int mylite_select_compare_row_values(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_row_expression_values *left,
+    const struct mylite_row_expression_values *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+) {
     int truth = -1;
     int status = MYLITE_OK;
 
@@ -109,11 +122,12 @@ int mylite_select_compare_row_values(enum mylite_sql_ast_operator operator_kind,
     return MYLITE_UNSUPPORTED;
 }
 
-static int compare_row_values_for_equality(const struct mylite_row_expression_values *left,
-                                           const struct mylite_row_expression_values *right,
-                                           struct mylite_expression_warnings *warnings,
-                                           int *out_truth)
-{
+static int compare_row_values_for_equality(
+    const struct mylite_row_expression_values *left,
+    const struct mylite_row_expression_values *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+) {
     bool saw_unknown = false;
 
     for (size_t index = 0U; index < left->count; ++index) {
@@ -144,12 +158,12 @@ static int compare_row_values_for_equality(const struct mylite_row_expression_va
     return MYLITE_OK;
 }
 
-static int
-compare_row_values_for_null_safe_equality(const struct mylite_row_expression_values *left,
-                                          const struct mylite_row_expression_values *right,
-                                          struct mylite_expression_warnings *warnings,
-                                          int *out_truth)
-{
+static int compare_row_values_for_null_safe_equality(
+    const struct mylite_row_expression_values *left,
+    const struct mylite_row_expression_values *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+) {
     bool saw_null = false;
     bool last_both_null = false;
 
@@ -188,11 +202,13 @@ compare_row_values_for_null_safe_equality(const struct mylite_row_expression_val
     return MYLITE_OK;
 }
 
-static int compare_row_values_for_order(enum mylite_sql_ast_operator operator_kind,
-                                        const struct mylite_row_expression_values *left,
-                                        const struct mylite_row_expression_values *right,
-                                        struct mylite_expression_warnings *warnings, int *out_truth)
-{
+static int compare_row_values_for_order(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_row_expression_values *left,
+    const struct mylite_row_expression_values *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+) {
     for (size_t index = 0U; index < left->count; ++index) {
         const struct mylite_expression_value *left_value = &left->items[index];
         const struct mylite_expression_value *right_value = &right->items[index];
@@ -226,9 +242,10 @@ static int compare_row_values_for_order(enum mylite_sql_ast_operator operator_ki
     return row_order_comparison_truth(order_comparison, out_truth);
 }
 
-static int row_order_comparison_truth(struct mylite_select_row_order_comparison comparison,
-                                      int *out_truth)
-{
+static int row_order_comparison_truth(
+    struct mylite_select_row_order_comparison comparison,
+    int *out_truth
+) {
     bool matched = false;
 
     switch (comparison.operator_kind) {

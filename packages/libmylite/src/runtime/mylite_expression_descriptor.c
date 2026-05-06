@@ -10,8 +10,9 @@
 static const unsigned int mylite_utf8_continuation_mask = 0xC0U;
 static const unsigned int mylite_utf8_continuation_marker = 0x80U;
 
-bool mylite_expression_descriptor_has_text_result(const struct mylite_field_descriptor *descriptor)
-{
+bool mylite_expression_descriptor_has_text_result(
+    const struct mylite_field_descriptor *descriptor
+) {
     if (descriptor == NULL) {
         return false;
     }
@@ -28,8 +29,8 @@ bool mylite_expression_descriptor_has_text_result(const struct mylite_field_desc
 }
 
 bool mylite_expression_descriptor_has_numeric_result(
-    const struct mylite_field_descriptor *descriptor)
-{
+    const struct mylite_field_descriptor *descriptor
+) {
     if (descriptor == NULL || descriptor->type == MYLITE_FIELD_TYPE_NULL) {
         return false;
     }
@@ -37,8 +38,8 @@ bool mylite_expression_descriptor_has_numeric_result(
 }
 
 bool mylite_expression_descriptor_has_decimal_result(
-    const struct mylite_field_descriptor *descriptor)
-{
+    const struct mylite_field_descriptor *descriptor
+) {
     if (descriptor == NULL) {
         return false;
     }
@@ -49,8 +50,8 @@ bool mylite_expression_descriptor_has_decimal_result(
 }
 
 bool mylite_expression_descriptor_has_double_result(
-    const struct mylite_field_descriptor *descriptor)
-{
+    const struct mylite_field_descriptor *descriptor
+) {
     if (descriptor == NULL) {
         return false;
     }
@@ -60,9 +61,9 @@ bool mylite_expression_descriptor_has_double_result(
     return false;
 }
 
-struct mylite_field_descriptor
-mylite_expression_descriptor_from_value(const struct mylite_expression_value *value)
-{
+struct mylite_field_descriptor mylite_expression_descriptor_from_value(
+    const struct mylite_expression_value *value
+) {
     if (value == NULL) {
         return mylite_expression_descriptor_defaults();
     }
@@ -97,8 +98,8 @@ mylite_expression_descriptor_from_value(const struct mylite_expression_value *va
 }
 
 bool mylite_expression_descriptor_operator_forces_not_null(
-    enum mylite_sql_ast_operator operator_kind)
-{
+    enum mylite_sql_ast_operator operator_kind
+) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
@@ -151,8 +152,7 @@ bool mylite_expression_descriptor_operator_forces_not_null(
     return false;
 }
 
-struct mylite_field_descriptor mylite_expression_descriptor_null(void)
-{
+struct mylite_field_descriptor mylite_expression_descriptor_null(void) {
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_NULL,
         .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -161,8 +161,7 @@ struct mylite_field_descriptor mylite_expression_descriptor_null(void)
     };
 }
 
-struct mylite_field_descriptor mylite_expression_descriptor_boolean(bool nullable)
-{
+struct mylite_field_descriptor mylite_expression_descriptor_boolean(bool nullable) {
     struct mylite_field_descriptor descriptor = {
         .type = MYLITE_FIELD_TYPE_LONGLONG,
         .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -175,8 +174,7 @@ struct mylite_field_descriptor mylite_expression_descriptor_boolean(bool nullabl
     return descriptor;
 }
 
-struct mylite_field_descriptor mylite_expression_descriptor_unsigned_longlong(bool nullable)
-{
+struct mylite_field_descriptor mylite_expression_descriptor_unsigned_longlong(bool nullable) {
     struct mylite_field_descriptor descriptor =
         mylite_expression_descriptor_signed_longlong(nullable);
 
@@ -185,8 +183,7 @@ struct mylite_field_descriptor mylite_expression_descriptor_unsigned_longlong(bo
     return descriptor;
 }
 
-struct mylite_field_descriptor mylite_expression_descriptor_signed_longlong(bool nullable)
-{
+struct mylite_field_descriptor mylite_expression_descriptor_signed_longlong(bool nullable) {
     struct mylite_field_descriptor descriptor = {
         .type = MYLITE_FIELD_TYPE_LONGLONG,
         .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -199,8 +196,7 @@ struct mylite_field_descriptor mylite_expression_descriptor_signed_longlong(bool
     return descriptor;
 }
 
-struct mylite_field_descriptor mylite_expression_descriptor_decimal(bool nullable)
-{
+struct mylite_field_descriptor mylite_expression_descriptor_decimal(bool nullable) {
     struct mylite_field_descriptor descriptor = {
         .type = MYLITE_FIELD_TYPE_NEWDECIMAL,
         .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -214,8 +210,7 @@ struct mylite_field_descriptor mylite_expression_descriptor_decimal(bool nullabl
     return descriptor;
 }
 
-bool mylite_expression_descriptor_is_nullable(const struct mylite_field_descriptor *descriptor)
-{
+bool mylite_expression_descriptor_is_nullable(const struct mylite_field_descriptor *descriptor) {
     if (descriptor == NULL) {
         return true;
     }
@@ -223,13 +218,12 @@ bool mylite_expression_descriptor_is_nullable(const struct mylite_field_descript
 }
 
 void mylite_expression_descriptor_set_scalar_subquery_nullable(
-    struct mylite_field_descriptor *descriptor)
-{
+    struct mylite_field_descriptor *descriptor
+) {
     mylite_field_descriptor_set_nullable(descriptor, true);
 }
 
-struct mylite_field_descriptor mylite_expression_descriptor_defaults(void)
-{
+struct mylite_field_descriptor mylite_expression_descriptor_defaults(void) {
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_NULL,
         .charset_id = mylite_mysql_binary_charset_id,
@@ -237,8 +231,7 @@ struct mylite_field_descriptor mylite_expression_descriptor_defaults(void)
     };
 }
 
-unsigned int mylite_expression_descriptor_connection_collation_id(const mylite_db *database)
-{
+unsigned int mylite_expression_descriptor_connection_collation_id(const mylite_db *database) {
     const struct mylite_collation *collation =
         database == NULL ? NULL : mylite_collation_lookup(database->collation_connection);
 
@@ -248,8 +241,7 @@ unsigned int mylite_expression_descriptor_connection_collation_id(const mylite_d
     return (unsigned int)collation->id;
 }
 
-unsigned int mylite_expression_descriptor_connection_charset_id(const mylite_db *database)
-{
+unsigned int mylite_expression_descriptor_connection_charset_id(const mylite_db *database) {
     const struct mylite_charset *charset =
         database == NULL ? NULL : mylite_charset_lookup(database->character_set_results);
     const struct mylite_collation *collation =
@@ -261,9 +253,9 @@ unsigned int mylite_expression_descriptor_connection_charset_id(const mylite_db 
     return (unsigned int)collation->id;
 }
 
-const struct mylite_collation *
-mylite_expression_descriptor_collation_lookup_id(unsigned int collation_id)
-{
+const struct mylite_collation *mylite_expression_descriptor_collation_lookup_id(
+    unsigned int collation_id
+) {
     for (size_t index = 0U; index < mylite_collation_count(); ++index) {
         const struct mylite_collation *collation = mylite_collation_at(index);
 
@@ -275,9 +267,9 @@ mylite_expression_descriptor_collation_lookup_id(unsigned int collation_id)
     return NULL;
 }
 
-unsigned int
-mylite_expression_descriptor_literal_decimal_scale(const struct mylite_sql_ast_node *expression)
-{
+unsigned int mylite_expression_descriptor_literal_decimal_scale(
+    const struct mylite_sql_ast_node *expression
+) {
     const char *start = expression == NULL ? NULL : expression->span.text;
     size_t length = expression == NULL ? 0U : expression->span.length;
 
@@ -296,10 +288,10 @@ mylite_expression_descriptor_literal_decimal_scale(const struct mylite_sql_ast_n
     return 0U;
 }
 
-uint64_t
-mylite_expression_descriptor_literal_integer_length(const struct mylite_sql_ast_node *expression,
-                                                    const struct mylite_expression_value *value)
-{
+uint64_t mylite_expression_descriptor_literal_integer_length(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value
+) {
     uint64_t length = expression == NULL ? 0U : expression->span.length;
 
     if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
@@ -314,10 +306,11 @@ mylite_expression_descriptor_literal_integer_length(const struct mylite_sql_ast_
     return mylite_expression_descriptor_max_u64(length, 2U);
 }
 
-uint64_t mylite_expression_descriptor_string_length(const mylite_db *database,
-                                                    const struct mylite_expression_value *value,
-                                                    const struct mylite_sql_ast_node *expression)
-{
+uint64_t mylite_expression_descriptor_string_length(
+    const mylite_db *database,
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *expression
+) {
     uint64_t byte_length = 0U;
     uint64_t max_bytes_per_character =
         mylite_expression_descriptor_connection_character_max_length(database);
@@ -330,16 +323,14 @@ uint64_t mylite_expression_descriptor_string_length(const mylite_db *database,
     return byte_length * max_bytes_per_character;
 }
 
-uint64_t mylite_expression_descriptor_connection_character_max_length(const mylite_db *database)
-{
+uint64_t mylite_expression_descriptor_connection_character_max_length(const mylite_db *database) {
     const struct mylite_charset *charset =
         database == NULL ? NULL : mylite_charset_lookup(database->character_set_results);
 
     return charset == NULL ? 1U : (uint64_t)charset->max_length;
 }
 
-uint64_t mylite_expression_descriptor_utf8_display_character_count(const char *text)
-{
+uint64_t mylite_expression_descriptor_utf8_display_character_count(const char *text) {
     uint64_t count = 0U;
 
     if (text == NULL) {
@@ -353,7 +344,6 @@ uint64_t mylite_expression_descriptor_utf8_display_character_count(const char *t
     return count;
 }
 
-uint64_t mylite_expression_descriptor_max_u64(uint64_t left, uint64_t right)
-{
+uint64_t mylite_expression_descriptor_max_u64(uint64_t left, uint64_t right) {
     return left > right ? left : right;
 }

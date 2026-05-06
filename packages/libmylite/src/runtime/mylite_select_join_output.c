@@ -12,15 +12,18 @@
 #include <stdint.h>
 
 static int mylite_select_join_materialize_nonaggregate_row(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
     const struct mylite_table_select_row *row,
-    const struct mylite_select_eval_callbacks *callbacks);
+    const struct mylite_select_eval_callbacks *callbacks
+);
 
-int mylite_select_join_materialize_row(mylite_stmt *stmt,
-                                       struct mylite_table_select_join_materialize_state *state,
-                                       const struct mylite_table_select_row *row,
-                                       const struct mylite_select_eval_callbacks *callbacks)
-{
+int mylite_select_join_materialize_row(
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     bool matches = false;
     bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
                             stmt->select_plan.has_having) != 0;
@@ -43,8 +46,14 @@ int mylite_select_join_materialize_row(mylite_stmt *stmt,
     status =
         mylite_select_group_find(stmt, state->groups, state->group_count, row, callbacks, &group);
     if (status == MYLITE_OK && group == NULL) {
-        status = mylite_select_group_append(stmt, &state->groups, &state->group_count, row,
-                                            callbacks, &group);
+        status = mylite_select_group_append(
+            stmt,
+            &state->groups,
+            &state->group_count,
+            row,
+            callbacks,
+            &group
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_select_group_update(stmt, group, row, callbacks);
@@ -53,9 +62,11 @@ int mylite_select_join_materialize_row(mylite_stmt *stmt,
 }
 
 static int mylite_select_join_materialize_nonaggregate_row(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
-    const struct mylite_table_select_row *row, const struct mylite_select_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     bool distinct = mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
 
     if (stmt->select_plan.order_key_count != 0U || distinct) {
@@ -67,8 +78,12 @@ static int mylite_select_join_materialize_nonaggregate_row(
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         }
         if (status == MYLITE_OK && distinct) {
-            status = mylite_select_materialize_check_distinct_duplicate(stmt, &copy, &duplicate,
-                                                                        callbacks);
+            status = mylite_select_materialize_check_distinct_duplicate(
+                stmt,
+                &copy,
+                &duplicate,
+                callbacks
+            );
         }
         if (status == MYLITE_OK && duplicate) {
             mylite_select_row_deinit(&copy);
@@ -84,11 +99,13 @@ static int mylite_select_join_materialize_nonaggregate_row(
         return status;
     }
 
-    if (mylite_select_limit_row_is_kept(&stmt->select_plan.limit,
-                                        (struct mylite_select_limit_position){
-                                            .matched_row = state->matched_row,
-                                            .kept_count = stmt->select_result.row_count,
-                                        })) {
+    if (mylite_select_limit_row_is_kept(
+            &stmt->select_plan.limit,
+            (struct mylite_select_limit_position){
+                .matched_row = state->matched_row,
+                .kept_count = stmt->select_result.row_count,
+            }
+        )) {
         int status =
             mylite_select_result_append_row_copy(stmt->database, &stmt->select_result, row);
 

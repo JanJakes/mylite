@@ -9,13 +9,17 @@
 #include <stdlib.h>
 
 int mylite_dml_execute_insert_values_transaction(
-    mylite_db *database, const char *selected_schema, const char *schema_name,
+    mylite_db *database,
+    const char *selected_schema,
+    const char *schema_name,
     const struct mylite_insert_values_plan *values_plan,
     const struct mylite_insert_duplicate_update_plan *update_plan,
-    const struct mylite_insert_table *table, const size_t *column_indexes,
-    const size_t *update_column_indexes, const struct mylite_dml_expression_callbacks *callbacks,
-    struct mylite_insert_transaction_result *out_result)
-{
+    const struct mylite_insert_table *table,
+    const size_t *column_indexes,
+    const size_t *update_column_indexes,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_insert_transaction_result *out_result
+) {
     size_t source_column_count = table == NULL ? 0U : table->column_count;
     struct mylite_insert_execution_state state = {
         .next_auto_increment = table == NULL ? 0U : table->next_auto_increment,
@@ -67,8 +71,14 @@ int mylite_dml_execute_insert_values_transaction(
         return MYLITE_NOMEM;
     }
 
-    rc = sqlite3_prepare_v3(database->sqlite, insert_sql, -1, SQLITE_PREPARE_PERSISTENT, &insert,
-                            NULL);
+    rc = sqlite3_prepare_v3(
+        database->sqlite,
+        insert_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &insert,
+        NULL
+    );
     sqlite3_free(insert_sql);
     if (rc != SQLITE_OK) {
         mylite_dml_insert_execution_state_deinit(&state);
@@ -79,12 +89,29 @@ int mylite_dml_execute_insert_values_transaction(
     for (size_t row_index = 0U; row_index < values_plan->row_count; ++row_index) {
         if (update_plan->has_clause) {
             status = mylite_dml_execute_insert_update_values_row(
-                database, selected_schema, values_plan, update_plan, insert, table,
-                &row_column_indexes, &state, row_index, callbacks);
+                database,
+                selected_schema,
+                values_plan,
+                update_plan,
+                insert,
+                table,
+                &row_column_indexes,
+                &state,
+                row_index,
+                callbacks
+            );
         } else {
-            status =
-                mylite_dml_execute_insert_row(database, values_plan, schema_name, insert, table,
-                                              &row_column_indexes, &state, row_index, callbacks);
+            status = mylite_dml_execute_insert_row(
+                database,
+                values_plan,
+                schema_name,
+                insert,
+                table,
+                &row_column_indexes,
+                &state,
+                row_index,
+                callbacks
+            );
         }
         if (status != MYLITE_OK) {
             break;
@@ -94,28 +121,46 @@ int mylite_dml_execute_insert_values_transaction(
 
     if (status != MYLITE_OK) {
         int final_status = mylite_dml_finish_failed_insert_transaction(
-            database, schema_name, values_plan->table_name, table, &state, &atomicity, status);
+            database,
+            schema_name,
+            values_plan->table_name,
+            table,
+            &state,
+            &atomicity,
+            status
+        );
 
         mylite_dml_insert_execution_state_deinit(&state);
         return final_status;
     }
 
     status = mylite_dml_finish_successful_insert_transaction(
-        database, schema_name, values_plan->table_name, table, &state, &atomicity, out_result);
+        database,
+        schema_name,
+        values_plan->table_name,
+        table,
+        &state,
+        &atomicity,
+        out_result
+    );
     mylite_dml_insert_execution_state_deinit(&state);
     return status;
 }
 
 int mylite_dml_execute_insert_set_transaction(
-    mylite_db *database, const char *selected_schema, const char *schema_name,
+    mylite_db *database,
+    const char *selected_schema,
+    const char *schema_name,
     const struct mylite_insert_values_plan *values_plan,
     const struct mylite_insert_set_plan *set_plan,
     const struct mylite_insert_duplicate_update_plan *update_plan,
-    const struct mylite_insert_table *table, const size_t *column_indexes,
-    size_t column_index_count, const size_t *update_column_indexes,
+    const struct mylite_insert_table *table,
+    const size_t *column_indexes,
+    size_t column_index_count,
+    const size_t *update_column_indexes,
     const struct mylite_dml_expression_callbacks *callbacks,
-    struct mylite_insert_transaction_result *out_result)
-{
+    struct mylite_insert_transaction_result *out_result
+) {
     struct mylite_insert_execution_state state = {
         .next_auto_increment = table == NULL ? 0U : table->next_auto_increment,
     };
@@ -179,8 +224,14 @@ int mylite_dml_execute_insert_set_transaction(
         goto cleanup;
     }
 
-    rc = sqlite3_prepare_v3(database->sqlite, insert_sql, -1, SQLITE_PREPARE_PERSISTENT, &insert,
-                            NULL);
+    rc = sqlite3_prepare_v3(
+        database->sqlite,
+        insert_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &insert,
+        NULL
+    );
     sqlite3_free(insert_sql);
     insert_sql = NULL;
     if (rc != SQLITE_OK) {
@@ -190,13 +241,37 @@ int mylite_dml_execute_insert_set_transaction(
 
     if (update_plan->has_clause) {
         status = mylite_dml_execute_insert_update_set_row(
-            database, selected_schema, schema_name, values_plan, set_plan, update_plan, insert,
-            table, column_indexes, column_index_count, &row_column_indexes, &state, values,
-            &row_state, callbacks);
+            database,
+            selected_schema,
+            schema_name,
+            values_plan,
+            set_plan,
+            update_plan,
+            insert,
+            table,
+            column_indexes,
+            column_index_count,
+            &row_column_indexes,
+            &state,
+            values,
+            &row_state,
+            callbacks
+        );
     } else {
         status = mylite_dml_execute_insert_set_row(
-            database, schema_name, values_plan, set_plan, insert, table, column_indexes,
-            column_index_count, &state, values, &row_state, callbacks);
+            database,
+            schema_name,
+            values_plan,
+            set_plan,
+            insert,
+            table,
+            column_indexes,
+            column_index_count,
+            &state,
+            values,
+            &row_state,
+            callbacks
+        );
     }
 
 cleanup:
@@ -208,24 +283,41 @@ cleanup:
 
     if (status != MYLITE_OK) {
         int final_status = mylite_dml_finish_failed_insert_transaction(
-            database, schema_name, values_plan->table_name, table, &state, &atomicity, status);
+            database,
+            schema_name,
+            values_plan->table_name,
+            table,
+            &state,
+            &atomicity,
+            status
+        );
 
         mylite_dml_insert_execution_state_deinit(&state);
         return final_status;
     }
 
     status = mylite_dml_finish_successful_insert_transaction(
-        database, schema_name, values_plan->table_name, table, &state, &atomicity, out_result);
+        database,
+        schema_name,
+        values_plan->table_name,
+        table,
+        &state,
+        &atomicity,
+        out_result
+    );
     mylite_dml_insert_execution_state_deinit(&state);
     return status;
 }
 
 int mylite_dml_execute_replace_values_transaction(
-    mylite_db *database, const char *schema_name,
-    const struct mylite_insert_values_plan *values_plan, const struct mylite_insert_table *table,
-    const size_t *column_indexes, const struct mylite_dml_expression_callbacks *callbacks,
-    struct mylite_insert_transaction_result *out_result)
-{
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_table *table,
+    const size_t *column_indexes,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_insert_transaction_result *out_result
+) {
     size_t source_column_count = table == NULL ? 0U : table->column_count;
     struct mylite_insert_execution_state state = {
         .next_auto_increment = table == NULL ? 0U : table->next_auto_increment,
@@ -266,13 +358,25 @@ int mylite_dml_execute_replace_values_transaction(
         return MYLITE_NOMEM;
     }
 
-    rc = sqlite3_prepare_v3(database->sqlite, insert_sql, -1, SQLITE_PREPARE_PERSISTENT, &insert,
-                            NULL);
+    rc = sqlite3_prepare_v3(
+        database->sqlite,
+        insert_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &insert,
+        NULL
+    );
     sqlite3_free(insert_sql);
     insert_sql = NULL;
     if (rc == SQLITE_OK) {
-        rc = sqlite3_prepare_v3(database->sqlite, delete_sql, -1, SQLITE_PREPARE_PERSISTENT,
-                                &delete_stmt, NULL);
+        rc = sqlite3_prepare_v3(
+            database->sqlite,
+            delete_sql,
+            -1,
+            SQLITE_PREPARE_PERSISTENT,
+            &delete_stmt,
+            NULL
+        );
     }
     sqlite3_free(delete_sql);
     delete_sql = NULL;
@@ -283,9 +387,18 @@ int mylite_dml_execute_replace_values_transaction(
     }
 
     for (size_t row_index = 0U; row_index < values_plan->row_count; ++row_index) {
-        status = mylite_dml_execute_replace_row(database, values_plan, schema_name, insert,
-                                                delete_stmt, table, &row_column_indexes, &state,
-                                                row_index, callbacks);
+        status = mylite_dml_execute_replace_row(
+            database,
+            values_plan,
+            schema_name,
+            insert,
+            delete_stmt,
+            table,
+            &row_column_indexes,
+            &state,
+            row_index,
+            callbacks
+        );
         if (status != MYLITE_OK) {
             break;
         }
@@ -295,20 +408,37 @@ int mylite_dml_execute_replace_values_transaction(
 
     if (status != MYLITE_OK) {
         return mylite_dml_finish_failed_insert_transaction(
-            database, schema_name, values_plan->table_name, table, &state, &atomicity, status);
+            database,
+            schema_name,
+            values_plan->table_name,
+            table,
+            &state,
+            &atomicity,
+            status
+        );
     }
     return mylite_dml_finish_successful_replace_transaction(
-        database, schema_name, values_plan->table_name, table, &state, &atomicity, out_result);
+        database,
+        schema_name,
+        values_plan->table_name,
+        table,
+        &state,
+        &atomicity,
+        out_result
+    );
 }
 
 int mylite_dml_execute_replace_set_transaction(
-    mylite_db *database, const char *schema_name,
+    mylite_db *database,
+    const char *schema_name,
     const struct mylite_insert_values_plan *values_plan,
-    const struct mylite_insert_set_plan *set_plan, const struct mylite_insert_table *table,
-    const size_t *column_indexes, size_t column_index_count,
+    const struct mylite_insert_set_plan *set_plan,
+    const struct mylite_insert_table *table,
+    const size_t *column_indexes,
+    size_t column_index_count,
     const struct mylite_dml_expression_callbacks *callbacks,
-    struct mylite_insert_transaction_result *out_result)
-{
+    struct mylite_insert_transaction_result *out_result
+) {
     struct mylite_insert_execution_state state = {
         .next_auto_increment = table == NULL ? 0U : table->next_auto_increment,
     };
@@ -356,11 +486,23 @@ int mylite_dml_execute_replace_set_transaction(
         goto cleanup;
     }
 
-    rc = sqlite3_prepare_v3(database->sqlite, insert_sql, -1, SQLITE_PREPARE_PERSISTENT, &insert,
-                            NULL);
+    rc = sqlite3_prepare_v3(
+        database->sqlite,
+        insert_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &insert,
+        NULL
+    );
     if (rc == SQLITE_OK) {
-        rc = sqlite3_prepare_v3(database->sqlite, delete_sql, -1, SQLITE_PREPARE_PERSISTENT,
-                                &delete_stmt, NULL);
+        rc = sqlite3_prepare_v3(
+            database->sqlite,
+            delete_sql,
+            -1,
+            SQLITE_PREPARE_PERSISTENT,
+            &delete_stmt,
+            NULL
+        );
     }
     if (rc != SQLITE_OK) {
         status = mylite_diagnostics_set_sqlite_error(database);
@@ -368,8 +510,20 @@ int mylite_dml_execute_replace_set_transaction(
     }
 
     status = mylite_dml_execute_replace_set_row(
-        database, schema_name, values_plan, set_plan, insert, delete_stmt, table, column_indexes,
-        column_index_count, &state, values, &row_state, callbacks);
+        database,
+        schema_name,
+        values_plan,
+        set_plan,
+        insert,
+        delete_stmt,
+        table,
+        column_indexes,
+        column_index_count,
+        &state,
+        values,
+        &row_state,
+        callbacks
+    );
 
 cleanup:
     sqlite3_free(insert_sql);
@@ -382,8 +536,22 @@ cleanup:
 
     if (status != MYLITE_OK) {
         return mylite_dml_finish_failed_insert_transaction(
-            database, schema_name, values_plan->table_name, table, &state, &atomicity, status);
+            database,
+            schema_name,
+            values_plan->table_name,
+            table,
+            &state,
+            &atomicity,
+            status
+        );
     }
     return mylite_dml_finish_successful_replace_transaction(
-        database, schema_name, values_plan->table_name, table, &state, &atomicity, out_result);
+        database,
+        schema_name,
+        values_plan->table_name,
+        table,
+        &state,
+        &atomicity,
+        out_result
+    );
 }

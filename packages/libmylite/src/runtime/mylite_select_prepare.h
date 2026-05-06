@@ -24,12 +24,19 @@ struct mylite_select_prepare_callbacks {
     const struct mylite_select_scalar_eval_callbacks *scalar_callbacks;
 };
 
-int mylite_select_prepare_statement(mylite_db *database,
-                                    const struct mylite_sql_ast_node *statement, const char *sql,
-                                    size_t sql_length, mylite_stmt **out_stmt,
-                                    const struct mylite_select_prepare_callbacks *callbacks);
-int mylite_select_prepare_subquery(mylite_db *database, const struct mylite_sql_ast_node *statement,
-                                   mylite_stmt **out_stmt,
-                                   const struct mylite_select_prepare_callbacks *callbacks);
+int mylite_select_prepare_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+int mylite_select_prepare_subquery(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
 
 #endif

@@ -7,8 +7,11 @@
 
 struct mylite_schema_default;
 
-int mylite_table_ddl_create_physical_table(mylite_db *database, const char *schema_name,
-                                           const struct mylite_schema_default *schema_default,
-                                           const struct mylite_create_table_plan *plan);
+int mylite_table_ddl_create_physical_table(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan
+);
 
 #endif

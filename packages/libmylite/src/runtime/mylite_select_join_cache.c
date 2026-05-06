@@ -6,34 +6,50 @@
 
 #include <stdlib.h>
 
-static bool select_join_predicate_cache_range(mylite_db *database,
-                                              const struct mylite_select_plan *plan,
-                                              const struct mylite_select_join_predicate *predicate,
-                                              struct mylite_select_table_range *out_range);
-static bool select_expression_referenced_table_range(mylite_db *database,
-                                                     const struct mylite_select_plan *plan,
-                                                     const struct mylite_sql_ast_node *expression,
-                                                     struct mylite_select_table_range scope,
-                                                     bool *out_seen,
-                                                     struct mylite_select_table_range *out_range);
-static bool select_column_index_table_range(const struct mylite_select_plan *plan,
-                                            size_t column_index,
-                                            struct mylite_select_table_range *out_range);
-static bool select_join_stage_cache_range_merge(struct mylite_select_table_range candidate,
-                                                struct mylite_select_table_range *out_range,
-                                                bool *out_seen);
+static bool select_join_predicate_cache_range(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_join_predicate *predicate,
+    struct mylite_select_table_range *out_range
+);
+
+static bool select_expression_referenced_table_range(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_table_range scope,
+    bool *out_seen,
+    struct mylite_select_table_range *out_range
+);
+
+static bool select_column_index_table_range(
+    const struct mylite_select_plan *plan,
+    size_t column_index,
+    struct mylite_select_table_range *out_range
+);
+
+static bool select_join_stage_cache_range_merge(
+    struct mylite_select_table_range candidate,
+    struct mylite_select_table_range *out_range,
+    bool *out_seen
+);
+
 static bool table_select_join_cache_row_indexes_match(
     const struct mylite_table_select_join_condition_cache_entry *entry,
-    const struct mylite_table_select_join_scan_state *scan);
+    const struct mylite_table_select_join_scan_state *scan
+);
+
 static bool table_select_join_cache_row_source_indexes_match(
     const struct mylite_table_select_join_condition_cache_entry *entry,
-    const struct mylite_table_select_row *row);
+    const struct mylite_table_select_row *row
+);
 
-bool mylite_select_join_cache_stage_range(mylite_db *database,
-                                          const struct mylite_select_plan *plan,
-                                          size_t available_table_count,
-                                          struct mylite_select_table_range *out_range)
-{
+bool mylite_select_join_cache_stage_range(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    size_t available_table_count,
+    struct mylite_select_table_range *out_range
+) {
     struct mylite_select_table_range range = {0};
     bool seen = false;
 
@@ -48,7 +64,9 @@ bool mylite_select_join_cache_stage_range(mylite_db *database,
                     .first_table = column->first_table,
                     .table_count = column->table_count,
                 },
-                &range, &seen)) {
+                &range,
+                &seen
+            )) {
             return false;
         }
     }
@@ -81,9 +99,10 @@ bool mylite_select_join_cache_stage_range(mylite_db *database,
 
 int mylite_select_join_cache_lookup_scan(
     const struct mylite_table_select_join_condition_cache *cache,
-    const struct mylite_table_select_join_scan_state *scan, struct mylite_select_table_range range,
-    struct mylite_table_select_join_condition_cache_lookup *out_lookup)
-{
+    const struct mylite_table_select_join_scan_state *scan,
+    struct mylite_select_table_range range,
+    struct mylite_table_select_join_condition_cache_lookup *out_lookup
+) {
     *out_lookup = (struct mylite_table_select_join_condition_cache_lookup){
         .found = false,
         .matches = false,
@@ -108,9 +127,10 @@ int mylite_select_join_cache_lookup_scan(
 
 int mylite_select_join_cache_lookup_row(
     const struct mylite_table_select_join_condition_cache *cache,
-    const struct mylite_table_select_row *row, struct mylite_select_table_range range,
-    struct mylite_table_select_join_condition_cache_lookup *out_lookup)
-{
+    const struct mylite_table_select_row *row,
+    struct mylite_select_table_range range,
+    struct mylite_table_select_join_condition_cache_lookup *out_lookup
+) {
     *out_lookup = (struct mylite_table_select_join_condition_cache_lookup){
         .found = false,
         .matches = false,
@@ -133,11 +153,13 @@ int mylite_select_join_cache_lookup_row(
     return MYLITE_OK;
 }
 
-int mylite_select_join_cache_store_scan(mylite_db *database,
-                                        struct mylite_table_select_join_condition_cache *cache,
-                                        const struct mylite_table_select_join_scan_state *scan,
-                                        struct mylite_select_table_range range, bool matches)
-{
+int mylite_select_join_cache_store_scan(
+    mylite_db *database,
+    struct mylite_table_select_join_condition_cache *cache,
+    const struct mylite_table_select_join_scan_state *scan,
+    struct mylite_select_table_range range,
+    bool matches
+) {
     struct mylite_table_select_join_condition_cache_entry entry = {
         .first_table = range.first_table,
         .table_count = range.table_count,
@@ -171,11 +193,13 @@ int mylite_select_join_cache_store_scan(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_select_join_cache_store_row(mylite_db *database,
-                                       struct mylite_table_select_join_condition_cache *cache,
-                                       const struct mylite_table_select_row *row,
-                                       struct mylite_select_table_range range, bool matches)
-{
+int mylite_select_join_cache_store_row(
+    mylite_db *database,
+    struct mylite_table_select_join_condition_cache *cache,
+    const struct mylite_table_select_row *row,
+    struct mylite_select_table_range range,
+    bool matches
+) {
     struct mylite_table_select_join_condition_cache_entry entry = {
         .first_table = range.first_table,
         .table_count = range.table_count,
@@ -210,8 +234,8 @@ int mylite_select_join_cache_store_row(mylite_db *database,
 }
 
 void mylite_select_join_condition_cache_deinit(
-    struct mylite_table_select_join_condition_cache *cache)
-{
+    struct mylite_table_select_join_condition_cache *cache
+) {
     if (cache == NULL) {
         return;
     }
@@ -222,22 +246,28 @@ void mylite_select_join_condition_cache_deinit(
     *cache = (struct mylite_table_select_join_condition_cache){0};
 }
 
-static bool select_join_predicate_cache_range(mylite_db *database,
-                                              const struct mylite_select_plan *plan,
-                                              const struct mylite_select_join_predicate *predicate,
-                                              struct mylite_select_table_range *out_range)
-{
+static bool select_join_predicate_cache_range(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_join_predicate *predicate,
+    struct mylite_select_table_range *out_range
+) {
     bool seen = false;
     struct mylite_select_table_range range = {
         .first_table = predicate->first_table + predicate->table_count,
     };
 
-    if (!select_expression_referenced_table_range(database, plan, predicate->expression,
-                                                  (struct mylite_select_table_range){
-                                                      .first_table = predicate->first_table,
-                                                      .table_count = predicate->table_count,
-                                                  },
-                                                  &seen, &range)) {
+    if (!select_expression_referenced_table_range(
+            database,
+            plan,
+            predicate->expression,
+            (struct mylite_select_table_range){
+                .first_table = predicate->first_table,
+                .table_count = predicate->table_count,
+            },
+            &seen,
+            &range
+        )) {
         *out_range = (struct mylite_select_table_range){
             .first_table = predicate->first_table,
             .table_count = predicate->table_count,
@@ -249,13 +279,14 @@ static bool select_join_predicate_cache_range(mylite_db *database,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static bool select_expression_referenced_table_range(mylite_db *database,
-                                                     const struct mylite_select_plan *plan,
-                                                     const struct mylite_sql_ast_node *expression,
-                                                     struct mylite_select_table_range scope,
-                                                     bool *out_seen,
-                                                     struct mylite_select_table_range *out_range)
-{
+static bool select_expression_referenced_table_range(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_table_range scope,
+    bool *out_seen,
+    struct mylite_select_table_range *out_range
+) {
     if (expression == NULL) {
         return true;
     }
@@ -266,8 +297,14 @@ static bool select_expression_referenced_table_range(mylite_db *database,
         struct mylite_select_table_range column_range = {0};
 
         if (mylite_select_resolve_plan_column_reference_in_scope(
-                database, plan, expression, "on clause", scope.first_table, scope.table_count,
-                &column_index) != MYLITE_OK ||
+                database,
+                plan,
+                expression,
+                "on clause",
+                scope.first_table,
+                scope.table_count,
+                &column_index
+            ) != MYLITE_OK ||
             !select_column_index_table_range(plan, column_index, &column_range)) {
             return false;
         }
@@ -276,18 +313,25 @@ static bool select_expression_referenced_table_range(mylite_db *database,
 
     for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
          child = child->next_sibling) {
-        if (!select_expression_referenced_table_range(database, plan, child, scope, out_seen,
-                                                      out_range)) {
+        if (!select_expression_referenced_table_range(
+                database,
+                plan,
+                child,
+                scope,
+                out_seen,
+                out_range
+            )) {
             return false;
         }
     }
     return true;
 }
 
-static bool select_column_index_table_range(const struct mylite_select_plan *plan,
-                                            size_t column_index,
-                                            struct mylite_select_table_range *out_range)
-{
+static bool select_column_index_table_range(
+    const struct mylite_select_plan *plan,
+    size_t column_index,
+    struct mylite_select_table_range *out_range
+) {
     for (size_t table_index = 0U; table_index < mylite_select_plan_table_count(plan);
          ++table_index) {
         const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
@@ -304,10 +348,11 @@ static bool select_column_index_table_range(const struct mylite_select_plan *pla
     return false;
 }
 
-static bool select_join_stage_cache_range_merge(struct mylite_select_table_range candidate,
-                                                struct mylite_select_table_range *out_range,
-                                                bool *out_seen)
-{
+static bool select_join_stage_cache_range_merge(
+    struct mylite_select_table_range candidate,
+    struct mylite_select_table_range *out_range,
+    bool *out_seen
+) {
     size_t range_start = out_range->first_table;
     size_t range_end = out_range->first_table + out_range->table_count;
     size_t candidate_end = candidate.first_table + candidate.table_count;
@@ -337,8 +382,8 @@ static bool select_join_stage_cache_range_merge(struct mylite_select_table_range
 
 static bool table_select_join_cache_row_indexes_match(
     const struct mylite_table_select_join_condition_cache_entry *entry,
-    const struct mylite_table_select_join_scan_state *scan)
-{
+    const struct mylite_table_select_join_scan_state *scan
+) {
     for (size_t index = 0U; index < entry->table_count; ++index) {
         if (entry->row_indexes[index] != scan->frames[entry->first_table + index].row_index) {
             return false;
@@ -349,8 +394,8 @@ static bool table_select_join_cache_row_indexes_match(
 
 static bool table_select_join_cache_row_source_indexes_match(
     const struct mylite_table_select_join_condition_cache_entry *entry,
-    const struct mylite_table_select_row *row)
-{
+    const struct mylite_table_select_row *row
+) {
     for (size_t index = 0U; index < entry->table_count; ++index) {
         if (entry->row_indexes[index] != row->source_row_indexes[entry->first_table + index]) {
             return false;

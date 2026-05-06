@@ -13,30 +13,51 @@
 
 #include <stdlib.h>
 
-static int bind_scalar_select_limit_clause(mylite_stmt *stmt,
-                                           const struct mylite_sql_ast_node *limit_clause);
-static int copy_scalar_select_item(mylite_stmt *stmt, const struct mylite_sql_ast_node *item,
-                                   size_t index, const char *source_sql, size_t source_sql_length,
-                                   const struct mylite_select_scalar_eval_callbacks *callbacks);
-static int copy_scalar_select_item_expression(mylite_stmt *stmt,
-                                              const struct mylite_sql_ast_node *expression,
-                                              size_t index, const char *source_sql,
-                                              size_t source_sql_length);
-static int
-evaluate_scalar_select_result(mylite_stmt *stmt,
-                              const struct mylite_select_scalar_eval_callbacks *callbacks);
+static int bind_scalar_select_limit_clause(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *limit_clause
+);
+
+static int copy_scalar_select_item(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *item,
+    size_t index,
+    const char *source_sql,
+    size_t source_sql_length,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+);
+
+static int copy_scalar_select_item_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    size_t index,
+    const char *source_sql,
+    size_t source_sql_length
+);
+
+static int evaluate_scalar_select_result(
+    mylite_stmt *stmt,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+);
+
 static int append_scalar_select_calc_found_rows_warning(mylite_stmt *stmt);
-static int
-evaluate_scalar_select_result_item(mylite_stmt *stmt, size_t index,
-                                   const struct mylite_select_scalar_eval_callbacks *callbacks);
-static bool
-scalar_eval_callbacks_are_valid(const struct mylite_select_scalar_eval_callbacks *callbacks);
+
+static int evaluate_scalar_select_result_item(
+    mylite_stmt *stmt,
+    size_t index,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+);
+
+static bool scalar_eval_callbacks_are_valid(
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+);
 
 // NOLINTNEXTLINE(misc-no-recursion)
-int mylite_select_scalar_copy_statement(const struct mylite_sql_ast_node *statement,
-                                        mylite_stmt *stmt,
-                                        const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+int mylite_select_scalar_copy_statement(
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt *stmt,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *order_by_clause =
         mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
@@ -49,7 +70,8 @@ int mylite_select_scalar_copy_statement(const struct mylite_sql_ast_node *statem
     }
     for (const struct mylite_sql_ast_node *item = select_list == NULL ? NULL
                                                                       : select_list->first_child;
-         item != NULL; item = item->next_sibling) {
+         item != NULL;
+         item = item->next_sibling) {
         ++column_count;
     }
     if (column_count == 0U) {
@@ -62,7 +84,8 @@ int mylite_select_scalar_copy_statement(const struct mylite_sql_ast_node *statem
     stmt->scalar_result.texts = (char **)calloc(column_count, sizeof(*stmt->scalar_result.texts));
     stmt->scalar_result.expressions = (const struct mylite_sql_ast_node **)calloc(
         column_count,
-        sizeof(*stmt->scalar_result.expressions)); // NOLINT(bugprone-sizeof-expression)
+        sizeof(*stmt->scalar_result.expressions)
+    ); // NOLINT(bugprone-sizeof-expression)
     stmt->result_metadata.columns = calloc(column_count, sizeof(*stmt->result_metadata.columns));
     if (stmt->scalar_select_sql_text == NULL || stmt->scalar_result.values == NULL ||
         stmt->scalar_result.texts == NULL || stmt->scalar_result.expressions == NULL ||
@@ -86,41 +109,58 @@ int mylite_select_scalar_copy_statement(const struct mylite_sql_ast_node *statem
     size_t index = 0U;
     for (const struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
          item = item->next_sibling, ++index) {
-        int status = copy_scalar_select_item(stmt, item, index, statement->span.text,
-                                             statement->span.length, callbacks);
+        int status = copy_scalar_select_item(
+            stmt,
+            item,
+            index,
+            statement->span.text,
+            statement->span.length,
+            callbacks
+        );
 
         if (status != MYLITE_OK) {
             return status;
         }
     }
     if (order_by_clause != NULL) {
-        return mylite_select_scalar_validate_order_by_clause(stmt->database, order_by_clause,
-                                                             &stmt->result_metadata, callbacks);
+        return mylite_select_scalar_validate_order_by_clause(
+            stmt->database,
+            order_by_clause,
+            &stmt->result_metadata,
+            callbacks
+        );
     }
     return MYLITE_OK;
 }
 
-static int bind_scalar_select_limit_clause(mylite_stmt *stmt,
-                                           const struct mylite_sql_ast_node *limit_clause)
-{
+static int bind_scalar_select_limit_clause(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *limit_clause
+) {
     int status = mylite_select_bind_limit_clause(limit_clause, &stmt->select_plan);
 
     if (status != MYLITE_OK) {
         return status;
     }
     stmt->scalar_result.row_available = mylite_select_limit_row_is_kept(
-        &stmt->select_plan.limit, (struct mylite_select_limit_position){
-                                      .matched_row = 0U,
-                                      .kept_count = 0U,
-                                  });
+        &stmt->select_plan.limit,
+        (struct mylite_select_limit_position){
+            .matched_row = 0U,
+            .kept_count = 0U,
+        }
+    );
     return MYLITE_OK;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int copy_scalar_select_item(mylite_stmt *stmt, const struct mylite_sql_ast_node *item,
-                                   size_t index, const char *source_sql, size_t source_sql_length,
-                                   const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+static int copy_scalar_select_item(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *item,
+    size_t index,
+    const char *source_sql,
+    size_t source_sql_length,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(item, 0U);
     const struct mylite_sql_ast_node *alias = mylite_ast_child_at(item, 1U);
     const struct mylite_expression_value *descriptor_value = NULL;
@@ -136,8 +176,12 @@ static int copy_scalar_select_item(mylite_stmt *stmt, const struct mylite_sql_as
         }
     }
     if (stmt->scalar_result.row_available && !defer_expression) {
-        status = mylite_select_scalar_evaluate_expression(stmt, expression, callbacks,
-                                                          &stmt->scalar_result.values[index]);
+        status = mylite_select_scalar_evaluate_expression(
+            stmt,
+            expression,
+            callbacks,
+            &stmt->scalar_result.values[index]
+        );
         if (status != MYLITE_OK) {
             int warning_status = mylite_select_scalar_append_warnings_to_database(stmt);
 
@@ -151,8 +195,13 @@ static int copy_scalar_select_item(mylite_stmt *stmt, const struct mylite_sql_as
         }
         descriptor_value = &stmt->scalar_result.values[index];
     } else if (stmt->scalar_result.row_available) {
-        status = copy_scalar_select_item_expression(stmt, expression, index, source_sql,
-                                                    source_sql_length);
+        status = copy_scalar_select_item_expression(
+            stmt,
+            expression,
+            index,
+            source_sql,
+            source_sql_length
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -167,19 +216,30 @@ static int copy_scalar_select_item(mylite_stmt *stmt, const struct mylite_sql_as
     if (stmt->result_metadata.columns[index].name == NULL) {
         return MYLITE_NOMEM;
     }
-    return callbacks->infer_expression_descriptor(stmt->database, expression, descriptor_value,
-                                                  &stmt->result_metadata.columns[index].descriptor);
+    return callbacks->infer_expression_descriptor(
+        stmt->database,
+        expression,
+        descriptor_value,
+        &stmt->result_metadata.columns[index].descriptor
+    );
 }
 
-static int copy_scalar_select_item_expression(mylite_stmt *stmt,
-                                              const struct mylite_sql_ast_node *expression,
-                                              size_t index, const char *source_sql,
-                                              size_t source_sql_length)
-{
+static int copy_scalar_select_item_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    size_t index,
+    const char *source_sql,
+    size_t source_sql_length
+) {
     struct mylite_sql_ast_node *clone = NULL;
-    int status =
-        mylite_statement_ast_clone_subtree(&stmt->scalar_select_ast, expression, source_sql,
-                                           stmt->scalar_select_sql_text, source_sql_length, &clone);
+    int status = mylite_statement_ast_clone_subtree(
+        &stmt->scalar_select_ast,
+        expression,
+        source_sql,
+        stmt->scalar_select_sql_text,
+        source_sql_length,
+        &clone
+    );
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -191,8 +251,9 @@ static int copy_scalar_select_item_expression(mylite_stmt *stmt,
 }
 
 int mylite_select_scalar_execute_statement(
-    mylite_stmt *stmt, const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     int status = MYLITE_OK;
 
     if (stmt == NULL || !scalar_eval_callbacks_are_valid(callbacks)) {
@@ -229,21 +290,22 @@ int mylite_select_scalar_execute_statement(
     return MYLITE_ROW;
 }
 
-static int append_scalar_select_calc_found_rows_warning(mylite_stmt *stmt)
-{
+static int append_scalar_select_calc_found_rows_warning(mylite_stmt *stmt) {
     if (mylite_expression_warnings_append(
-            &stmt->scalar_result.warnings, MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
+            &stmt->scalar_result.warnings,
+            MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
             "SQL_CALC_FOUND_ROWS is deprecated and will be removed in a future release. "
-            "Consider using two separate queries instead.") != 0) {
+            "Consider using two separate queries instead."
+        ) != 0) {
         return mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return MYLITE_OK;
 }
 
-static int
-evaluate_scalar_select_result(mylite_stmt *stmt,
-                              const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+static int evaluate_scalar_select_result(
+    mylite_stmt *stmt,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     for (size_t index = 0U; index < stmt->scalar_result.value_count; ++index) {
         int status = evaluate_scalar_select_result_item(stmt, index, callbacks);
 
@@ -254,10 +316,11 @@ evaluate_scalar_select_result(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-static int
-evaluate_scalar_select_result_item(mylite_stmt *stmt, size_t index,
-                                   const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+static int evaluate_scalar_select_result_item(
+    mylite_stmt *stmt,
+    size_t index,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     int status = MYLITE_OK;
 
     if (stmt->scalar_result.expressions[index] == NULL) {
@@ -268,9 +331,12 @@ evaluate_scalar_select_result_item(mylite_stmt *stmt, size_t index,
     free(stmt->scalar_result.texts[index]);
     stmt->scalar_result.texts[index] = NULL;
 
-    status =
-        mylite_select_scalar_evaluate_expression(stmt, stmt->scalar_result.expressions[index],
-                                                 callbacks, &stmt->scalar_result.values[index]);
+    status = mylite_select_scalar_evaluate_expression(
+        stmt,
+        stmt->scalar_result.expressions[index],
+        callbacks,
+        &stmt->scalar_result.values[index]
+    );
     if (status != MYLITE_OK) {
         int warning_status = mylite_select_scalar_append_warnings_to_database(stmt);
 
@@ -286,9 +352,9 @@ evaluate_scalar_select_result_item(mylite_stmt *stmt, size_t index,
     return MYLITE_OK;
 }
 
-static bool
-scalar_eval_callbacks_are_valid(const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+static bool scalar_eval_callbacks_are_valid(
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     return (callbacks != NULL && callbacks->infer_expression_descriptor != NULL &&
             callbacks->eval_session_function != NULL && callbacks->eval_subquery != NULL &&
             callbacks->eval_in_subquery != NULL && callbacks->eval_quantified_subquery != NULL &&

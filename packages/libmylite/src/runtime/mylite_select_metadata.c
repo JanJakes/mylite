@@ -7,15 +7,19 @@
 
 #include <stdlib.h>
 
-static int
-copy_select_result_column_metadata(mylite_db *database,
-                                   struct mylite_result_column_metadata *metadata,
-                                   const struct mylite_select_plan *plan, size_t output_index,
-                                   const struct mylite_select_metadata_callbacks *callbacks);
+static int copy_select_result_column_metadata(
+    mylite_db *database,
+    struct mylite_result_column_metadata *metadata,
+    const struct mylite_select_plan *plan,
+    size_t output_index,
+    const struct mylite_select_metadata_callbacks *callbacks
+);
 
-int mylite_select_attach_result_metadata(mylite_stmt *stmt, const struct mylite_select_plan *plan,
-                                         const struct mylite_select_metadata_callbacks *callbacks)
-{
+int mylite_select_attach_result_metadata(
+    mylite_stmt *stmt,
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_metadata_callbacks *callbacks
+) {
     struct mylite_result_metadata metadata = {0};
 
     if (stmt == NULL || stmt->database == NULL || plan == NULL || callbacks == NULL ||
@@ -29,8 +33,13 @@ int mylite_select_attach_result_metadata(mylite_stmt *stmt, const struct mylite_
     }
     metadata.column_count = plan->output_count;
     for (size_t index = 0U; index < metadata.column_count; ++index) {
-        int status = copy_select_result_column_metadata(stmt->database, &metadata.columns[index],
-                                                        plan, index, callbacks);
+        int status = copy_select_result_column_metadata(
+            stmt->database,
+            &metadata.columns[index],
+            plan,
+            index,
+            callbacks
+        );
 
         if (status != MYLITE_OK) {
             mylite_result_metadata_deinit(&metadata);
@@ -47,19 +56,24 @@ int mylite_select_attach_result_metadata(mylite_stmt *stmt, const struct mylite_
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int
-copy_select_result_column_metadata(mylite_db *database,
-                                   struct mylite_result_column_metadata *metadata,
-                                   const struct mylite_select_plan *plan, size_t output_index,
-                                   const struct mylite_select_metadata_callbacks *callbacks)
-{
+static int copy_select_result_column_metadata(
+    mylite_db *database,
+    struct mylite_result_column_metadata *metadata,
+    const struct mylite_select_plan *plan,
+    size_t output_index,
+    const struct mylite_select_metadata_callbacks *callbacks
+) {
     const struct mylite_select_output_column *output = &plan->outputs[output_index];
     int status = mylite_result_metadata_copy_text(database, &metadata->name, output->label);
 
     if (output->kind == MYLITE_SELECT_OUTPUT_EXPRESSION) {
         if (status == MYLITE_OK) {
-            status = callbacks->infer_expression_descriptor(database, plan, output->expression,
-                                                            &metadata->descriptor);
+            status = callbacks->infer_expression_descriptor(
+                database,
+                plan,
+                output->expression,
+                &metadata->descriptor
+            );
         }
         return status;
     }
@@ -83,12 +97,18 @@ copy_select_result_column_metadata(mylite_db *database,
             mylite_result_metadata_copy_text(database, &metadata->table_name, visible_table_name);
     }
     if (status == MYLITE_OK) {
-        status = mylite_result_metadata_copy_text(database, &metadata->origin_schema_name,
-                                                  table->schema_name);
+        status = mylite_result_metadata_copy_text(
+            database,
+            &metadata->origin_schema_name,
+            table->schema_name
+        );
     }
     if (status == MYLITE_OK) {
-        status = mylite_result_metadata_copy_text(database, &metadata->origin_table_name,
-                                                  table->table_name);
+        status = mylite_result_metadata_copy_text(
+            database,
+            &metadata->origin_table_name,
+            table->table_name
+        );
     }
     if (status == MYLITE_OK) {
         status =

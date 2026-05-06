@@ -10,18 +10,22 @@
 #include <stdint.h>
 #include <string.h>
 
-static uint64_t
-format_function_result_character_length(const struct mylite_sql_ast_node *argument,
-                                        const struct mylite_field_descriptor *argument_descriptor);
+static uint64_t format_function_result_character_length(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_field_descriptor *argument_descriptor
+);
 // NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t format_literal_result_character_length(const struct mylite_sql_ast_node *argument);
+
 static uint64_t format_literal_fraction_length(const struct mylite_sql_ast_node *argument);
 
 int mylite_expression_descriptor_infer_format_function(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_numeric_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_numeric_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *value_argument = mylite_ast_child_at(arguments, 0U);
@@ -34,8 +38,9 @@ int mylite_expression_descriptor_infer_format_function(
     if (!mylite_function_name_is_format(name)) {
         return MYLITE_UNSUPPORTED;
     }
-    status = callbacks->infer_expression_descriptor(database, plan, value_argument, NULL,
-                                                    &value_descriptor);
+    status =
+        callbacks
+            ->infer_expression_descriptor(database, plan, value_argument, NULL, &value_descriptor);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -52,10 +57,10 @@ int mylite_expression_descriptor_infer_format_function(
     return MYLITE_OK;
 }
 
-static uint64_t
-format_function_result_character_length(const struct mylite_sql_ast_node *argument,
-                                        const struct mylite_field_descriptor *argument_descriptor)
-{
+static uint64_t format_function_result_character_length(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_field_descriptor *argument_descriptor
+) {
     uint64_t literal_length = format_literal_result_character_length(argument);
 
     if (literal_length != 0U) {
@@ -102,8 +107,7 @@ format_function_result_character_length(const struct mylite_sql_ast_node *argume
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static uint64_t format_literal_result_character_length(const struct mylite_sql_ast_node *argument)
-{
+static uint64_t format_literal_result_character_length(const struct mylite_sql_ast_node *argument) {
     uint64_t fraction_length = 0U;
 
     argument = mylite_sql_ast_unwrap_parenthesized_expression(argument);
@@ -142,8 +146,7 @@ static uint64_t format_literal_result_character_length(const struct mylite_sql_a
     return 0U;
 }
 
-static uint64_t format_literal_fraction_length(const struct mylite_sql_ast_node *argument)
-{
+static uint64_t format_literal_fraction_length(const struct mylite_sql_ast_node *argument) {
     const char *text = argument == NULL ? NULL : argument->span.text;
     const char *dot = text == NULL ? NULL : memchr(text, '.', argument->span.length);
 

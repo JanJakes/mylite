@@ -5,41 +5,80 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_alter_table_item(const struct mylite_sql_ast_node *item,
-                                 struct mylite_alter_table_plan *plan);
-static int copy_alter_table_action(const struct mylite_sql_ast_node *action_node,
-                                   struct mylite_alter_table_plan *plan);
-static int copy_alter_table_add_column_action(const struct mylite_sql_ast_node *action_node,
-                                              struct mylite_alter_table_action *action);
-static int copy_alter_table_named_action(const struct mylite_sql_ast_node *action_node,
-                                         enum mylite_alter_table_action_kind kind,
-                                         struct mylite_alter_table_action *action);
-static int copy_alter_table_rename_action(const struct mylite_sql_ast_node *action_node,
-                                          enum mylite_alter_table_action_kind kind,
-                                          struct mylite_alter_table_action *action);
-static int copy_alter_table_rename_table_action(const struct mylite_sql_ast_node *action_node,
-                                                struct mylite_alter_table_action *action);
-static int copy_alter_table_change_column_action(const struct mylite_sql_ast_node *action_node,
-                                                 struct mylite_alter_table_action *action);
-static int copy_alter_table_modify_column_action(const struct mylite_sql_ast_node *action_node,
-                                                 struct mylite_alter_table_action *action);
-static int
-copy_alter_table_alter_index_visibility_action(const struct mylite_sql_ast_node *action_node,
-                                               struct mylite_alter_table_action *action);
-static int copy_alter_table_index_action(const struct mylite_sql_ast_node *action_node,
-                                         enum mylite_alter_table_action_kind kind,
-                                         struct mylite_alter_table_action *action);
-static int copy_alter_table_column_definition(const struct mylite_sql_ast_node *column_node,
-                                              struct mylite_create_table_column *out_column);
-static int copy_alter_table_column_position(const struct mylite_sql_ast_node *position_node,
-                                            struct mylite_alter_table_action *action);
-static int add_alter_table_action(struct mylite_alter_table_plan *plan,
-                                  struct mylite_alter_table_action action);
+static int copy_alter_table_item(
+    const struct mylite_sql_ast_node *item,
+    struct mylite_alter_table_plan *plan
+);
+
+static int copy_alter_table_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_plan *plan
+);
+
+static int copy_alter_table_add_column_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_named_action(
+    const struct mylite_sql_ast_node *action_node,
+    enum mylite_alter_table_action_kind kind,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_rename_action(
+    const struct mylite_sql_ast_node *action_node,
+    enum mylite_alter_table_action_kind kind,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_rename_table_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_change_column_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_modify_column_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_alter_index_visibility_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_index_action(
+    const struct mylite_sql_ast_node *action_node,
+    enum mylite_alter_table_action_kind kind,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_column_definition(
+    const struct mylite_sql_ast_node *column_node,
+    struct mylite_create_table_column *out_column
+);
+
+static int copy_alter_table_column_position(
+    const struct mylite_sql_ast_node *position_node,
+    struct mylite_alter_table_action *action
+);
+
+static int add_alter_table_action(
+    struct mylite_alter_table_plan *plan,
+    struct mylite_alter_table_action action
+);
+
 static bool alter_table_option_is_default(const struct mylite_sql_ast_node *option);
 
-int mylite_table_ddl_copy_alter_table_statement(const struct mylite_sql_ast_node *statement,
-                                                struct mylite_alter_table_plan *plan)
-{
+int mylite_table_ddl_copy_alter_table_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_alter_table_plan *plan
+) {
     const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *items = mylite_ast_child_at(statement, 1U);
     int status =
@@ -65,9 +104,10 @@ int mylite_table_ddl_copy_alter_table_statement(const struct mylite_sql_ast_node
                : MYLITE_OK;
 }
 
-static int copy_alter_table_item(const struct mylite_sql_ast_node *item,
-                                 struct mylite_alter_table_plan *plan)
-{
+static int copy_alter_table_item(
+    const struct mylite_sql_ast_node *item,
+    struct mylite_alter_table_plan *plan
+) {
     if (item == NULL) {
         return MYLITE_UNSUPPORTED;
     }
@@ -98,9 +138,10 @@ static int copy_alter_table_item(const struct mylite_sql_ast_node *item,
     return MYLITE_UNSUPPORTED;
 }
 
-static int copy_alter_table_action(const struct mylite_sql_ast_node *action_node,
-                                   struct mylite_alter_table_plan *plan)
-{
+static int copy_alter_table_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_plan *plan
+) {
     struct mylite_alter_table_action action = {0};
     int status = MYLITE_OK;
 
@@ -113,12 +154,18 @@ static int copy_alter_table_action(const struct mylite_sql_ast_node *action_node
         status = copy_alter_table_add_column_action(action_node, &action);
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_COLUMN:
-        status = copy_alter_table_named_action(action_node, MYLITE_ALTER_TABLE_ACTION_DROP_COLUMN,
-                                               &action);
+        status = copy_alter_table_named_action(
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_DROP_COLUMN,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_COLUMN:
-        status = copy_alter_table_rename_action(action_node,
-                                                MYLITE_ALTER_TABLE_ACTION_RENAME_COLUMN, &action);
+        status = copy_alter_table_rename_action(
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_RENAME_COLUMN,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_TABLE:
         status = copy_alter_table_rename_table_action(action_node, &action);
@@ -130,35 +177,56 @@ static int copy_alter_table_action(const struct mylite_sql_ast_node *action_node
         status = copy_alter_table_modify_column_action(action_node, &action);
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY:
-        status = copy_alter_table_index_action(action_node,
-                                               MYLITE_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY, &action);
+        status = copy_alter_table_index_action(
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY:
         action.kind = MYLITE_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY;
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX:
-        status = copy_alter_table_index_action(action_node,
-                                               MYLITE_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX, &action);
+        status = copy_alter_table_index_action(
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX:
         status = copy_alter_table_index_action(
-            action_node, MYLITE_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX, &action);
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX:
         status = copy_alter_table_index_action(
-            action_node, MYLITE_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX, &action);
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX:
         status = copy_alter_table_index_action(
-            action_node, MYLITE_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX, &action);
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_INDEX:
-        status = copy_alter_table_named_action(action_node, MYLITE_ALTER_TABLE_ACTION_DROP_INDEX,
-                                               &action);
+        status = copy_alter_table_named_action(
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_DROP_INDEX,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_INDEX:
-        status = copy_alter_table_rename_action(action_node, MYLITE_ALTER_TABLE_ACTION_RENAME_INDEX,
-                                                &action);
+        status = copy_alter_table_rename_action(
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_RENAME_INDEX,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY:
         status = copy_alter_table_alter_index_visibility_action(action_node, &action);
@@ -186,9 +254,10 @@ static int copy_alter_table_action(const struct mylite_sql_ast_node *action_node
     return status;
 }
 
-static int copy_alter_table_add_column_action(const struct mylite_sql_ast_node *action_node,
-                                              struct mylite_alter_table_action *action)
-{
+static int copy_alter_table_add_column_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
     int status = MYLITE_OK;
 
     action->kind = MYLITE_ALTER_TABLE_ACTION_ADD_COLUMN;
@@ -200,10 +269,11 @@ static int copy_alter_table_add_column_action(const struct mylite_sql_ast_node *
     return copy_alter_table_column_position(mylite_ast_child_at(action_node, 1U), action);
 }
 
-static int copy_alter_table_named_action(const struct mylite_sql_ast_node *action_node,
-                                         enum mylite_alter_table_action_kind kind,
-                                         struct mylite_alter_table_action *action)
-{
+static int copy_alter_table_named_action(
+    const struct mylite_sql_ast_node *action_node,
+    enum mylite_alter_table_action_kind kind,
+    struct mylite_alter_table_action *action
+) {
     action->kind = kind;
     action->old_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 0U));
     if (action->old_name == NULL) {
@@ -212,10 +282,11 @@ static int copy_alter_table_named_action(const struct mylite_sql_ast_node *actio
     return MYLITE_OK;
 }
 
-static int copy_alter_table_rename_action(const struct mylite_sql_ast_node *action_node,
-                                          enum mylite_alter_table_action_kind kind,
-                                          struct mylite_alter_table_action *action)
-{
+static int copy_alter_table_rename_action(
+    const struct mylite_sql_ast_node *action_node,
+    enum mylite_alter_table_action_kind kind,
+    struct mylite_alter_table_action *action
+) {
     action->kind = kind;
     action->old_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 0U));
     action->new_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 1U));
@@ -225,17 +296,22 @@ static int copy_alter_table_rename_action(const struct mylite_sql_ast_node *acti
     return MYLITE_OK;
 }
 
-static int copy_alter_table_rename_table_action(const struct mylite_sql_ast_node *action_node,
-                                                struct mylite_alter_table_action *action)
-{
+static int copy_alter_table_rename_table_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
     action->kind = MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE;
-    return mylite_table_ddl_copy_table_name_parts(mylite_ast_child_at(action_node, 0U),
-                                                  &action->new_schema_name, &action->new_name);
+    return mylite_table_ddl_copy_table_name_parts(
+        mylite_ast_child_at(action_node, 0U),
+        &action->new_schema_name,
+        &action->new_name
+    );
 }
 
-static int copy_alter_table_change_column_action(const struct mylite_sql_ast_node *action_node,
-                                                 struct mylite_alter_table_action *action)
-{
+static int copy_alter_table_change_column_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
     int status = MYLITE_OK;
 
     action->kind = MYLITE_ALTER_TABLE_ACTION_CHANGE_COLUMN;
@@ -251,9 +327,10 @@ static int copy_alter_table_change_column_action(const struct mylite_sql_ast_nod
     return copy_alter_table_column_position(mylite_ast_child_at(action_node, 2U), action);
 }
 
-static int copy_alter_table_modify_column_action(const struct mylite_sql_ast_node *action_node,
-                                                 struct mylite_alter_table_action *action)
-{
+static int copy_alter_table_modify_column_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
     int status = MYLITE_OK;
 
     action->kind = MYLITE_ALTER_TABLE_ACTION_MODIFY_COLUMN;
@@ -265,10 +342,10 @@ static int copy_alter_table_modify_column_action(const struct mylite_sql_ast_nod
     return copy_alter_table_column_position(mylite_ast_child_at(action_node, 1U), action);
 }
 
-static int
-copy_alter_table_alter_index_visibility_action(const struct mylite_sql_ast_node *action_node,
-                                               struct mylite_alter_table_action *action)
-{
+static int copy_alter_table_alter_index_visibility_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
     action->kind = MYLITE_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY;
     action->old_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 0U));
     if (action->old_name == NULL) {
@@ -280,10 +357,11 @@ copy_alter_table_alter_index_visibility_action(const struct mylite_sql_ast_node 
     return MYLITE_OK;
 }
 
-static int copy_alter_table_index_action(const struct mylite_sql_ast_node *action_node,
-                                         enum mylite_alter_table_action_kind kind,
-                                         struct mylite_alter_table_action *action)
-{
+static int copy_alter_table_index_action(
+    const struct mylite_sql_ast_node *action_node,
+    enum mylite_alter_table_action_kind kind,
+    struct mylite_alter_table_action *action
+) {
     struct mylite_create_table_plan plan = {0};
     int status =
         mylite_table_ddl_copy_create_table_index(mylite_ast_child_at(action_node, 0U), &plan);
@@ -310,9 +388,10 @@ static int copy_alter_table_index_action(const struct mylite_sql_ast_node *actio
     return MYLITE_OK;
 }
 
-static int copy_alter_table_column_definition(const struct mylite_sql_ast_node *column_node,
-                                              struct mylite_create_table_column *out_column)
-{
+static int copy_alter_table_column_definition(
+    const struct mylite_sql_ast_node *column_node,
+    struct mylite_create_table_column *out_column
+) {
     struct mylite_create_table_plan plan = {0};
     int status = mylite_table_ddl_copy_create_table_column(column_node, &plan);
 
@@ -331,9 +410,10 @@ static int copy_alter_table_column_definition(const struct mylite_sql_ast_node *
     return MYLITE_OK;
 }
 
-static int copy_alter_table_column_position(const struct mylite_sql_ast_node *position_node,
-                                            struct mylite_alter_table_action *action)
-{
+static int copy_alter_table_column_position(
+    const struct mylite_sql_ast_node *position_node,
+    struct mylite_alter_table_action *action
+) {
     if (position_node == NULL) {
         action->position = MYLITE_ALTER_TABLE_COLUMN_POSITION_NONE;
         return MYLITE_OK;
@@ -357,9 +437,10 @@ static int copy_alter_table_column_position(const struct mylite_sql_ast_node *po
     return MYLITE_UNSUPPORTED;
 }
 
-static int add_alter_table_action(struct mylite_alter_table_plan *plan,
-                                  struct mylite_alter_table_action action)
-{
+static int add_alter_table_action(
+    struct mylite_alter_table_plan *plan,
+    struct mylite_alter_table_action action
+) {
     struct mylite_alter_table_action *actions =
         realloc(plan->actions, (plan->action_count + 1U) * sizeof(*plan->actions));
 
@@ -372,8 +453,7 @@ static int add_alter_table_action(struct mylite_alter_table_plan *plan,
     return MYLITE_OK;
 }
 
-static bool alter_table_option_is_default(const struct mylite_sql_ast_node *option)
-{
+static bool alter_table_option_is_default(const struct mylite_sql_ast_node *option) {
     struct mylite_sql_source_span span =
         option == NULL ? (struct mylite_sql_source_span){0} : option->span;
 

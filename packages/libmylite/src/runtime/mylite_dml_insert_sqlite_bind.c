@@ -4,10 +4,12 @@
 
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
-int mylite_dml_bind_insert_row_values(mylite_db *database, sqlite3_stmt *insert,
-                                      const struct mylite_insert_bound_value *values,
-                                      size_t value_count)
-{
+int mylite_dml_bind_insert_row_values(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const struct mylite_insert_bound_value *values,
+    size_t value_count
+) {
     if (database == NULL || insert == NULL || values == NULL) {
         return MYLITE_MISUSE;
     }
@@ -22,9 +24,11 @@ int mylite_dml_bind_insert_row_values(mylite_db *database, sqlite3_stmt *insert,
     return MYLITE_OK;
 }
 
-int mylite_dml_bind_insert_bound_value(sqlite3_stmt *stmt, int index,
-                                       const struct mylite_insert_bound_value *value)
-{
+int mylite_dml_bind_insert_bound_value(
+    sqlite3_stmt *stmt,
+    int index,
+    const struct mylite_insert_bound_value *value
+) {
     if (stmt == NULL || value == NULL) {
         return SQLITE_MISUSE;
     }
@@ -43,7 +47,6 @@ int mylite_dml_bind_insert_bound_value(sqlite3_stmt *stmt, int index,
     return SQLITE_MISUSE;
 }
 
-static sqlite3_destructor_type sqlite_transient_destructor(void)
-{
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
     return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

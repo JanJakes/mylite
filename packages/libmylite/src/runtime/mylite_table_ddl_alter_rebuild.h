@@ -5,7 +5,9 @@
 
 struct mylite_alter_table_model;
 
-int mylite_table_ddl_execute_alter_table_rebuild(mylite_stmt *stmt,
-                                                 struct mylite_alter_table_model *model);
+int mylite_table_ddl_execute_alter_table_rebuild(
+    mylite_stmt *stmt,
+    struct mylite_alter_table_model *model
+);
 
 #endif

@@ -7,25 +7,32 @@
 
 #include <stdlib.h>
 
-static int
-execute_insert_update_bound_row(mylite_db *database, const char *selected_schema,
-                                const struct mylite_insert_values_plan *values_plan,
-                                const struct mylite_insert_duplicate_update_plan *update_plan,
-                                sqlite3_stmt *insert, const struct mylite_insert_table *table,
-                                const struct mylite_insert_row_column_indexes *column_indexes,
-                                struct mylite_insert_execution_state *state,
-                                const struct mylite_insert_bound_value *values);
+static int execute_insert_update_bound_row(
+    mylite_db *database,
+    const char *selected_schema,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_duplicate_update_plan *update_plan,
+    sqlite3_stmt *insert,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_row_column_indexes *column_indexes,
+    struct mylite_insert_execution_state *state,
+    const struct mylite_insert_bound_value *values
+);
+
 static int append_insert_values_deprecated_warning(mylite_db *database);
 
 int mylite_dml_execute_insert_update_values_row(
-    mylite_db *database, const char *selected_schema,
+    mylite_db *database,
+    const char *selected_schema,
     const struct mylite_insert_values_plan *values_plan,
-    const struct mylite_insert_duplicate_update_plan *update_plan, sqlite3_stmt *insert,
+    const struct mylite_insert_duplicate_update_plan *update_plan,
+    sqlite3_stmt *insert,
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
-    struct mylite_insert_execution_state *state, size_t row_index,
-    const struct mylite_dml_expression_callbacks *callbacks)
-{
+    struct mylite_insert_execution_state *state,
+    size_t row_index,
+    const struct mylite_dml_expression_callbacks *callbacks
+) {
     struct mylite_insert_bound_value *values = NULL;
     const char *schema_name = NULL;
     int status = MYLITE_OK;
@@ -48,12 +55,29 @@ int mylite_dml_execute_insert_update_values_row(
 
     schema_name = values_plan->schema_name == NULL ? selected_schema : values_plan->schema_name;
     status = mylite_dml_resolve_insert_row_values(
-        database, values_plan, schema_name, table, column_indexes->insert_columns,
-        values_plan->row_count, state, row_index, values, callbacks);
+        database,
+        values_plan,
+        schema_name,
+        table,
+        column_indexes->insert_columns,
+        values_plan->row_count,
+        state,
+        row_index,
+        values,
+        callbacks
+    );
     if (status == MYLITE_OK) {
-        status =
-            execute_insert_update_bound_row(database, selected_schema, values_plan, update_plan,
-                                            insert, table, column_indexes, state, values);
+        status = execute_insert_update_bound_row(
+            database,
+            selected_schema,
+            values_plan,
+            update_plan,
+            insert,
+            table,
+            column_indexes,
+            state,
+            values
+        );
     }
 
     mylite_dml_insert_bound_values_deinit(values, table->column_count);
@@ -61,16 +85,22 @@ int mylite_dml_execute_insert_update_values_row(
 }
 
 int mylite_dml_execute_insert_update_set_row(
-    mylite_db *database, const char *selected_schema, const char *schema_name,
+    mylite_db *database,
+    const char *selected_schema,
+    const char *schema_name,
     const struct mylite_insert_values_plan *values_plan,
     const struct mylite_insert_set_plan *set_plan,
-    const struct mylite_insert_duplicate_update_plan *update_plan, sqlite3_stmt *insert,
-    const struct mylite_insert_table *table, const size_t *column_indexes,
-    size_t column_index_count, const struct mylite_insert_row_column_indexes *row_column_indexes,
-    struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *values,
+    const struct mylite_insert_duplicate_update_plan *update_plan,
+    sqlite3_stmt *insert,
+    const struct mylite_insert_table *table,
+    const size_t *column_indexes,
+    size_t column_index_count,
+    const struct mylite_insert_row_column_indexes *row_column_indexes,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *values,
     struct mylite_insert_set_row_state *row_state,
-    const struct mylite_dml_expression_callbacks *callbacks)
-{
+    const struct mylite_dml_expression_callbacks *callbacks
+) {
     int status = MYLITE_OK;
 
     if (database == NULL || schema_name == NULL || values_plan == NULL || set_plan == NULL ||
@@ -80,25 +110,47 @@ int mylite_dml_execute_insert_update_set_row(
         return MYLITE_MISUSE;
     }
 
-    status = mylite_dml_resolve_insert_set_row_values(database, schema_name, values_plan, set_plan,
-                                                      table, column_indexes, column_index_count, 1U,
-                                                      state, values, row_state, callbacks);
+    status = mylite_dml_resolve_insert_set_row_values(
+        database,
+        schema_name,
+        values_plan,
+        set_plan,
+        table,
+        column_indexes,
+        column_index_count,
+        1U,
+        state,
+        values,
+        row_state,
+        callbacks
+    );
     if (status == MYLITE_OK) {
-        return execute_insert_update_bound_row(database, selected_schema, values_plan, update_plan,
-                                               insert, table, row_column_indexes, state, values);
+        return execute_insert_update_bound_row(
+            database,
+            selected_schema,
+            values_plan,
+            update_plan,
+            insert,
+            table,
+            row_column_indexes,
+            state,
+            values
+        );
     }
     return status;
 }
 
-static int
-execute_insert_update_bound_row(mylite_db *database, const char *selected_schema,
-                                const struct mylite_insert_values_plan *values_plan,
-                                const struct mylite_insert_duplicate_update_plan *update_plan,
-                                sqlite3_stmt *insert, const struct mylite_insert_table *table,
-                                const struct mylite_insert_row_column_indexes *column_indexes,
-                                struct mylite_insert_execution_state *state,
-                                const struct mylite_insert_bound_value *values)
-{
+static int execute_insert_update_bound_row(
+    mylite_db *database,
+    const char *selected_schema,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_duplicate_update_plan *update_plan,
+    sqlite3_stmt *insert,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_row_column_indexes *column_indexes,
+    struct mylite_insert_execution_state *state,
+    const struct mylite_insert_bound_value *values
+) {
     struct mylite_insert_unique_conflict conflict = {0};
     struct mylite_insert_bound_value *stored_values = NULL;
     struct mylite_insert_bound_value *updated_values = NULL;
@@ -129,23 +181,45 @@ execute_insert_update_bound_row(mylite_db *database, const char *selected_schema
 
     status = mylite_dml_load_insert_conflict_row(database, table, conflict.rowid, stored_values);
     if (status == MYLITE_OK) {
-        status = mylite_dml_copy_insert_bound_values(database, stored_values, table->column_count,
-                                                     &updated_values);
+        status = mylite_dml_copy_insert_bound_values(
+            database,
+            stored_values,
+            table->column_count,
+            &updated_values
+        );
     }
     if (status == MYLITE_OK) {
-        status = mylite_dml_apply_insert_update_assignments(database, selected_schema, values_plan,
-                                                            update_plan, table, column_indexes,
-                                                            values, updated_values);
+        status = mylite_dml_apply_insert_update_assignments(
+            database,
+            selected_schema,
+            values_plan,
+            update_plan,
+            table,
+            column_indexes,
+            values,
+            updated_values
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_dml_validate_insert_update_unique_indexes(
-            database, values_plan->table_name, values_plan->ignore, table, updated_values,
-            conflict.rowid, &update_conflicts);
+            database,
+            values_plan->table_name,
+            values_plan->ignore,
+            table,
+            updated_values,
+            conflict.rowid,
+            &update_conflicts
+        );
     }
     if (status == MYLITE_OK && !update_conflicts &&
         mylite_dml_insert_update_row_changed(stored_values, updated_values, table->column_count)) {
-        status = mylite_dml_write_insert_update_candidate(database, table, conflict.rowid,
-                                                          updated_values, state);
+        status = mylite_dml_write_insert_update_candidate(
+            database,
+            table,
+            conflict.rowid,
+            updated_values,
+            state
+        );
         if (status == MYLITE_OK) {
             state->accepted_row_count += 2U;
         }
@@ -157,8 +231,9 @@ execute_insert_update_bound_row(mylite_db *database, const char *selected_schema
 }
 
 int mylite_dml_append_insert_update_deprecated_warnings(
-    mylite_db *database, const struct mylite_insert_duplicate_update_plan *plan)
-{
+    mylite_db *database,
+    const struct mylite_insert_duplicate_update_plan *plan
+) {
     size_t warning_count = 0U;
 
     if (database == NULL || plan == NULL) {
@@ -180,13 +255,15 @@ int mylite_dml_append_insert_update_deprecated_warnings(
     return MYLITE_OK;
 }
 
-static int append_insert_values_deprecated_warning(mylite_db *database)
-{
+static int append_insert_values_deprecated_warning(mylite_db *database) {
     static const char message[] =
         "'VALUES function' is deprecated and will be removed in a future release. Please use an "
         "alias (INSERT INTO ... VALUES (...) AS alias) and replace VALUES(col) in the ON "
         "DUPLICATE KEY UPDATE clause with alias.col instead";
 
-    return mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
-                                             message);
+    return mylite_diagnostics_append_warning(
+        database,
+        MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
+        message
+    );
 }

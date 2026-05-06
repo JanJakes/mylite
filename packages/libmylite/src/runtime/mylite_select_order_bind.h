@@ -14,9 +14,11 @@ struct mylite_select_order_bind_callbacks {
     int (*set_unsupported_order_error)(mylite_db *database);
 };
 
-int mylite_select_bind_order_by_clause(mylite_db *database,
-                                       const struct mylite_sql_ast_node *order_by_clause,
-                                       struct mylite_select_plan *plan,
-                                       const struct mylite_select_order_bind_callbacks *callbacks);
+int mylite_select_bind_order_by_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_order_bind_callbacks *callbacks
+);
 
 #endif

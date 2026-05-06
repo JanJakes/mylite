@@ -6,9 +6,11 @@
 
 #include <stdlib.h>
 
-int mylite_select_subquery_copy_row_values(mylite_stmt *stmt, size_t width,
-                                           struct mylite_row_expression_values *out_values)
-{
+int mylite_select_subquery_copy_row_values(
+    mylite_stmt *stmt,
+    size_t width,
+    struct mylite_row_expression_values *out_values
+) {
     *out_values = (struct mylite_row_expression_values){0};
     if (stmt == NULL || mylite_column_count(stmt) != (int)width) {
         return MYLITE_UNSUPPORTED;
@@ -32,9 +34,11 @@ int mylite_select_subquery_copy_row_values(mylite_stmt *stmt, size_t width,
     return MYLITE_OK;
 }
 
-int mylite_select_subquery_copy_row_value(mylite_stmt *stmt, size_t index,
-                                          struct mylite_expression_value *out_value)
-{
+int mylite_select_subquery_copy_row_value(
+    mylite_stmt *stmt,
+    size_t index,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_expression_value *value = NULL;
 
     if (stmt == NULL) {
@@ -61,9 +65,10 @@ int mylite_select_subquery_copy_row_value(mylite_stmt *stmt, size_t index,
     return MYLITE_UNSUPPORTED;
 }
 
-int mylite_select_subquery_copy_column_value(mylite_stmt *stmt,
-                                             struct mylite_expression_value *out_value)
-{
+int mylite_select_subquery_copy_column_value(
+    mylite_stmt *stmt,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_expression_value *value = NULL;
 
     if (stmt == NULL || mylite_column_count(stmt) != 1) {
@@ -86,24 +91,27 @@ int mylite_select_subquery_copy_column_value(mylite_stmt *stmt,
     return MYLITE_UNSUPPORTED;
 }
 
-int mylite_select_subquery_append_warnings(struct mylite_expression_warnings *destination,
-                                           const struct mylite_expression_warnings *source)
-{
+int mylite_select_subquery_append_warnings(
+    struct mylite_expression_warnings *destination,
+    const struct mylite_expression_warnings *source
+) {
     if (source == NULL) {
         return MYLITE_OK;
     }
     for (size_t index = 0U; index < source->count; ++index) {
-        if (mylite_expression_warnings_append_condition(destination, source->items[index].level,
-                                                        source->items[index].code,
-                                                        source->items[index].message) != 0) {
+        if (mylite_expression_warnings_append_condition(
+                destination,
+                source->items[index].level,
+                source->items[index].code,
+                source->items[index].message
+            ) != 0) {
             return MYLITE_NOMEM;
         }
     }
     return MYLITE_OK;
 }
 
-void mylite_select_subquery_row_values_deinit(struct mylite_row_expression_values *values)
-{
+void mylite_select_subquery_row_values_deinit(struct mylite_row_expression_values *values) {
     if (values == NULL) {
         return;
     }

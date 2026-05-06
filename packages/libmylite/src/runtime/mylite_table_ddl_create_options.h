@@ -8,8 +8,10 @@
 struct mylite_schema_default;
 
 int mylite_table_ddl_normalize_create_table_options(
-    mylite_db *database, const char *schema_name,
+    mylite_db *database,
+    const char *schema_name,
     const struct mylite_schema_default *schema_default,
-    struct mylite_create_table_options *options);
+    struct mylite_create_table_options *options
+);
 
 #endif

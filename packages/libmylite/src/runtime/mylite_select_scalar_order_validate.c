@@ -15,29 +15,40 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-static int
-validate_scalar_select_order_item(mylite_db *database, const struct mylite_sql_ast_node *order_item,
-                                  const struct mylite_result_metadata *metadata,
-                                  const struct mylite_select_scalar_eval_callbacks *callbacks);
+static int validate_scalar_select_order_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_item,
+    const struct mylite_result_metadata *metadata,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+);
+
 static int validate_scalar_select_order_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_result_metadata *metadata,
-    const struct mylite_select_scalar_eval_callbacks *callbacks);
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+);
+
 static int validate_scalar_select_order_function_call(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_result_metadata *metadata,
-    const struct mylite_select_scalar_eval_callbacks *callbacks);
-static int
-resolve_scalar_select_order_reference(mylite_db *database,
-                                      const struct mylite_result_metadata *metadata,
-                                      const struct mylite_sql_ast_node *expression,
-                                      const struct mylite_select_scalar_eval_callbacks *callbacks);
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+);
+
+static int resolve_scalar_select_order_reference(
+    mylite_db *database,
+    const struct mylite_result_metadata *metadata,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+);
 
 int mylite_select_scalar_validate_order_by_clause(
-    mylite_db *database, const struct mylite_sql_ast_node *order_by_clause,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_by_clause,
     const struct mylite_result_metadata *metadata,
-    const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *items = mylite_ast_child_at(order_by_clause, 0U);
 
     if (order_by_clause == NULL || order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
@@ -56,11 +67,12 @@ int mylite_select_scalar_validate_order_by_clause(
     return MYLITE_OK;
 }
 
-static int
-validate_scalar_select_order_item(mylite_db *database, const struct mylite_sql_ast_node *order_item,
-                                  const struct mylite_result_metadata *metadata,
-                                  const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+static int validate_scalar_select_order_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_item,
+    const struct mylite_result_metadata *metadata,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(order_item, 0U);
 
     if (order_item == NULL || order_item->kind != MYLITE_SQL_AST_ORDER_ITEM || expression == NULL) {
@@ -137,8 +149,12 @@ static int validate_scalar_select_order_expression( // NOLINT(misc-no-recursion)
         }
         return MYLITE_OK;
     case MYLITE_SQL_AST_FUNCTION_CALL:
-        return validate_scalar_select_order_function_call(database, expression, metadata,
-                                                          callbacks);
+        return validate_scalar_select_order_function_call(
+            database,
+            expression,
+            metadata,
+            callbacks
+        );
     case MYLITE_SQL_AST_AGGREGATE_CALL:
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
@@ -159,10 +175,11 @@ static int validate_scalar_select_order_expression( // NOLINT(misc-no-recursion)
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static int validate_scalar_select_order_function_call(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_result_metadata *metadata,
-    const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
     if (!mylite_expression_is_supported_function_call(expression)) {
@@ -177,7 +194,8 @@ static int validate_scalar_select_order_function_call(
     }
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
-         child != NULL; child = child->next_sibling) {
+         child != NULL;
+         child = child->next_sibling) {
         int status = validate_scalar_select_order_expression(database, child, metadata, callbacks);
 
         if (status != MYLITE_OK) {
@@ -187,12 +205,12 @@ static int validate_scalar_select_order_function_call(
     return MYLITE_OK;
 }
 
-static int
-resolve_scalar_select_order_reference(mylite_db *database,
-                                      const struct mylite_result_metadata *metadata,
-                                      const struct mylite_sql_ast_node *expression,
-                                      const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+static int resolve_scalar_select_order_reference(
+    mylite_db *database,
+    const struct mylite_result_metadata *metadata,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     int status = mylite_copy_identifier_parts(expression, parts, &part_count);

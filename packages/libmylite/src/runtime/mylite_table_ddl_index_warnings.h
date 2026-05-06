@@ -5,8 +5,10 @@
 
 #include <mylite/mylite.h>
 
-int mylite_table_ddl_append_create_index_warnings(mylite_db *database,
-                                                  const struct mylite_alter_table_model *model,
-                                                  const struct mylite_create_table_index *index);
+int mylite_table_ddl_append_create_index_warnings(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+);
 
 #endif

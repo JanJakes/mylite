@@ -6,6 +6,8 @@
 struct mylite_select_eval_callbacks;
 
 int mylite_select_materialize_aggregate_table_result(
-    mylite_stmt *stmt, const struct mylite_select_eval_callbacks *callbacks);
+    mylite_stmt *stmt,
+    const struct mylite_select_eval_callbacks *callbacks
+);
 
 #endif

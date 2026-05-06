@@ -124,25 +124,33 @@ struct mylite_column_type_descriptor {
     char column_type[MYLITE_COLUMN_TYPE_TEXT_CAPACITY];
 };
 
-enum mylite_column_type_status
-mylite_column_type_describe_integer(const char *type_name, size_t type_name_length,
-                                    struct mylite_column_type_attributes attributes,
-                                    struct mylite_column_type_descriptor *out_descriptor);
+enum mylite_column_type_status mylite_column_type_describe_integer(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
 
-enum mylite_column_type_status
-mylite_column_type_describe_string_binary(const char *type_name, size_t type_name_length,
-                                          struct mylite_column_type_attributes attributes,
-                                          struct mylite_column_type_descriptor *out_descriptor);
+enum mylite_column_type_status mylite_column_type_describe_string_binary(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
 
-enum mylite_column_type_status
-mylite_column_type_describe_numeric(const char *type_name, size_t type_name_length,
-                                    struct mylite_column_type_attributes attributes,
-                                    struct mylite_column_type_descriptor *out_descriptor);
+enum mylite_column_type_status mylite_column_type_describe_numeric(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
 
-enum mylite_column_type_status
-mylite_column_type_describe_temporal(const char *type_name, size_t type_name_length,
-                                     struct mylite_column_type_attributes attributes,
-                                     struct mylite_column_type_descriptor *out_descriptor);
+enum mylite_column_type_status mylite_column_type_describe_temporal(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
 
 const char *mylite_column_type_status_name(enum mylite_column_type_status status);
 

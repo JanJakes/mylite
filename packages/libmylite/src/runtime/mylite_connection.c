@@ -63,20 +63,35 @@ struct mylite_sql_mode_token_search {
     const char *expected;
 };
 
-static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
-                                mylite_db **out_db);
+static int open_sqlite_database(
+    const char *filename,
+    int flags,
+    const char *vfs_name,
+    mylite_db **out_db
+);
+
 static int set_connection_text_value(mylite_db *database, const char *value, char **out_value);
+
 static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, char **out_value);
-static int append_sql_mode_token(mylite_db *database, char **out_value, size_t *out_length,
-                                 const char *name);
+
+static int append_sql_mode_token(
+    mylite_db *database,
+    char **out_value,
+    size_t *out_length,
+    const char *name
+);
+
 static int set_invalid_sql_mode_error(mylite_db *database, const char *value, size_t value_length);
+
 static const struct mylite_sql_mode_entry *find_sql_mode_entry(const char *text, size_t length);
+
 static bool sql_mode_token_matches(const char *text, size_t length, const char *expected);
+
 static bool sql_mode_contains_token(struct mylite_sql_mode_token_search search);
+
 static bool ascii_is_space(char byte);
 
-int mylite_open(const char *filename, mylite_db **out_db)
-{
+int mylite_open(const char *filename, mylite_db **out_db) {
     int rc = SQLITE_OK;
 
     if (filename == NULL || out_db == NULL) {
@@ -89,22 +104,28 @@ int mylite_open(const char *filename, mylite_db **out_db)
         return MYLITE_SQLITE_ERROR;
     }
 
-    return open_sqlite_database(filename, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-                                mylite_vfs_name(), out_db);
+    return open_sqlite_database(
+        filename,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+        mylite_vfs_name(),
+        out_db
+    );
 }
 
-int mylite_open_memory(mylite_db **out_db)
-{
+int mylite_open_memory(mylite_db **out_db) {
     if (out_db == NULL) {
         return MYLITE_MISUSE;
     }
 
     return open_sqlite_database(
-        ":memory:", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MEMORY, NULL, out_db);
+        ":memory:",
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MEMORY,
+        NULL,
+        out_db
+    );
 }
 
-void mylite_close(mylite_db *database)
-{
+void mylite_close(mylite_db *database) {
     if (database == NULL) {
         return;
     }
@@ -127,8 +148,7 @@ void mylite_close(mylite_db *database)
     free(database);
 }
 
-uint64_t mylite_last_insert_id(const mylite_db *database)
-{
+uint64_t mylite_last_insert_id(const mylite_db *database) {
     if (database == NULL) {
         return 0U;
     }
@@ -136,28 +156,23 @@ uint64_t mylite_last_insert_id(const mylite_db *database)
     return database->last_insert_id;
 }
 
-const char *mylite_connection_character_set_client(const mylite_db *database)
-{
+const char *mylite_connection_character_set_client(const mylite_db *database) {
     return database == NULL ? NULL : database->character_set_client;
 }
 
-const char *mylite_connection_character_set_connection(const mylite_db *database)
-{
+const char *mylite_connection_character_set_connection(const mylite_db *database) {
     return database == NULL ? NULL : database->character_set_connection;
 }
 
-const char *mylite_connection_character_set_results(const mylite_db *database)
-{
+const char *mylite_connection_character_set_results(const mylite_db *database) {
     return database == NULL ? NULL : database->character_set_results;
 }
 
-const char *mylite_connection_collation_connection(const mylite_db *database)
-{
+const char *mylite_connection_collation_connection(const mylite_db *database) {
     return database == NULL ? NULL : database->collation_connection;
 }
 
-int mylite_connection_set_default_state(mylite_db *database)
-{
+int mylite_connection_set_default_state(mylite_db *database) {
     database->character_set_client = mylite_charset_default_name();
     database->character_set_connection = mylite_charset_default_name();
     database->character_set_results = mylite_charset_default_name();
@@ -165,16 +180,16 @@ int mylite_connection_set_default_state(mylite_db *database)
     return MYLITE_OK;
 }
 
-int mylite_connection_set_released_error(mylite_db *database)
-{
+int mylite_connection_set_released_error(mylite_db *database) {
     int status = mylite_diagnostics_set_error_message(
-        database, "Connection was released by transaction completion");
+        database,
+        "Connection was released by transaction completion"
+    );
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-int mylite_connection_set_selected_schema(mylite_db *database, const char *schema_name)
-{
+int mylite_connection_set_selected_schema(mylite_db *database, const char *schema_name) {
     char *copy = mylite_copy_span_text(schema_name, strlen(schema_name));
 
     if (copy == NULL) {
@@ -187,18 +202,20 @@ int mylite_connection_set_selected_schema(mylite_db *database, const char *schem
     return MYLITE_OK;
 }
 
-void mylite_connection_clear_selected_schema_if_matches(mylite_db *database,
-                                                        const char *schema_name)
-{
+void mylite_connection_clear_selected_schema_if_matches(
+    mylite_db *database,
+    const char *schema_name
+) {
     if (database->selected_schema != NULL && strcmp(database->selected_schema, schema_name) == 0) {
         free(database->selected_schema);
         database->selected_schema = NULL;
     }
 }
 
-int mylite_connection_set_names_state(mylite_db *database,
-                                      struct mylite_connection_names_state state)
-{
+int mylite_connection_set_names_state(
+    mylite_db *database,
+    struct mylite_connection_names_state state
+) {
     const struct mylite_charset *character_set = mylite_charset_lookup(state.character_set_name);
     const struct mylite_collation *collation = NULL;
 
@@ -214,8 +231,11 @@ int mylite_connection_set_names_state(mylite_db *database,
             return mylite_diagnostics_set_unknown_collation_error(database, state.collation_name);
         }
         if (!mylite_charset_collation_match(character_set, collation)) {
-            return mylite_diagnostics_set_collation_charset_error(database, collation->name,
-                                                                  character_set->name);
+            return mylite_diagnostics_set_collation_charset_error(
+                database,
+                collation->name,
+                character_set->name
+            );
         }
     }
 
@@ -226,8 +246,7 @@ int mylite_connection_set_names_state(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_connection_set_character_set_state(mylite_db *database, const char *character_set_name)
-{
+int mylite_connection_set_character_set_state(mylite_db *database, const char *character_set_name) {
     struct mylite_schema_default schema_default;
     const struct mylite_charset *character_set = mylite_charset_lookup(character_set_name);
     const struct mylite_collation *connection_collation = NULL;
@@ -254,13 +273,11 @@ int mylite_connection_set_character_set_state(mylite_db *database, const char *c
     return MYLITE_OK;
 }
 
-int mylite_connection_set_default_sql_mode(mylite_db *database)
-{
+int mylite_connection_set_default_sql_mode(mylite_db *database) {
     return mylite_connection_set_sql_mode(database, mylite_default_sql_mode);
 }
 
-int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode)
-{
+int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode) {
     char *canonical = NULL;
     int status = copy_canonical_sql_mode(database, sql_mode, &canonical);
 
@@ -273,34 +290,30 @@ int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode)
     return MYLITE_OK;
 }
 
-int mylite_connection_set_default_storage_engine(mylite_db *database)
-{
+int mylite_connection_set_default_storage_engine(mylite_db *database) {
     return mylite_connection_set_storage_engine(database, mylite_default_storage_engine);
 }
 
-int mylite_connection_set_storage_engine(mylite_db *database, const char *storage_engine)
-{
+int mylite_connection_set_storage_engine(mylite_db *database, const char *storage_engine) {
     return set_connection_text_value(database, storage_engine, &database->default_storage_engine);
 }
 
-int mylite_connection_set_default_time_zone(mylite_db *database)
-{
+int mylite_connection_set_default_time_zone(mylite_db *database) {
     return mylite_connection_set_time_zone(database, mylite_default_time_zone);
 }
 
-int mylite_connection_set_time_zone(mylite_db *database, const char *time_zone)
-{
+int mylite_connection_set_time_zone(mylite_db *database, const char *time_zone) {
     return set_connection_text_value(database, time_zone, &database->time_zone);
 }
 
-int mylite_connection_set_default_group_concat_max_len(mylite_db *database)
-{
-    return mylite_connection_set_group_concat_max_len(database,
-                                                      mylite_default_group_concat_max_len);
+int mylite_connection_set_default_group_concat_max_len(mylite_db *database) {
+    return mylite_connection_set_group_concat_max_len(
+        database,
+        mylite_default_group_concat_max_len
+    );
 }
 
-int mylite_connection_set_group_concat_max_len(mylite_db *database, uint64_t value)
-{
+int mylite_connection_set_group_concat_max_len(mylite_db *database, uint64_t value) {
     if (database == NULL) {
         return MYLITE_MISUSE;
     }
@@ -310,13 +323,11 @@ int mylite_connection_set_group_concat_max_len(mylite_db *database, uint64_t val
     return MYLITE_OK;
 }
 
-int mylite_connection_set_default_wait_timeout(mylite_db *database)
-{
+int mylite_connection_set_default_wait_timeout(mylite_db *database) {
     return mylite_connection_set_wait_timeout(database, mylite_default_wait_timeout);
 }
 
-int mylite_connection_set_wait_timeout(mylite_db *database, uint64_t value)
-{
+int mylite_connection_set_wait_timeout(mylite_db *database, uint64_t value) {
     if (database == NULL) {
         return MYLITE_MISUSE;
     }
@@ -325,13 +336,11 @@ int mylite_connection_set_wait_timeout(mylite_db *database, uint64_t value)
     return MYLITE_OK;
 }
 
-int mylite_connection_set_default_foreign_key_checks(mylite_db *database)
-{
+int mylite_connection_set_default_foreign_key_checks(mylite_db *database) {
     return mylite_connection_set_foreign_key_checks(database, true);
 }
 
-int mylite_connection_set_foreign_key_checks(mylite_db *database, bool enabled)
-{
+int mylite_connection_set_foreign_key_checks(mylite_db *database, bool enabled) {
     if (database == NULL) {
         return MYLITE_MISUSE;
     }
@@ -340,13 +349,11 @@ int mylite_connection_set_foreign_key_checks(mylite_db *database, bool enabled)
     return MYLITE_OK;
 }
 
-int mylite_connection_set_default_unique_checks(mylite_db *database)
-{
+int mylite_connection_set_default_unique_checks(mylite_db *database) {
     return mylite_connection_set_unique_checks(database, true);
 }
 
-int mylite_connection_set_unique_checks(mylite_db *database, bool enabled)
-{
+int mylite_connection_set_unique_checks(mylite_db *database, bool enabled) {
     if (database == NULL) {
         return MYLITE_MISUSE;
     }
@@ -355,125 +362,109 @@ int mylite_connection_set_unique_checks(mylite_db *database, bool enabled)
     return MYLITE_OK;
 }
 
-const char *mylite_connection_default_sql_mode(void)
-{
+const char *mylite_connection_default_sql_mode(void) {
     return mylite_default_sql_mode;
 }
 
-const char *mylite_connection_sql_mode(const mylite_db *database)
-{
+const char *mylite_connection_sql_mode(const mylite_db *database) {
     return database == NULL || database->sql_mode == NULL ? mylite_default_sql_mode
                                                           : database->sql_mode;
 }
 
-bool mylite_connection_sql_mode_has_only_full_group_by(const mylite_db *database)
-{
+bool mylite_connection_sql_mode_has_only_full_group_by(const mylite_db *database) {
     return sql_mode_contains_token((struct mylite_sql_mode_token_search){
         .sql_mode = mylite_connection_sql_mode(database),
         .expected = "ONLY_FULL_GROUP_BY",
     });
 }
 
-bool mylite_connection_sql_mode_has_no_auto_value_on_zero(const mylite_db *database)
-{
+bool mylite_connection_sql_mode_has_no_auto_value_on_zero(const mylite_db *database) {
     return sql_mode_contains_token((struct mylite_sql_mode_token_search){
         .sql_mode = mylite_connection_sql_mode(database),
         .expected = "NO_AUTO_VALUE_ON_ZERO",
     });
 }
 
-const char *mylite_connection_default_storage_engine(void)
-{
+const char *mylite_connection_default_storage_engine(void) {
     return mylite_default_storage_engine;
 }
 
-const char *mylite_connection_storage_engine(const mylite_db *database)
-{
+const char *mylite_connection_storage_engine(const mylite_db *database) {
     return database == NULL || database->default_storage_engine == NULL
                ? mylite_default_storage_engine
                : database->default_storage_engine;
 }
 
-const char *mylite_connection_default_time_zone(void)
-{
+const char *mylite_connection_default_time_zone(void) {
     return mylite_default_time_zone;
 }
 
-const char *mylite_connection_time_zone(const mylite_db *database)
-{
+const char *mylite_connection_time_zone(const mylite_db *database) {
     return database == NULL || database->time_zone == NULL ? mylite_default_time_zone
                                                            : database->time_zone;
 }
 
-uint64_t mylite_connection_default_group_concat_max_len(void)
-{
+uint64_t mylite_connection_default_group_concat_max_len(void) {
     return mylite_default_group_concat_max_len;
 }
 
-uint64_t mylite_connection_group_concat_max_len(const mylite_db *database)
-{
+uint64_t mylite_connection_group_concat_max_len(const mylite_db *database) {
     return database == NULL || database->group_concat_max_len == 0U
                ? mylite_default_group_concat_max_len
                : database->group_concat_max_len;
 }
 
-size_t mylite_connection_group_concat_max_len_size(const mylite_db *database)
-{
+size_t mylite_connection_group_concat_max_len_size(const mylite_db *database) {
     uint64_t value = mylite_connection_group_concat_max_len(database);
 
     return value > (uint64_t)SIZE_MAX ? SIZE_MAX : (size_t)value;
 }
 
-uint64_t mylite_connection_default_max_allowed_packet(void)
-{
+uint64_t mylite_connection_default_max_allowed_packet(void) {
     return mylite_default_max_allowed_packet;
 }
 
-uint64_t mylite_connection_default_max_connections(void)
-{
+uint64_t mylite_connection_default_max_connections(void) {
     return mylite_default_max_connections;
 }
 
-uint64_t mylite_connection_default_wait_timeout(void)
-{
+uint64_t mylite_connection_default_wait_timeout(void) {
     return mylite_default_wait_timeout;
 }
 
-uint64_t mylite_connection_wait_timeout(const mylite_db *database)
-{
+uint64_t mylite_connection_wait_timeout(const mylite_db *database) {
     return database == NULL || database->wait_timeout == 0U ? mylite_default_wait_timeout
                                                             : database->wait_timeout;
 }
 
-bool mylite_connection_default_foreign_key_checks(void)
-{
+bool mylite_connection_default_foreign_key_checks(void) {
     return true;
 }
 
-bool mylite_connection_foreign_key_checks(const mylite_db *database)
-{
+bool mylite_connection_foreign_key_checks(const mylite_db *database) {
     if (database == NULL) {
         return mylite_connection_default_foreign_key_checks();
     }
     return database->foreign_key_checks;
 }
 
-bool mylite_connection_default_unique_checks(void)
-{
+bool mylite_connection_default_unique_checks(void) {
     return true;
 }
 
-bool mylite_connection_unique_checks(const mylite_db *database)
-{
+bool mylite_connection_unique_checks(const mylite_db *database) {
     if (database == NULL) {
         return mylite_connection_default_unique_checks();
     }
     return database->unique_checks;
 }
 
-static int open_sqlite_database(const char *filename, int flags, const char *vfs_name,
-                                mylite_db **out_db)
-{
+static int open_sqlite_database(
+    const char *filename,
+    int flags,
+    const char *vfs_name,
+    mylite_db **out_db
+) {
     mylite_db *database = calloc(1U, sizeof(*database));
     int rc = SQLITE_OK;
 
@@ -526,8 +517,7 @@ static int open_sqlite_database(const char *filename, int flags, const char *vfs
     return MYLITE_OK;
 }
 
-static int set_connection_text_value(mylite_db *database, const char *value, char **out_value)
-{
+static int set_connection_text_value(mylite_db *database, const char *value, char **out_value) {
     const char *safe_value = value == NULL ? "" : value;
     char *copy = NULL;
 
@@ -545,8 +535,7 @@ static int set_connection_text_value(mylite_db *database, const char *value, cha
     return MYLITE_OK;
 }
 
-static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, char **out_value)
-{
+static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, char **out_value) {
     static const struct mylite_sql_mode_entry canonical_order[] = {
         {"REAL_AS_FLOAT", MYLITE_SQL_MODE_REAL_AS_FLOAT},
         {"PIPES_AS_CONCAT", MYLITE_SQL_MODE_PIPES_AS_CONCAT},
@@ -621,9 +610,12 @@ static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, ch
     return MYLITE_OK;
 }
 
-static int append_sql_mode_token(mylite_db *database, char **out_value, size_t *out_length,
-                                 const char *name)
-{
+static int append_sql_mode_token(
+    mylite_db *database,
+    char **out_value,
+    size_t *out_length,
+    const char *name
+) {
     size_t name_length = strlen(name);
     size_t separator_length = *out_length == 0U ? 0U : 1U;
     size_t new_length = *out_length + separator_length + name_length;
@@ -644,8 +636,7 @@ static int append_sql_mode_token(mylite_db *database, char **out_value, size_t *
     return MYLITE_OK;
 }
 
-static int set_invalid_sql_mode_error(mylite_db *database, const char *value, size_t value_length)
-{
+static int set_invalid_sql_mode_error(mylite_db *database, const char *value, size_t value_length) {
     char *token = mylite_copy_span_text(value, value_length);
     char *message = NULL;
     int status = MYLITE_OK;
@@ -671,13 +662,13 @@ static int set_invalid_sql_mode_error(mylite_db *database, const char *value, si
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static const struct mylite_sql_mode_entry *find_sql_mode_entry(const char *text, size_t length)
-{
+static const struct mylite_sql_mode_entry *find_sql_mode_entry(const char *text, size_t length) {
     static const struct mylite_sql_mode_entry modes[] = {
         {"ALLOW_INVALID_DATES", MYLITE_SQL_MODE_INVALID_DATES},
-        {"ANSI", MYLITE_SQL_MODE_REAL_AS_FLOAT | MYLITE_SQL_MODE_PIPES_AS_CONCAT |
-                     MYLITE_SQL_MODE_ANSI_QUOTES | MYLITE_SQL_MODE_IGNORE_SPACE |
-                     MYLITE_SQL_MODE_ONLY_FULL_GROUP_BY | MYLITE_SQL_MODE_ANSI},
+        {"ANSI",
+         MYLITE_SQL_MODE_REAL_AS_FLOAT | MYLITE_SQL_MODE_PIPES_AS_CONCAT |
+             MYLITE_SQL_MODE_ANSI_QUOTES | MYLITE_SQL_MODE_IGNORE_SPACE |
+             MYLITE_SQL_MODE_ONLY_FULL_GROUP_BY | MYLITE_SQL_MODE_ANSI},
         {"ANSI_QUOTES", MYLITE_SQL_MODE_ANSI_QUOTES},
         {"ERROR_FOR_DIVISION_BY_ZERO", MYLITE_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO},
         {"HIGH_NOT_PRECEDENCE", MYLITE_SQL_MODE_HIGH_NOT_PRECEDENCE},
@@ -695,10 +686,11 @@ static const struct mylite_sql_mode_entry *find_sql_mode_entry(const char *text,
         {"STRICT_ALL_TABLES", MYLITE_SQL_MODE_STRICT_ALL_TABLES},
         {"STRICT_TRANS_TABLES", MYLITE_SQL_MODE_STRICT_TRANS_TABLES},
         {"TIME_TRUNCATE_FRACTIONAL", MYLITE_SQL_MODE_TIME_TRUNCATE_FRACTIONAL},
-        {"TRADITIONAL", MYLITE_SQL_MODE_STRICT_TRANS_TABLES | MYLITE_SQL_MODE_STRICT_ALL_TABLES |
-                            MYLITE_SQL_MODE_NO_ZERO_IN_DATE | MYLITE_SQL_MODE_NO_ZERO_DATE |
-                            MYLITE_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO |
-                            MYLITE_SQL_MODE_TRADITIONAL | MYLITE_SQL_MODE_NO_ENGINE_SUBSTITUTION},
+        {"TRADITIONAL",
+         MYLITE_SQL_MODE_STRICT_TRANS_TABLES | MYLITE_SQL_MODE_STRICT_ALL_TABLES |
+             MYLITE_SQL_MODE_NO_ZERO_IN_DATE | MYLITE_SQL_MODE_NO_ZERO_DATE |
+             MYLITE_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO | MYLITE_SQL_MODE_TRADITIONAL |
+             MYLITE_SQL_MODE_NO_ENGINE_SUBSTITUTION},
     };
 
     for (size_t index = 0U; index < sizeof(modes) / sizeof(modes[0]); ++index) {
@@ -709,8 +701,7 @@ static const struct mylite_sql_mode_entry *find_sql_mode_entry(const char *text,
     return NULL;
 }
 
-static bool sql_mode_token_matches(const char *text, size_t length, const char *expected)
-{
+static bool sql_mode_token_matches(const char *text, size_t length, const char *expected) {
     for (size_t index = 0U;; ++index) {
         char left = index < length ? text[index] : '\0';
         char right = expected[index];
@@ -730,8 +721,7 @@ static bool sql_mode_token_matches(const char *text, size_t length, const char *
     }
 }
 
-static bool sql_mode_contains_token(struct mylite_sql_mode_token_search search)
-{
+static bool sql_mode_contains_token(struct mylite_sql_mode_token_search search) {
     const char *token_start = search.sql_mode == NULL ? "" : search.sql_mode;
 
     while (token_start != NULL) {
@@ -747,8 +737,7 @@ static bool sql_mode_contains_token(struct mylite_sql_mode_token_search search)
     return false;
 }
 
-static bool ascii_is_space(char byte)
-{
+static bool ascii_is_space(char byte) {
     if (byte == ' ' || byte == '\t' || byte == '\n' || byte == '\r' || byte == '\f') {
         return true;
     }

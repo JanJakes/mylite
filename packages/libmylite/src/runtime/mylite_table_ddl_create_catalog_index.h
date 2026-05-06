@@ -6,6 +6,9 @@
 struct mylite_create_table_plan;
 
 int mylite_table_ddl_insert_create_table_index_catalog_rows(
-    mylite_db *database, const char *schema_name, const struct mylite_create_table_plan *plan);
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan
+);
 
 #endif

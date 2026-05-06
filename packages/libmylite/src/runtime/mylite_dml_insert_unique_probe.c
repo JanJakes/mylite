@@ -6,28 +6,42 @@
 
 #include <string.h>
 
-static char *build_insert_unique_conflict_sql(mylite_db *database,
-                                              const struct mylite_insert_table *table,
-                                              const struct mylite_insert_unique_index *index,
-                                              bool has_excluded_rowid);
-static int bind_insert_unique_conflict_values(mylite_db *database, sqlite3_stmt *check,
-                                              const struct mylite_insert_unique_index *index,
-                                              const struct mylite_insert_bound_value *values,
-                                              sqlite3_int64 excluded_rowid,
-                                              bool has_excluded_rowid);
-static char *build_insert_unique_check_sql(mylite_db *database,
-                                           const struct mylite_insert_table *table,
-                                           const struct mylite_insert_unique_index *index);
-static int bind_insert_unique_check_values(mylite_db *database, sqlite3_stmt *check,
-                                           const struct mylite_insert_unique_index *index,
-                                           const struct mylite_insert_bound_value *values);
+static char *build_insert_unique_conflict_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_unique_index *index,
+    bool has_excluded_rowid
+);
 
-int mylite_dml_insert_unique_index_conflicts(mylite_db *database,
-                                             const struct mylite_insert_table *table,
-                                             const struct mylite_insert_unique_index *index,
-                                             const struct mylite_insert_bound_value *values,
-                                             bool *out_conflicts)
-{
+static int bind_insert_unique_conflict_values(
+    mylite_db *database,
+    sqlite3_stmt *check,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_insert_bound_value *values,
+    sqlite3_int64 excluded_rowid,
+    bool has_excluded_rowid
+);
+
+static char *build_insert_unique_check_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_unique_index *index
+);
+
+static int bind_insert_unique_check_values(
+    mylite_db *database,
+    sqlite3_stmt *check,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_insert_bound_value *values
+);
+
+int mylite_dml_insert_unique_index_conflicts(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_insert_bound_value *values,
+    bool *out_conflicts
+) {
     char *sql = NULL;
     sqlite3_stmt *check = NULL;
     int rc = SQLITE_OK;
@@ -65,14 +79,16 @@ int mylite_dml_insert_unique_index_conflicts(mylite_db *database,
     return status;
 }
 
-int mylite_dml_insert_unique_index_conflict_rowid(mylite_db *database,
-                                                  const struct mylite_insert_table *table,
-                                                  const struct mylite_insert_unique_index *index,
-                                                  const struct mylite_insert_bound_value *values,
-                                                  sqlite3_int64 excluded_rowid,
-                                                  bool has_excluded_rowid, sqlite3_int64 *out_rowid,
-                                                  bool *out_conflicts)
-{
+int mylite_dml_insert_unique_index_conflict_rowid(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_insert_bound_value *values,
+    sqlite3_int64 excluded_rowid,
+    bool has_excluded_rowid,
+    sqlite3_int64 *out_rowid,
+    bool *out_conflicts
+) {
     char *sql = NULL;
     sqlite3_stmt *check = NULL;
     int rc = SQLITE_OK;
@@ -98,8 +114,14 @@ int mylite_dml_insert_unique_index_conflict_rowid(mylite_db *database,
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    status = bind_insert_unique_conflict_values(database, check, index, values, excluded_rowid,
-                                                has_excluded_rowid);
+    status = bind_insert_unique_conflict_values(
+        database,
+        check,
+        index,
+        values,
+        excluded_rowid,
+        has_excluded_rowid
+    );
     if (status == MYLITE_OK) {
         rc = sqlite3_step(check);
         if (rc == SQLITE_ROW) {
@@ -113,11 +135,12 @@ int mylite_dml_insert_unique_index_conflict_rowid(mylite_db *database,
     return status;
 }
 
-static char *build_insert_unique_conflict_sql(mylite_db *database,
-                                              const struct mylite_insert_table *table,
-                                              const struct mylite_insert_unique_index *index,
-                                              bool has_excluded_rowid)
-{
+static char *build_insert_unique_conflict_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_unique_index *index,
+    bool has_excluded_rowid
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {
@@ -132,10 +155,13 @@ static char *build_insert_unique_conflict_sql(mylite_db *database,
             sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
         }
         if (index->prefix_lengths[part] != 0U) {
-            sqlite3_str_appendf(sql, "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
-                                table->columns[column_index].name,
-                                (unsigned long long)index->prefix_lengths[part],
-                                (unsigned long long)index->prefix_lengths[part]);
+            sqlite3_str_appendf(
+                sql,
+                "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
+                table->columns[column_index].name,
+                (unsigned long long)index->prefix_lengths[part],
+                (unsigned long long)index->prefix_lengths[part]
+            );
         } else {
             sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
         }
@@ -147,14 +173,20 @@ static char *build_insert_unique_conflict_sql(mylite_db *database,
     return sqlite3_str_finish(sql);
 }
 
-static int bind_insert_unique_conflict_values(mylite_db *database, sqlite3_stmt *check,
-                                              const struct mylite_insert_unique_index *index,
-                                              const struct mylite_insert_bound_value *values,
-                                              sqlite3_int64 excluded_rowid, bool has_excluded_rowid)
-{
+static int bind_insert_unique_conflict_values(
+    mylite_db *database,
+    sqlite3_stmt *check,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_insert_bound_value *values,
+    sqlite3_int64 excluded_rowid,
+    bool has_excluded_rowid
+) {
     for (size_t part = 0U; part < index->column_count; ++part) {
-        int rc = mylite_dml_bind_insert_bound_value(check, (int)part + 1,
-                                                    &values[index->column_indexes[part]]);
+        int rc = mylite_dml_bind_insert_bound_value(
+            check,
+            (int)part + 1,
+            &values[index->column_indexes[part]]
+        );
 
         if (rc != SQLITE_OK) {
             return mylite_diagnostics_set_sqlite_error(database);
@@ -170,10 +202,11 @@ static int bind_insert_unique_conflict_values(mylite_db *database, sqlite3_stmt 
     return MYLITE_OK;
 }
 
-static char *build_insert_unique_check_sql(mylite_db *database,
-                                           const struct mylite_insert_table *table,
-                                           const struct mylite_insert_unique_index *index)
-{
+static char *build_insert_unique_check_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_unique_index *index
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {
@@ -188,10 +221,13 @@ static char *build_insert_unique_check_sql(mylite_db *database,
             sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
         }
         if (index->prefix_lengths[part] != 0U) {
-            sqlite3_str_appendf(sql, "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
-                                table->columns[column_index].name,
-                                (unsigned long long)index->prefix_lengths[part],
-                                (unsigned long long)index->prefix_lengths[part]);
+            sqlite3_str_appendf(
+                sql,
+                "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
+                table->columns[column_index].name,
+                (unsigned long long)index->prefix_lengths[part],
+                (unsigned long long)index->prefix_lengths[part]
+            );
         } else {
             sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
         }
@@ -200,13 +236,18 @@ static char *build_insert_unique_check_sql(mylite_db *database,
     return sqlite3_str_finish(sql);
 }
 
-static int bind_insert_unique_check_values(mylite_db *database, sqlite3_stmt *check,
-                                           const struct mylite_insert_unique_index *index,
-                                           const struct mylite_insert_bound_value *values)
-{
+static int bind_insert_unique_check_values(
+    mylite_db *database,
+    sqlite3_stmt *check,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_insert_bound_value *values
+) {
     for (size_t part = 0U; part < index->column_count; ++part) {
-        int rc = mylite_dml_bind_insert_bound_value(check, (int)part + 1,
-                                                    &values[index->column_indexes[part]]);
+        int rc = mylite_dml_bind_insert_bound_value(
+            check,
+            (int)part + 1,
+            &values[index->column_indexes[part]]
+        );
 
         if (rc != SQLITE_OK) {
             return mylite_diagnostics_set_sqlite_error(database);

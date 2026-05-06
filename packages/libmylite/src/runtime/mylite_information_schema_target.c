@@ -6,18 +6,26 @@
 #include <stdlib.h>
 
 static bool select_list_is_unqualified_wildcard(const struct mylite_sql_ast_node *select_list);
-static int
-information_schema_table_from_from_clause(const struct mylite_sql_ast_node *from_clause,
-                                          enum mylite_information_schema_table *out_table);
-static int information_schema_from_clause_references_table(const struct mylite_sql_ast_node *node,
-                                                           bool *out_references_table);
-static int
-information_schema_table_from_qualified_name(const struct mylite_sql_ast_node *identifier,
-                                             enum mylite_information_schema_table *out_table);
 
-int mylite_information_schema_table_from_select(const struct mylite_sql_ast_node *statement,
-                                                enum mylite_information_schema_table *out_table)
-{
+static int information_schema_table_from_from_clause(
+    const struct mylite_sql_ast_node *from_clause,
+    enum mylite_information_schema_table *out_table
+);
+
+static int information_schema_from_clause_references_table(
+    const struct mylite_sql_ast_node *node,
+    bool *out_references_table
+);
+
+static int information_schema_table_from_qualified_name(
+    const struct mylite_sql_ast_node *identifier,
+    enum mylite_information_schema_table *out_table
+);
+
+int mylite_information_schema_table_from_select(
+    const struct mylite_sql_ast_node *statement,
+    enum mylite_information_schema_table *out_table
+) {
     const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(statement, 1U);
     enum mylite_information_schema_table table = MYLITE_INFORMATION_SCHEMA_NONE;
@@ -44,8 +52,7 @@ int mylite_information_schema_table_from_select(const struct mylite_sql_ast_node
     return MYLITE_OK;
 }
 
-enum mylite_information_schema_table mylite_information_schema_table_from_name(const char *name)
-{
+enum mylite_information_schema_table mylite_information_schema_table_from_name(const char *name) {
     if (mylite_ascii_case_equal(name, "schemata")) {
         return MYLITE_INFORMATION_SCHEMA_SCHEMATA;
     }
@@ -88,8 +95,7 @@ enum mylite_information_schema_table mylite_information_schema_table_from_name(c
     return MYLITE_INFORMATION_SCHEMA_NONE;
 }
 
-static bool select_list_is_unqualified_wildcard(const struct mylite_sql_ast_node *select_list)
-{
+static bool select_list_is_unqualified_wildcard(const struct mylite_sql_ast_node *select_list) {
     const struct mylite_sql_ast_node *select_item = mylite_ast_child_at(select_list, 0U);
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(select_item, 0U);
 
@@ -103,10 +109,10 @@ static bool select_list_is_unqualified_wildcard(const struct mylite_sql_ast_node
     return true;
 }
 
-static int
-information_schema_table_from_from_clause(const struct mylite_sql_ast_node *from_clause,
-                                          enum mylite_information_schema_table *out_table)
-{
+static int information_schema_table_from_from_clause(
+    const struct mylite_sql_ast_node *from_clause,
+    enum mylite_information_schema_table *out_table
+) {
     const struct mylite_sql_ast_node *identifier = mylite_ast_child_at(from_clause, 0U);
     bool references_table = false;
     int status = MYLITE_OK;
@@ -137,9 +143,10 @@ information_schema_table_from_from_clause(const struct mylite_sql_ast_node *from
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int information_schema_from_clause_references_table(const struct mylite_sql_ast_node *node,
-                                                           bool *out_references_table)
-{
+static int information_schema_from_clause_references_table(
+    const struct mylite_sql_ast_node *node,
+    bool *out_references_table
+) {
     enum mylite_information_schema_table table = MYLITE_INFORMATION_SCHEMA_NONE;
     int status = MYLITE_OK;
 
@@ -167,10 +174,10 @@ static int information_schema_from_clause_references_table(const struct mylite_s
     return MYLITE_OK;
 }
 
-static int
-information_schema_table_from_qualified_name(const struct mylite_sql_ast_node *identifier,
-                                             enum mylite_information_schema_table *out_table)
-{
+static int information_schema_table_from_qualified_name(
+    const struct mylite_sql_ast_node *identifier,
+    enum mylite_information_schema_table *out_table
+) {
     const struct mylite_sql_ast_node *schema = mylite_ast_child_at(identifier, 0U);
     const struct mylite_sql_ast_node *table = mylite_ast_child_at(identifier, 1U);
     char *schema_name = NULL;

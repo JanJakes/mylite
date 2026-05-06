@@ -5,14 +5,18 @@
 #include <stdlib.h>
 
 static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference);
+
 static void insert_value_child_deinit(struct mylite_insert_value *value);
+
 static void insert_unique_index_deinit(struct mylite_insert_unique_index *index);
+
 static void update_target_deinit(struct mylite_update_target *target);
+
 static void update_column_reference_deinit(struct mylite_update_column_reference *reference);
+
 static void delete_target_deinit(struct mylite_delete_target *target);
 
-void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan)
-{
+void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -35,8 +39,7 @@ void mylite_dml_insert_values_plan_deinit(struct mylite_insert_values_plan *plan
     *plan = (struct mylite_insert_values_plan){0};
 }
 
-void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan)
-{
+void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -48,8 +51,7 @@ void mylite_dml_insert_set_plan_deinit(struct mylite_insert_set_plan *plan)
     *plan = (struct mylite_insert_set_plan){0};
 }
 
-void mylite_dml_insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment)
-{
+void mylite_dml_insert_set_assignment_deinit(struct mylite_insert_set_assignment *assignment) {
     if (assignment == NULL) {
         return;
     }
@@ -60,8 +62,8 @@ void mylite_dml_insert_set_assignment_deinit(struct mylite_insert_set_assignment
 }
 
 void mylite_dml_insert_duplicate_update_plan_deinit(
-    struct mylite_insert_duplicate_update_plan *plan)
-{
+    struct mylite_insert_duplicate_update_plan *plan
+) {
     if (plan == NULL) {
         return;
     }
@@ -73,8 +75,9 @@ void mylite_dml_insert_duplicate_update_plan_deinit(
     *plan = (struct mylite_insert_duplicate_update_plan){0};
 }
 
-void mylite_dml_insert_update_assignment_deinit(struct mylite_insert_update_assignment *assignment)
-{
+void mylite_dml_insert_update_assignment_deinit(
+    struct mylite_insert_update_assignment *assignment
+) {
     if (assignment == NULL) {
         return;
     }
@@ -84,8 +87,7 @@ void mylite_dml_insert_update_assignment_deinit(struct mylite_insert_update_assi
     *assignment = (struct mylite_insert_update_assignment){0};
 }
 
-void mylite_dml_update_plan_deinit(struct mylite_update_plan *plan)
-{
+void mylite_dml_update_plan_deinit(struct mylite_update_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -98,8 +100,7 @@ void mylite_dml_update_plan_deinit(struct mylite_update_plan *plan)
     *plan = (struct mylite_update_plan){0};
 }
 
-void mylite_dml_update_assignment_deinit(struct mylite_update_assignment *assignment)
-{
+void mylite_dml_update_assignment_deinit(struct mylite_update_assignment *assignment) {
     if (assignment == NULL) {
         return;
     }
@@ -108,8 +109,7 @@ void mylite_dml_update_assignment_deinit(struct mylite_update_assignment *assign
     *assignment = (struct mylite_update_assignment){0};
 }
 
-void mylite_dml_update_order_plan_deinit(struct mylite_update_order_plan *plan)
-{
+void mylite_dml_update_order_plan_deinit(struct mylite_update_order_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -118,8 +118,7 @@ void mylite_dml_update_order_plan_deinit(struct mylite_update_order_plan *plan)
     *plan = (struct mylite_update_order_plan){0};
 }
 
-void mylite_dml_update_rowset_deinit(struct mylite_update_rowset *rowset)
-{
+void mylite_dml_update_rowset_deinit(struct mylite_update_rowset *rowset) {
     if (rowset == NULL) {
         return;
     }
@@ -131,8 +130,7 @@ void mylite_dml_update_rowset_deinit(struct mylite_update_rowset *rowset)
     *rowset = (struct mylite_update_rowset){0};
 }
 
-void mylite_dml_update_row_deinit(struct mylite_update_row *row)
-{
+void mylite_dml_update_row_deinit(struct mylite_update_row *row) {
     if (row == NULL) {
         return;
     }
@@ -148,8 +146,7 @@ void mylite_dml_update_row_deinit(struct mylite_update_row *row)
     *row = (struct mylite_update_row){0};
 }
 
-void mylite_dml_delete_plan_deinit(struct mylite_delete_plan *plan)
-{
+void mylite_dml_delete_plan_deinit(struct mylite_delete_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -162,8 +159,7 @@ void mylite_dml_delete_plan_deinit(struct mylite_delete_plan *plan)
     *plan = (struct mylite_delete_plan){0};
 }
 
-void mylite_dml_insert_row_deinit(struct mylite_insert_row *row)
-{
+void mylite_dml_insert_row_deinit(struct mylite_insert_row *row) {
     if (row == NULL) {
         return;
     }
@@ -175,8 +171,7 @@ void mylite_dml_insert_row_deinit(struct mylite_insert_row *row)
     *row = (struct mylite_insert_row){0};
 }
 
-void mylite_dml_insert_value_deinit(struct mylite_insert_value *value)
-{
+void mylite_dml_insert_value_deinit(struct mylite_insert_value *value) {
     if (value == NULL) {
         return;
     }
@@ -190,8 +185,7 @@ void mylite_dml_insert_value_deinit(struct mylite_insert_value *value)
     *value = (struct mylite_insert_value){0};
 }
 
-void mylite_dml_insert_table_deinit(struct mylite_insert_table *table)
-{
+void mylite_dml_insert_table_deinit(struct mylite_insert_table *table) {
     if (table == NULL) {
         return;
     }
@@ -208,8 +202,7 @@ void mylite_dml_insert_table_deinit(struct mylite_insert_table *table)
     *table = (struct mylite_insert_table){0};
 }
 
-void mylite_dml_insert_table_column_deinit(struct mylite_insert_table_column *column)
-{
+void mylite_dml_insert_table_column_deinit(struct mylite_insert_table_column *column) {
     if (column == NULL) {
         return;
     }
@@ -221,9 +214,10 @@ void mylite_dml_insert_table_column_deinit(struct mylite_insert_table_column *co
     *column = (struct mylite_insert_table_column){0};
 }
 
-void mylite_dml_insert_bound_values_deinit(struct mylite_insert_bound_value *values,
-                                           size_t value_count)
-{
+void mylite_dml_insert_bound_values_deinit(
+    struct mylite_insert_bound_value *values,
+    size_t value_count
+) {
     if (values == NULL) {
         return;
     }
@@ -234,8 +228,7 @@ void mylite_dml_insert_bound_values_deinit(struct mylite_insert_bound_value *val
     free(values);
 }
 
-void mylite_dml_insert_bound_value_deinit(struct mylite_insert_bound_value *value)
-{
+void mylite_dml_insert_bound_value_deinit(struct mylite_insert_bound_value *value) {
     if (value == NULL) {
         return;
     }
@@ -244,8 +237,7 @@ void mylite_dml_insert_bound_value_deinit(struct mylite_insert_bound_value *valu
     *value = (struct mylite_insert_bound_value){0};
 }
 
-static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference)
-{
+static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference) {
     if (reference == NULL) {
         return;
     }
@@ -256,8 +248,7 @@ static void insert_column_reference_deinit(struct mylite_insert_column_reference
     *reference = (struct mylite_insert_column_reference){0};
 }
 
-static void insert_value_child_deinit(struct mylite_insert_value *value)
-{
+static void insert_value_child_deinit(struct mylite_insert_value *value) {
     if (value == NULL) {
         return;
     }
@@ -269,8 +260,7 @@ static void insert_value_child_deinit(struct mylite_insert_value *value)
     *value = (struct mylite_insert_value){0};
 }
 
-static void insert_unique_index_deinit(struct mylite_insert_unique_index *index)
-{
+static void insert_unique_index_deinit(struct mylite_insert_unique_index *index) {
     if (index == NULL) {
         return;
     }
@@ -281,8 +271,7 @@ static void insert_unique_index_deinit(struct mylite_insert_unique_index *index)
     *index = (struct mylite_insert_unique_index){0};
 }
 
-static void update_target_deinit(struct mylite_update_target *target)
-{
+static void update_target_deinit(struct mylite_update_target *target) {
     if (target == NULL) {
         return;
     }
@@ -293,8 +282,7 @@ static void update_target_deinit(struct mylite_update_target *target)
     *target = (struct mylite_update_target){0};
 }
 
-static void update_column_reference_deinit(struct mylite_update_column_reference *reference)
-{
+static void update_column_reference_deinit(struct mylite_update_column_reference *reference) {
     if (reference == NULL) {
         return;
     }
@@ -305,8 +293,7 @@ static void update_column_reference_deinit(struct mylite_update_column_reference
     *reference = (struct mylite_update_column_reference){0};
 }
 
-static void delete_target_deinit(struct mylite_delete_target *target)
-{
+static void delete_target_deinit(struct mylite_delete_target *target) {
     if (target == NULL) {
         return;
     }

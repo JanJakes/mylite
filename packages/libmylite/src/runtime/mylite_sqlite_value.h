@@ -6,7 +6,10 @@
 
 #include <stddef.h>
 
-int mylite_sqlite_copy_column_value(sqlite3_stmt *sqlite_stmt, size_t column_index,
-                                    struct mylite_expression_value *out_value);
+int mylite_sqlite_copy_column_value(
+    sqlite3_stmt *sqlite_stmt,
+    size_t column_index,
+    struct mylite_expression_value *out_value
+);
 
 #endif

@@ -3,21 +3,27 @@
 #include <stdlib.h>
 #include <string.h>
 
-static enum mylite_sqlite_translate_status
-translate_script(const struct mylite_sql_ast_node *root,
-                 struct mylite_sqlite_translate_result *out_result);
-static enum mylite_sqlite_translate_status
-translate_select_statement(const struct mylite_sql_ast_node *statement,
-                           struct mylite_sqlite_translate_result *out_result);
-static enum mylite_sqlite_translate_status
-translate_integer_literal_select(const struct mylite_sql_ast_node *literal,
-                                 struct mylite_sqlite_translate_result *out_result);
+static enum mylite_sqlite_translate_status translate_script(
+    const struct mylite_sql_ast_node *root,
+    struct mylite_sqlite_translate_result *out_result
+);
+
+static enum mylite_sqlite_translate_status translate_select_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_sqlite_translate_result *out_result
+);
+
+static enum mylite_sqlite_translate_status translate_integer_literal_select(
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_sqlite_translate_result *out_result
+);
+
 static const struct mylite_sql_ast_node *only_child(const struct mylite_sql_ast_node *node);
 
-enum mylite_sqlite_translate_status
-mylite_sqlite_translate(const struct mylite_sql_ast_node *root,
-                        struct mylite_sqlite_translate_result *out_result)
-{
+enum mylite_sqlite_translate_status mylite_sqlite_translate(
+    const struct mylite_sql_ast_node *root,
+    struct mylite_sqlite_translate_result *out_result
+) {
     if (out_result == NULL) {
         return MYLITE_SQLITE_TRANSLATE_UNSUPPORTED;
     }
@@ -31,8 +37,7 @@ mylite_sqlite_translate(const struct mylite_sql_ast_node *root,
     return translate_script(root, out_result);
 }
 
-void mylite_sqlite_translate_result_deinit(struct mylite_sqlite_translate_result *result)
-{
+void mylite_sqlite_translate_result_deinit(struct mylite_sqlite_translate_result *result) {
     if (result == NULL) {
         return;
     }
@@ -41,10 +46,10 @@ void mylite_sqlite_translate_result_deinit(struct mylite_sqlite_translate_result
     *result = (struct mylite_sqlite_translate_result){0};
 }
 
-static enum mylite_sqlite_translate_status
-translate_script(const struct mylite_sql_ast_node *root,
-                 struct mylite_sqlite_translate_result *out_result)
-{
+static enum mylite_sqlite_translate_status translate_script(
+    const struct mylite_sql_ast_node *root,
+    struct mylite_sqlite_translate_result *out_result
+) {
     const struct mylite_sql_ast_node *statement = only_child(root);
 
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
@@ -54,10 +59,10 @@ translate_script(const struct mylite_sql_ast_node *root,
     return translate_select_statement(statement, out_result);
 }
 
-static enum mylite_sqlite_translate_status
-translate_select_statement(const struct mylite_sql_ast_node *statement,
-                           struct mylite_sqlite_translate_result *out_result)
-{
+static enum mylite_sqlite_translate_status translate_select_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_sqlite_translate_result *out_result
+) {
     const struct mylite_sql_ast_node *select_list = only_child(statement);
     const struct mylite_sql_ast_node *select_item = only_child(select_list);
     const struct mylite_sql_ast_node *expression = only_child(select_item);
@@ -72,10 +77,10 @@ translate_select_statement(const struct mylite_sql_ast_node *statement,
     return translate_integer_literal_select(expression, out_result);
 }
 
-static enum mylite_sqlite_translate_status
-translate_integer_literal_select(const struct mylite_sql_ast_node *literal,
-                                 struct mylite_sqlite_translate_result *out_result)
-{
+static enum mylite_sqlite_translate_status translate_integer_literal_select(
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_sqlite_translate_result *out_result
+) {
     static const char prefix[] = "SELECT ";
     size_t prefix_length = sizeof(prefix) - 1U;
     size_t sql_length = prefix_length + literal->span.length;
@@ -93,8 +98,7 @@ translate_integer_literal_select(const struct mylite_sql_ast_node *literal,
     return MYLITE_SQLITE_TRANSLATE_OK;
 }
 
-static const struct mylite_sql_ast_node *only_child(const struct mylite_sql_ast_node *node)
-{
+static const struct mylite_sql_ast_node *only_child(const struct mylite_sql_ast_node *node) {
     if (node == NULL || node->first_child == NULL || node->first_child->next_sibling != NULL) {
         return NULL;
     }

@@ -8,15 +8,21 @@
 
 #include <stdlib.h>
 
-static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                         const struct mylite_table_select_row *row,
-                                         const struct mylite_select_eval_callbacks *callbacks);
+static int initialize_table_select_group(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group *group,
+    const struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks
+);
 
-int mylite_select_group_append(mylite_stmt *stmt, struct mylite_table_select_group **groups,
-                               size_t *group_count, const struct mylite_table_select_row *row,
-                               const struct mylite_select_eval_callbacks *callbacks,
-                               struct mylite_table_select_group **out_group)
-{
+int mylite_select_group_append(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group **groups,
+    size_t *group_count,
+    const struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks,
+    struct mylite_table_select_group **out_group
+) {
     struct mylite_table_select_group *new_groups =
         realloc(*groups, (*group_count + 1U) * sizeof(**groups));
     int status = MYLITE_OK;
@@ -40,11 +46,14 @@ int mylite_select_group_append(mylite_stmt *stmt, struct mylite_table_select_gro
     return MYLITE_OK;
 }
 
-int mylite_select_group_find(mylite_stmt *stmt, struct mylite_table_select_group *groups,
-                             size_t group_count, const struct mylite_table_select_row *row,
-                             const struct mylite_select_eval_callbacks *callbacks,
-                             struct mylite_table_select_group **out_group)
-{
+int mylite_select_group_find(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group *groups,
+    size_t group_count,
+    const struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks,
+    struct mylite_table_select_group **out_group
+) {
     struct mylite_expression_value *values = NULL;
     size_t value_count = stmt->select_plan.group_key_count;
     int status = MYLITE_OK;
@@ -63,8 +72,13 @@ int mylite_select_group_find(mylite_stmt *stmt, struct mylite_table_select_group
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < value_count; ++index) {
-        status = mylite_select_eval_group_key(stmt, row, &stmt->select_plan.group_keys[index],
-                                              callbacks, &values[index]);
+        status = mylite_select_eval_group_key(
+            stmt,
+            row,
+            &stmt->select_plan.group_keys[index],
+            callbacks,
+            &values[index]
+        );
         if (status != MYLITE_OK) {
             goto cleanup;
         }
@@ -74,8 +88,10 @@ int mylite_select_group_find(mylite_stmt *stmt, struct mylite_table_select_group
         bool matches = groups[group_index].group_value_count == value_count;
 
         for (size_t value_index = 0U; matches && value_index < value_count; ++value_index) {
-            if (mylite_select_compare_values(&groups[group_index].group_values[value_index],
-                                             &values[value_index]) != 0) {
+            if (mylite_select_compare_values(
+                    &groups[group_index].group_values[value_index],
+                    &values[value_index]
+                ) != 0) {
                 matches = false;
             }
         }
@@ -93,14 +109,20 @@ cleanup:
     return status;
 }
 
-int mylite_select_group_update(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                               const struct mylite_table_select_row *row,
-                               const struct mylite_select_eval_callbacks *callbacks)
-{
+int mylite_select_group_update(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group *group,
+    const struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     for (size_t index = 0U; index < stmt->select_plan.aggregate_binding_count; ++index) {
         int status = mylite_select_update_aggregate_state(
-            stmt, &group->aggregate_states[index], &stmt->select_plan.aggregate_bindings[index],
-            row, callbacks);
+            stmt,
+            &group->aggregate_states[index],
+            &stmt->select_plan.aggregate_bindings[index],
+            row,
+            callbacks
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -109,9 +131,11 @@ int mylite_select_group_update(mylite_stmt *stmt, struct mylite_table_select_gro
     return MYLITE_OK;
 }
 
-int mylite_select_group_finalize(mylite_stmt *stmt, const struct mylite_table_select_group *group,
-                                 struct mylite_table_select_row *out_row)
-{
+int mylite_select_group_finalize(
+    mylite_stmt *stmt,
+    const struct mylite_table_select_group *group,
+    struct mylite_table_select_row *out_row
+) {
     size_t column_count = group->representative.value_count;
 
     out_row->values = calloc(column_count, sizeof(*out_row->values));
@@ -121,8 +145,10 @@ int mylite_select_group_finalize(mylite_stmt *stmt, const struct mylite_table_se
     }
     out_row->value_count = column_count;
     for (size_t index = 0U; index < column_count; ++index) {
-        if (mylite_expression_value_copy(&group->representative.values[index],
-                                         &out_row->values[index]) != 0) {
+        if (mylite_expression_value_copy(
+                &group->representative.values[index],
+                &out_row->values[index]
+            ) != 0) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
@@ -137,8 +163,11 @@ int mylite_select_group_finalize(mylite_stmt *stmt, const struct mylite_table_se
     out_row->aggregate_value_count = group->aggregate_state_count;
     for (size_t index = 0U; index < group->aggregate_state_count; ++index) {
         int status = mylite_select_finalize_aggregate_state(
-            stmt, &group->aggregate_states[index], &stmt->select_plan.aggregate_bindings[index],
-            &out_row->aggregate_values[index]);
+            stmt,
+            &group->aggregate_states[index],
+            &stmt->select_plan.aggregate_bindings[index],
+            &out_row->aggregate_values[index]
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -147,10 +176,11 @@ int mylite_select_group_finalize(mylite_stmt *stmt, const struct mylite_table_se
     return MYLITE_OK;
 }
 
-int mylite_select_group_append_empty_implicit(mylite_stmt *stmt,
-                                              struct mylite_table_select_group **groups,
-                                              size_t *group_count)
-{
+int mylite_select_group_append_empty_implicit(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group **groups,
+    size_t *group_count
+) {
     struct mylite_table_select_group *new_groups = calloc(1U, sizeof(*new_groups));
 
     if (new_groups == NULL) {
@@ -169,16 +199,14 @@ int mylite_select_group_append_empty_implicit(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-void mylite_select_groups_deinit(struct mylite_table_select_group *groups, size_t group_count)
-{
+void mylite_select_groups_deinit(struct mylite_table_select_group *groups, size_t group_count) {
     for (size_t index = 0U; index < group_count; ++index) {
         mylite_select_group_deinit(&groups[index]);
     }
     free(groups);
 }
 
-void mylite_select_group_deinit(struct mylite_table_select_group *group)
-{
+void mylite_select_group_deinit(struct mylite_table_select_group *group) {
     if (group == NULL) {
         return;
     }
@@ -195,10 +223,12 @@ void mylite_select_group_deinit(struct mylite_table_select_group *group)
     *group = (struct mylite_table_select_group){0};
 }
 
-static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                         const struct mylite_table_select_row *row,
-                                         const struct mylite_select_eval_callbacks *callbacks)
-{
+static int initialize_table_select_group(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group *group,
+    const struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     size_t column_count =
         row == NULL ? mylite_select_plan_column_count(&stmt->select_plan) : row->value_count;
 
@@ -212,8 +242,10 @@ static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_
     }
     if (row != NULL) {
         for (size_t index = 0U; index < column_count; ++index) {
-            if (mylite_expression_value_copy(&row->values[index],
-                                             &group->representative.values[index]) != 0) {
+            if (mylite_expression_value_copy(
+                    &row->values[index],
+                    &group->representative.values[index]
+                ) != 0) {
                 (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
                 return MYLITE_NOMEM;
             }
@@ -228,8 +260,13 @@ static int initialize_table_select_group(mylite_stmt *stmt, struct mylite_table_
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; index < group->group_value_count; ++index) {
-        int status = mylite_select_eval_group_key(stmt, row, &stmt->select_plan.group_keys[index],
-                                                  callbacks, &group->group_values[index]);
+        int status = mylite_select_eval_group_key(
+            stmt,
+            row,
+            &stmt->select_plan.group_keys[index],
+            callbacks,
+            &group->group_values[index]
+        );
 
         if (status != MYLITE_OK) {
             return status;

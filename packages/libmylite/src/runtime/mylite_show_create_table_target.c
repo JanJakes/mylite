@@ -7,10 +7,11 @@
 
 #include <stdlib.h>
 
-int mylite_show_create_table_copy_target(mylite_db *database,
-                                         const struct mylite_sql_ast_node *statement,
-                                         struct mylite_show_create_table_target *out_target)
-{
+int mylite_show_create_table_copy_target(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_show_create_table_target *out_target
+) {
     struct mylite_show_columns_target target = {0};
     int status = MYLITE_OK;
 
@@ -20,11 +21,14 @@ int mylite_show_create_table_copy_target(mylite_db *database,
             .table_name = mylite_ast_child_at(statement, 0U),
             .explicit_schema = NULL,
         },
-        &target);
+        &target
+    );
     if (status != MYLITE_OK) {
         if (status == MYLITE_UNSUPPORTED) {
             (void)mylite_diagnostics_set_error_message(
-                database, "SHOW CREATE TABLE names with more than two parts are not supported");
+                database,
+                "SHOW CREATE TABLE names with more than two parts are not supported"
+            );
         }
         return status;
     }
@@ -41,23 +45,25 @@ int mylite_show_create_table_copy_target(mylite_db *database,
     return status;
 }
 
-int mylite_show_create_table_validate_target(mylite_db *database,
-                                             struct mylite_show_create_table_target *target)
-{
+int mylite_show_create_table_validate_target(
+    mylite_db *database,
+    struct mylite_show_create_table_target *target
+) {
     struct mylite_show_columns_target columns_target = {
         .schema_name = target->schema_name,
         .table_name = target->table_name,
     };
     int status = mylite_show_validate_columns_target(
-        database, &columns_target,
-        "SHOW CREATE TABLE for information_schema tables is not supported");
+        database,
+        &columns_target,
+        "SHOW CREATE TABLE for information_schema tables is not supported"
+    );
 
     target->temporary = columns_target.temporary;
     return status;
 }
 
-void mylite_show_create_table_target_deinit(struct mylite_show_create_table_target *target)
-{
+void mylite_show_create_table_target_deinit(struct mylite_show_create_table_target *target) {
     if (target == NULL) {
         return;
     }

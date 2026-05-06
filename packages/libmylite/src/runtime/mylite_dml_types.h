@@ -254,14 +254,19 @@ struct mylite_update_rowset {
 };
 
 typedef int (*mylite_dml_eval_session_function_fn)(
-    void *user_data, const struct mylite_select_table *table,
+    void *user_data,
+    const struct mylite_select_table *table,
     const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
-typedef int (*mylite_dml_eval_subquery_fn)(void *user_data,
-                                           const struct mylite_sql_ast_node *subquery,
-                                           struct mylite_expression_warnings *warnings,
-                                           struct mylite_expression_value *out_value);
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+typedef int (*mylite_dml_eval_subquery_fn)(
+    void *user_data,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
 typedef int (*mylite_dml_set_where_predicate_eval_error_fn)(void *user_data);
 
 struct mylite_dml_expression_callbacks {

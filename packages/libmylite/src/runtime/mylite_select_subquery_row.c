@@ -11,46 +11,74 @@
 #include <stdlib.h>
 
 static int evaluate_row_subquery_expression_inner(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value,
-    const struct mylite_select_subquery_eval_callbacks *callbacks);
-static int evaluate_row_in_subquery_statement(mylite_stmt *stmt,
-                                              const struct mylite_sql_ast_node *expression,
-                                              mylite_stmt *subquery_stmt,
-                                              const struct mylite_row_expression_values *left,
-                                              struct mylite_expression_warnings *warnings,
-                                              struct mylite_expression_value *out_value);
-static int evaluate_row_scalar_subquery_statement(mylite_stmt *stmt,
-                                                  const struct mylite_sql_ast_node *expression,
-                                                  mylite_stmt *subquery_stmt,
-                                                  const struct mylite_row_expression_values *left,
-                                                  struct mylite_expression_value *out_value);
-static int
-prepare_row_subquery_statement(mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-                               size_t expected_width, mylite_stmt **out_subquery_stmt,
-                               size_t *out_order_key_count, bool *out_restore_order_keys,
-                               const struct mylite_select_subquery_eval_callbacks *callbacks);
-static int scan_row_in_subquery_statement(const struct mylite_row_in_subquery_scan_context *context,
-                                          struct mylite_row_in_subquery_scan_state *state);
-static int
-scan_row_in_subquery_statement_row(const struct mylite_row_in_subquery_scan_context *context,
-                                   struct mylite_row_in_subquery_scan_state *state);
-static int finish_row_in_subquery_expression(const struct mylite_sql_ast_node *expression,
-                                             bool has_row, bool matched, bool saw_unknown,
-                                             struct mylite_expression_value *out_value);
-static int
-evaluate_row_constructor_values(const struct mylite_sql_ast_node *row,
-                                const struct mylite_expression_eval_context *expression_context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_row_expression_values *out_values);
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+);
 
-int mylite_select_subquery_eval_row(mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-                                    const struct mylite_expression_eval_context *expression_context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value,
-                                    const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+static int evaluate_row_in_subquery_statement(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    mylite_stmt *subquery_stmt,
+    const struct mylite_row_expression_values *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_row_scalar_subquery_statement(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    mylite_stmt *subquery_stmt,
+    const struct mylite_row_expression_values *left,
+    struct mylite_expression_value *out_value
+);
+
+static int prepare_row_subquery_statement(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    size_t expected_width,
+    mylite_stmt **out_subquery_stmt,
+    size_t *out_order_key_count,
+    bool *out_restore_order_keys,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+);
+
+static int scan_row_in_subquery_statement(
+    const struct mylite_row_in_subquery_scan_context *context,
+    struct mylite_row_in_subquery_scan_state *state
+);
+
+static int scan_row_in_subquery_statement_row(
+    const struct mylite_row_in_subquery_scan_context *context,
+    struct mylite_row_in_subquery_scan_state *state
+);
+
+static int finish_row_in_subquery_expression(
+    const struct mylite_sql_ast_node *expression,
+    bool has_row,
+    bool matched,
+    bool saw_unknown,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_row_constructor_values(
+    const struct mylite_sql_ast_node *row,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_row_expression_values *out_values
+);
+
+int mylite_select_subquery_eval_row(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     struct mylite_expression_warnings saved_warnings = {0};
     struct mylite_expression_warnings subquery_warnings = {0};
     int status = MYLITE_UNSUPPORTED;
@@ -64,8 +92,14 @@ int mylite_select_subquery_eval_row(mylite_stmt *stmt, const struct mylite_sql_a
     saved_warnings = stmt->database->warnings;
     stmt->database->warnings = (struct mylite_expression_warnings){0};
 
-    status = evaluate_row_subquery_expression_inner(stmt, expression, expression_context, warnings,
-                                                    out_value, callbacks);
+    status = evaluate_row_subquery_expression_inner(
+        stmt,
+        expression,
+        expression_context,
+        warnings,
+        out_value,
+        callbacks
+    );
 
     subquery_warnings = stmt->database->warnings;
     stmt->database->warnings = saved_warnings;
@@ -79,11 +113,13 @@ int mylite_select_subquery_eval_row(mylite_stmt *stmt, const struct mylite_sql_a
 }
 
 static int evaluate_row_subquery_expression_inner(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value,
-    const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *left_expression =
         mylite_sql_ast_unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
     struct mylite_row_expression_values left = {0};
@@ -94,8 +130,10 @@ static int evaluate_row_subquery_expression_inner(
 
     if (mylite_select_subquery_quantified_comparison_has_row_left(expression) &&
         !mylite_select_subquery_quantified_comparison_is_row_alias(expression)) {
-        return mylite_select_subquery_set_row_quantified_non_alias_error(stmt->database,
-                                                                         expression);
+        return mylite_select_subquery_set_row_quantified_non_alias_error(
+            stmt->database,
+            expression
+        );
     }
 
     status = evaluate_row_constructor_values(left_expression, expression_context, warnings, &left);
@@ -103,19 +141,37 @@ static int evaluate_row_subquery_expression_inner(
         mylite_select_subquery_row_values_deinit(&left);
         return status;
     }
-    status = prepare_row_subquery_statement(stmt, expression, left.count, &subquery_stmt,
-                                            &order_key_count, &restore_order_keys, callbacks);
+    status = prepare_row_subquery_statement(
+        stmt,
+        expression,
+        left.count,
+        &subquery_stmt,
+        &order_key_count,
+        &restore_order_keys,
+        callbacks
+    );
     if (status != MYLITE_OK) {
         mylite_select_subquery_row_values_deinit(&left);
         return status;
     }
 
     if (mylite_select_subquery_row_expression_is_membership(expression)) {
-        status = evaluate_row_in_subquery_statement(stmt, expression, subquery_stmt, &left,
-                                                    warnings, out_value);
+        status = evaluate_row_in_subquery_statement(
+            stmt,
+            expression,
+            subquery_stmt,
+            &left,
+            warnings,
+            out_value
+        );
     } else {
-        status = evaluate_row_scalar_subquery_statement(stmt, expression, subquery_stmt, &left,
-                                                        out_value);
+        status = evaluate_row_scalar_subquery_statement(
+            stmt,
+            expression,
+            subquery_stmt,
+            &left,
+            out_value
+        );
     }
     if (restore_order_keys) {
         subquery_stmt->select_plan.order_key_count = order_key_count;
@@ -128,13 +184,14 @@ static int evaluate_row_subquery_expression_inner(
     return status;
 }
 
-static int evaluate_row_in_subquery_statement(mylite_stmt *stmt,
-                                              const struct mylite_sql_ast_node *expression,
-                                              mylite_stmt *subquery_stmt,
-                                              const struct mylite_row_expression_values *left,
-                                              struct mylite_expression_warnings *warnings,
-                                              struct mylite_expression_value *out_value)
-{
+static int evaluate_row_in_subquery_statement(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    mylite_stmt *subquery_stmt,
+    const struct mylite_row_expression_values *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_warnings comparison_warnings = {0};
     struct mylite_row_in_subquery_scan_state scan = {
         .has_row = false,
@@ -160,24 +217,32 @@ static int evaluate_row_in_subquery_statement(mylite_stmt *stmt,
         return MYLITE_NOMEM;
     }
     mylite_expression_warnings_deinit(&comparison_warnings);
-    return finish_row_in_subquery_expression(expression, scan.has_row, scan.matched,
-                                             scan.saw_unknown, out_value);
+    return finish_row_in_subquery_expression(
+        expression,
+        scan.has_row,
+        scan.matched,
+        scan.saw_unknown,
+        out_value
+    );
 }
 
-static int evaluate_row_scalar_subquery_statement(mylite_stmt *stmt,
-                                                  const struct mylite_sql_ast_node *expression,
-                                                  mylite_stmt *subquery_stmt,
-                                                  const struct mylite_row_expression_values *left,
-                                                  struct mylite_expression_value *out_value)
-{
+static int evaluate_row_scalar_subquery_statement(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    mylite_stmt *subquery_stmt,
+    const struct mylite_row_expression_values *left,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_row_expression_values right = {0};
     int truth = -1;
     int status = mylite_step(subquery_stmt);
 
     if (status == MYLITE_DONE) {
         if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = 0};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = 0
+            };
         } else {
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         }
@@ -208,18 +273,23 @@ static int evaluate_row_scalar_subquery_statement(mylite_stmt *stmt,
     if (truth < 0) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
     } else {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = truth};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = truth
+        };
     }
     return MYLITE_OK;
 }
 
-static int
-prepare_row_subquery_statement(mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-                               size_t expected_width, mylite_stmt **out_subquery_stmt,
-                               size_t *out_order_key_count, bool *out_restore_order_keys,
-                               const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+static int prepare_row_subquery_statement(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    size_t expected_width,
+    mylite_stmt **out_subquery_stmt,
+    size_t *out_order_key_count,
+    bool *out_restore_order_keys,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_statement =
         mylite_select_subquery_row_select_statement(expression);
     mylite_stmt *subquery_stmt = NULL;
@@ -236,8 +306,11 @@ prepare_row_subquery_statement(mylite_stmt *stmt, const struct mylite_sql_ast_no
         return mylite_select_subquery_set_in_limit_error(stmt->database);
     }
 
-    status = mylite_select_subquery_validate_row_select_columns(stmt->database, select_statement,
-                                                                expected_width);
+    status = mylite_select_subquery_validate_row_select_columns(
+        stmt->database,
+        select_statement,
+        expected_width
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -249,8 +322,11 @@ prepare_row_subquery_statement(mylite_stmt *stmt, const struct mylite_sql_ast_no
     if (subquery_stmt == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    status = mylite_select_subquery_validate_row_prepared_columns(stmt->database, subquery_stmt,
-                                                                  expected_width);
+    status = mylite_select_subquery_validate_row_prepared_columns(
+        stmt->database,
+        subquery_stmt,
+        expected_width
+    );
     if (status != MYLITE_OK) {
         mylite_finalize(subquery_stmt);
         return status;
@@ -266,9 +342,10 @@ prepare_row_subquery_statement(mylite_stmt *stmt, const struct mylite_sql_ast_no
     return MYLITE_OK;
 }
 
-static int scan_row_in_subquery_statement(const struct mylite_row_in_subquery_scan_context *context,
-                                          struct mylite_row_in_subquery_scan_state *state)
-{
+static int scan_row_in_subquery_statement(
+    const struct mylite_row_in_subquery_scan_context *context,
+    struct mylite_row_in_subquery_scan_state *state
+) {
     for (;;) {
         int status = mylite_step(context->subquery_stmt);
 
@@ -287,24 +364,34 @@ static int scan_row_in_subquery_statement(const struct mylite_row_in_subquery_sc
     }
 }
 
-static int
-scan_row_in_subquery_statement_row(const struct mylite_row_in_subquery_scan_context *context,
-                                   struct mylite_row_in_subquery_scan_state *state)
-{
+static int scan_row_in_subquery_statement_row(
+    const struct mylite_row_in_subquery_scan_context *context,
+    struct mylite_row_in_subquery_scan_state *state
+) {
     struct mylite_row_expression_values right = {0};
     int truth = -1;
-    int status = mylite_select_subquery_copy_row_values(context->subquery_stmt,
-                                                        context->left->count, &right);
+    int status = mylite_select_subquery_copy_row_values(
+        context->subquery_stmt,
+        context->left->count,
+        &right
+    );
 
     if (status == MYLITE_OK) {
-        status = mylite_select_compare_row_values(MYLITE_SQL_AST_OPERATOR_EQUAL, context->left,
-                                                  &right, context->warnings, &truth);
+        status = mylite_select_compare_row_values(
+            MYLITE_SQL_AST_OPERATOR_EQUAL,
+            context->left,
+            &right,
+            context->warnings,
+            &truth
+        );
     }
     mylite_select_subquery_row_values_deinit(&right);
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(context->outer_stmt->database,
-                                                       "out of memory");
+            (void)mylite_diagnostics_set_error_message(
+                context->outer_stmt->database,
+                "out of memory"
+            );
         }
         return status;
     }
@@ -316,10 +403,13 @@ scan_row_in_subquery_statement_row(const struct mylite_row_in_subquery_scan_cont
     return MYLITE_OK;
 }
 
-static int finish_row_in_subquery_expression(const struct mylite_sql_ast_node *expression,
-                                             bool has_row, bool matched, bool saw_unknown,
-                                             struct mylite_expression_value *out_value)
-{
+static int finish_row_in_subquery_expression(
+    const struct mylite_sql_ast_node *expression,
+    bool has_row,
+    bool matched,
+    bool saw_unknown,
+    struct mylite_expression_value *out_value
+) {
     bool positive = mylite_select_subquery_row_expression_is_positive_membership(expression);
     int64_t matched_value = 0;
     int64_t unmatched_value = 1;
@@ -354,12 +444,12 @@ static int finish_row_in_subquery_expression(const struct mylite_sql_ast_node *e
     return MYLITE_OK;
 }
 
-static int
-evaluate_row_constructor_values(const struct mylite_sql_ast_node *row,
-                                const struct mylite_expression_eval_context *expression_context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_row_expression_values *out_values)
-{
+static int evaluate_row_constructor_values(
+    const struct mylite_sql_ast_node *row,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_row_expression_values *out_values
+) {
     size_t width = mylite_select_subquery_row_constructor_width(row);
     size_t index = 0U;
 
@@ -374,8 +464,12 @@ evaluate_row_constructor_values(const struct mylite_sql_ast_node *row,
     out_values->count = width;
     for (const struct mylite_sql_ast_node *child = row->first_child; child != NULL;
          child = child->next_sibling, ++index) {
-        int status = mylite_expression_eval_with_context(child, expression_context, warnings,
-                                                         &out_values->items[index]);
+        int status = mylite_expression_eval_with_context(
+            child,
+            expression_context,
+            warnings,
+            &out_values->items[index]
+        );
 
         if (status != 0) {
             return status > 0 ? status : MYLITE_UNSUPPORTED;

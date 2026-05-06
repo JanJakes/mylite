@@ -22,8 +22,10 @@ enum mylite_information_schema_table {
     MYLITE_INFORMATION_SCHEMA_REFERENTIAL_CONSTRAINTS = 13,
 };
 
-int mylite_information_schema_table_from_select(const struct mylite_sql_ast_node *statement,
-                                                enum mylite_information_schema_table *out_table);
+int mylite_information_schema_table_from_select(
+    const struct mylite_sql_ast_node *statement,
+    enum mylite_information_schema_table *out_table
+);
 enum mylite_information_schema_table mylite_information_schema_table_from_name(const char *name);
 
 #endif

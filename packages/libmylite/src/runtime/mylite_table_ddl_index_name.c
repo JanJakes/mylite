@@ -8,14 +8,22 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int assign_generated_index_name(mylite_db *database, struct mylite_create_table_plan *plan,
-                                       size_t index);
-static bool create_table_index_name_exists(const struct mylite_create_table_plan *plan,
-                                           const char *name, size_t before_index);
+static int assign_generated_index_name(
+    mylite_db *database,
+    struct mylite_create_table_plan *plan,
+    size_t index
+);
 
-int mylite_table_ddl_assign_generated_index_names(mylite_db *database,
-                                                  struct mylite_create_table_plan *plan)
-{
+static bool create_table_index_name_exists(
+    const struct mylite_create_table_plan *plan,
+    const char *name,
+    size_t before_index
+);
+
+int mylite_table_ddl_assign_generated_index_names(
+    mylite_db *database,
+    struct mylite_create_table_plan *plan
+) {
     if (database == NULL || plan == NULL) {
         return MYLITE_MISUSE;
     }
@@ -29,9 +37,11 @@ int mylite_table_ddl_assign_generated_index_names(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int assign_generated_index_name(mylite_db *database, struct mylite_create_table_plan *plan,
-                                       size_t index)
-{
+static int assign_generated_index_name(
+    mylite_db *database,
+    struct mylite_create_table_plan *plan,
+    size_t index
+) {
     struct mylite_create_table_index *table_index = &plan->indexes[index];
     const char *base = NULL;
     unsigned int suffix = 1U;
@@ -61,9 +71,9 @@ static int assign_generated_index_name(mylite_db *database, struct mylite_create
     }
 }
 
-char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned int suffix)
-{
+char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned int suffix) {
     enum { suffix_buffer_size = 32 };
+
     char suffix_buffer[suffix_buffer_size];
     size_t candidate_length = strlen(base);
     char *candidate = NULL;
@@ -86,9 +96,11 @@ char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned
     return candidate;
 }
 
-static bool create_table_index_name_exists(const struct mylite_create_table_plan *plan,
-                                           const char *name, size_t before_index)
-{
+static bool create_table_index_name_exists(
+    const struct mylite_create_table_plan *plan,
+    const char *name,
+    size_t before_index
+) {
     for (size_t index = 0U; index < before_index; ++index) {
         if (plan->indexes[index].name != NULL &&
             mylite_ascii_case_equal(plan->indexes[index].name, name)) {

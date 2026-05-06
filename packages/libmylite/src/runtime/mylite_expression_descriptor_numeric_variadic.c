@@ -11,57 +11,99 @@
 #include <stdint.h>
 
 static int infer_round_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    bool result_nullable, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_numeric_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_numeric_callbacks *callbacks
+);
+
 static int infer_truncate_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    bool result_nullable, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_numeric_callbacks *callbacks);
-static bool
-round_function_argument_is_approximate_literal(const struct mylite_sql_ast_node *argument);
-static bool round_function_constant_scale(const struct mylite_sql_ast_node *argument,
-                                          int *out_scale);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_numeric_callbacks *callbacks
+);
+
+static bool round_function_argument_is_approximate_literal(
+    const struct mylite_sql_ast_node *argument
+);
+
+static bool round_function_constant_scale(
+    const struct mylite_sql_ast_node *argument,
+    int *out_scale
+);
+
 static int round_function_descriptor_scale(int scale);
-static void
-truncate_decimal_descriptor_for_constant_scale(struct mylite_field_descriptor *descriptor,
-                                               const struct mylite_field_descriptor *source,
-                                               int scale);
+
+static void truncate_decimal_descriptor_for_constant_scale(
+    struct mylite_field_descriptor *descriptor,
+    const struct mylite_field_descriptor *source,
+    int scale
+);
 
 int mylite_expression_descriptor_infer_numeric_variadic_function(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    bool result_nullable, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_numeric_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_numeric_callbacks *callbacks
+) {
     int status = MYLITE_OK;
 
     if (callbacks == NULL || callbacks->infer_expression_descriptor == NULL) {
         return MYLITE_MISUSE;
     }
 
-    status = infer_round_function_descriptor(database, plan, expression, value, result_nullable,
-                                             out_descriptor, callbacks);
+    status = infer_round_function_descriptor(
+        database,
+        plan,
+        expression,
+        value,
+        result_nullable,
+        out_descriptor,
+        callbacks
+    );
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
-    status = mylite_expression_descriptor_infer_format_function(database, plan, expression,
-                                                                out_descriptor, callbacks);
+    status = mylite_expression_descriptor_infer_format_function(
+        database,
+        plan,
+        expression,
+        out_descriptor,
+        callbacks
+    );
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
-    return infer_truncate_function_descriptor(database, plan, expression, value, result_nullable,
-                                              out_descriptor, callbacks);
+    return infer_truncate_function_descriptor(
+        database,
+        plan,
+        expression,
+        value,
+        result_nullable,
+        out_descriptor,
+        callbacks
+    );
 }
 
 static int infer_round_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    bool result_nullable, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_numeric_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_numeric_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *value_argument = mylite_ast_child_at(arguments, 0U);
@@ -73,8 +115,9 @@ static int infer_round_function_descriptor(
     if (name == NULL || !mylite_span_equal_ci(name->span, "ROUND")) {
         return MYLITE_UNSUPPORTED;
     }
-    status = callbacks->infer_expression_descriptor(database, plan, value_argument, NULL,
-                                                    &value_descriptor);
+    status =
+        callbacks
+            ->infer_expression_descriptor(database, plan, value_argument, NULL, &value_descriptor);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -128,11 +171,14 @@ static int infer_round_function_descriptor(
 }
 
 static int infer_truncate_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
-    bool result_nullable, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_numeric_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_numeric_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *value_argument = mylite_ast_child_at(arguments, 0U);
@@ -144,8 +190,9 @@ static int infer_truncate_function_descriptor(
     if (name == NULL || !mylite_span_equal_ci(name->span, "TRUNCATE")) {
         return MYLITE_UNSUPPORTED;
     }
-    status = callbacks->infer_expression_descriptor(database, plan, value_argument, NULL,
-                                                    &value_descriptor);
+    status =
+        callbacks
+            ->infer_expression_descriptor(database, plan, value_argument, NULL, &value_descriptor);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -159,8 +206,11 @@ static int infer_truncate_function_descriptor(
         *out_descriptor = value_descriptor;
         out_descriptor->flags |= MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM;
         if (round_function_constant_scale(scale_argument, &scale)) {
-            truncate_decimal_descriptor_for_constant_scale(out_descriptor, &value_descriptor,
-                                                           scale);
+            truncate_decimal_descriptor_for_constant_scale(
+                out_descriptor,
+                &value_descriptor,
+                scale
+            );
         }
         mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
         return MYLITE_OK;
@@ -190,9 +240,9 @@ static int infer_truncate_function_descriptor(
     return MYLITE_OK;
 }
 
-static bool
-round_function_argument_is_approximate_literal(const struct mylite_sql_ast_node *argument)
-{
+static bool round_function_argument_is_approximate_literal(
+    const struct mylite_sql_ast_node *argument
+) {
     argument = mylite_sql_ast_unwrap_parenthesized_expression(argument);
     if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
         (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
@@ -209,9 +259,10 @@ round_function_argument_is_approximate_literal(const struct mylite_sql_ast_node 
     return true;
 }
 
-static bool round_function_constant_scale(const struct mylite_sql_ast_node *argument,
-                                          int *out_scale)
-{
+static bool round_function_constant_scale(
+    const struct mylite_sql_ast_node *argument,
+    int *out_scale
+) {
     bool negative = false;
     int64_t scale = 0;
 
@@ -238,6 +289,7 @@ static bool round_function_constant_scale(const struct mylite_sql_ast_node *argu
         argument->literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
         return false;
     }
+
     enum { decimal_base = 10 };
 
     for (size_t index = 0U; index < argument->span.length; ++index) {
@@ -265,8 +317,7 @@ static bool round_function_constant_scale(const struct mylite_sql_ast_node *argu
     return true;
 }
 
-static int round_function_descriptor_scale(int scale)
-{
+static int round_function_descriptor_scale(int scale) {
     enum { round_scale_limit = 30 };
 
     if (scale > round_scale_limit) {
@@ -278,11 +329,11 @@ static int round_function_descriptor_scale(int scale)
     return scale;
 }
 
-static void
-truncate_decimal_descriptor_for_constant_scale(struct mylite_field_descriptor *descriptor,
-                                               const struct mylite_field_descriptor *source,
-                                               int scale)
-{
+static void truncate_decimal_descriptor_for_constant_scale(
+    struct mylite_field_descriptor *descriptor,
+    const struct mylite_field_descriptor *source,
+    int scale
+) {
     int truncated_scale = round_function_descriptor_scale(scale);
     uint64_t remove_length = 0U;
 

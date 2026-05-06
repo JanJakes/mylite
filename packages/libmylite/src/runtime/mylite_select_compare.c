@@ -6,14 +6,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int compare_select_text_values(const char *left, size_t left_length, const char *right,
-                                      size_t right_length);
+static int compare_select_text_values(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length
+);
+
 static size_t expression_value_text_length(const struct mylite_expression_value *value);
+
 static size_t nullable_text_length(const char *text);
 
-int mylite_select_compare_values(const struct mylite_expression_value *left,
-                                 const struct mylite_expression_value *right)
-{
+int mylite_select_compare_values(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right
+) {
     bool left_null = left->kind == MYLITE_EXPRESSION_VALUE_NULL;
     bool right_null = right->kind == MYLITE_EXPRESSION_VALUE_NULL;
 
@@ -27,8 +34,12 @@ int mylite_select_compare_values(const struct mylite_expression_value *left,
         return 1;
     }
     if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT && right->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return compare_select_text_values(left->text_value, expression_value_text_length(left),
-                                          right->text_value, expression_value_text_length(right));
+        return compare_select_text_values(
+            left->text_value,
+            expression_value_text_length(left),
+            right->text_value,
+            expression_value_text_length(right)
+        );
     }
     if (left->kind == MYLITE_EXPRESSION_VALUE_REAL || right->kind == MYLITE_EXPRESSION_VALUE_REAL) {
         double left_value = left->kind == MYLITE_EXPRESSION_VALUE_REAL
@@ -54,8 +65,12 @@ int mylite_select_compare_values(const struct mylite_expression_value *left,
     if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT || right->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         char *left_text = mylite_expression_value_to_text(left);
         char *right_text = mylite_expression_value_to_text(right);
-        int comparison = compare_select_text_values(left_text, nullable_text_length(left_text),
-                                                    right_text, nullable_text_length(right_text));
+        int comparison = compare_select_text_values(
+            left_text,
+            nullable_text_length(left_text),
+            right_text,
+            nullable_text_length(right_text)
+        );
 
         free(left_text);
         free(right_text);
@@ -64,9 +79,12 @@ int mylite_select_compare_values(const struct mylite_expression_value *left,
     return (left->int64_value > right->int64_value) - (left->int64_value < right->int64_value);
 }
 
-int mylite_select_compare_binary_text_values(const char *left, size_t left_length,
-                                             const char *right, size_t right_length)
-{
+int mylite_select_compare_binary_text_values(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length
+) {
     size_t compare_length = 0U;
     int comparison = 0;
 
@@ -86,9 +104,12 @@ int mylite_select_compare_binary_text_values(const char *left, size_t left_lengt
     return (comparison > 0) - (comparison < 0);
 }
 
-static int compare_select_text_values(const char *left, size_t left_length, const char *right,
-                                      size_t right_length)
-{
+static int compare_select_text_values(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length
+) {
     size_t index = 0U;
     size_t compare_length = 0U;
 
@@ -119,15 +140,13 @@ static int compare_select_text_values(const char *left, size_t left_length, cons
     return (left_length > right_length) - (left_length < right_length);
 }
 
-static size_t expression_value_text_length(const struct mylite_expression_value *value)
-{
+static size_t expression_value_text_length(const struct mylite_expression_value *value) {
     if (value == NULL || value->text_value == NULL) {
         return 0U;
     }
     return value->text_length;
 }
 
-static size_t nullable_text_length(const char *text)
-{
+static size_t nullable_text_length(const char *text) {
     return text == NULL ? 0U : strlen(text);
 }

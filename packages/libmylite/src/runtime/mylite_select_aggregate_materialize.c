@@ -14,14 +14,17 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
-                                              struct mylite_table_select_group **groups,
-                                              size_t *group_count,
-                                              const struct mylite_select_eval_callbacks *callbacks);
+static int scan_aggregate_table_select_groups(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group **groups,
+    size_t *group_count,
+    const struct mylite_select_eval_callbacks *callbacks
+);
 
 int mylite_select_materialize_aggregate_table_result(
-    mylite_stmt *stmt, const struct mylite_select_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     struct mylite_table_select_group *groups = NULL;
     size_t group_count = 0U;
     int status = scan_aggregate_table_select_groups(stmt, &groups, &group_count, callbacks);
@@ -34,8 +37,11 @@ int mylite_select_materialize_aggregate_table_result(
             mylite_select_materialize_append_finalized_groups(stmt, groups, group_count, callbacks);
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
-        status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
-                                                &stmt->select_plan);
+        status = mylite_select_result_sort_rows(
+            stmt->database,
+            &stmt->select_result,
+            &stmt->select_plan
+        );
     }
     if (status == MYLITE_OK) {
         stmt->found_rows = stmt->select_result.row_count;
@@ -46,11 +52,12 @@ int mylite_select_materialize_aggregate_table_result(
     return status;
 }
 
-static int scan_aggregate_table_select_groups(mylite_stmt *stmt,
-                                              struct mylite_table_select_group **groups,
-                                              size_t *group_count,
-                                              const struct mylite_select_eval_callbacks *callbacks)
-{
+static int scan_aggregate_table_select_groups(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group **groups,
+    size_t *group_count,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     int status = mylite_select_eval_constant_predicate(stmt, callbacks);
     int rc = SQLITE_OK;
 

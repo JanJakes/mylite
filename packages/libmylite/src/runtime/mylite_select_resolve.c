@@ -10,22 +10,43 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
-                                                     const struct mylite_select_plan *plan,
-                                                     char **parts, size_t part_count,
-                                                     const char *clause_context, size_t first_table,
-                                                     size_t table_count, size_t *out_index);
-static bool select_plan_table_qualifier_matches(const struct mylite_select_table *table,
-                                                char **parts, size_t part_count);
-static int set_select_unknown_column_parts_error(mylite_db *database, char **parts,
-                                                 size_t part_count, const char *clause_context);
-static int set_select_unknown_column_in_clause_error(mylite_db *database, const char *reference,
-                                                     const char *clause_context);
+static int resolve_select_plan_column_parts_in_scope(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    const char *clause_context,
+    size_t first_table,
+    size_t table_count,
+    size_t *out_index
+);
 
-int mylite_select_resolve_plan_wildcard(mylite_db *database, const struct mylite_select_plan *plan,
-                                        const struct mylite_sql_ast_node *wildcard,
-                                        size_t *out_table_index, bool *out_all)
-{
+static bool select_plan_table_qualifier_matches(
+    const struct mylite_select_table *table,
+    char **parts,
+    size_t part_count
+);
+
+static int set_select_unknown_column_parts_error(
+    mylite_db *database,
+    char **parts,
+    size_t part_count,
+    const char *clause_context
+);
+
+static int set_select_unknown_column_in_clause_error(
+    mylite_db *database,
+    const char *reference,
+    const char *clause_context
+);
+
+int mylite_select_resolve_plan_wildcard(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *wildcard,
+    size_t *out_table_index,
+    bool *out_all
+) {
     const struct mylite_sql_ast_node *first = mylite_ast_child_at(wildcard, 0U);
     const struct mylite_sql_ast_node *second = mylite_ast_child_at(wildcard, 1U);
     char *first_name = NULL;
@@ -63,8 +84,10 @@ int mylite_select_resolve_plan_wildcard(mylite_db *database, const struct mylite
                 *out_table_index = index;
                 break;
             }
-        } else if (table->alias == NULL && strcmp(first_name, table->schema_name) == 0 &&
-                   strcmp(second_name, table->table_name) == 0) {
+        } else if (
+            table->alias == NULL && strcmp(first_name, table->schema_name) == 0 &&
+            strcmp(second_name, table->table_name) == 0
+        ) {
             *out_table_index = index;
             break;
         }
@@ -75,21 +98,33 @@ int mylite_select_resolve_plan_wildcard(mylite_db *database, const struct mylite
     return MYLITE_OK;
 }
 
-int mylite_select_resolve_plan_column_reference(mylite_db *database,
-                                                const struct mylite_select_plan *plan,
-                                                const struct mylite_sql_ast_node *expression,
-                                                const char *clause_context, size_t *out_index)
-{
+int mylite_select_resolve_plan_column_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const char *clause_context,
+    size_t *out_index
+) {
     return mylite_select_resolve_plan_column_reference_in_scope(
-        database, plan, expression, clause_context, 0U, mylite_select_plan_table_count(plan),
-        out_index);
+        database,
+        plan,
+        expression,
+        clause_context,
+        0U,
+        mylite_select_plan_table_count(plan),
+        out_index
+    );
 }
 
 int mylite_select_resolve_plan_column_reference_in_scope(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const char *clause_context, size_t first_table,
-    size_t table_count, size_t *out_index)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const char *clause_context,
+    size_t first_table,
+    size_t table_count,
+    size_t *out_index
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     int status = mylite_copy_identifier_parts(expression, parts, &part_count);
@@ -97,7 +132,15 @@ int mylite_select_resolve_plan_column_reference_in_scope(
     *out_index = mylite_select_plan_column_count(plan);
     if (status == MYLITE_OK) {
         status = resolve_select_plan_column_parts_in_scope(
-            database, plan, parts, part_count, clause_context, first_table, table_count, out_index);
+            database,
+            plan,
+            parts,
+            part_count,
+            clause_context,
+            first_table,
+            table_count,
+            out_index
+        );
     }
     for (size_t index = 0U; index < part_count && index < 3U; ++index) {
         free(parts[index]);
@@ -105,21 +148,34 @@ int mylite_select_resolve_plan_column_reference_in_scope(
     return status;
 }
 
-int mylite_select_resolve_plan_column_parts(mylite_db *database,
-                                            const struct mylite_select_plan *plan, char **parts,
-                                            size_t part_count, const char *clause_context,
-                                            size_t *out_index)
-{
+int mylite_select_resolve_plan_column_parts(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    const char *clause_context,
+    size_t *out_index
+) {
     return resolve_select_plan_column_parts_in_scope(
-        database, plan, parts, part_count, clause_context, 0U, mylite_select_plan_table_count(plan),
-        out_index);
+        database,
+        plan,
+        parts,
+        part_count,
+        clause_context,
+        0U,
+        mylite_select_plan_table_count(plan),
+        out_index
+    );
 }
 
-size_t mylite_select_count_plan_column_parts_matches(const struct mylite_select_plan *plan,
-                                                     char **parts, size_t part_count,
-                                                     size_t first_table, size_t table_count,
-                                                     size_t *match_index)
-{
+size_t mylite_select_count_plan_column_parts_matches(
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    size_t first_table,
+    size_t table_count,
+    size_t *match_index
+) {
     size_t plan_table_count = mylite_select_plan_table_count(plan);
     size_t last_table = first_table + table_count;
     struct mylite_select_table_range range = {
@@ -143,8 +199,12 @@ size_t mylite_select_count_plan_column_parts_matches(const struct mylite_select_
         size_t column_index = mylite_select_plan_column_count(plan);
 
         if (!select_plan_table_qualifier_matches(table, parts, part_count) ||
-            mylite_select_resolve_column_in_table(plan, table, parts[part_count - 1U],
-                                                  &column_index) != MYLITE_OK) {
+            mylite_select_resolve_column_in_table(
+                plan,
+                table,
+                parts[part_count - 1U],
+                &column_index
+            ) != MYLITE_OK) {
             continue;
         }
         if (part_count == 1U &&
@@ -157,8 +217,7 @@ size_t mylite_select_count_plan_column_parts_matches(const struct mylite_select_
     return match_count;
 }
 
-char *mylite_select_copy_wildcard_qualifier_name(const struct mylite_sql_ast_node *wildcard)
-{
+char *mylite_select_copy_wildcard_qualifier_name(const struct mylite_sql_ast_node *wildcard) {
     const struct mylite_sql_ast_node *first = mylite_ast_child_at(wildcard, 0U);
     const struct mylite_sql_ast_node *second = mylite_ast_child_at(wildcard, 1U);
     char *first_name = NULL;
@@ -198,33 +257,42 @@ char *mylite_select_copy_wildcard_qualifier_name(const struct mylite_sql_ast_nod
     return name;
 }
 
-int mylite_select_set_unknown_table_error(mylite_db *database, const char *table_name)
-{
+int mylite_select_set_unknown_table_error(mylite_db *database, const char *table_name) {
     int status =
         mylite_diagnostics_set_error_message_parts(database, "Unknown table '", table_name, "'");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-int mylite_select_set_unknown_where_column_error(mylite_db *database, const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '",
-                                                            column_name, "' in 'where clause'");
+int mylite_select_set_unknown_where_column_error(mylite_db *database, const char *column_name) {
+    int status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Unknown column '",
+        column_name,
+        "' in 'where clause'"
+    );
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                             mylite_error_message(database));
+    status = mylite_diagnostics_append_error(
+        database,
+        MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+        mylite_error_message(database)
+    );
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
-                                                     const struct mylite_select_plan *plan,
-                                                     char **parts, size_t part_count,
-                                                     const char *clause_context, size_t first_table,
-                                                     size_t table_count, size_t *out_index)
-{
+static int resolve_select_plan_column_parts_in_scope(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    const char *clause_context,
+    size_t first_table,
+    size_t table_count,
+    size_t *out_index
+) {
     size_t plan_table_count = mylite_select_plan_table_count(plan);
     size_t match_count = 0U;
     size_t match_index = mylite_select_plan_column_count(plan);
@@ -237,22 +305,33 @@ static int resolve_select_plan_column_parts_in_scope(mylite_db *database,
     }
 
     match_count = mylite_select_count_plan_column_parts_matches(
-        plan, parts, part_count, first_table, table_count, &match_index);
+        plan,
+        parts,
+        part_count,
+        first_table,
+        table_count,
+        &match_index
+    );
     if (match_count == 1U) {
         *out_index = match_index;
         return MYLITE_OK;
     }
     if (match_count > 1U) {
-        return mylite_select_set_ambiguous_column_error(database, parts[part_count - 1U],
-                                                        clause_context);
+        return mylite_select_set_ambiguous_column_error(
+            database,
+            parts[part_count - 1U],
+            clause_context
+        );
     }
 
     return set_select_unknown_column_parts_error(database, parts, part_count, clause_context);
 }
 
-static bool select_plan_table_qualifier_matches(const struct mylite_select_table *table,
-                                                char **parts, size_t part_count)
-{
+static bool select_plan_table_qualifier_matches(
+    const struct mylite_select_table *table,
+    char **parts,
+    size_t part_count
+) {
     if (table == NULL) {
         return false;
     }
@@ -273,9 +352,12 @@ static bool select_plan_table_qualifier_matches(const struct mylite_select_table
     return false;
 }
 
-static int set_select_unknown_column_parts_error(mylite_db *database, char **parts,
-                                                 size_t part_count, const char *clause_context)
-{
+static int set_select_unknown_column_parts_error(
+    mylite_db *database,
+    char **parts,
+    size_t part_count,
+    const char *clause_context
+) {
     char *reference = NULL;
     sqlite3_str *text = sqlite3_str_new(database->sqlite);
     int status = MYLITE_OK;
@@ -300,9 +382,11 @@ static int set_select_unknown_column_parts_error(mylite_db *database, char **par
     return status;
 }
 
-static int set_select_unknown_column_in_clause_error(mylite_db *database, const char *reference,
-                                                     const char *clause_context)
-{
+static int set_select_unknown_column_in_clause_error(
+    mylite_db *database,
+    const char *reference,
+    const char *clause_context
+) {
     char *message = NULL;
     int status = MYLITE_OK;
 
@@ -312,8 +396,11 @@ static int set_select_unknown_column_in_clause_error(mylite_db *database, const 
     if (clause_context != NULL && strcmp(clause_context, "order clause") == 0) {
         return mylite_select_set_unknown_order_column_error(database, reference);
     }
-    message = sqlite3_mprintf("Unknown column '%q' in '%q'", reference,
-                              clause_context == NULL ? "field list" : clause_context);
+    message = sqlite3_mprintf(
+        "Unknown column '%q' in '%q'",
+        reference,
+        clause_context == NULL ? "field list" : clause_context
+    );
     if (message == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;

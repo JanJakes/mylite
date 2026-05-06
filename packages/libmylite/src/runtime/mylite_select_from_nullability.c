@@ -3,11 +3,12 @@
 #include "mylite_field_descriptor.h"
 #include "mylite_select.h"
 
-static void mark_select_range_nullable(struct mylite_select_plan *plan,
-                                       struct mylite_select_table_range range);
+static void mark_select_range_nullable(
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range range
+);
 
-void mylite_select_from_apply_outer_join_nullability(struct mylite_select_plan *plan)
-{
+void mylite_select_from_apply_outer_join_nullability(struct mylite_select_plan *plan) {
     for (size_t index = 0U; index < plan->join_step_count; ++index) {
         const struct mylite_select_join_step *step = &plan->join_steps[index];
 
@@ -19,9 +20,10 @@ void mylite_select_from_apply_outer_join_nullability(struct mylite_select_plan *
     }
 }
 
-static void mark_select_range_nullable(struct mylite_select_plan *plan,
-                                       struct mylite_select_table_range range)
-{
+static void mark_select_range_nullable(
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range range
+) {
     size_t last_table = range.first_table + range.table_count;
 
     for (size_t table_index = range.first_table; table_index < last_table; ++table_index) {

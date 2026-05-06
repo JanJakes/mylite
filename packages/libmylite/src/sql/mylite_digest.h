@@ -15,7 +15,12 @@ enum {
 
 void mylite_digest_md5_hex(const unsigned char *data, size_t length, char *out_hex);
 void mylite_digest_sha1_hex(const unsigned char *data, size_t length, char *out_hex);
-bool mylite_digest_sha2_hex(const unsigned char *data, size_t length, unsigned int bits,
-                            char *out_hex, size_t *out_length);
+bool mylite_digest_sha2_hex(
+    const unsigned char *data,
+    size_t length,
+    unsigned int bits,
+    char *out_hex,
+    size_t *out_length
+);
 
 #endif

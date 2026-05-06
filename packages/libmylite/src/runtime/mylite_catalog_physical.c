@@ -5,10 +5,10 @@
 #include <string.h>
 
 static bool hex_encoded_text_length(size_t text_length, size_t *out_length);
+
 static char *append_hex_encoded_text(char *target, const char *source);
 
-char *mylite_catalog_physical_table_name(const char *schema_name, const char *table_name)
-{
+char *mylite_catalog_physical_table_name(const char *schema_name, const char *table_name) {
     static const char prefix[] = "__mylite_user_";
     static const char separator[] = "__";
     size_t prefix_length = sizeof(prefix) - 1U;
@@ -57,8 +57,7 @@ char *mylite_catalog_physical_table_name(const char *schema_name, const char *ta
     return output;
 }
 
-static bool hex_encoded_text_length(size_t text_length, size_t *out_length)
-{
+static bool hex_encoded_text_length(size_t text_length, size_t *out_length) {
     enum {
         hex_encoded_byte_width = 2U,
     };
@@ -70,9 +69,9 @@ static bool hex_encoded_text_length(size_t text_length, size_t *out_length)
     return true;
 }
 
-static char *append_hex_encoded_text(char *target, const char *source)
-{
+static char *append_hex_encoded_text(char *target, const char *source) {
     static const char hex_digits[] = "0123456789ABCDEF";
+
     enum {
         hex_digit_high_index = 0U,
         hex_digit_low_index = 1U,

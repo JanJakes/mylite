@@ -717,75 +717,131 @@ struct mylite_sql_ast {
 void mylite_sql_ast_init(struct mylite_sql_ast *ast);
 void mylite_sql_ast_deinit(struct mylite_sql_ast *ast);
 
-struct mylite_sql_ast_node *mylite_sql_ast_new_node(struct mylite_sql_ast *ast,
-                                                    enum mylite_sql_ast_node_kind kind,
-                                                    struct mylite_sql_source_span span);
+struct mylite_sql_ast_node *mylite_sql_ast_new_node(
+    struct mylite_sql_ast *ast,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_source_span span
+);
 
-void mylite_sql_ast_node_append_child(struct mylite_sql_ast_node *parent,
-                                      struct mylite_sql_ast_node *child);
-void mylite_sql_ast_node_set_span(struct mylite_sql_ast_node *node,
-                                  struct mylite_sql_source_span span);
-void mylite_sql_ast_node_set_literal_kind(struct mylite_sql_ast_node *node,
-                                          enum mylite_sql_ast_literal_kind literal_kind);
-void mylite_sql_ast_node_set_delete_form(struct mylite_sql_ast_node *node,
-                                         enum mylite_sql_ast_delete_form delete_form);
-void mylite_sql_ast_node_set_operator(struct mylite_sql_ast_node *node,
-                                      enum mylite_sql_ast_operator operator_kind);
-void mylite_sql_ast_node_set_schema_option(struct mylite_sql_ast_node *node,
-                                           enum mylite_sql_ast_schema_option schema_option);
-void mylite_sql_ast_node_set_column_type(struct mylite_sql_ast_node *node,
-                                         enum mylite_sql_ast_column_type column_type);
+void mylite_sql_ast_node_append_child(
+    struct mylite_sql_ast_node *parent,
+    struct mylite_sql_ast_node *child
+);
+void mylite_sql_ast_node_set_span(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_source_span span
+);
+void mylite_sql_ast_node_set_literal_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_literal_kind literal_kind
+);
+void mylite_sql_ast_node_set_delete_form(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_delete_form delete_form
+);
+void mylite_sql_ast_node_set_operator(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_operator operator_kind
+);
+void mylite_sql_ast_node_set_schema_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_schema_option schema_option
+);
+void mylite_sql_ast_node_set_column_type(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_type column_type
+);
 void mylite_sql_ast_node_set_column_type_signed(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_column_type_unsigned(struct mylite_sql_ast_node *node);
-void mylite_sql_ast_node_set_column_display_width(struct mylite_sql_ast_node *node,
-                                                  unsigned int display_width);
+void mylite_sql_ast_node_set_column_display_width(
+    struct mylite_sql_ast_node *node,
+    unsigned int display_width
+);
 void mylite_sql_ast_node_set_column_length(struct mylite_sql_ast_node *node, uint64_t length);
 void mylite_sql_ast_node_set_column_precision(struct mylite_sql_ast_node *node, uint64_t precision);
 void mylite_sql_ast_node_set_column_scale(struct mylite_sql_ast_node *node, uint64_t scale);
-void mylite_sql_ast_node_set_column_character_set(struct mylite_sql_ast_node *node,
-                                                  struct mylite_sql_source_span span);
-void mylite_sql_ast_node_set_column_collation(struct mylite_sql_ast_node *node,
-                                              struct mylite_sql_source_span span);
+void mylite_sql_ast_node_set_column_character_set(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_source_span span
+);
+void mylite_sql_ast_node_set_column_collation(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_source_span span
+);
 void mylite_sql_ast_node_set_column_binary_attribute(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_column_byte_attribute(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_column_zerofill_attribute(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_column_national_attribute(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_column_attribute(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_column_attribute column_attribute);
-void mylite_sql_ast_node_set_column_format(struct mylite_sql_ast_node *node,
-                                           enum mylite_sql_ast_column_format column_format);
-void mylite_sql_ast_node_set_column_storage(struct mylite_sql_ast_node *node,
-                                            enum mylite_sql_ast_column_storage column_storage);
-void mylite_sql_ast_node_set_key_part_order(struct mylite_sql_ast_node *node,
-                                            enum mylite_sql_ast_key_part_order order);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_attribute column_attribute
+);
+void mylite_sql_ast_node_set_column_format(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_format column_format
+);
+void mylite_sql_ast_node_set_column_storage(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_storage column_storage
+);
+void mylite_sql_ast_node_set_key_part_order(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_key_part_order order
+);
 void mylite_sql_ast_node_set_limit_bound_value(struct mylite_sql_ast_node *node, uint64_t value);
-void mylite_sql_ast_node_set_index_algorithm(struct mylite_sql_ast_node *node,
-                                             enum mylite_sql_ast_index_algorithm algorithm);
-void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
-                                          enum mylite_sql_ast_index_option option);
-void mylite_sql_ast_node_set_index_class(struct mylite_sql_ast_node *node,
-                                         enum mylite_sql_ast_index_class index_class);
-void mylite_sql_ast_node_set_ddl_table_option(struct mylite_sql_ast_node *node,
-                                              enum mylite_sql_ast_ddl_table_option option);
-void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
-                                          enum mylite_sql_ast_table_option option);
-void mylite_sql_ast_node_set_alter_table_action(struct mylite_sql_ast_node *node,
-                                                enum mylite_sql_ast_alter_table_action action,
-                                                bool column_keyword);
+void mylite_sql_ast_node_set_index_algorithm(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_index_algorithm algorithm
+);
+void mylite_sql_ast_node_set_index_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_index_option option
+);
+void mylite_sql_ast_node_set_index_class(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_index_class index_class
+);
+void mylite_sql_ast_node_set_ddl_table_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_ddl_table_option option
+);
+void mylite_sql_ast_node_set_table_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_table_option option
+);
+void mylite_sql_ast_node_set_alter_table_action(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_table_action action,
+    bool column_keyword
+);
 void mylite_sql_ast_node_set_alter_table_column_position(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_column_position position);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_table_column_position position
+);
 void mylite_sql_ast_node_set_alter_table_index_spelling(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_index_spelling spelling);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_table_index_spelling spelling
+);
 void mylite_sql_ast_node_set_alter_table_constraint_spelling(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_constraint_spelling spelling);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_table_constraint_spelling spelling
+);
 void mylite_sql_ast_node_set_constraint_enforcement(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_constraint_enforcement enforcement);
-void mylite_sql_ast_node_set_reference_option(struct mylite_sql_ast_node *node,
-                                              enum mylite_sql_ast_reference_option option);
-void mylite_sql_ast_node_set_reference_action(struct mylite_sql_ast_node *node,
-                                              enum mylite_sql_ast_reference_action action);
-void mylite_sql_ast_node_set_reference_match(struct mylite_sql_ast_node *node,
-                                             enum mylite_sql_ast_reference_match match);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_constraint_enforcement enforcement
+);
+void mylite_sql_ast_node_set_reference_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_reference_option option
+);
+void mylite_sql_ast_node_set_reference_action(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_reference_action action
+);
+void mylite_sql_ast_node_set_reference_match(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_reference_match match
+);
 void mylite_sql_ast_node_set_create_table_temporary(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node);
@@ -794,61 +850,104 @@ void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_replace_low_priority(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_replace_delayed(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_transaction_access_mode(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_access_mode access_mode);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_transaction_access_mode access_mode
+);
 void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_transaction_completion(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_chain chain,
-    enum mylite_sql_ast_transaction_release release);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_transaction_chain chain,
+    enum mylite_sql_ast_transaction_release release
+);
 void mylite_sql_ast_node_set_case_expression_simple(struct mylite_sql_ast_node *node);
-void mylite_sql_ast_node_set_aggregate(struct mylite_sql_ast_node *node,
-                                       enum mylite_sql_ast_aggregate_kind aggregate_kind,
-                                       enum mylite_sql_ast_aggregate_argument aggregate_argument);
-void mylite_sql_ast_node_set_join_type(struct mylite_sql_ast_node *node,
-                                       enum mylite_sql_ast_join_type join_type);
+void mylite_sql_ast_node_set_aggregate(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_aggregate_kind aggregate_kind,
+    enum mylite_sql_ast_aggregate_argument aggregate_argument
+);
+void mylite_sql_ast_node_set_join_type(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_join_type join_type
+);
 void mylite_sql_ast_node_set_join_condition_type(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_join_condition_type condition_type);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_join_condition_type condition_type
+);
 void mylite_sql_ast_node_set_select_duplicate_mode(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_select_duplicate_mode mode,
-    bool explicit_mode, bool conflict, size_t modifier_count,
-    struct mylite_sql_ast_select_duplicate_mode_spans spans);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_select_duplicate_mode mode,
+    bool explicit_mode,
+    bool conflict,
+    size_t modifier_count,
+    struct mylite_sql_ast_select_duplicate_mode_spans spans
+);
 void mylite_sql_ast_node_set_select_calc_found_rows(struct mylite_sql_ast_node *node);
-void mylite_sql_ast_node_set_set_duplicate_mode(struct mylite_sql_ast_node *node,
-                                                enum mylite_sql_ast_set_duplicate_mode mode);
-void mylite_sql_ast_node_set_set_operation(struct mylite_sql_ast_node *node,
-                                           enum mylite_sql_ast_set_operation operation);
+void mylite_sql_ast_node_set_set_duplicate_mode(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_set_duplicate_mode mode
+);
+void mylite_sql_ast_node_set_set_operation(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_set_operation operation
+);
 void mylite_sql_ast_node_set_window_function(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_function_kind function_kind);
-void mylite_sql_ast_node_set_window_frame_unit(struct mylite_sql_ast_node *node,
-                                               enum mylite_sql_ast_window_frame_unit unit);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_function_kind function_kind
+);
+void mylite_sql_ast_node_set_window_frame_unit(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_frame_unit unit
+);
 void mylite_sql_ast_node_set_window_frame_bound(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_frame_bound_kind bound_kind);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_frame_bound_kind bound_kind
+);
 void mylite_sql_ast_node_set_window_null_treatment(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_null_treatment treatment);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_null_treatment treatment
+);
 void mylite_sql_ast_node_set_subquery_quantifier(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_subquery_quantifier quantifier);
-void mylite_sql_ast_node_set_trim_spec(struct mylite_sql_ast_node *node,
-                                       enum mylite_sql_ast_trim_direction direction);
-void mylite_sql_ast_node_set_interval_spec(struct mylite_sql_ast_node *node,
-                                           enum mylite_sql_ast_interval_unit unit);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_subquery_quantifier quantifier
+);
+void mylite_sql_ast_node_set_trim_spec(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_trim_direction direction
+);
+void mylite_sql_ast_node_set_interval_spec(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_interval_unit unit
+);
 void mylite_sql_ast_node_set_placeholder_statement_kind(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_placeholder_statement_kind kind);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_placeholder_statement_kind kind
+);
 void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_columns_full(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_index_extended(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_show_create_schema_if_not_exists(struct mylite_sql_ast_node *node);
-void mylite_sql_ast_node_set_show_diagnostics_kind(struct mylite_sql_ast_node *node,
-                                                   enum mylite_sql_ast_show_diagnostics_kind kind);
-void mylite_sql_ast_node_set_show_variables_scope(struct mylite_sql_ast_node *node,
-                                                  enum mylite_sql_ast_show_variables_scope scope);
-void mylite_sql_ast_node_set_show_status_scope(struct mylite_sql_ast_node *node,
-                                               enum mylite_sql_ast_show_status_scope scope);
+void mylite_sql_ast_node_set_show_diagnostics_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_show_diagnostics_kind kind
+);
+void mylite_sql_ast_node_set_show_variables_scope(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_show_variables_scope scope
+);
+void mylite_sql_ast_node_set_show_status_scope(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_show_status_scope scope
+);
 void mylite_sql_ast_node_set_system_variable_scope(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_set_system_variable_scope scope);
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_set_system_variable_scope scope
+);
 
-const struct mylite_sql_ast_node *
-mylite_sql_ast_unwrap_parenthesized_expression(const struct mylite_sql_ast_node *expression);
+const struct mylite_sql_ast_node *mylite_sql_ast_unwrap_parenthesized_expression(
+    const struct mylite_sql_ast_node *expression
+);
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);
@@ -856,8 +955,9 @@ const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind ki
 const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind);
 const char *mylite_sql_ast_schema_option_name(enum mylite_sql_ast_schema_option schema_option);
 const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type column_type);
-const char *
-mylite_sql_ast_column_attribute_name(enum mylite_sql_ast_column_attribute column_attribute);
+const char *mylite_sql_ast_column_attribute_name(
+    enum mylite_sql_ast_column_attribute column_attribute
+);
 const char *mylite_sql_ast_column_format_name(enum mylite_sql_ast_column_format column_format);
 const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storage column_storage);
 const char *mylite_sql_ast_key_part_order_name(enum mylite_sql_ast_key_part_order order);
@@ -867,27 +967,35 @@ const char *mylite_sql_ast_index_class_name(enum mylite_sql_ast_index_class inde
 const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_option option);
 const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_table_action action);
 const char *mylite_sql_ast_alter_table_column_position_name(
-    enum mylite_sql_ast_alter_table_column_position position);
+    enum mylite_sql_ast_alter_table_column_position position
+);
 const char *mylite_sql_ast_alter_table_index_spelling_name(
-    enum mylite_sql_ast_alter_table_index_spelling spelling);
+    enum mylite_sql_ast_alter_table_index_spelling spelling
+);
 const char *mylite_sql_ast_alter_table_constraint_spelling_name(
-    enum mylite_sql_ast_alter_table_constraint_spelling spelling);
-const char *
-mylite_sql_ast_constraint_enforcement_name(enum mylite_sql_ast_constraint_enforcement enforcement);
+    enum mylite_sql_ast_alter_table_constraint_spelling spelling
+);
+const char *mylite_sql_ast_constraint_enforcement_name(
+    enum mylite_sql_ast_constraint_enforcement enforcement
+);
 const char *mylite_sql_ast_reference_option_name(enum mylite_sql_ast_reference_option option);
 const char *mylite_sql_ast_reference_action_name(enum mylite_sql_ast_reference_action action);
 const char *mylite_sql_ast_reference_match_name(enum mylite_sql_ast_reference_match match);
 const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kind aggregate_kind);
-const char *
-mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument aggregate_argument);
+const char *mylite_sql_ast_aggregate_argument_name(
+    enum mylite_sql_ast_aggregate_argument aggregate_argument
+);
 const char *mylite_sql_ast_join_type_name(enum mylite_sql_ast_join_type join_type);
-const char *
-mylite_sql_ast_join_condition_type_name(enum mylite_sql_ast_join_condition_type condition_type);
-const char *
-mylite_sql_ast_select_duplicate_mode_name(enum mylite_sql_ast_select_duplicate_mode mode);
+const char *mylite_sql_ast_join_condition_type_name(
+    enum mylite_sql_ast_join_condition_type condition_type
+);
+const char *mylite_sql_ast_select_duplicate_mode_name(
+    enum mylite_sql_ast_select_duplicate_mode mode
+);
 const char *mylite_sql_ast_set_duplicate_mode_name(enum mylite_sql_ast_set_duplicate_mode mode);
 const char *mylite_sql_ast_set_operation_name(enum mylite_sql_ast_set_operation operation);
-const char *
-mylite_sql_ast_subquery_quantifier_name(enum mylite_sql_ast_subquery_quantifier quantifier);
+const char *mylite_sql_ast_subquery_quantifier_name(
+    enum mylite_sql_ast_subquery_quantifier quantifier
+);
 
 #endif

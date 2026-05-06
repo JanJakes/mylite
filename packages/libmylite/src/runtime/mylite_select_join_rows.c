@@ -9,30 +9,40 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-static int append_null_extended_right_row(mylite_stmt *stmt,
-                                          const struct mylite_select_join_step *step,
-                                          const struct mylite_table_select_row *right_row,
-                                          size_t right_row_index,
-                                          struct mylite_table_select_table_rowset *out_rowset);
+static int append_null_extended_right_row(
+    mylite_stmt *stmt,
+    const struct mylite_select_join_step *step,
+    const struct mylite_table_select_row *right_row,
+    size_t right_row_index,
+    struct mylite_table_select_table_rowset *out_rowset
+);
 
 int mylite_select_join_rowset_append_null_extended_left(
-    mylite_stmt *stmt, const struct mylite_table_select_row *left_row,
-    struct mylite_table_select_table_rowset *out_rowset)
-{
+    mylite_stmt *stmt,
+    const struct mylite_table_select_row *left_row,
+    struct mylite_table_select_table_rowset *out_rowset
+) {
     return mylite_select_rowset_append_row_copy(stmt->database, out_rowset, left_row);
 }
 
 int mylite_select_join_rowset_append_null_extended_right_unmatched(
-    mylite_stmt *stmt, const struct mylite_select_join_step *step,
-    const struct mylite_table_select_table_rowset *right, const bool *right_matched,
-    struct mylite_table_select_table_rowset *out_rowset)
-{
+    mylite_stmt *stmt,
+    const struct mylite_select_join_step *step,
+    const struct mylite_table_select_table_rowset *right,
+    const bool *right_matched,
+    struct mylite_table_select_table_rowset *out_rowset
+) {
     for (size_t right_index = 0U; right_index < right->row_count; ++right_index) {
         if (right_matched != NULL && right_matched[right_index]) {
             continue;
         }
-        int status = append_null_extended_right_row(stmt, step, &right->rows[right_index],
-                                                    right_index, out_rowset);
+        int status = append_null_extended_right_row(
+            stmt,
+            step,
+            &right->rows[right_index],
+            right_index,
+            out_rowset
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -41,10 +51,11 @@ int mylite_select_join_rowset_append_null_extended_right_unmatched(
     return MYLITE_OK;
 }
 
-int mylite_select_join_rowset_append_empty(mylite_stmt *stmt,
-                                           struct mylite_table_select_table_rowset *rowset,
-                                           struct mylite_table_select_row **out_row)
-{
+int mylite_select_join_rowset_append_empty(
+    mylite_stmt *stmt,
+    struct mylite_table_select_table_rowset *rowset,
+    struct mylite_table_select_row **out_row
+) {
     struct mylite_table_select_row row = {
         .value_count = mylite_select_plan_column_count(&stmt->select_plan),
         .source_row_index_count = mylite_select_plan_table_count(&stmt->select_plan),
@@ -90,13 +101,14 @@ int mylite_select_join_rowset_append_empty(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-int mylite_select_join_row_copy_base_table_values(mylite_db *database,
-                                                  struct mylite_table_select_row *row,
-                                                  const struct mylite_select_table *table,
-                                                  size_t table_index,
-                                                  const struct mylite_table_select_row *source,
-                                                  size_t source_row_index)
-{
+int mylite_select_join_row_copy_base_table_values(
+    mylite_db *database,
+    struct mylite_table_select_row *row,
+    const struct mylite_select_table *table,
+    size_t table_index,
+    const struct mylite_table_select_row *source,
+    size_t source_row_index
+) {
     if (table == NULL || row->source_row_index_count <= table_index) {
         return MYLITE_UNSUPPORTED;
     }
@@ -120,11 +132,12 @@ int mylite_select_join_row_copy_base_table_values(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_select_join_row_copy_range_values(struct mylite_table_select_row *target,
-                                             const struct mylite_table_select_row *source,
-                                             struct mylite_select_table_range range,
-                                             const struct mylite_select_plan *plan)
-{
+int mylite_select_join_row_copy_range_values(
+    struct mylite_table_select_row *target,
+    const struct mylite_table_select_row *source,
+    struct mylite_select_table_range range,
+    const struct mylite_select_plan *plan
+) {
     size_t last_table = range.first_table + range.table_count;
 
     for (size_t table_index = range.first_table; table_index < last_table; ++table_index) {
@@ -147,8 +160,10 @@ int mylite_select_join_row_copy_range_values(struct mylite_table_select_row *tar
                 return MYLITE_UNSUPPORTED;
             }
             mylite_expression_value_deinit(&target->values[column_index]);
-            if (mylite_expression_value_copy(&source->values[column_index],
-                                             &target->values[column_index]) != 0) {
+            if (mylite_expression_value_copy(
+                    &source->values[column_index],
+                    &target->values[column_index]
+                ) != 0) {
                 return MYLITE_NOMEM;
             }
         }
@@ -156,10 +171,11 @@ int mylite_select_join_row_copy_range_values(struct mylite_table_select_row *tar
     return MYLITE_OK;
 }
 
-int mylite_select_join_row_copy_table_values(struct mylite_table_select_row *row,
-                                             const struct mylite_select_table *table,
-                                             const struct mylite_table_select_row *source)
-{
+int mylite_select_join_row_copy_table_values(
+    struct mylite_table_select_row *row,
+    const struct mylite_select_table *table,
+    const struct mylite_table_select_row *source
+) {
     for (size_t index = 0U; index < table->column_count; ++index) {
         size_t column_index = table->first_column_index + index;
 
@@ -174,9 +190,10 @@ int mylite_select_join_row_copy_table_values(struct mylite_table_select_row *row
     return MYLITE_OK;
 }
 
-void mylite_select_join_row_clear_table_values(struct mylite_table_select_row *row,
-                                               const struct mylite_select_table *table)
-{
+void mylite_select_join_row_clear_table_values(
+    struct mylite_table_select_row *row,
+    const struct mylite_select_table *table
+) {
     for (size_t index = 0U; index < table->column_count; ++index) {
         size_t column_index = table->first_column_index + index;
 
@@ -186,12 +203,13 @@ void mylite_select_join_row_clear_table_values(struct mylite_table_select_row *r
     }
 }
 
-static int append_null_extended_right_row(mylite_stmt *stmt,
-                                          const struct mylite_select_join_step *step,
-                                          const struct mylite_table_select_row *right_row,
-                                          size_t right_row_index,
-                                          struct mylite_table_select_table_rowset *out_rowset)
-{
+static int append_null_extended_right_row(
+    mylite_stmt *stmt,
+    const struct mylite_select_join_step *step,
+    const struct mylite_table_select_row *right_row,
+    size_t right_row_index,
+    struct mylite_table_select_table_rowset *out_rowset
+) {
     const struct mylite_select_table *right_table =
         mylite_select_plan_table_const(&stmt->select_plan, step->right_range.first_table);
     struct mylite_table_select_row *row = NULL;
@@ -201,9 +219,14 @@ static int append_null_extended_right_row(mylite_stmt *stmt,
         status = MYLITE_UNSUPPORTED;
     }
     if (status == MYLITE_OK) {
-        status = mylite_select_join_row_copy_base_table_values(stmt->database, row, right_table,
-                                                               step->right_range.first_table,
-                                                               right_row, right_row_index);
+        status = mylite_select_join_row_copy_base_table_values(
+            stmt->database,
+            row,
+            right_table,
+            step->right_range.first_table,
+            right_row,
+            right_row_index
+        );
     }
     return status;
 }

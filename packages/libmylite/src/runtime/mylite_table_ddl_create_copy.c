@@ -6,20 +6,37 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_create_table_elements(const struct mylite_sql_ast_node *elements,
-                                      struct mylite_create_table_plan *plan);
-static int copy_create_table_options(const struct mylite_sql_ast_node *statement,
-                                     struct mylite_create_table_options *options);
-static int add_create_table_index(struct mylite_create_table_plan *plan,
-                                  struct mylite_create_table_index index);
-static int add_inline_create_table_column_indexes(struct mylite_create_table_plan *plan,
-                                                  const struct mylite_create_table_column *column);
-static int add_single_column_index(struct mylite_create_table_plan *plan, const char *column_name,
-                                   bool is_primary, bool is_unique);
+static int copy_create_table_elements(
+    const struct mylite_sql_ast_node *elements,
+    struct mylite_create_table_plan *plan
+);
 
-int mylite_table_ddl_copy_create_table_statement(const struct mylite_sql_ast_node *statement,
-                                                 struct mylite_create_table_plan *plan)
-{
+static int copy_create_table_options(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_create_table_options *options
+);
+
+static int add_create_table_index(
+    struct mylite_create_table_plan *plan,
+    struct mylite_create_table_index index
+);
+
+static int add_inline_create_table_column_indexes(
+    struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_column *column
+);
+
+static int add_single_column_index(
+    struct mylite_create_table_plan *plan,
+    const char *column_name,
+    bool is_primary,
+    bool is_unique
+);
+
+int mylite_table_ddl_copy_create_table_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_create_table_plan *plan
+) {
     const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *elements = mylite_ast_child_at(statement, 1U);
     int status = mylite_table_ddl_copy_create_table_name(table_name, plan);
@@ -35,9 +52,10 @@ int mylite_table_ddl_copy_create_table_statement(const struct mylite_sql_ast_nod
     return copy_create_table_options(statement, &plan->options);
 }
 
-int mylite_table_ddl_copy_create_table_name(const struct mylite_sql_ast_node *table_name,
-                                            struct mylite_create_table_plan *plan)
-{
+int mylite_table_ddl_copy_create_table_name(
+    const struct mylite_sql_ast_node *table_name,
+    struct mylite_create_table_plan *plan
+) {
     if (table_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -60,9 +78,10 @@ int mylite_table_ddl_copy_create_table_name(const struct mylite_sql_ast_node *ta
     return MYLITE_UNSUPPORTED;
 }
 
-int mylite_table_ddl_copy_create_table_index(const struct mylite_sql_ast_node *index_node,
-                                             struct mylite_create_table_plan *plan)
-{
+int mylite_table_ddl_copy_create_table_index(
+    const struct mylite_sql_ast_node *index_node,
+    struct mylite_create_table_plan *plan
+) {
     struct mylite_create_table_index index = {
         .algorithm = MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
         .is_visible = true,
@@ -118,9 +137,10 @@ int mylite_table_ddl_copy_create_table_index(const struct mylite_sql_ast_node *i
     return status;
 }
 
-int mylite_table_ddl_copy_create_table_key_parts(const struct mylite_sql_ast_node *key_parts,
-                                                 struct mylite_create_table_index *index)
-{
+int mylite_table_ddl_copy_create_table_key_parts(
+    const struct mylite_sql_ast_node *key_parts,
+    struct mylite_create_table_index *index
+) {
     const struct mylite_sql_ast_node *part_node = NULL;
 
     if (key_parts == NULL || key_parts->first_child == NULL) {
@@ -155,9 +175,10 @@ int mylite_table_ddl_copy_create_table_key_parts(const struct mylite_sql_ast_nod
     return MYLITE_OK;
 }
 
-int mylite_table_ddl_copy_create_table_index_options(const struct mylite_sql_ast_node *options,
-                                                     struct mylite_create_table_index *index)
-{
+int mylite_table_ddl_copy_create_table_index_options(
+    const struct mylite_sql_ast_node *options,
+    struct mylite_create_table_index *index
+) {
     const struct mylite_sql_ast_node *option = NULL;
 
     for (option = options == NULL ? NULL : options->first_child; option != NULL;
@@ -195,9 +216,10 @@ int mylite_table_ddl_copy_create_table_index_options(const struct mylite_sql_ast
     return MYLITE_OK;
 }
 
-static int copy_create_table_elements(const struct mylite_sql_ast_node *elements,
-                                      struct mylite_create_table_plan *plan)
-{
+static int copy_create_table_elements(
+    const struct mylite_sql_ast_node *elements,
+    struct mylite_create_table_plan *plan
+) {
     const struct mylite_sql_ast_node *element = NULL;
     int status = MYLITE_OK;
 
@@ -213,9 +235,11 @@ static int copy_create_table_elements(const struct mylite_sql_ast_node *elements
             if (status == MYLITE_OK) {
                 status = add_inline_create_table_column_indexes(plan, &plan->columns[column_index]);
             }
-        } else if (element->kind == MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT ||
-                   element->kind == MYLITE_SQL_AST_UNIQUE_INDEX ||
-                   element->kind == MYLITE_SQL_AST_SECONDARY_INDEX) {
+        } else if (
+            element->kind == MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT ||
+            element->kind == MYLITE_SQL_AST_UNIQUE_INDEX ||
+            element->kind == MYLITE_SQL_AST_SECONDARY_INDEX
+        ) {
             status = mylite_table_ddl_copy_create_table_index(element, plan);
         } else {
             status = MYLITE_UNSUPPORTED;
@@ -227,9 +251,10 @@ static int copy_create_table_elements(const struct mylite_sql_ast_node *elements
     return MYLITE_OK;
 }
 
-static int copy_create_table_options(const struct mylite_sql_ast_node *statement,
-                                     struct mylite_create_table_options *options)
-{
+static int copy_create_table_options(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_create_table_options *options
+) {
     const struct mylite_sql_ast_node *option_list =
         mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_TABLE_OPTION_LIST);
     const struct mylite_sql_ast_node *option = NULL;
@@ -294,9 +319,10 @@ static int copy_create_table_options(const struct mylite_sql_ast_node *statement
     return MYLITE_OK;
 }
 
-static int add_create_table_index(struct mylite_create_table_plan *plan,
-                                  struct mylite_create_table_index index)
-{
+static int add_create_table_index(
+    struct mylite_create_table_plan *plan,
+    struct mylite_create_table_index index
+) {
     struct mylite_create_table_index *indexes =
         realloc(plan->indexes, (plan->index_count + 1U) * sizeof(*plan->indexes));
 
@@ -309,9 +335,10 @@ static int add_create_table_index(struct mylite_create_table_plan *plan,
     return MYLITE_OK;
 }
 
-static int add_inline_create_table_column_indexes(struct mylite_create_table_plan *plan,
-                                                  const struct mylite_create_table_column *column)
-{
+static int add_inline_create_table_column_indexes(
+    struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_column *column
+) {
     int status = MYLITE_OK;
 
     if (column->primary_key) {
@@ -323,9 +350,12 @@ static int add_inline_create_table_column_indexes(struct mylite_create_table_pla
     return status;
 }
 
-static int add_single_column_index(struct mylite_create_table_plan *plan, const char *column_name,
-                                   bool is_primary, bool is_unique)
-{
+static int add_single_column_index(
+    struct mylite_create_table_plan *plan,
+    const char *column_name,
+    bool is_primary,
+    bool is_unique
+) {
     struct mylite_create_table_index index = {
         .algorithm = MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
         .is_primary = is_primary,

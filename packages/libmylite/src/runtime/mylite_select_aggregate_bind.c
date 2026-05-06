@@ -14,35 +14,61 @@
 
 #include <string.h>
 
-static int
-bind_aggregate_aware_expression(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                struct mylite_select_plan *plan, const char *clause_context,
-                                const struct mylite_select_aggregate_bind_callbacks *callbacks);
+static int bind_aggregate_aware_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const char *clause_context,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
 static int bind_aggregate_aware_row_constructor(
-    mylite_db *database, const struct mylite_sql_ast_node *row, struct mylite_select_plan *plan,
-    const char *clause_context, const struct mylite_select_aggregate_bind_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_sql_ast_node *row,
+    struct mylite_select_plan *plan,
+    const char *clause_context,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
 static int bind_aggregate_aware_binary_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const char *clause_context,
-    const struct mylite_select_aggregate_bind_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const char *clause_context,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
 static int bind_aggregate_aware_quantified_subquery_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const char *clause_context,
-    const struct mylite_select_aggregate_bind_callbacks *callbacks);
-static int
-bind_aggregate_aware_children(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                              struct mylite_select_plan *plan, const char *clause_context,
-                              const struct mylite_select_aggregate_bind_callbacks *callbacks);
-static int
-bind_aggregate_aware_function(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                              struct mylite_select_plan *plan, const char *clause_context,
-                              const struct mylite_select_aggregate_bind_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const char *clause_context,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
+static int bind_aggregate_aware_children(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const char *clause_context,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
+static int bind_aggregate_aware_function(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const char *clause_context,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
 
 int mylite_select_bind_aggregate_aware_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const char *clause_context,
-    const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const char *clause_context,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     if (!mylite_select_aggregate_bind_callbacks_are_valid(callbacks)) {
         return MYLITE_MISUSE;
     }
@@ -78,12 +104,23 @@ static int bind_aggregate_aware_expression( // NOLINT(misc-no-recursion)
             enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
             size_t index = 0U;
 
-            return mylite_select_resolve_having_reference(database, plan, expression, &kind,
-                                                          &index);
+            return mylite_select_resolve_having_reference(
+                database,
+                plan,
+                expression,
+                &kind,
+                &index
+            );
         }
         return mylite_select_bind_predicate_expression_in_clause(
-            database, expression, plan, clause_context == NULL ? "where clause" : clause_context,
-            0U, mylite_select_plan_table_count(plan), callbacks->predicate_callbacks);
+            database,
+            expression,
+            plan,
+            clause_context == NULL ? "where clause" : clause_context,
+            0U,
+            mylite_select_plan_table_count(plan),
+            callbacks->predicate_callbacks
+        );
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
@@ -93,16 +130,26 @@ static int bind_aggregate_aware_expression( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_CASE_WHEN:
         return bind_aggregate_aware_children(database, expression, plan, clause_context, callbacks);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
-        return bind_aggregate_aware_binary_expression(database, expression, plan, clause_context,
-                                                      callbacks);
+        return bind_aggregate_aware_binary_expression(
+            database,
+            expression,
+            plan,
+            clause_context,
+            callbacks
+        );
     case MYLITE_SQL_AST_CAST_EXPRESSION: {
         int status = mylite_expression_validate_cast_target_charset(database, expression);
 
         if (status != MYLITE_OK) {
             return status;
         }
-        return bind_aggregate_aware_expression(database, mylite_ast_child_at(expression, 0U), plan,
-                                               clause_context, callbacks);
+        return bind_aggregate_aware_expression(
+            database,
+            mylite_ast_child_at(expression, 0U),
+            plan,
+            clause_context,
+            callbacks
+        );
     }
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return bind_aggregate_aware_function(database, expression, plan, clause_context, callbacks);
@@ -111,11 +158,19 @@ static int bind_aggregate_aware_expression( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
         return mylite_select_subquery_bind_select_expression(
-            database, expression, expression->kind == MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
-            callbacks->subquery_callbacks);
+            database,
+            expression,
+            expression->kind == MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
+            callbacks->subquery_callbacks
+        );
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
-        return bind_aggregate_aware_quantified_subquery_expression(database, expression, plan,
-                                                                   clause_context, callbacks);
+        return bind_aggregate_aware_quantified_subquery_expression(
+            database,
+            expression,
+            plan,
+            clause_context,
+            callbacks
+        );
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
@@ -299,8 +354,12 @@ static int bind_aggregate_aware_binary_expression( // NOLINT(misc-no-recursion)
         if (status != MYLITE_OK) {
             return status;
         }
-        return mylite_select_subquery_bind_row_expression(database, expression, plan,
-                                                          callbacks->subquery_callbacks);
+        return mylite_select_subquery_bind_row_expression(
+            database,
+            expression,
+            plan,
+            callbacks->subquery_callbacks
+        );
     }
     if (mylite_select_subquery_binary_expression_is_in(expression)) {
         const struct mylite_sql_ast_node *left = mylite_ast_child_at(expression, 0U);
@@ -313,8 +372,12 @@ static int bind_aggregate_aware_binary_expression( // NOLINT(misc-no-recursion)
         if (status != MYLITE_OK) {
             return status;
         }
-        return mylite_select_subquery_bind_in_expression(database, expression, plan,
-                                                         callbacks->subquery_callbacks);
+        return mylite_select_subquery_bind_in_expression(
+            database,
+            expression,
+            plan,
+            callbacks->subquery_callbacks
+        );
     }
     return bind_aggregate_aware_children(database, expression, plan, clause_context, callbacks);
 }
@@ -330,13 +393,22 @@ static int bind_aggregate_aware_quantified_subquery_expression( // NOLINT(misc-n
     int status = MYLITE_OK;
 
     if (mylite_select_subquery_quantified_comparison_is_row_alias(expression)) {
-        status = bind_aggregate_aware_row_constructor(database, unwrapped_left, plan,
-                                                      clause_context, callbacks);
+        status = bind_aggregate_aware_row_constructor(
+            database,
+            unwrapped_left,
+            plan,
+            clause_context,
+            callbacks
+        );
         if (status != MYLITE_OK) {
             return status;
         }
-        return mylite_select_subquery_bind_row_expression(database, expression, plan,
-                                                          callbacks->subquery_callbacks);
+        return mylite_select_subquery_bind_row_expression(
+            database,
+            expression,
+            plan,
+            callbacks->subquery_callbacks
+        );
     }
     if (unwrapped_left == NULL) {
         return callbacks->set_unsupported_projection_error(database);
@@ -348,8 +420,12 @@ static int bind_aggregate_aware_quantified_subquery_expression( // NOLINT(misc-n
     if (status != MYLITE_OK) {
         return status;
     }
-    return mylite_select_subquery_bind_quantified_expression(database, expression, plan,
-                                                             callbacks->subquery_callbacks);
+    return mylite_select_subquery_bind_quantified_expression(
+        database,
+        expression,
+        plan,
+        callbacks->subquery_callbacks
+    );
 }
 
 static int bind_aggregate_aware_children( // NOLINT(misc-no-recursion)
@@ -388,7 +464,8 @@ static int bind_aggregate_aware_function( // NOLINT(misc-no-recursion)
     }
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
-         child != NULL; child = child->next_sibling) {
+         child != NULL;
+         child = child->next_sibling) {
         int status =
             bind_aggregate_aware_expression(database, child, plan, clause_context, callbacks);
 

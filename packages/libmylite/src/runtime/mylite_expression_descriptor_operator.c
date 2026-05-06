@@ -9,15 +9,18 @@
 #include <stdbool.h>
 
 static int validate_operator_descriptor_callbacks(
-    const struct mylite_expression_descriptor_operator_callbacks *callbacks);
+    const struct mylite_expression_descriptor_operator_callbacks *callbacks
+);
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_descriptor_infer_unary_expression(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
     struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_operator_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_operator_callbacks *callbacks
+) {
     struct mylite_field_descriptor operand = mylite_expression_descriptor_defaults();
     bool nullable = true;
     int status = validate_operator_descriptor_callbacks(callbacks);
@@ -39,25 +42,42 @@ int mylite_expression_descriptor_infer_unary_expression(
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
         status = callbacks->infer_expression_descriptor(
-            database, plan, mylite_ast_child_at(expression, 0U), NULL, &operand);
+            database,
+            plan,
+            mylite_ast_child_at(expression, 0U),
+            NULL,
+            &operand
+        );
         if (status != MYLITE_OK) {
             return status;
         }
         *out_descriptor = mylite_expression_descriptor_boolean(
-            mylite_expression_descriptor_is_nullable(&operand));
+            mylite_expression_descriptor_is_nullable(&operand)
+        );
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
         status = callbacks->infer_expression_descriptor(
-            database, plan, mylite_ast_child_at(expression, 0U), NULL, &operand);
+            database,
+            plan,
+            mylite_ast_child_at(expression, 0U),
+            NULL,
+            &operand
+        );
         if (status != MYLITE_OK) {
             return status;
         }
         *out_descriptor = mylite_expression_descriptor_unsigned_longlong(
-            mylite_expression_descriptor_is_nullable(&operand));
+            mylite_expression_descriptor_is_nullable(&operand)
+        );
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
         status = callbacks->infer_expression_descriptor(
-            database, plan, mylite_ast_child_at(expression, 0U), value, &operand);
+            database,
+            plan,
+            mylite_ast_child_at(expression, 0U),
+            value,
+            &operand
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -69,13 +89,20 @@ int mylite_expression_descriptor_infer_unary_expression(
             .charset_id = mylite_mysql_binary_charset_id,
             .nullable = mylite_expression_descriptor_is_nullable(&operand),
         };
-        mylite_field_descriptor_set_nullable(out_descriptor,
-                                             mylite_expression_descriptor_is_nullable(&operand));
+        mylite_field_descriptor_set_nullable(
+            out_descriptor,
+            mylite_expression_descriptor_is_nullable(&operand)
+        );
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_POSITIVE:
     case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
         status = callbacks->infer_expression_descriptor(
-            database, plan, mylite_ast_child_at(expression, 0U), value, &operand);
+            database,
+            plan,
+            mylite_ast_child_at(expression, 0U),
+            value,
+            &operand
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -126,11 +153,13 @@ int mylite_expression_descriptor_infer_unary_expression(
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_descriptor_infer_binary_expression(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
     struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_operator_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_operator_callbacks *callbacks
+) {
     struct mylite_field_descriptor left = mylite_expression_descriptor_defaults();
     struct mylite_field_descriptor right = mylite_expression_descriptor_defaults();
     bool nullable = true;
@@ -141,17 +170,32 @@ int mylite_expression_descriptor_infer_binary_expression(
     }
 
     status = mylite_expression_descriptor_infer_binary_subquery_expression(
-        database, plan, expression, out_descriptor, callbacks->subquery_callbacks);
+        database,
+        plan,
+        expression,
+        out_descriptor,
+        callbacks->subquery_callbacks
+    );
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
 
     status = callbacks->infer_expression_descriptor(
-        database, plan, mylite_ast_child_at(expression, 0U), NULL, &left);
+        database,
+        plan,
+        mylite_ast_child_at(expression, 0U),
+        NULL,
+        &left
+    );
 
     if (status == MYLITE_OK) {
         status = callbacks->infer_expression_descriptor(
-            database, plan, mylite_ast_child_at(expression, 1U), NULL, &right);
+            database,
+            plan,
+            mylite_ast_child_at(expression, 1U),
+            NULL,
+            &right
+        );
     }
     if (status != MYLITE_OK) {
         return status;
@@ -268,11 +312,13 @@ int mylite_expression_descriptor_infer_binary_expression(
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_descriptor_infer_ternary_expression(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
     struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_operator_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_operator_callbacks *callbacks
+) {
     bool nullable = false;
     int status = validate_operator_descriptor_callbacks(callbacks);
 
@@ -351,8 +397,8 @@ int mylite_expression_descriptor_infer_ternary_expression(
 }
 
 static int validate_operator_descriptor_callbacks(
-    const struct mylite_expression_descriptor_operator_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_operator_callbacks *callbacks
+) {
     if (callbacks == NULL || callbacks->infer_expression_descriptor == NULL ||
         callbacks->subquery_callbacks == NULL) {
         return MYLITE_MISUSE;

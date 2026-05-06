@@ -2,8 +2,7 @@
 
 #include <stddef.h>
 
-void mylite_show_create_append_identifier(sqlite3_str *create_sql, const char *identifier)
-{
+void mylite_show_create_append_identifier(sqlite3_str *create_sql, const char *identifier) {
     sqlite3_str_appendchar(create_sql, 1, '`');
     for (const char *cursor = identifier == NULL ? "" : identifier; *cursor != '\0'; ++cursor) {
         if (*cursor == '`') {
@@ -15,8 +14,7 @@ void mylite_show_create_append_identifier(sqlite3_str *create_sql, const char *i
     sqlite3_str_appendchar(create_sql, 1, '`');
 }
 
-void mylite_show_create_append_string_literal(sqlite3_str *create_sql, const char *text)
-{
+void mylite_show_create_append_string_literal(sqlite3_str *create_sql, const char *text) {
     sqlite3_str_appendchar(create_sql, 1, '\'');
     for (const char *cursor = text == NULL ? "" : text; *cursor != '\0'; ++cursor) {
         if (*cursor == '\'' || *cursor == '\\') {
@@ -27,7 +25,6 @@ void mylite_show_create_append_string_literal(sqlite3_str *create_sql, const cha
     sqlite3_str_appendchar(create_sql, 1, '\'');
 }
 
-sqlite3_destructor_type mylite_show_sqlite_transient_destructor(void)
-{
+sqlite3_destructor_type mylite_show_sqlite_transient_destructor(void) {
     return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

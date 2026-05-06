@@ -29,8 +29,9 @@ struct mylite_catalog_column_descriptor_source {
     bool auto_increment;
 };
 
-struct mylite_catalog_column_descriptor_source
-mylite_select_catalog_column_descriptor_source(sqlite3_stmt *select);
+struct mylite_catalog_column_descriptor_source mylite_select_catalog_column_descriptor_source(
+    sqlite3_stmt *select
+);
 bool mylite_select_catalog_text_contains_word(struct mylite_catalog_text_match match);
 
 #endif

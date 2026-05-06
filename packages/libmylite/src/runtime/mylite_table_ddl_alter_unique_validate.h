@@ -6,6 +6,8 @@
 #include <mylite/mylite.h>
 
 int mylite_table_ddl_validate_alter_table_unique_indexes(
-    mylite_db *database, const struct mylite_alter_table_model *model);
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+);
 
 #endif

@@ -9,38 +9,58 @@
 #include <stdint.h>
 
 static int greatest_least_function_uses_string_domain(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *arguments, bool *out_string_domain,
-    const struct mylite_expression_descriptor_compare_callbacks *callbacks);
-static int infer_greatest_least_string_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *arguments, bool result_nullable,
-    struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_compare_callbacks *callbacks);
-static uint64_t greatest_least_string_result_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
-    const struct mylite_expression_descriptor_compare_callbacks *callbacks);
-static uint64_t
-greatest_least_argument_string_length(mylite_db *database,
-                                      const struct mylite_field_descriptor *descriptor);
-static int infer_greatest_least_numeric_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *arguments, bool result_nullable,
+    bool *out_string_domain,
+    const struct mylite_expression_descriptor_compare_callbacks *callbacks
+);
+
+static int infer_greatest_least_string_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool result_nullable,
     struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_compare_callbacks *callbacks);
-static void
-aggregate_greatest_least_numeric_descriptor(const struct mylite_field_descriptor *argument,
-                                            struct mylite_field_descriptor *aggregate,
-                                            bool *out_saw_nonnull);
+    const struct mylite_expression_descriptor_compare_callbacks *callbacks
+);
+
+static uint64_t greatest_least_string_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_compare_callbacks *callbacks
+);
+
+static uint64_t greatest_least_argument_string_length(
+    mylite_db *database,
+    const struct mylite_field_descriptor *descriptor
+);
+
+static int infer_greatest_least_numeric_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_compare_callbacks *callbacks
+);
+
+static void aggregate_greatest_least_numeric_descriptor(
+    const struct mylite_field_descriptor *argument,
+    struct mylite_field_descriptor *aggregate,
+    bool *out_saw_nonnull
+);
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_descriptor_infer_greatest_least_function(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, bool result_nullable,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool result_nullable,
     struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_compare_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_compare_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     bool string_domain = false;
@@ -53,29 +73,49 @@ int mylite_expression_descriptor_infer_greatest_least_function(
         return MYLITE_MISUSE;
     }
 
-    status = greatest_least_function_uses_string_domain(database, plan, arguments, &string_domain,
-                                                        callbacks);
+    status = greatest_least_function_uses_string_domain(
+        database,
+        plan,
+        arguments,
+        &string_domain,
+        callbacks
+    );
     if (status != MYLITE_OK) {
         return status;
     }
     if (string_domain) {
-        return infer_greatest_least_string_descriptor(database, plan, arguments, result_nullable,
-                                                      out_descriptor, callbacks);
+        return infer_greatest_least_string_descriptor(
+            database,
+            plan,
+            arguments,
+            result_nullable,
+            out_descriptor,
+            callbacks
+        );
     }
-    return infer_greatest_least_numeric_descriptor(database, plan, arguments, result_nullable,
-                                                   out_descriptor, callbacks);
+    return infer_greatest_least_numeric_descriptor(
+        database,
+        plan,
+        arguments,
+        result_nullable,
+        out_descriptor,
+        callbacks
+    );
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static int greatest_least_function_uses_string_domain(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *arguments, bool *out_string_domain,
-    const struct mylite_expression_descriptor_compare_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_string_domain,
+    const struct mylite_expression_descriptor_compare_callbacks *callbacks
+) {
     *out_string_domain = false;
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
-         child != NULL; child = child->next_sibling) {
+         child != NULL;
+         child = child->next_sibling) {
         struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
         int status =
             callbacks->infer_expression_descriptor(database, plan, child, NULL, &descriptor);
@@ -94,11 +134,13 @@ static int greatest_least_function_uses_string_domain(
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_greatest_least_string_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *arguments, bool result_nullable,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool result_nullable,
     struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_compare_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_compare_callbacks *callbacks
+) {
     *out_descriptor = (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
         .flags = 0U,
@@ -113,15 +155,17 @@ static int infer_greatest_least_string_descriptor(
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t greatest_least_string_result_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
-    const struct mylite_expression_descriptor_compare_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_compare_callbacks *callbacks
+) {
     uint64_t length = 0U;
 
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
-         child != NULL; child = child->next_sibling) {
+         child != NULL;
+         child = child->next_sibling) {
         struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
 
         if (callbacks->infer_expression_descriptor(database, plan, child, NULL, &descriptor) !=
@@ -129,15 +173,17 @@ static uint64_t greatest_least_string_result_length(
             return mylite_mysql_long_text_length;
         }
         length = mylite_expression_descriptor_max_u64(
-            length, greatest_least_argument_string_length(database, &descriptor));
+            length,
+            greatest_least_argument_string_length(database, &descriptor)
+        );
     }
     return length;
 }
 
-static uint64_t
-greatest_least_argument_string_length(mylite_db *database,
-                                      const struct mylite_field_descriptor *descriptor)
-{
+static uint64_t greatest_least_argument_string_length(
+    mylite_db *database,
+    const struct mylite_field_descriptor *descriptor
+) {
     uint64_t max_bytes_per_character =
         mylite_expression_descriptor_connection_character_max_length(database);
 
@@ -157,17 +203,20 @@ greatest_least_argument_string_length(mylite_db *database,
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static int infer_greatest_least_numeric_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *arguments, bool result_nullable,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool result_nullable,
     struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_compare_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_compare_callbacks *callbacks
+) {
     struct mylite_field_descriptor aggregate = mylite_expression_descriptor_defaults();
     bool saw_nonnull = false;
 
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
-         child != NULL; child = child->next_sibling) {
+         child != NULL;
+         child = child->next_sibling) {
         struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
         int status =
             callbacks->infer_expression_descriptor(database, plan, child, NULL, &descriptor);
@@ -187,11 +236,11 @@ static int infer_greatest_least_numeric_descriptor(
     return MYLITE_OK;
 }
 
-static void
-aggregate_greatest_least_numeric_descriptor(const struct mylite_field_descriptor *argument,
-                                            struct mylite_field_descriptor *aggregate,
-                                            bool *out_saw_nonnull)
-{
+static void aggregate_greatest_least_numeric_descriptor(
+    const struct mylite_field_descriptor *argument,
+    struct mylite_field_descriptor *aggregate,
+    bool *out_saw_nonnull
+) {
     if (argument == NULL || argument->type == MYLITE_FIELD_TYPE_NULL) {
         return;
     }
@@ -213,7 +262,8 @@ aggregate_greatest_least_numeric_descriptor(const struct mylite_field_descriptor
             .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
             .length = mylite_expression_descriptor_max_u64(
                 mylite_expression_descriptor_max_u64(aggregate->length, argument->length),
-                mylite_mysql_double_display_length),
+                mylite_mysql_double_display_length
+            ),
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = mylite_mysql_binary_charset_id,
             .nullable = true,

@@ -13,10 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-int mylite_expression_descriptor_infer_char_function(mylite_db *database,
-                                                     const struct mylite_sql_ast_node *expression,
-                                                     struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_expression_descriptor_infer_char_function(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *charset_node = mylite_ast_child_at(expression, 2U);
@@ -31,10 +32,11 @@ int mylite_expression_descriptor_infer_char_function(mylite_db *database,
         return MYLITE_UNSUPPORTED;
     }
 
-    charset_name = charset_node == NULL
-                       ? mylite_copy_span_text(mylite_mysql_binary_charset_name,
-                                               strlen(mylite_mysql_binary_charset_name))
-                       : mylite_copy_schema_text_span(charset_node);
+    charset_name = charset_node == NULL ? mylite_copy_span_text(
+                                              mylite_mysql_binary_charset_name,
+                                              strlen(mylite_mysql_binary_charset_name)
+                                          )
+                                        : mylite_copy_schema_text_span(charset_node);
     if (charset_name == NULL) {
         return MYLITE_NOMEM;
     }

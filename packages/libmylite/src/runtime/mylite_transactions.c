@@ -6,17 +6,24 @@
 #include "sqlite3.h"
 
 static int execute_start_transaction_statement(mylite_stmt *stmt);
-static int execute_begin_transaction_statement(mylite_stmt *stmt);
-static int execute_commit_statement(mylite_stmt *stmt);
-static int execute_rollback_statement(mylite_stmt *stmt);
-static int finish_transaction_completion(mylite_stmt *stmt,
-                                         enum mylite_transaction_access_mode chain_access_mode,
-                                         bool chain_consistent_snapshot);
 
-int mylite_transaction_begin_explicit(mylite_db *database,
-                                      enum mylite_transaction_access_mode access_mode,
-                                      bool consistent_snapshot)
-{
+static int execute_begin_transaction_statement(mylite_stmt *stmt);
+
+static int execute_commit_statement(mylite_stmt *stmt);
+
+static int execute_rollback_statement(mylite_stmt *stmt);
+
+static int finish_transaction_completion(
+    mylite_stmt *stmt,
+    enum mylite_transaction_access_mode chain_access_mode,
+    bool chain_consistent_snapshot
+);
+
+int mylite_transaction_begin_explicit(
+    mylite_db *database,
+    enum mylite_transaction_access_mode access_mode,
+    bool consistent_snapshot
+) {
     int rc = sqlite3_exec(database->sqlite, "BEGIN DEFERRED", NULL, NULL, NULL);
 
     if (rc != SQLITE_OK) {
@@ -29,8 +36,7 @@ int mylite_transaction_begin_explicit(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_transaction_commit_explicit(mylite_db *database)
-{
+int mylite_transaction_commit_explicit(mylite_db *database) {
     int status = mylite_transaction_commit_storage(database);
 
     if (status != MYLITE_OK) {
@@ -45,8 +51,7 @@ int mylite_transaction_commit_explicit(mylite_db *database)
     return MYLITE_OK;
 }
 
-int mylite_transaction_rollback_explicit(mylite_db *database)
-{
+int mylite_transaction_rollback_explicit(mylite_db *database) {
     int status = MYLITE_OK;
     int rc = sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
 
@@ -63,9 +68,10 @@ int mylite_transaction_rollback_explicit(mylite_db *database)
     return status;
 }
 
-int mylite_transaction_copy_statement(const struct mylite_sql_ast_node *statement,
-                                      mylite_stmt *stmt)
-{
+int mylite_transaction_copy_statement(
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt *stmt
+) {
     const struct mylite_sql_ast_node *characteristics = NULL;
     const struct mylite_sql_ast_node *completion = NULL;
 
@@ -77,12 +83,14 @@ int mylite_transaction_copy_statement(const struct mylite_sql_ast_node *statemen
         characteristics = mylite_ast_child_at(statement, 0U);
         for (const struct mylite_sql_ast_node *item =
                  characteristics == NULL ? NULL : characteristics->first_child;
-             item != NULL; item = item->next_sibling) {
+             item != NULL;
+             item = item->next_sibling) {
             if (item->transaction_access_mode == MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE) {
                 stmt->transaction.has_access_mode = true;
                 stmt->transaction.access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
-            } else if (item->transaction_access_mode ==
-                       MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY) {
+            } else if (
+                item->transaction_access_mode == MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY
+            ) {
                 stmt->transaction.has_access_mode = true;
                 stmt->transaction.access_mode = MYLITE_TRANSACTION_ACCESS_READ_ONLY;
             }
@@ -123,8 +131,7 @@ int mylite_transaction_copy_statement(const struct mylite_sql_ast_node *statemen
     return MYLITE_OK;
 }
 
-int mylite_transaction_execute_statement(mylite_stmt *stmt)
-{
+int mylite_transaction_execute_statement(mylite_stmt *stmt) {
     switch (stmt->kind) {
     case MYLITE_STMT_START_TRANSACTION:
         return execute_start_transaction_statement(stmt);
@@ -203,8 +210,7 @@ int mylite_transaction_execute_statement(mylite_stmt *stmt)
     return MYLITE_MISUSE;
 }
 
-static int execute_start_transaction_statement(mylite_stmt *stmt)
-{
+static int execute_start_transaction_statement(mylite_stmt *stmt) {
     enum mylite_transaction_access_mode access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;
     int status = MYLITE_OK;
 
@@ -219,8 +225,11 @@ static int execute_start_transaction_statement(mylite_stmt *stmt)
         }
     }
 
-    status = mylite_transaction_begin_explicit(stmt->database, access_mode,
-                                               stmt->transaction.consistent_snapshot);
+    status = mylite_transaction_begin_explicit(
+        stmt->database,
+        access_mode,
+        stmt->transaction.consistent_snapshot
+    );
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
         return status;
@@ -230,8 +239,7 @@ static int execute_start_transaction_statement(mylite_stmt *stmt)
     return MYLITE_OK;
 }
 
-static int execute_begin_transaction_statement(mylite_stmt *stmt)
-{
+static int execute_begin_transaction_statement(mylite_stmt *stmt) {
     int status = MYLITE_OK;
 
     if (stmt->database->transaction_active) {
@@ -242,8 +250,11 @@ static int execute_begin_transaction_statement(mylite_stmt *stmt)
         }
     }
 
-    status = mylite_transaction_begin_explicit(stmt->database, MYLITE_TRANSACTION_ACCESS_READ_WRITE,
-                                               false);
+    status = mylite_transaction_begin_explicit(
+        stmt->database,
+        MYLITE_TRANSACTION_ACCESS_READ_WRITE,
+        false
+    );
     if (status != MYLITE_OK) {
         stmt->affected_rows = -1;
         return status;
@@ -253,8 +264,7 @@ static int execute_begin_transaction_statement(mylite_stmt *stmt)
     return MYLITE_OK;
 }
 
-static int execute_commit_statement(mylite_stmt *stmt)
-{
+static int execute_commit_statement(mylite_stmt *stmt) {
     enum mylite_transaction_access_mode chain_access_mode = stmt->database->transaction_access_mode;
     bool chain_consistent_snapshot = stmt->database->transaction_consistent_snapshot;
     int status = MYLITE_OK;
@@ -272,8 +282,7 @@ static int execute_commit_statement(mylite_stmt *stmt)
     return status;
 }
 
-static int execute_rollback_statement(mylite_stmt *stmt)
-{
+static int execute_rollback_statement(mylite_stmt *stmt) {
     enum mylite_transaction_access_mode chain_access_mode = stmt->database->transaction_access_mode;
     bool chain_consistent_snapshot = stmt->database->transaction_consistent_snapshot;
     int status = MYLITE_OK;
@@ -291,15 +300,19 @@ static int execute_rollback_statement(mylite_stmt *stmt)
     return status;
 }
 
-static int finish_transaction_completion(mylite_stmt *stmt,
-                                         enum mylite_transaction_access_mode chain_access_mode,
-                                         bool chain_consistent_snapshot)
-{
+static int finish_transaction_completion(
+    mylite_stmt *stmt,
+    enum mylite_transaction_access_mode chain_access_mode,
+    bool chain_consistent_snapshot
+) {
     int status = MYLITE_OK;
 
     if (stmt->transaction.completion_chain == MYLITE_TRANSACTION_COMPLETION_CHAIN_YES) {
-        status = mylite_transaction_begin_explicit(stmt->database, chain_access_mode,
-                                                   chain_consistent_snapshot);
+        status = mylite_transaction_begin_explicit(
+            stmt->database,
+            chain_access_mode,
+            chain_consistent_snapshot
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -311,9 +324,10 @@ static int finish_transaction_completion(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-int mylite_transaction_begin_statement_atomicity(mylite_db *database,
-                                                 struct mylite_statement_atomicity *atomicity)
-{
+int mylite_transaction_begin_statement_atomicity(
+    mylite_db *database,
+    struct mylite_statement_atomicity *atomicity
+) {
     int rc = SQLITE_OK;
 
     if (atomicity == NULL) {
@@ -338,9 +352,10 @@ int mylite_transaction_begin_statement_atomicity(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_transaction_commit_statement_atomicity(mylite_db *database,
-                                                  struct mylite_statement_atomicity *atomicity)
-{
+int mylite_transaction_commit_statement_atomicity(
+    mylite_db *database,
+    struct mylite_statement_atomicity *atomicity
+) {
     int rc = SQLITE_OK;
 
     if (atomicity == NULL) {
@@ -352,8 +367,13 @@ int mylite_transaction_commit_statement_atomicity(mylite_db *database,
         atomicity->kind = MYLITE_STATEMENT_ATOMICITY_NONE;
         return mylite_transaction_commit_storage(database);
     case MYLITE_STATEMENT_ATOMICITY_SAVEPOINT:
-        rc = sqlite3_exec(database->sqlite, "RELEASE SAVEPOINT mylite_statement_atomicity", NULL,
-                          NULL, NULL);
+        rc = sqlite3_exec(
+            database->sqlite,
+            "RELEASE SAVEPOINT mylite_statement_atomicity",
+            NULL,
+            NULL,
+            NULL
+        );
         atomicity->kind = MYLITE_STATEMENT_ATOMICITY_NONE;
         return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
     case MYLITE_STATEMENT_ATOMICITY_NONE:
@@ -364,8 +384,9 @@ int mylite_transaction_commit_statement_atomicity(mylite_db *database,
 }
 
 void mylite_transaction_rollback_statement_atomicity(
-    mylite_db *database, const struct mylite_statement_atomicity *atomicity)
-{
+    mylite_db *database,
+    const struct mylite_statement_atomicity *atomicity
+) {
     if (atomicity == NULL) {
         return;
     }
@@ -375,39 +396,47 @@ void mylite_transaction_rollback_statement_atomicity(
         mylite_transaction_rollback_storage(database);
         break;
     case MYLITE_STATEMENT_ATOMICITY_SAVEPOINT:
-        (void)sqlite3_exec(database->sqlite, "ROLLBACK TO SAVEPOINT mylite_statement_atomicity",
-                           NULL, NULL, NULL);
-        (void)sqlite3_exec(database->sqlite, "RELEASE SAVEPOINT mylite_statement_atomicity", NULL,
-                           NULL, NULL);
+        (void)sqlite3_exec(
+            database->sqlite,
+            "ROLLBACK TO SAVEPOINT mylite_statement_atomicity",
+            NULL,
+            NULL,
+            NULL
+        );
+        (void)sqlite3_exec(
+            database->sqlite,
+            "RELEASE SAVEPOINT mylite_statement_atomicity",
+            NULL,
+            NULL,
+            NULL
+        );
         break;
     case MYLITE_STATEMENT_ATOMICITY_NONE:
         break;
     }
 }
 
-int mylite_transaction_set_read_only_error(mylite_db *database)
-{
+int mylite_transaction_set_read_only_error(mylite_db *database) {
     int status = mylite_diagnostics_set_error_message(
-        database, "Cannot execute statement in a READ ONLY transaction");
+        database,
+        "Cannot execute statement in a READ ONLY transaction"
+    );
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-int mylite_transaction_begin_storage(mylite_db *database)
-{
+int mylite_transaction_begin_storage(mylite_db *database) {
     int rc = sqlite3_exec(database->sqlite, "BEGIN IMMEDIATE", NULL, NULL, NULL);
 
     return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-int mylite_transaction_commit_storage(mylite_db *database)
-{
+int mylite_transaction_commit_storage(mylite_db *database) {
     int rc = sqlite3_exec(database->sqlite, "COMMIT", NULL, NULL, NULL);
 
     return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-void mylite_transaction_rollback_storage(mylite_db *database)
-{
+void mylite_transaction_rollback_storage(mylite_db *database) {
     (void)sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
 }

@@ -7,19 +7,30 @@
 
 #include <stdlib.h>
 
-static int copy_insert_table_name(const struct mylite_sql_ast_node *table_name,
-                                  struct mylite_insert_values_plan *plan);
-static int copy_insert_column_list(const struct mylite_sql_ast_node *columns,
-                                   struct mylite_insert_values_plan *plan);
+static int copy_insert_table_name(
+    const struct mylite_sql_ast_node *table_name,
+    struct mylite_insert_values_plan *plan
+);
+
+static int copy_insert_column_list(
+    const struct mylite_sql_ast_node *columns,
+    struct mylite_insert_values_plan *plan
+);
+
 static int add_insert_column(struct mylite_insert_values_plan *plan, char *column_name);
-static int copy_insert_row_alias(const struct mylite_sql_ast_node *row_alias,
-                                 struct mylite_insert_values_plan *plan);
+
+static int copy_insert_row_alias(
+    const struct mylite_sql_ast_node *row_alias,
+    struct mylite_insert_values_plan *plan
+);
+
 static int add_insert_alias_column(struct mylite_insert_values_plan *plan, char *column_name);
 
-int mylite_dml_copy_insert_values_statement(const struct mylite_sql_ast_node *statement,
-                                            struct mylite_insert_values_plan *values_plan,
-                                            struct mylite_insert_duplicate_update_plan *update_plan)
-{
+int mylite_dml_copy_insert_values_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_insert_values_plan *values_plan,
+    struct mylite_insert_duplicate_update_plan *update_plan
+) {
     const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *second_child = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *columns = NULL;
@@ -59,11 +70,12 @@ int mylite_dml_copy_insert_values_statement(const struct mylite_sql_ast_node *st
     return status;
 }
 
-int mylite_dml_copy_insert_set_statement(const struct mylite_sql_ast_node *statement,
-                                         struct mylite_insert_values_plan *values_plan,
-                                         struct mylite_insert_set_plan *set_plan,
-                                         struct mylite_insert_duplicate_update_plan *update_plan)
-{
+int mylite_dml_copy_insert_set_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_insert_values_plan *values_plan,
+    struct mylite_insert_set_plan *set_plan,
+    struct mylite_insert_duplicate_update_plan *update_plan
+) {
     const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *assignments = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *row_alias =
@@ -90,9 +102,10 @@ int mylite_dml_copy_insert_set_statement(const struct mylite_sql_ast_node *state
     return status;
 }
 
-int mylite_dml_copy_replace_values_statement(const struct mylite_sql_ast_node *statement,
-                                             struct mylite_insert_values_plan *values_plan)
-{
+int mylite_dml_copy_replace_values_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_insert_values_plan *values_plan
+) {
     const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *second_child = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *columns = NULL;
@@ -122,10 +135,11 @@ int mylite_dml_copy_replace_values_statement(const struct mylite_sql_ast_node *s
     return status;
 }
 
-int mylite_dml_copy_replace_set_statement(const struct mylite_sql_ast_node *statement,
-                                          struct mylite_insert_values_plan *values_plan,
-                                          struct mylite_insert_set_plan *set_plan)
-{
+int mylite_dml_copy_replace_set_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_insert_values_plan *values_plan,
+    struct mylite_insert_set_plan *set_plan
+) {
     const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *assignments = mylite_ast_child_at(statement, 1U);
     int status = MYLITE_OK;
@@ -143,9 +157,10 @@ int mylite_dml_copy_replace_set_statement(const struct mylite_sql_ast_node *stat
     return status;
 }
 
-static int copy_insert_table_name(const struct mylite_sql_ast_node *table_name,
-                                  struct mylite_insert_values_plan *plan)
-{
+static int copy_insert_table_name(
+    const struct mylite_sql_ast_node *table_name,
+    struct mylite_insert_values_plan *plan
+) {
     if (table_name == NULL) {
         return MYLITE_NOMEM;
     }
@@ -168,9 +183,10 @@ static int copy_insert_table_name(const struct mylite_sql_ast_node *table_name,
     return MYLITE_UNSUPPORTED;
 }
 
-static int copy_insert_column_list(const struct mylite_sql_ast_node *columns,
-                                   struct mylite_insert_values_plan *plan)
-{
+static int copy_insert_column_list(
+    const struct mylite_sql_ast_node *columns,
+    struct mylite_insert_values_plan *plan
+) {
     if (columns == NULL) {
         plan->has_column_list = false;
         return MYLITE_OK;
@@ -194,8 +210,7 @@ static int copy_insert_column_list(const struct mylite_sql_ast_node *columns,
     return MYLITE_OK;
 }
 
-static int add_insert_column(struct mylite_insert_values_plan *plan, char *column_name)
-{
+static int add_insert_column(struct mylite_insert_values_plan *plan, char *column_name) {
     char **columns =
         (char **)realloc((void *)plan->columns, (plan->column_count + 1U) * sizeof(*plan->columns));
 
@@ -208,9 +223,10 @@ static int add_insert_column(struct mylite_insert_values_plan *plan, char *colum
     return MYLITE_OK;
 }
 
-static int copy_insert_row_alias(const struct mylite_sql_ast_node *row_alias,
-                                 struct mylite_insert_values_plan *plan)
-{
+static int copy_insert_row_alias(
+    const struct mylite_sql_ast_node *row_alias,
+    struct mylite_insert_values_plan *plan
+) {
     const struct mylite_sql_ast_node *alias = mylite_ast_child_at(row_alias, 0U);
     const struct mylite_sql_ast_node *columns = mylite_ast_child_at(row_alias, 1U);
 
@@ -250,11 +266,11 @@ static int copy_insert_row_alias(const struct mylite_sql_ast_node *row_alias,
     return MYLITE_OK;
 }
 
-static int add_insert_alias_column(struct mylite_insert_values_plan *plan, char *column_name)
-{
-    char **columns =
-        (char **)realloc((void *)plan->alias_columns,
-                         (plan->alias_column_count + 1U) * sizeof(*plan->alias_columns));
+static int add_insert_alias_column(struct mylite_insert_values_plan *plan, char *column_name) {
+    char **columns = (char **)realloc(
+        (void *)plan->alias_columns,
+        (plan->alias_column_count + 1U) * sizeof(*plan->alias_columns)
+    );
 
     if (columns == NULL) {
         return MYLITE_NOMEM;

@@ -5,8 +5,8 @@
 static bool row_comparison_operator_is_supported(enum mylite_sql_ast_operator operator_kind);
 
 bool mylite_select_subquery_row_expression_is_supported(
-    const struct mylite_sql_ast_node *expression)
-{
+    const struct mylite_sql_ast_node *expression
+) {
     if (mylite_select_subquery_binary_expression_is_row_in(expression)) {
         return true;
     }
@@ -17,8 +17,8 @@ bool mylite_select_subquery_row_expression_is_supported(
 }
 
 bool mylite_select_subquery_row_expression_is_membership(
-    const struct mylite_sql_ast_node *expression)
-{
+    const struct mylite_sql_ast_node *expression
+) {
     if (mylite_select_subquery_binary_expression_is_row_in(expression)) {
         return true;
     }
@@ -26,8 +26,8 @@ bool mylite_select_subquery_row_expression_is_membership(
 }
 
 bool mylite_select_subquery_row_expression_is_positive_membership(
-    const struct mylite_sql_ast_node *expression)
-{
+    const struct mylite_sql_ast_node *expression
+) {
     if (mylite_select_subquery_binary_expression_is_row_in(expression)) {
         return expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IN;
     }
@@ -43,8 +43,7 @@ bool mylite_select_subquery_row_expression_is_positive_membership(
     return false;
 }
 
-bool mylite_select_subquery_binary_expression_is_row(const struct mylite_sql_ast_node *expression)
-{
+bool mylite_select_subquery_binary_expression_is_row(const struct mylite_sql_ast_node *expression) {
     if (mylite_select_subquery_binary_expression_is_row_in(expression)) {
         return true;
     }
@@ -52,8 +51,8 @@ bool mylite_select_subquery_binary_expression_is_row(const struct mylite_sql_ast
 }
 
 bool mylite_select_subquery_binary_expression_is_row_in(
-    const struct mylite_sql_ast_node *expression)
-{
+    const struct mylite_sql_ast_node *expression
+) {
     const struct mylite_sql_ast_node *left =
         mylite_sql_ast_unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
     const struct mylite_sql_ast_node *right =
@@ -71,8 +70,8 @@ bool mylite_select_subquery_binary_expression_is_row_in(
 }
 
 bool mylite_select_subquery_binary_expression_is_row_scalar(
-    const struct mylite_sql_ast_node *expression)
-{
+    const struct mylite_sql_ast_node *expression
+) {
     const struct mylite_sql_ast_node *left =
         mylite_sql_ast_unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
     const struct mylite_sql_ast_node *right =
@@ -86,9 +85,9 @@ bool mylite_select_subquery_binary_expression_is_row_scalar(
     return row_comparison_operator_is_supported(expression->operator_kind);
 }
 
-const struct mylite_sql_ast_node *
-mylite_select_subquery_row_select_statement(const struct mylite_sql_ast_node *expression)
-{
+const struct mylite_sql_ast_node *mylite_select_subquery_row_select_statement(
+    const struct mylite_sql_ast_node *expression
+) {
     const struct mylite_sql_ast_node *right =
         mylite_sql_ast_unwrap_parenthesized_expression(mylite_ast_child_at(expression, 1U));
 
@@ -105,8 +104,8 @@ mylite_select_subquery_row_select_statement(const struct mylite_sql_ast_node *ex
 }
 
 bool mylite_select_subquery_quantified_comparison_has_row_left(
-    const struct mylite_sql_ast_node *expression)
-{
+    const struct mylite_sql_ast_node *expression
+) {
     const struct mylite_sql_ast_node *left =
         mylite_sql_ast_unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
 
@@ -118,8 +117,8 @@ bool mylite_select_subquery_quantified_comparison_has_row_left(
 }
 
 bool mylite_select_subquery_quantified_comparison_is_row_alias(
-    const struct mylite_sql_ast_node *expression)
-{
+    const struct mylite_sql_ast_node *expression
+) {
     if (!mylite_select_subquery_quantified_comparison_has_row_left(expression)) {
         return false;
     }
@@ -136,8 +135,8 @@ bool mylite_select_subquery_quantified_comparison_is_row_alias(
 }
 
 bool mylite_select_subquery_quantified_operator_is_supported(
-    enum mylite_sql_ast_operator operator_kind)
-{
+    enum mylite_sql_ast_operator operator_kind
+) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -190,8 +189,7 @@ bool mylite_select_subquery_quantified_operator_is_supported(
     return false;
 }
 
-size_t mylite_select_subquery_row_constructor_width(const struct mylite_sql_ast_node *row)
-{
+size_t mylite_select_subquery_row_constructor_width(const struct mylite_sql_ast_node *row) {
     size_t width = 0U;
 
     if (row == NULL || row->kind != MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
@@ -204,8 +202,7 @@ size_t mylite_select_subquery_row_constructor_width(const struct mylite_sql_ast_
     return width;
 }
 
-bool mylite_select_subquery_binary_expression_is_in(const struct mylite_sql_ast_node *expression)
-{
+bool mylite_select_subquery_binary_expression_is_in(const struct mylite_sql_ast_node *expression) {
     const struct mylite_sql_ast_node *right = mylite_ast_child_at(expression, 1U);
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
@@ -226,8 +223,7 @@ bool mylite_select_subquery_binary_expression_is_in(const struct mylite_sql_ast_
     }
 }
 
-static bool row_comparison_operator_is_supported(enum mylite_sql_ast_operator operator_kind)
-{
+static bool row_comparison_operator_is_supported(enum mylite_sql_ast_operator operator_kind) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:

@@ -15,35 +15,56 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int
-infer_strcmp_collation_info(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
-                            const struct mylite_select_table *table,
-                            const struct mylite_expression_collation_callbacks *collation_callbacks,
-                            struct mylite_charset_collation_info *out_info);
-static int set_strcmp_function_result(mylite_db *database,
-                                      const struct mylite_expression_value *left,
-                                      const struct mylite_sql_ast_node *left_argument,
-                                      const struct mylite_expression_value *right,
-                                      const struct mylite_sql_ast_node *right_argument,
-                                      const struct mylite_charset_collation_info *collation_info,
-                                      struct mylite_expression_value *out_value);
-static int strcmp_value_to_text(mylite_db *database, const struct mylite_expression_value *value,
-                                const struct mylite_sql_ast_node *argument, char **out_text,
-                                size_t *out_length);
-static const struct mylite_sql_ast_node *
-strcmp_decimal_literal_argument(const struct mylite_sql_ast_node *argument, bool *out_negative);
-static int strcmp_decimal_literal_to_text(mylite_db *database,
-                                          const struct mylite_sql_ast_node *literal, bool negative,
-                                          char **out_text, size_t *out_length);
+static int infer_strcmp_collation_info(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_select_table *table,
+    const struct mylite_expression_collation_callbacks *collation_callbacks,
+    struct mylite_charset_collation_info *out_info
+);
+
+static int set_strcmp_function_result(
+    mylite_db *database,
+    const struct mylite_expression_value *left,
+    const struct mylite_sql_ast_node *left_argument,
+    const struct mylite_expression_value *right,
+    const struct mylite_sql_ast_node *right_argument,
+    const struct mylite_charset_collation_info *collation_info,
+    struct mylite_expression_value *out_value
+);
+
+static int strcmp_value_to_text(
+    mylite_db *database,
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+);
+
+static const struct mylite_sql_ast_node *strcmp_decimal_literal_argument(
+    const struct mylite_sql_ast_node *argument,
+    bool *out_negative
+);
+
+static int strcmp_decimal_literal_to_text(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool negative,
+    char **out_text,
+    size_t *out_length
+);
+
 static bool decimal_literal_span_is_zero(const char *text, size_t length);
 
 int mylite_statement_evaluate_strcmp_function(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_select_table *table,
     const struct mylite_expression_collation_callbacks *collation_callbacks,
-    struct mylite_expression_value *out_value)
-{
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     const struct mylite_sql_ast_node *left_argument = mylite_ast_child_at(arguments, 0U);
     const struct mylite_sql_ast_node *right_argument = mylite_ast_child_at(arguments, 1U);
@@ -78,11 +99,23 @@ int mylite_statement_evaluate_strcmp_function(
         goto cleanup;
     }
 
-    status = infer_strcmp_collation_info(stmt, function_call, table, collation_callbacks,
-                                         &collation_info);
+    status = infer_strcmp_collation_info(
+        stmt,
+        function_call,
+        table,
+        collation_callbacks,
+        &collation_info
+    );
     if (status == MYLITE_OK) {
-        status = set_strcmp_function_result(stmt->database, &left, left_argument, &right,
-                                            right_argument, &collation_info, out_value);
+        status = set_strcmp_function_result(
+            stmt->database,
+            &left,
+            left_argument,
+            &right,
+            right_argument,
+            &collation_info,
+            out_value
+        );
     }
 
 cleanup:
@@ -91,12 +124,13 @@ cleanup:
     return status;
 }
 
-static int
-infer_strcmp_collation_info(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
-                            const struct mylite_select_table *table,
-                            const struct mylite_expression_collation_callbacks *collation_callbacks,
-                            struct mylite_charset_collation_info *out_info)
-{
+static int infer_strcmp_collation_info(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_select_table *table,
+    const struct mylite_expression_collation_callbacks *collation_callbacks,
+    struct mylite_charset_collation_info *out_info
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     struct mylite_expression_collation_context context = {
         .plan = stmt == NULL ? NULL : &stmt->select_plan,
@@ -109,26 +143,36 @@ infer_strcmp_collation_info(mylite_stmt *stmt, const struct mylite_sql_ast_node 
     }
 
     status = mylite_expression_infer_function_arguments_collation_info(
-        stmt->database, &context, arguments, 0U, true, collation_callbacks, out_info);
+        stmt->database,
+        &context,
+        arguments,
+        0U,
+        true,
+        collation_callbacks,
+        out_info
+    );
     if (status != MYLITE_OK) {
         return status;
     }
     if (out_info->coercibility == mylite_mysql_coercibility_ignorable ||
         out_info->collation == NULL) {
         *out_info = mylite_expression_connection_collation_info(
-            stmt->database, mylite_mysql_coercibility_coercible);
+            stmt->database,
+            mylite_mysql_coercibility_coercible
+        );
     }
     return MYLITE_OK;
 }
 
-static int set_strcmp_function_result(mylite_db *database,
-                                      const struct mylite_expression_value *left,
-                                      const struct mylite_sql_ast_node *left_argument,
-                                      const struct mylite_expression_value *right,
-                                      const struct mylite_sql_ast_node *right_argument,
-                                      const struct mylite_charset_collation_info *collation_info,
-                                      struct mylite_expression_value *out_value)
-{
+static int set_strcmp_function_result(
+    mylite_db *database,
+    const struct mylite_expression_value *left,
+    const struct mylite_sql_ast_node *left_argument,
+    const struct mylite_expression_value *right,
+    const struct mylite_sql_ast_node *right_argument,
+    const struct mylite_charset_collation_info *collation_info,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_strcmp_compare_options options =
         mylite_strcmp_compare_options_for_collation(collation_info);
     char *left_text = NULL;
@@ -143,8 +187,13 @@ static int set_strcmp_function_result(mylite_db *database,
     if (status == MYLITE_OK) {
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_INT64,
-            .int64_value = mylite_strcmp_compare_texts(left_text, left_length, right_text,
-                                                       right_length, options),
+            .int64_value = mylite_strcmp_compare_texts(
+                left_text,
+                left_length,
+                right_text,
+                right_length,
+                options
+            ),
         };
     }
 
@@ -153,10 +202,13 @@ static int set_strcmp_function_result(mylite_db *database,
     return status;
 }
 
-static int strcmp_value_to_text(mylite_db *database, const struct mylite_expression_value *value,
-                                const struct mylite_sql_ast_node *argument, char **out_text,
-                                size_t *out_length)
-{
+static int strcmp_value_to_text(
+    mylite_db *database,
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+) {
     enum { strcmp_text_buffer_size = 64 };
     const struct mylite_sql_ast_node *decimal_literal = NULL;
     char buffer[strcmp_text_buffer_size];
@@ -168,8 +220,13 @@ static int strcmp_value_to_text(mylite_db *database, const struct mylite_express
     }
     decimal_literal = strcmp_decimal_literal_argument(argument, &negative_decimal);
     if (decimal_literal != NULL) {
-        return strcmp_decimal_literal_to_text(database, decimal_literal, negative_decimal, out_text,
-                                              out_length);
+        return strcmp_decimal_literal_to_text(
+            database,
+            decimal_literal,
+            negative_decimal,
+            out_text,
+            out_length
+        );
     }
 
     switch (value->kind) {
@@ -209,9 +266,10 @@ static int strcmp_value_to_text(mylite_db *database, const struct mylite_express
     return MYLITE_OK;
 }
 
-static const struct mylite_sql_ast_node *
-strcmp_decimal_literal_argument(const struct mylite_sql_ast_node *argument, bool *out_negative)
-{
+static const struct mylite_sql_ast_node *strcmp_decimal_literal_argument(
+    const struct mylite_sql_ast_node *argument,
+    bool *out_negative
+) {
     bool negative = false;
 
     argument = mylite_sql_ast_unwrap_parenthesized_expression(argument);
@@ -232,10 +290,13 @@ strcmp_decimal_literal_argument(const struct mylite_sql_ast_node *argument, bool
     return argument;
 }
 
-static int strcmp_decimal_literal_to_text(mylite_db *database,
-                                          const struct mylite_sql_ast_node *literal, bool negative,
-                                          char **out_text, size_t *out_length)
-{
+static int strcmp_decimal_literal_to_text(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool negative,
+    char **out_text,
+    size_t *out_length
+) {
     const char *text = literal == NULL ? NULL : literal->span.text;
     size_t length = literal == NULL ? 0U : literal->span.length;
     const char *dot = NULL;
@@ -312,8 +373,7 @@ static int strcmp_decimal_literal_to_text(mylite_db *database,
     return MYLITE_OK;
 }
 
-static bool decimal_literal_span_is_zero(const char *text, size_t length)
-{
+static bool decimal_literal_span_is_zero(const char *text, size_t length) {
     for (size_t index = 0U; index < length; ++index) {
         if (text[index] >= '1' && text[index] <= '9') {
             return false;

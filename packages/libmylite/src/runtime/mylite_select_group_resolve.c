@@ -9,50 +9,81 @@
 
 #include <stdlib.h>
 
-static int maybe_resolve_select_group_table_reference(mylite_db *database,
-                                                      const struct mylite_select_plan *plan,
-                                                      char **parts, size_t part_count,
-                                                      enum mylite_select_group_key_kind *out_kind,
-                                                      size_t *out_index, bool *out_resolved);
-static int maybe_resolve_select_group_output_reference(mylite_db *database,
-                                                       const struct mylite_select_plan *plan,
-                                                       char **parts, size_t part_count,
-                                                       enum mylite_select_group_key_kind *out_kind,
-                                                       size_t *out_index, bool *out_resolved);
-static int maybe_resolve_select_having_table_reference(mylite_db *database,
-                                                       const struct mylite_select_plan *plan,
-                                                       char **parts, size_t part_count,
-                                                       enum mylite_select_order_key_kind *out_kind,
-                                                       size_t *out_index, bool emit_warnings,
-                                                       bool *out_resolved);
-static int maybe_resolve_select_having_output_reference(mylite_db *database,
-                                                        const struct mylite_select_plan *plan,
-                                                        char **parts, size_t part_count,
-                                                        enum mylite_select_order_key_kind *out_kind,
-                                                        size_t *out_index, bool *out_resolved);
-static int set_select_ambiguous_group_column_warning(mylite_db *database, const char *column_name,
-                                                     const char *clause_context);
+static int maybe_resolve_select_group_table_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    enum mylite_select_group_key_kind *out_kind,
+    size_t *out_index,
+    bool *out_resolved
+);
+
+static int maybe_resolve_select_group_output_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    enum mylite_select_group_key_kind *out_kind,
+    size_t *out_index,
+    bool *out_resolved
+);
+
+static int maybe_resolve_select_having_table_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    enum mylite_select_order_key_kind *out_kind,
+    size_t *out_index,
+    bool emit_warnings,
+    bool *out_resolved
+);
+
+static int maybe_resolve_select_having_output_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    enum mylite_select_order_key_kind *out_kind,
+    size_t *out_index,
+    bool *out_resolved
+);
+
+static int set_select_ambiguous_group_column_warning(
+    mylite_db *database,
+    const char *column_name,
+    const char *clause_context
+);
+
 static int set_select_unknown_having_column_error(mylite_db *database, const char *reference);
 
-int mylite_select_set_unknown_group_column_error(mylite_db *database, const char *column_name)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '",
-                                                            column_name, "' in 'group statement'");
+int mylite_select_set_unknown_group_column_error(mylite_db *database, const char *column_name) {
+    int status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Unknown column '",
+        column_name,
+        "' in 'group statement'"
+    );
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                             mylite_error_message(database));
+    status = mylite_diagnostics_append_error(
+        database,
+        MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+        mylite_error_message(database)
+    );
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-int mylite_select_resolve_group_reference(mylite_db *database,
-                                          const struct mylite_select_plan *plan,
-                                          const struct mylite_sql_ast_node *expression,
-                                          enum mylite_select_group_key_kind *out_kind,
-                                          size_t *out_index)
-{
+int mylite_select_resolve_group_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_select_group_key_kind *out_kind,
+    size_t *out_index
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     bool resolved = false;
@@ -67,13 +98,27 @@ int mylite_select_resolve_group_reference(mylite_db *database,
         return status;
     }
 
-    status = maybe_resolve_select_group_table_reference(database, plan, parts, part_count, out_kind,
-                                                        out_index, &resolved);
+    status = maybe_resolve_select_group_table_reference(
+        database,
+        plan,
+        parts,
+        part_count,
+        out_kind,
+        out_index,
+        &resolved
+    );
     if (status != MYLITE_OK || resolved) {
         goto cleanup;
     }
-    status = maybe_resolve_select_group_output_reference(database, plan, parts, part_count,
-                                                         out_kind, out_index, &resolved);
+    status = maybe_resolve_select_group_output_reference(
+        database,
+        plan,
+        parts,
+        part_count,
+        out_kind,
+        out_index,
+        &resolved
+    );
     if (status != MYLITE_OK || resolved) {
         goto cleanup;
     }
@@ -97,22 +142,31 @@ cleanup:
     return status;
 }
 
-int mylite_select_resolve_having_reference(mylite_db *database,
-                                           const struct mylite_select_plan *plan,
-                                           const struct mylite_sql_ast_node *expression,
-                                           enum mylite_select_order_key_kind *out_kind,
-                                           size_t *out_index)
-{
-    return mylite_select_resolve_having_reference_internal(database, plan, expression, out_kind,
-                                                           out_index, true);
+int mylite_select_resolve_having_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_select_order_key_kind *out_kind,
+    size_t *out_index
+) {
+    return mylite_select_resolve_having_reference_internal(
+        database,
+        plan,
+        expression,
+        out_kind,
+        out_index,
+        true
+    );
 }
 
-int mylite_select_resolve_having_reference_internal(mylite_db *database,
-                                                    const struct mylite_select_plan *plan,
-                                                    const struct mylite_sql_ast_node *expression,
-                                                    enum mylite_select_order_key_kind *out_kind,
-                                                    size_t *out_index, bool emit_warnings)
-{
+int mylite_select_resolve_having_reference_internal(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_select_order_key_kind *out_kind,
+    size_t *out_index,
+    bool emit_warnings
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     bool resolved = false;
@@ -128,12 +182,27 @@ int mylite_select_resolve_having_reference_internal(mylite_db *database,
     }
 
     status = maybe_resolve_select_having_table_reference(
-        database, plan, parts, part_count, out_kind, out_index, emit_warnings, &resolved);
+        database,
+        plan,
+        parts,
+        part_count,
+        out_kind,
+        out_index,
+        emit_warnings,
+        &resolved
+    );
     if (status != MYLITE_OK || resolved) {
         goto cleanup;
     }
-    status = maybe_resolve_select_having_output_reference(database, plan, parts, part_count,
-                                                          out_kind, out_index, &resolved);
+    status = maybe_resolve_select_having_output_reference(
+        database,
+        plan,
+        parts,
+        part_count,
+        out_kind,
+        out_index,
+        &resolved
+    );
     if (status != MYLITE_OK || resolved) {
         goto cleanup;
     }
@@ -157,9 +226,10 @@ cleanup:
     return status;
 }
 
-bool mylite_select_column_index_is_grouped(const struct mylite_select_plan *plan,
-                                           size_t column_index)
-{
+bool mylite_select_column_index_is_grouped(
+    const struct mylite_select_plan *plan,
+    size_t column_index
+) {
     for (size_t index = 0U; index < plan->group_key_count; ++index) {
         const struct mylite_select_group_key *group_key = &plan->group_keys[index];
         size_t group_column_index = mylite_select_plan_column_count(plan);
@@ -186,7 +256,13 @@ bool mylite_select_column_index_is_grouped(const struct mylite_select_plan *plan
             continue;
         }
         match_count = mylite_select_count_plan_column_parts_matches(
-            plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), &group_column_index);
+            plan,
+            parts,
+            part_count,
+            0U,
+            mylite_select_plan_table_count(plan),
+            &group_column_index
+        );
         for (size_t part = 0U; part < part_count && part < 3U; ++part) {
             free(parts[part]);
         }
@@ -197,12 +273,15 @@ bool mylite_select_column_index_is_grouped(const struct mylite_select_plan *plan
     return false;
 }
 
-static int maybe_resolve_select_group_table_reference(mylite_db *database,
-                                                      const struct mylite_select_plan *plan,
-                                                      char **parts, size_t part_count,
-                                                      enum mylite_select_group_key_kind *out_kind,
-                                                      size_t *out_index, bool *out_resolved)
-{
+static int maybe_resolve_select_group_table_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    enum mylite_select_group_key_kind *out_kind,
+    size_t *out_index,
+    bool *out_resolved
+) {
     size_t column_index = mylite_select_plan_column_count(plan);
     size_t match_count = 0U;
 
@@ -212,13 +291,22 @@ static int maybe_resolve_select_group_table_reference(mylite_db *database,
     }
 
     match_count = mylite_select_count_plan_column_parts_matches(
-        plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), &column_index);
+        plan,
+        parts,
+        part_count,
+        0U,
+        mylite_select_plan_table_count(plan),
+        &column_index
+    );
     if (match_count == 0U) {
         return MYLITE_OK;
     }
     if (match_count > 1U) {
-        return mylite_select_set_ambiguous_column_error(database, parts[part_count - 1U],
-                                                        "group statement");
+        return mylite_select_set_ambiguous_column_error(
+            database,
+            parts[part_count - 1U],
+            "group statement"
+        );
     }
 
     if (part_count == 1U) {
@@ -240,12 +328,15 @@ static int maybe_resolve_select_group_table_reference(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int maybe_resolve_select_group_output_reference(mylite_db *database,
-                                                       const struct mylite_select_plan *plan,
-                                                       char **parts, size_t part_count,
-                                                       enum mylite_select_group_key_kind *out_kind,
-                                                       size_t *out_index, bool *out_resolved)
-{
+static int maybe_resolve_select_group_output_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    enum mylite_select_group_key_kind *out_kind,
+    size_t *out_index,
+    bool *out_resolved
+) {
     size_t output_index = 0U;
     size_t output_matches = 0U;
 
@@ -266,13 +357,16 @@ static int maybe_resolve_select_group_output_reference(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int maybe_resolve_select_having_table_reference(mylite_db *database,
-                                                       const struct mylite_select_plan *plan,
-                                                       char **parts, size_t part_count,
-                                                       enum mylite_select_order_key_kind *out_kind,
-                                                       size_t *out_index, bool emit_warnings,
-                                                       bool *out_resolved)
-{
+static int maybe_resolve_select_having_table_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    enum mylite_select_order_key_kind *out_kind,
+    size_t *out_index,
+    bool emit_warnings,
+    bool *out_resolved
+) {
     size_t column_index = mylite_select_plan_column_count(plan);
     size_t match_count = 0U;
 
@@ -282,13 +376,22 @@ static int maybe_resolve_select_having_table_reference(mylite_db *database,
     }
 
     match_count = mylite_select_count_plan_column_parts_matches(
-        plan, parts, part_count, 0U, mylite_select_plan_table_count(plan), &column_index);
+        plan,
+        parts,
+        part_count,
+        0U,
+        mylite_select_plan_table_count(plan),
+        &column_index
+    );
     if (match_count == 0U) {
         return MYLITE_OK;
     }
     if (match_count > 1U) {
-        return mylite_select_set_ambiguous_column_error(database, parts[part_count - 1U],
-                                                        "having clause");
+        return mylite_select_set_ambiguous_column_error(
+            database,
+            parts[part_count - 1U],
+            "having clause"
+        );
     }
     if (!mylite_select_column_index_is_grouped(plan, column_index)) {
         return MYLITE_OK;
@@ -313,12 +416,15 @@ static int maybe_resolve_select_having_table_reference(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int maybe_resolve_select_having_output_reference(mylite_db *database,
-                                                        const struct mylite_select_plan *plan,
-                                                        char **parts, size_t part_count,
-                                                        enum mylite_select_order_key_kind *out_kind,
-                                                        size_t *out_index, bool *out_resolved)
-{
+static int maybe_resolve_select_having_output_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    char **parts,
+    size_t part_count,
+    enum mylite_select_order_key_kind *out_kind,
+    size_t *out_index,
+    bool *out_resolved
+) {
     size_t output_index = 0U;
     size_t output_matches = 0U;
 
@@ -339,11 +445,16 @@ static int maybe_resolve_select_having_output_reference(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int set_select_ambiguous_group_column_warning(mylite_db *database, const char *column_name,
-                                                     const char *clause_context)
-{
-    char *message = sqlite3_mprintf("Column '%q' in %s is ambiguous", column_name,
-                                    clause_context == NULL ? "group statement" : clause_context);
+static int set_select_ambiguous_group_column_warning(
+    mylite_db *database,
+    const char *column_name,
+    const char *clause_context
+) {
+    char *message = sqlite3_mprintf(
+        "Column '%q' in %s is ambiguous",
+        column_name,
+        clause_context == NULL ? "group statement" : clause_context
+    );
     int status = MYLITE_OK;
 
     if (message == NULL) {
@@ -356,14 +467,20 @@ static int set_select_ambiguous_group_column_warning(mylite_db *database, const 
     return status;
 }
 
-static int set_select_unknown_having_column_error(mylite_db *database, const char *reference)
-{
-    int status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '", reference,
-                                                            "' in 'having clause'");
+static int set_select_unknown_having_column_error(mylite_db *database, const char *reference) {
+    int status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Unknown column '",
+        reference,
+        "' in 'having clause'"
+    );
 
     if (status == MYLITE_OK) {
-        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                                 mylite_error_message(database));
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+            mylite_error_message(database)
+        );
         status = status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
     }
     return status;

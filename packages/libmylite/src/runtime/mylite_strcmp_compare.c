@@ -8,14 +8,23 @@
 #include <string.h>
 
 static size_t trimmed_strcmp_length(const char *text, size_t length);
-static unsigned char strcmp_compare_byte(unsigned char value,
-                                         struct mylite_strcmp_compare_options options);
+
+static unsigned char strcmp_compare_byte(
+    unsigned char value,
+    struct mylite_strcmp_compare_options options
+);
+
 static bool strcmp_collation_ignores_trailing_spaces(const char *collation_name);
+
 static bool strcmp_collation_is_case_sensitive(const struct mylite_charset_collation_info *info);
 
-int mylite_strcmp_compare_texts(const char *left, size_t left_length, const char *right,
-                                size_t right_length, struct mylite_strcmp_compare_options options)
-{
+int mylite_strcmp_compare_texts(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length,
+    struct mylite_strcmp_compare_options options
+) {
     size_t compare_length = 0U;
 
     if (left == NULL) {
@@ -51,9 +60,9 @@ int mylite_strcmp_compare_texts(const char *left, size_t left_length, const char
     return (left_length > right_length) - (left_length < right_length);
 }
 
-struct mylite_strcmp_compare_options
-mylite_strcmp_compare_options_for_collation(const struct mylite_charset_collation_info *info)
-{
+struct mylite_strcmp_compare_options mylite_strcmp_compare_options_for_collation(
+    const struct mylite_charset_collation_info *info
+) {
     const char *collation_name = info == NULL || info->collation == NULL
                                      ? mylite_charset_default_collation_name()
                                      : info->collation;
@@ -64,8 +73,7 @@ mylite_strcmp_compare_options_for_collation(const struct mylite_charset_collatio
     };
 }
 
-static size_t trimmed_strcmp_length(const char *text, size_t length)
-{
+static size_t trimmed_strcmp_length(const char *text, size_t length) {
     if (text == NULL) {
         return 0U;
     }
@@ -75,17 +83,17 @@ static size_t trimmed_strcmp_length(const char *text, size_t length)
     return length;
 }
 
-static unsigned char strcmp_compare_byte(unsigned char value,
-                                         struct mylite_strcmp_compare_options options)
-{
+static unsigned char strcmp_compare_byte(
+    unsigned char value,
+    struct mylite_strcmp_compare_options options
+) {
     if (!options.case_sensitive && value >= 'A' && value <= 'Z') {
         return (unsigned char)(value - 'A' + 'a');
     }
     return value;
 }
 
-static bool strcmp_collation_ignores_trailing_spaces(const char *collation_name)
-{
+static bool strcmp_collation_ignores_trailing_spaces(const char *collation_name) {
     const struct mylite_collation *collation = mylite_collation_lookup(collation_name);
 
     if (collation == NULL) {
@@ -94,8 +102,7 @@ static bool strcmp_collation_ignores_trailing_spaces(const char *collation_name)
     return mylite_ascii_case_equal(collation->pad_attribute, "PAD SPACE");
 }
 
-static bool strcmp_collation_is_case_sensitive(const struct mylite_charset_collation_info *info)
-{
+static bool strcmp_collation_is_case_sensitive(const struct mylite_charset_collation_info *info) {
     const char *collation_name = info == NULL || info->collation == NULL
                                      ? mylite_charset_default_collation_name()
                                      : info->collation;

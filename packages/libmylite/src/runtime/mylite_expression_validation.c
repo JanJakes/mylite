@@ -9,9 +9,10 @@
 
 static bool expression_function_name_is_char(const struct mylite_sql_ast_node *name);
 
-int mylite_expression_validate_char_function_charset(mylite_db *database,
-                                                     const struct mylite_sql_ast_node *expression)
-{
+int mylite_expression_validate_char_function_charset(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *charset_node = mylite_ast_child_at(expression, 2U);
     char *charset_name = NULL;
@@ -31,9 +32,10 @@ int mylite_expression_validate_char_function_charset(mylite_db *database,
     return status;
 }
 
-int mylite_expression_validate_cast_target_charset(mylite_db *database,
-                                                   const struct mylite_sql_ast_node *expression)
-{
+int mylite_expression_validate_cast_target_charset(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
     const struct mylite_sql_ast_node *target = mylite_ast_child_at(expression, 1U);
     char *charset_name = NULL;
     int status = MYLITE_OK;
@@ -55,8 +57,7 @@ int mylite_expression_validate_cast_target_charset(mylite_db *database,
     return status;
 }
 
-bool mylite_expression_char_function_charset_name_is_supported(const char *name)
-{
+bool mylite_expression_char_function_charset_name_is_supported(const char *name) {
     if (mylite_ascii_case_equal(name, mylite_mysql_binary_charset_name)) {
         return true;
     }
@@ -68,8 +69,7 @@ bool mylite_expression_char_function_charset_name_is_supported(const char *name)
     return false;
 }
 
-bool mylite_expression_literal_is_supported(const struct mylite_sql_ast_node *expression)
-{
+bool mylite_expression_literal_is_supported(const struct mylite_sql_ast_node *expression) {
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
         return false;
     }
@@ -91,8 +91,7 @@ bool mylite_expression_literal_is_supported(const struct mylite_sql_ast_node *ex
     return false;
 }
 
-static bool expression_function_name_is_char(const struct mylite_sql_ast_node *name)
-{
+static bool expression_function_name_is_char(const struct mylite_sql_ast_node *name) {
     if (name == NULL) {
         return false;
     }

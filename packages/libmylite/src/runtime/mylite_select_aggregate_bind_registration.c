@@ -10,33 +10,51 @@
 
 #include <stdlib.h>
 
-static int
-collect_aggregate_bindings(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                           struct mylite_select_plan *plan,
-                           const struct mylite_select_aggregate_bind_callbacks *callbacks);
-static int
-bind_group_concat_aggregate(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                            struct mylite_select_plan *plan,
-                            const struct mylite_select_aggregate_bind_callbacks *callbacks);
-static int
-bind_group_concat_order_by(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                           struct mylite_select_plan *plan,
-                           const struct mylite_select_aggregate_bind_callbacks *callbacks);
-static int
-bind_group_concat_order_item(mylite_db *database, const struct mylite_sql_ast_node *order_item,
-                             size_t argument_count, struct mylite_select_plan *plan,
-                             const struct mylite_select_aggregate_bind_callbacks *callbacks);
-static int
-bind_aggregate_argument_list(mylite_db *database, const struct mylite_sql_ast_node *arguments,
-                             struct mylite_select_plan *plan,
-                             const struct mylite_select_aggregate_bind_callbacks *callbacks);
+static int collect_aggregate_bindings(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
+static int bind_group_concat_aggregate(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
+static int bind_group_concat_order_by(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
+static int bind_group_concat_order_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_item,
+    size_t argument_count,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
+static int bind_aggregate_argument_list(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
+
 static bool aggregate_argument_list_is_valid(const struct mylite_sql_ast_node *arguments);
+
 static bool aggregate_binding_needs_distinct_argument_descriptors(
-    const struct mylite_select_aggregate_binding *binding);
+    const struct mylite_select_aggregate_binding *binding
+);
 
 bool mylite_select_aggregate_bind_callbacks_are_valid(
-    const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     if (callbacks == NULL || callbacks->predicate_callbacks == NULL ||
         callbacks->subquery_callbacks == NULL ||
         callbacks->infer_aggregate_expression_descriptor == NULL ||
@@ -49,9 +67,11 @@ bool mylite_select_aggregate_bind_callbacks_are_valid(
 }
 
 int mylite_select_bind_aggregate_call(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     struct mylite_select_aggregate_binding binding = {
         .call = expression,
         .argument = mylite_ast_child_at(expression, 1U),
@@ -70,24 +90,42 @@ int mylite_select_bind_aggregate_call(
             return status;
         }
     } else if (binding.argument_kind == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION) {
-        status = mylite_select_bind_predicate_expression(database, binding.argument, plan,
-                                                         callbacks->predicate_callbacks);
+        status = mylite_select_bind_predicate_expression(
+            database,
+            binding.argument,
+            plan,
+            callbacks->predicate_callbacks
+        );
         if (status != MYLITE_OK) {
             return status;
         }
-    } else if (binding.argument_kind ==
-               MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST) {
-        status = mylite_select_bind_count_distinct_arguments(database, binding.argument, plan,
-                                                             callbacks);
+    } else if (
+        binding.argument_kind == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST
+    ) {
+        status = mylite_select_bind_count_distinct_arguments(
+            database,
+            binding.argument,
+            plan,
+            callbacks
+        );
         if (status != MYLITE_OK) {
             return status;
         }
     }
-    status = callbacks->infer_aggregate_expression_descriptor(database, plan, expression,
-                                                              &binding.descriptor);
+    status = callbacks->infer_aggregate_expression_descriptor(
+        database,
+        plan,
+        expression,
+        &binding.descriptor
+    );
     if (status == MYLITE_OK && aggregate_binding_needs_distinct_argument_descriptors(&binding)) {
         status = mylite_select_infer_count_distinct_argument_descriptors(
-            database, plan, binding.argument, &binding, callbacks);
+            database,
+            plan,
+            binding.argument,
+            &binding,
+            callbacks
+        );
     }
     if (status != MYLITE_OK) {
         mylite_select_aggregate_binding_deinit(&binding);
@@ -102,9 +140,11 @@ int mylite_select_bind_aggregate_call(
 }
 
 int mylite_select_collect_aggregate_bindings(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     if (!mylite_select_aggregate_bind_callbacks_are_valid(callbacks)) {
         return MYLITE_MISUSE;
     }
@@ -125,13 +165,22 @@ static int collect_aggregate_bindings( // NOLINT(misc-no-recursion)
             .kind = expression->aggregate_kind,
             .argument_kind = expression->aggregate_argument,
         };
-        int status = callbacks->infer_aggregate_expression_descriptor(database, plan, expression,
-                                                                      &binding.descriptor);
+        int status = callbacks->infer_aggregate_expression_descriptor(
+            database,
+            plan,
+            expression,
+            &binding.descriptor
+        );
 
         if (status == MYLITE_OK &&
             aggregate_binding_needs_distinct_argument_descriptors(&binding)) {
             status = mylite_select_infer_count_distinct_argument_descriptors(
-                database, plan, binding.argument, &binding, callbacks);
+                database,
+                plan,
+                binding.argument,
+                &binding,
+                callbacks
+            );
         }
         if (status == MYLITE_OK) {
             status = mylite_select_plan_add_aggregate_binding(plan, &binding);
@@ -144,8 +193,12 @@ static int collect_aggregate_bindings( // NOLINT(misc-no-recursion)
         return MYLITE_OK;
     }
     if (expression->kind == MYLITE_SQL_AST_QUANTIFIED_COMPARISON) {
-        return collect_aggregate_bindings(database, mylite_ast_child_at(expression, 0U), plan,
-                                          callbacks);
+        return collect_aggregate_bindings(
+            database,
+            mylite_ast_child_at(expression, 0U),
+            plan,
+            callbacks
+        );
     }
 
     for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
@@ -159,11 +212,12 @@ static int collect_aggregate_bindings( // NOLINT(misc-no-recursion)
     return MYLITE_OK;
 }
 
-static int
-bind_group_concat_aggregate(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                            struct mylite_select_plan *plan,
-                            const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+static int bind_group_concat_aggregate(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     struct mylite_select_aggregate_binding binding = {
         .argument = mylite_ast_child_at(expression, 1U),
         .kind = expression->aggregate_kind,
@@ -183,11 +237,12 @@ bind_group_concat_aggregate(mylite_db *database, const struct mylite_sql_ast_nod
     return status;
 }
 
-static int
-bind_group_concat_order_by(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                           struct mylite_select_plan *plan,
-                           const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+static int bind_group_concat_order_by(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *order_by =
         mylite_ast_find_child_kind(expression, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
@@ -196,7 +251,8 @@ bind_group_concat_order_by(mylite_db *database, const struct mylite_sql_ast_node
     size_t argument_count = mylite_sql_ast_node_child_count(arguments);
 
     for (const struct mylite_sql_ast_node *item = items == NULL ? NULL : items->first_child;
-         item != NULL; item = item->next_sibling) {
+         item != NULL;
+         item = item->next_sibling) {
         int status = bind_group_concat_order_item(database, item, argument_count, plan, callbacks);
 
         if (status != MYLITE_OK) {
@@ -206,11 +262,13 @@ bind_group_concat_order_by(mylite_db *database, const struct mylite_sql_ast_node
     return MYLITE_OK;
 }
 
-static int
-bind_group_concat_order_item(mylite_db *database, const struct mylite_sql_ast_node *order_item,
-                             size_t argument_count, struct mylite_select_plan *plan,
-                             const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+static int bind_group_concat_order_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_item,
+    size_t argument_count,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(order_item, 0U);
 
     if (expression == NULL) {
@@ -236,23 +294,34 @@ bind_group_concat_order_item(mylite_db *database, const struct mylite_sql_ast_no
         return MYLITE_OK;
     }
     return mylite_select_bind_predicate_expression_in_clause(
-        database, expression, plan, "order clause", 0U, mylite_select_plan_table_count(plan),
-        callbacks->predicate_callbacks);
+        database,
+        expression,
+        plan,
+        "order clause",
+        0U,
+        mylite_select_plan_table_count(plan),
+        callbacks->predicate_callbacks
+    );
 }
 
-static int
-bind_aggregate_argument_list(mylite_db *database, const struct mylite_sql_ast_node *arguments,
-                             struct mylite_select_plan *plan,
-                             const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+static int bind_aggregate_argument_list(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     if (!aggregate_argument_list_is_valid(arguments)) {
         return callbacks->set_invalid_group_function_error(database);
     }
 
     for (const struct mylite_sql_ast_node *argument = arguments->first_child; argument != NULL;
          argument = argument->next_sibling) {
-        int status = mylite_select_bind_predicate_expression(database, argument, plan,
-                                                             callbacks->predicate_callbacks);
+        int status = mylite_select_bind_predicate_expression(
+            database,
+            argument,
+            plan,
+            callbacks->predicate_callbacks
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -261,8 +330,7 @@ bind_aggregate_argument_list(mylite_db *database, const struct mylite_sql_ast_no
     return MYLITE_OK;
 }
 
-static bool aggregate_argument_list_is_valid(const struct mylite_sql_ast_node *arguments)
-{
+static bool aggregate_argument_list_is_valid(const struct mylite_sql_ast_node *arguments) {
     if (arguments == NULL || arguments->first_child == NULL) {
         return false;
     }
@@ -271,8 +339,8 @@ static bool aggregate_argument_list_is_valid(const struct mylite_sql_ast_node *a
 }
 
 static bool aggregate_binding_needs_distinct_argument_descriptors(
-    const struct mylite_select_aggregate_binding *binding)
-{
+    const struct mylite_select_aggregate_binding *binding
+) {
     return binding != NULL && binding->kind == MYLITE_SQL_AST_AGGREGATE_COUNT &&
            binding->argument_kind == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST;
 }

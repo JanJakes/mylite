@@ -13,27 +13,44 @@
 
 #include <stdlib.h>
 
-static int
-bind_union_global_order_item(mylite_db *database, const struct mylite_sql_ast_node *order_item,
-                             struct mylite_select_plan *plan,
-                             const struct mylite_select_union_prepare_callbacks *callbacks);
+static int bind_union_global_order_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_item,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_union_prepare_callbacks *callbacks
+);
+
 static int bind_union_global_order_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const struct mylite_select_union_prepare_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_union_prepare_callbacks *callbacks
+);
+
 static int bind_union_global_order_function_call(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const struct mylite_select_union_prepare_callbacks *callbacks);
-static int
-resolve_union_order_reference(mylite_db *database, const struct mylite_select_plan *plan,
-                              const struct mylite_sql_ast_node *expression,
-                              enum mylite_select_order_key_kind *out_kind, size_t *out_index,
-                              const struct mylite_select_union_prepare_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_union_prepare_callbacks *callbacks
+);
+
+static int resolve_union_order_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_select_order_key_kind *out_kind,
+    size_t *out_index,
+    const struct mylite_select_union_prepare_callbacks *callbacks
+);
+
 static int set_union_global_order_table_error(mylite_db *database, const char *table_name);
 
 int mylite_select_union_bind_global_order_by_clause(
-    mylite_db *database, const struct mylite_sql_ast_node *order_by_clause,
-    struct mylite_select_plan *plan, const struct mylite_select_union_prepare_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_union_prepare_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *items = mylite_ast_child_at(order_by_clause, 0U);
 
     if (order_by_clause == NULL || order_by_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
@@ -53,11 +70,12 @@ int mylite_select_union_bind_global_order_by_clause(
                                        : MYLITE_OK;
 }
 
-static int
-bind_union_global_order_item(mylite_db *database, const struct mylite_sql_ast_node *order_item,
-                             struct mylite_select_plan *plan,
-                             const struct mylite_select_union_prepare_callbacks *callbacks)
-{
+static int bind_union_global_order_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_item,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_union_prepare_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(order_item, 0U);
     struct mylite_select_order_key order_key = {
         .kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION,
@@ -129,9 +147,11 @@ bind_union_global_order_item(mylite_db *database, const struct mylite_sql_ast_no
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static int bind_union_global_order_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const struct mylite_select_union_prepare_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_union_prepare_callbacks *callbacks
+) {
     if (expression == NULL) {
         return callbacks->set_unsupported_order_error(database);
     }
@@ -205,9 +225,11 @@ static int bind_union_global_order_expression(
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static int bind_union_global_order_function_call(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const struct mylite_select_union_prepare_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_union_prepare_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
 
     if (!mylite_expression_is_supported_function_call(expression)) {
@@ -222,7 +244,8 @@ static int bind_union_global_order_function_call(
     }
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
-         child != NULL; child = child->next_sibling) {
+         child != NULL;
+         child = child->next_sibling) {
         int status = bind_union_global_order_expression(database, child, plan, callbacks);
 
         if (status != MYLITE_OK) {
@@ -232,12 +255,14 @@ static int bind_union_global_order_function_call(
     return MYLITE_OK;
 }
 
-static int
-resolve_union_order_reference(mylite_db *database, const struct mylite_select_plan *plan,
-                              const struct mylite_sql_ast_node *expression,
-                              enum mylite_select_order_key_kind *out_kind, size_t *out_index,
-                              const struct mylite_select_union_prepare_callbacks *callbacks)
-{
+static int resolve_union_order_reference(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_select_order_key_kind *out_kind,
+    size_t *out_index,
+    const struct mylite_select_union_prepare_callbacks *callbacks
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     int status = mylite_copy_identifier_parts(expression, parts, &part_count);
@@ -282,11 +307,11 @@ cleanup:
     return status;
 }
 
-static int set_union_global_order_table_error(mylite_db *database, const char *table_name)
-{
-    char *message =
-        sqlite3_mprintf("Table '%q' from one of the SELECTs cannot be used in global ORDER clause",
-                        table_name == NULL ? "" : table_name);
+static int set_union_global_order_table_error(mylite_db *database, const char *table_name) {
+    char *message = sqlite3_mprintf(
+        "Table '%q' from one of the SELECTs cannot be used in global ORDER clause",
+        table_name == NULL ? "" : table_name
+    );
     int status = MYLITE_OK;
 
     if (message == NULL) {
@@ -296,7 +321,10 @@ static int set_union_global_order_table_error(mylite_db *database, const char *t
     status = mylite_diagnostics_set_error_message(database, message);
     if (status == MYLITE_OK) {
         status = mylite_diagnostics_append_error(
-            database, MYLITE_MYSQL_ER_TABLENAME_NOT_ALLOWED_HERE, message);
+            database,
+            MYLITE_MYSQL_ER_TABLENAME_NOT_ALLOWED_HERE,
+            message
+        );
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;

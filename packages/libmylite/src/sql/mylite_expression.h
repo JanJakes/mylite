@@ -55,40 +55,61 @@ struct mylite_expression_value {
 
 struct mylite_expression_eval_context;
 
-typedef int (*mylite_expression_resolve_identifier_fn)(void *user_data,
-                                                       const struct mylite_sql_ast_node *identifier,
-                                                       struct mylite_expression_value *out_value);
-typedef int (*mylite_expression_eval_constant_fn)(void *user_data,
-                                                  const struct mylite_sql_ast_node *expression,
-                                                  struct mylite_expression_warnings *warnings,
-                                                  struct mylite_expression_value *out_value);
-typedef int (*mylite_expression_eval_aggregate_fn)(void *user_data,
-                                                   const struct mylite_sql_ast_node *aggregate,
-                                                   struct mylite_expression_value *out_value);
-typedef int (*mylite_expression_eval_subquery_fn)(void *user_data,
-                                                  const struct mylite_sql_ast_node *subquery,
-                                                  struct mylite_expression_warnings *warnings,
-                                                  struct mylite_expression_value *out_value);
-typedef int (*mylite_expression_eval_in_subquery_fn)(void *user_data,
-                                                     const struct mylite_sql_ast_node *expression,
-                                                     const struct mylite_expression_value *left,
-                                                     struct mylite_expression_warnings *warnings,
-                                                     struct mylite_expression_value *out_value);
+typedef int (*mylite_expression_resolve_identifier_fn)(
+    void *user_data,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+);
+typedef int (*mylite_expression_eval_constant_fn)(
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+typedef int (*mylite_expression_eval_aggregate_fn)(
+    void *user_data,
+    const struct mylite_sql_ast_node *aggregate,
+    struct mylite_expression_value *out_value
+);
+typedef int (*mylite_expression_eval_subquery_fn)(
+    void *user_data,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+typedef int (*mylite_expression_eval_in_subquery_fn)(
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
 typedef int (*mylite_expression_eval_quantified_subquery_fn)(
-    void *user_data, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
-    struct mylite_expression_value *out_value);
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
 typedef int (*mylite_expression_eval_row_subquery_fn)(
-    void *user_data, const struct mylite_sql_ast_node *expression,
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_eval_context *context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
 typedef int (*mylite_expression_eval_session_function_fn)(
-    void *user_data, const struct mylite_sql_ast_node *function_call,
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
 typedef int (*mylite_expression_eval_default_function_fn)(
-    void *user_data, const struct mylite_sql_ast_node *function_call,
-    struct mylite_expression_value *out_value);
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
+    struct mylite_expression_value *out_value
+);
 
 struct mylite_expression_eval_context {
     void *user_data;
@@ -105,28 +126,46 @@ struct mylite_expression_eval_context {
 
 void mylite_expression_value_deinit(struct mylite_expression_value *value);
 void mylite_expression_warnings_deinit(struct mylite_expression_warnings *warnings);
-int mylite_expression_warnings_append(struct mylite_expression_warnings *warnings,
-                                      unsigned int code, const char *message);
-int mylite_expression_warnings_append_condition(struct mylite_expression_warnings *warnings,
-                                                enum mylite_expression_warning_level level,
-                                                unsigned int code, const char *message);
+int mylite_expression_warnings_append(
+    struct mylite_expression_warnings *warnings,
+    unsigned int code,
+    const char *message
+);
+int mylite_expression_warnings_append_condition(
+    struct mylite_expression_warnings *warnings,
+    enum mylite_expression_warning_level level,
+    unsigned int code,
+    const char *message
+);
 
-int mylite_expression_eval(const struct mylite_sql_ast_node *expression,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value);
-int mylite_expression_eval_with_context(const struct mylite_sql_ast_node *expression,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value);
-int mylite_expression_value_copy(const struct mylite_expression_value *value,
-                                 struct mylite_expression_value *out_value);
+int mylite_expression_eval(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+int mylite_expression_eval_with_context(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+int mylite_expression_value_copy(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_value *out_value
+);
 char *mylite_expression_value_to_text(const struct mylite_expression_value *value);
 int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *value);
-int mylite_expression_value_compare(const struct mylite_expression_value *left,
-                                    const struct mylite_expression_value *right,
-                                    struct mylite_expression_warnings *warnings, int *out_compare);
-int mylite_expression_value_truth(const struct mylite_expression_value *value,
-                                  struct mylite_expression_warnings *warnings, int *out_truth);
+int mylite_expression_value_compare(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_compare
+);
+int mylite_expression_value_truth(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+);
 bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *expression);
 bool mylite_expression_is_cacheable_no_table(const struct mylite_sql_ast_node *expression);
 bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_node *expression);

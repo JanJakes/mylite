@@ -15,25 +15,42 @@ static const struct mylite_dml_mutation_expression_bind_diagnostics
         .set_unsupported_expression_error = mylite_dml_set_update_unsupported_expression_error,
 };
 
-static int reject_deferred_update_clauses(mylite_db *database,
-                                          const struct mylite_update_plan *plan);
-static int bind_update_assignment_values(mylite_db *database,
-                                         const struct mylite_select_table *table,
-                                         struct mylite_update_bound_assignment *assignments,
-                                         size_t assignment_count);
-static int bind_update_assignment_expression(mylite_db *database,
-                                             const struct mylite_select_table *table,
-                                             const struct mylite_sql_ast_node *expression);
-static int bind_update_where_clause(mylite_db *database, const struct mylite_update_plan *plan,
-                                    const struct mylite_select_table *table);
-static int bind_update_order_expression(mylite_db *database,
-                                        const struct mylite_select_table *table,
-                                        const struct mylite_sql_ast_node *expression);
+static int reject_deferred_update_clauses(
+    mylite_db *database,
+    const struct mylite_update_plan *plan
+);
 
-int mylite_dml_bind_update_subset(mylite_db *database, const struct mylite_update_plan *plan,
-                                  const struct mylite_select_table *table,
-                                  struct mylite_update_bound_assignment **out_assignments)
-{
+static int bind_update_assignment_values(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count
+);
+
+static int bind_update_assignment_expression(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression
+);
+
+static int bind_update_where_clause(
+    mylite_db *database,
+    const struct mylite_update_plan *plan,
+    const struct mylite_select_table *table
+);
+
+static int bind_update_order_expression(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression
+);
+
+int mylite_dml_bind_update_subset(
+    mylite_db *database,
+    const struct mylite_update_plan *plan,
+    const struct mylite_select_table *table,
+    struct mylite_update_bound_assignment **out_assignments
+) {
     struct mylite_update_bound_assignment *assignments = NULL;
     size_t assignment_count = 0U;
     int status = MYLITE_OK;
@@ -59,8 +76,13 @@ int mylite_dml_bind_update_subset(mylite_db *database, const struct mylite_updat
         return MYLITE_NOMEM;
     }
 
-    status = mylite_dml_bind_update_assignment_targets(database, plan, table, assignments,
-                                                       assignment_count);
+    status = mylite_dml_bind_update_assignment_targets(
+        database,
+        plan,
+        table,
+        assignments,
+        assignment_count
+    );
     if (status == MYLITE_OK) {
         status = bind_update_assignment_values(database, table, assignments, assignment_count);
     }
@@ -76,11 +98,12 @@ int mylite_dml_bind_update_subset(mylite_db *database, const struct mylite_updat
     return MYLITE_OK;
 }
 
-int mylite_dml_bind_update_order_by_clause(mylite_db *database,
-                                           const struct mylite_update_plan *plan,
-                                           const struct mylite_select_table *table,
-                                           struct mylite_update_order_plan *order_plan)
-{
+int mylite_dml_bind_update_order_by_clause(
+    mylite_db *database,
+    const struct mylite_update_plan *plan,
+    const struct mylite_select_table *table,
+    struct mylite_update_order_plan *order_plan
+) {
     const struct mylite_sql_ast_node *items = NULL;
 
     if (database == NULL || plan == NULL || table == NULL || order_plan == NULL) {
@@ -128,9 +151,10 @@ int mylite_dml_bind_update_order_by_clause(mylite_db *database,
                : MYLITE_OK;
 }
 
-static int reject_deferred_update_clauses(mylite_db *database,
-                                          const struct mylite_update_plan *plan)
-{
+static int reject_deferred_update_clauses(
+    mylite_db *database,
+    const struct mylite_update_plan *plan
+) {
     const struct mylite_sql_ast_node *limit = plan->limit_clause;
 
     if (limit == NULL) {
@@ -145,11 +169,12 @@ static int reject_deferred_update_clauses(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int bind_update_assignment_values(mylite_db *database,
-                                         const struct mylite_select_table *table,
-                                         struct mylite_update_bound_assignment *assignments,
-                                         size_t assignment_count)
-{
+static int bind_update_assignment_values(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count
+) {
     for (size_t index = 0U; index < assignment_count; ++index) {
         int status = bind_update_assignment_expression(database, table, assignments[index].value);
 
@@ -160,20 +185,28 @@ static int bind_update_assignment_values(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int bind_update_assignment_expression(mylite_db *database,
-                                             const struct mylite_select_table *table,
-                                             const struct mylite_sql_ast_node *expression)
-{
+static int bind_update_assignment_expression(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression
+) {
     if (expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT) {
         return MYLITE_OK;
     }
-    return mylite_dml_bind_mutation_expression(database, table, expression, "field list",
-                                               &update_expression_bind_diagnostics);
+    return mylite_dml_bind_mutation_expression(
+        database,
+        table,
+        expression,
+        "field list",
+        &update_expression_bind_diagnostics
+    );
 }
 
-static int bind_update_where_clause(mylite_db *database, const struct mylite_update_plan *plan,
-                                    const struct mylite_select_table *table)
-{
+static int bind_update_where_clause(
+    mylite_db *database,
+    const struct mylite_update_plan *plan,
+    const struct mylite_select_table *table
+) {
     const struct mylite_sql_ast_node *predicate = mylite_ast_child_at(plan->where_clause, 0U);
 
     if (plan->where_clause == NULL) {
@@ -182,14 +215,25 @@ static int bind_update_where_clause(mylite_db *database, const struct mylite_upd
     if (plan->where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE || predicate == NULL) {
         return mylite_dml_set_update_unsupported_clause_error(database);
     }
-    return mylite_dml_bind_mutation_expression(database, table, predicate, "where clause",
-                                               &update_expression_bind_diagnostics);
+    return mylite_dml_bind_mutation_expression(
+        database,
+        table,
+        predicate,
+        "where clause",
+        &update_expression_bind_diagnostics
+    );
 }
 
-static int bind_update_order_expression(mylite_db *database,
-                                        const struct mylite_select_table *table,
-                                        const struct mylite_sql_ast_node *expression)
-{
-    return mylite_dml_bind_mutation_expression(database, table, expression, "order clause",
-                                               &update_expression_bind_diagnostics);
+static int bind_update_order_expression(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression
+) {
+    return mylite_dml_bind_mutation_expression(
+        database,
+        table,
+        expression,
+        "order clause",
+        &update_expression_bind_diagnostics
+    );
 }

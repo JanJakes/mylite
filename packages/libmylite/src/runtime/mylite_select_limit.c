@@ -4,9 +4,9 @@
 
 #include <stdint.h>
 
-bool mylite_select_parse_uint64_span(struct mylite_sql_source_span span, uint64_t *out_value)
-{
+bool mylite_select_parse_uint64_span(struct mylite_sql_source_span span, uint64_t *out_value) {
     enum { decimal_radix = 10U };
+
     uint64_t value = 0U;
 
     *out_value = 0U;
@@ -30,9 +30,10 @@ bool mylite_select_parse_uint64_span(struct mylite_sql_source_span span, uint64_
     return true;
 }
 
-int mylite_select_bind_limit_clause(const struct mylite_sql_ast_node *limit_clause,
-                                    struct mylite_select_plan *plan)
-{
+int mylite_select_bind_limit_clause(
+    const struct mylite_sql_ast_node *limit_clause,
+    struct mylite_select_plan *plan
+) {
     const struct mylite_sql_ast_node *offset = mylite_ast_child_at(limit_clause, 0U);
     const struct mylite_sql_ast_node *row_count = mylite_ast_child_at(limit_clause, 1U);
 
@@ -51,9 +52,10 @@ int mylite_select_bind_limit_clause(const struct mylite_sql_ast_node *limit_clau
     return MYLITE_OK;
 }
 
-bool mylite_select_limit_row_is_kept(const struct mylite_select_limit *limit,
-                                     struct mylite_select_limit_position position)
-{
+bool mylite_select_limit_row_is_kept(
+    const struct mylite_select_limit *limit,
+    struct mylite_select_limit_position position
+) {
     if (!limit->has_limit) {
         return true;
     }
@@ -66,8 +68,7 @@ bool mylite_select_limit_row_is_kept(const struct mylite_select_limit *limit,
     return true;
 }
 
-bool mylite_select_limit_is_full(const struct mylite_select_limit *limit, size_t kept_count)
-{
+bool mylite_select_limit_is_full(const struct mylite_select_limit *limit, size_t kept_count) {
     if (!limit->has_limit) {
         return false;
     }

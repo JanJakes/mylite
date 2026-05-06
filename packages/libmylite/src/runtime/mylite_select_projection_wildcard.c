@@ -10,19 +10,30 @@
 #include <string.h>
 
 static int append_select_all_wildcard_outputs(mylite_db *database, struct mylite_select_plan *plan);
-static int append_select_range_wildcard_outputs(mylite_db *database,
-                                                struct mylite_select_plan *plan,
-                                                struct mylite_select_table_range range);
-static int append_select_table_wildcard_outputs(mylite_db *database,
-                                                struct mylite_select_plan *plan,
-                                                size_t table_index);
-static int append_select_plan_column_output(mylite_db *database, struct mylite_select_plan *plan,
-                                            size_t column_index);
 
-int mylite_select_append_wildcard_outputs(mylite_db *database,
-                                          const struct mylite_sql_ast_node *wildcard,
-                                          struct mylite_select_plan *plan)
-{
+static int append_select_range_wildcard_outputs(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range range
+);
+
+static int append_select_table_wildcard_outputs(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    size_t table_index
+);
+
+static int append_select_plan_column_output(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    size_t column_index
+);
+
+int mylite_select_append_wildcard_outputs(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *wildcard,
+    struct mylite_select_plan *plan
+) {
     bool all_tables = false;
     size_t table_index = mylite_select_plan_table_count(plan);
     int status =
@@ -50,15 +61,19 @@ int mylite_select_append_wildcard_outputs(mylite_db *database,
     return append_select_all_wildcard_outputs(database, plan);
 }
 
-static int append_select_all_wildcard_outputs(mylite_db *database, struct mylite_select_plan *plan)
-{
+static int append_select_all_wildcard_outputs(
+    mylite_db *database,
+    struct mylite_select_plan *plan
+) {
     if (plan->from_range_count == 0U) {
         return append_select_range_wildcard_outputs(
-            database, plan,
+            database,
+            plan,
             (struct mylite_select_table_range){
                 .first_table = 0U,
                 .table_count = mylite_select_plan_table_count(plan),
-            });
+            }
+        );
     }
 
     for (size_t range_index = 0U; range_index < plan->from_range_count; ++range_index) {
@@ -72,10 +87,11 @@ static int append_select_all_wildcard_outputs(mylite_db *database, struct mylite
     return MYLITE_OK;
 }
 
-static int append_select_range_wildcard_outputs(mylite_db *database,
-                                                struct mylite_select_plan *plan,
-                                                struct mylite_select_table_range range)
-{
+static int append_select_range_wildcard_outputs(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range range
+) {
     struct mylite_select_column_sequence sequence = {0};
     int status = mylite_select_build_wildcard_column_sequence(database, plan, range, &sequence);
 
@@ -87,9 +103,11 @@ static int append_select_range_wildcard_outputs(mylite_db *database,
     return status;
 }
 
-static int append_select_table_wildcard_outputs(mylite_db *database,
-                                                struct mylite_select_plan *plan, size_t table_index)
-{
+static int append_select_table_wildcard_outputs(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    size_t table_index
+) {
     const struct mylite_select_table *table = mylite_select_plan_table_const(plan, table_index);
 
     if (table == NULL) {
@@ -110,9 +128,11 @@ static int append_select_table_wildcard_outputs(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int append_select_plan_column_output(mylite_db *database, struct mylite_select_plan *plan,
-                                            size_t column_index)
-{
+static int append_select_plan_column_output(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    size_t column_index
+) {
     const struct mylite_select_column *column =
         mylite_select_plan_column_const(plan, column_index, NULL);
     char *label = NULL;
@@ -128,11 +148,14 @@ static int append_select_plan_column_output(mylite_db *database, struct mylite_s
         return MYLITE_NOMEM;
     }
 
-    status = mylite_select_plan_add_output_column(plan, &(const struct mylite_select_output_column){
-                                                            .kind = MYLITE_SELECT_OUTPUT_COLUMN,
-                                                            .column_index = column_index,
-                                                            .label = label,
-                                                        });
+    status = mylite_select_plan_add_output_column(
+        plan,
+        &(const struct mylite_select_output_column){
+            .kind = MYLITE_SELECT_OUTPUT_COLUMN,
+            .column_index = column_index,
+            .label = label,
+        }
+    );
     if (status != MYLITE_OK) {
         free(label);
         if (status == MYLITE_NOMEM) {

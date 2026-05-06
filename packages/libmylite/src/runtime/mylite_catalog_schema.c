@@ -8,9 +8,12 @@
 
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
-int mylite_catalog_seed_system_schema(mylite_db *database, const char *name,
-                                      const char *character_set, const char *collation)
-{
+int mylite_catalog_seed_system_schema(
+    mylite_db *database,
+    const char *name,
+    const char *character_set,
+    const char *collation
+) {
     sqlite3_stmt *stmt = NULL;
     static const char sql[] =
         "INSERT INTO __mylite_schema_catalog("
@@ -38,9 +41,10 @@ int mylite_catalog_seed_system_schema(mylite_db *database, const char *name,
     return MYLITE_OK;
 }
 
-int mylite_catalog_selected_schema_default(mylite_db *database,
-                                           struct mylite_schema_default *out_default)
-{
+int mylite_catalog_selected_schema_default(
+    mylite_db *database,
+    struct mylite_schema_default *out_default
+) {
     sqlite3_stmt *stmt = NULL;
     static const char sql[] =
         "SELECT default_character_set, default_collation FROM __mylite_schema_catalog "
@@ -94,15 +98,19 @@ int mylite_catalog_selected_schema_default(mylite_db *database,
     }
 
     if (mylite_diagnostics_set_error_message(
-            database, "Selected schema default charset is unavailable") == MYLITE_NOMEM) {
+            database,
+            "Selected schema default charset is unavailable"
+        ) == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
     return MYLITE_EXEC_ERROR;
 }
 
-int mylite_catalog_schema_exists(mylite_db *database, const char *schema_name,
-                                 struct mylite_schema_presence *out_presence)
-{
+int mylite_catalog_schema_exists(
+    mylite_db *database,
+    const char *schema_name,
+    struct mylite_schema_presence *out_presence
+) {
     sqlite3_stmt *stmt = NULL;
     static const char sql[] = "SELECT is_system FROM __mylite_schema_catalog WHERE name = ?";
     int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
@@ -133,9 +141,11 @@ int mylite_catalog_schema_exists(mylite_db *database, const char *schema_name,
     return MYLITE_OK;
 }
 
-int mylite_catalog_schema_default_by_name(mylite_db *database, const char *schema_name,
-                                          struct mylite_schema_default *out_default)
-{
+int mylite_catalog_schema_default_by_name(
+    mylite_db *database,
+    const char *schema_name,
+    struct mylite_schema_default *out_default
+) {
     sqlite3_stmt *stmt = NULL;
     static const char sql[] =
         "SELECT default_character_set, default_collation FROM __mylite_schema_catalog "
@@ -182,15 +192,22 @@ int mylite_catalog_schema_default_by_name(mylite_db *database, const char *schem
     if (rc != SQLITE_DONE) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '", schema_name,
-                                                     "'");
+    (void)mylite_diagnostics_set_error_message_parts(
+        database,
+        "Unknown database '",
+        schema_name,
+        "'"
+    );
     return MYLITE_EXEC_ERROR;
 }
 
-int mylite_catalog_insert_schema(mylite_db *database, const char *schema_name,
-                                 const struct mylite_schema_options *options)
-{
+int mylite_catalog_insert_schema(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_options *options
+) {
     enum { bind_read_only = 5 };
+
     sqlite3_stmt *stmt = NULL;
     static const char sql[] =
         "INSERT INTO __mylite_schema_catalog("
@@ -226,14 +243,17 @@ int mylite_catalog_insert_schema(mylite_db *database, const char *schema_name,
     return MYLITE_OK;
 }
 
-int mylite_catalog_update_schema(mylite_db *database, const char *schema_name,
-                                 const struct mylite_schema_options *options)
-{
+int mylite_catalog_update_schema(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_options *options
+) {
     enum {
         bind_has_read_only = 4,
         bind_read_only = 5,
         bind_schema_name = 6,
     };
+
     sqlite3_stmt *stmt = NULL;
     int has_read_only = 0;
     static const char sql[] = "UPDATE __mylite_schema_catalog SET "
@@ -279,8 +299,7 @@ int mylite_catalog_update_schema(mylite_db *database, const char *schema_name,
     return MYLITE_OK;
 }
 
-int mylite_catalog_delete_schema(mylite_db *database, const char *schema_name)
-{
+int mylite_catalog_delete_schema(mylite_db *database, const char *schema_name) {
     sqlite3_stmt *stmt = NULL;
     static const char sql[] = "DELETE FROM __mylite_schema_catalog WHERE name = ?";
     int rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &stmt, NULL);
@@ -298,7 +317,6 @@ int mylite_catalog_delete_schema(mylite_db *database, const char *schema_name)
     return MYLITE_OK;
 }
 
-static sqlite3_destructor_type sqlite_transient_destructor(void)
-{
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
     return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

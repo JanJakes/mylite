@@ -11,20 +11,32 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int resolve_index_ddl_schema(mylite_db *database, const char *selected_schema,
-                                    struct mylite_index_ddl_plan *plan);
+static int resolve_index_ddl_schema(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_index_ddl_plan *plan
+);
+
 static int validate_index_ddl_target(mylite_db *database, const struct mylite_index_ddl_plan *plan);
+
 static int set_duplicate_key_name_error(mylite_db *database, const char *index_name);
+
 static int set_drop_index_missing_error(mylite_db *database, const char *index_name);
-static char *build_create_unique_index_duplicate_sql(mylite_db *database,
-                                                     const struct mylite_alter_table_model *model,
-                                                     const struct mylite_create_table_index *index);
+
+static char *build_create_unique_index_duplicate_sql(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+);
+
 static const char *alter_table_column_physical_name(const struct mylite_alter_table_column *column);
 
-int mylite_table_ddl_validate_create_index_plan(mylite_db *database, const char *selected_schema,
-                                                struct mylite_index_ddl_plan *plan,
-                                                struct mylite_alter_table_model *model)
-{
+int mylite_table_ddl_validate_create_index_plan(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_index_ddl_plan *plan,
+    struct mylite_alter_table_model *model
+) {
     bool temporary = false;
     int status = resolve_index_ddl_schema(database, selected_schema, plan);
 
@@ -35,13 +47,22 @@ int mylite_table_ddl_validate_create_index_plan(mylite_db *database, const char 
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_catalog_temporary_table_exists(database, plan->schema_name, plan->table_name,
-                                                   &temporary);
+    status = mylite_catalog_temporary_table_exists(
+        database,
+        plan->schema_name,
+        plan->table_name,
+        &temporary
+    );
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_table_ddl_load_alter_table_model(database, plan->schema_name, plan->table_name,
-                                                     temporary, model);
+    status = mylite_table_ddl_load_alter_table_model(
+        database,
+        plan->schema_name,
+        plan->table_name,
+        temporary,
+        model
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -51,10 +72,12 @@ int mylite_table_ddl_validate_create_index_plan(mylite_db *database, const char 
     return MYLITE_OK;
 }
 
-int mylite_table_ddl_validate_drop_index_plan(mylite_db *database, const char *selected_schema,
-                                              struct mylite_index_ddl_plan *plan,
-                                              struct mylite_alter_table_model *model)
-{
+int mylite_table_ddl_validate_drop_index_plan(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_index_ddl_plan *plan,
+    struct mylite_alter_table_model *model
+) {
     char *canonical_name = NULL;
     size_t index = 0U;
     bool temporary = false;
@@ -67,13 +90,22 @@ int mylite_table_ddl_validate_drop_index_plan(mylite_db *database, const char *s
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_catalog_temporary_table_exists(database, plan->schema_name, plan->table_name,
-                                                   &temporary);
+    status = mylite_catalog_temporary_table_exists(
+        database,
+        plan->schema_name,
+        plan->table_name,
+        &temporary
+    );
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_table_ddl_load_alter_table_model(database, plan->schema_name, plan->table_name,
-                                                     temporary, model);
+    status = mylite_table_ddl_load_alter_table_model(
+        database,
+        plan->schema_name,
+        plan->table_name,
+        temporary,
+        model
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -93,16 +125,21 @@ int mylite_table_ddl_validate_drop_index_plan(mylite_db *database, const char *s
     return MYLITE_OK;
 }
 
-int mylite_table_ddl_validate_create_index_columns(mylite_db *database,
-                                                   const struct mylite_alter_table_model *model,
-                                                   const struct mylite_create_table_index *index)
-{
+int mylite_table_ddl_validate_create_index_columns(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+) {
     for (size_t part = 0U; part < index->part_count; ++part) {
         const char *column_name = index->parts[part].column_name;
 
         if (mylite_table_ddl_alter_table_column_index(model, column_name) == model->column_count) {
-            (void)mylite_diagnostics_set_error_message_parts(database, "Key column '", column_name,
-                                                             "' doesn't exist in table");
+            (void)mylite_diagnostics_set_error_message_parts(
+                database,
+                "Key column '",
+                column_name,
+                "' doesn't exist in table"
+            );
             return MYLITE_EXEC_ERROR;
         }
     }
@@ -110,8 +147,9 @@ int mylite_table_ddl_validate_create_index_columns(mylite_db *database,
 }
 
 int mylite_table_ddl_validate_create_index_supported_features(
-    mylite_db *database, const struct mylite_index_ddl_plan *plan)
-{
+    mylite_db *database,
+    const struct mylite_index_ddl_plan *plan
+) {
     if (plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT ||
         plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_SPATIAL) {
         (void)mylite_diagnostics_set_error_message(database, "Unsupported standalone index class");
@@ -119,16 +157,19 @@ int mylite_table_ddl_validate_create_index_supported_features(
     }
     if (plan->index.has_with_parser) {
         (void)mylite_diagnostics_set_error_message(
-            database, "WITH PARSER is only supported for FULLTEXT indexes");
+            database,
+            "WITH PARSER is only supported for FULLTEXT indexes"
+        );
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
 }
 
 int mylite_table_ddl_validate_create_unique_index_values(
-    mylite_db *database, const struct mylite_alter_table_model *model,
-    const struct mylite_create_table_index *index)
-{
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+) {
     char *sql = build_create_unique_index_duplicate_sql(database, model, index);
     sqlite3_stmt *select = NULL;
     int rc = SQLITE_OK;
@@ -146,16 +187,22 @@ int mylite_table_ddl_validate_create_unique_index_values(
     rc = sqlite3_step(select);
     sqlite3_finalize(select);
     if (rc == SQLITE_ROW) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Duplicate entry for key '",
-                                                         index->name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Duplicate entry for key '",
+            index->name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int resolve_index_ddl_schema(mylite_db *database, const char *selected_schema,
-                                    struct mylite_index_ddl_plan *plan)
-{
+static int resolve_index_ddl_schema(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_index_ddl_plan *plan
+) {
     if (plan->schema_name != NULL) {
         return MYLITE_OK;
     }
@@ -172,8 +219,10 @@ static int resolve_index_ddl_schema(mylite_db *database, const char *selected_sc
     return MYLITE_OK;
 }
 
-static int validate_index_ddl_target(mylite_db *database, const struct mylite_index_ddl_plan *plan)
-{
+static int validate_index_ddl_target(
+    mylite_db *database,
+    const struct mylite_index_ddl_plan *plan
+) {
     struct mylite_schema_presence presence = {false};
     bool exists = false;
     int status = mylite_catalog_schema_exists(database, plan->schema_name, &presence);
@@ -182,13 +231,21 @@ static int validate_index_ddl_target(mylite_db *database, const struct mylite_in
         return status;
     }
     if (!presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
-                                                         plan->schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Unknown database '",
+            plan->schema_name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Access to system schema '",
-                                                         plan->schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Access to system schema '",
+            plan->schema_name,
+            "' is rejected."
+        );
         return MYLITE_EXEC_ERROR;
     }
 
@@ -197,30 +254,40 @@ static int validate_index_ddl_target(mylite_db *database, const struct mylite_in
         return status;
     }
     if (!exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(database, plan->schema_name,
-                                                               plan->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            database,
+            plan->schema_name,
+            plan->table_name
+        );
     }
     return MYLITE_OK;
 }
 
-static int set_duplicate_key_name_error(mylite_db *database, const char *index_name)
-{
-    (void)mylite_diagnostics_set_error_message_parts(database, "Duplicate key name '", index_name,
-                                                     "'");
+static int set_duplicate_key_name_error(mylite_db *database, const char *index_name) {
+    (void)mylite_diagnostics_set_error_message_parts(
+        database,
+        "Duplicate key name '",
+        index_name,
+        "'"
+    );
     return MYLITE_EXEC_ERROR;
 }
 
-static int set_drop_index_missing_error(mylite_db *database, const char *index_name)
-{
-    (void)mylite_diagnostics_set_error_message_parts(database, "Can't DROP '", index_name,
-                                                     "'; check that column/key exists");
+static int set_drop_index_missing_error(mylite_db *database, const char *index_name) {
+    (void)mylite_diagnostics_set_error_message_parts(
+        database,
+        "Can't DROP '",
+        index_name,
+        "'; check that column/key exists"
+    );
     return MYLITE_EXEC_ERROR;
 }
 
-static char *build_create_unique_index_duplicate_sql(mylite_db *database,
-                                                     const struct mylite_alter_table_model *model,
-                                                     const struct mylite_create_table_index *index)
-{
+static char *build_create_unique_index_duplicate_sql(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {
@@ -238,8 +305,12 @@ static char *build_create_unique_index_duplicate_sql(mylite_db *database,
             sqlite3_str_append(sql, ",", 1);
         }
         if (key_part->has_prefix_length) {
-            sqlite3_str_appendf(sql, "substr(\"%w\",1,%llu)", column_name,
-                                (unsigned long long)key_part->prefix_length);
+            sqlite3_str_appendf(
+                sql,
+                "substr(\"%w\",1,%llu)",
+                column_name,
+                (unsigned long long)key_part->prefix_length
+            );
         } else {
             sqlite3_str_appendf(sql, "\"%w\"", column_name);
         }
@@ -262,13 +333,17 @@ static char *build_create_unique_index_duplicate_sql(mylite_db *database,
         }
         sqlite3_str_appendf(sql, "%d", (int)(part + 1U));
     }
-    sqlite3_str_append(sql, " HAVING COUNT(*) > 1) LIMIT 1",
-                       (int)strlen(" HAVING COUNT(*) > 1) LIMIT 1"));
+    sqlite3_str_append(
+        sql,
+        " HAVING COUNT(*) > 1) LIMIT 1",
+        (int)strlen(" HAVING COUNT(*) > 1) LIMIT 1")
+    );
     return sqlite3_str_finish(sql);
 }
 
-static const char *alter_table_column_physical_name(const struct mylite_alter_table_column *column)
-{
+static const char *alter_table_column_physical_name(
+    const struct mylite_alter_table_column *column
+) {
     if (column->source_name != NULL) {
         return column->source_name;
     }

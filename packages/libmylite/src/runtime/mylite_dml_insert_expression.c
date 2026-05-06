@@ -25,65 +25,110 @@ struct mylite_insert_expression_context {
     const struct mylite_dml_expression_callbacks *callbacks;
 };
 
-static int evaluate_insert_expression(mylite_db *database,
-                                      const struct mylite_sql_ast_node *expression,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_value *out_value);
+static int evaluate_insert_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_value *out_value
+);
+
 static int resolve_insert_expression_bound_value(
-    mylite_db *database, const struct mylite_insert_values_plan *plan,
-    const struct mylite_insert_table *table, const struct mylite_insert_table_column *column,
-    const struct mylite_expression_value *value, uint64_t statement_row_count,
-    struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *out_value);
-static int resolve_insert_expression_null_value(mylite_db *database,
-                                                const struct mylite_insert_values_plan *plan,
-                                                const struct mylite_insert_table *table,
-                                                const struct mylite_insert_table_column *column,
-                                                uint64_t statement_row_count,
-                                                struct mylite_insert_execution_state *state,
-                                                struct mylite_insert_bound_value *out_value);
-static int resolve_insert_expression_uint64_value(mylite_db *database,
-                                                  const struct mylite_insert_table_column *column,
-                                                  const struct mylite_expression_value *value,
-                                                  uint64_t statement_row_count,
-                                                  struct mylite_insert_execution_state *state,
-                                                  struct mylite_insert_bound_value *out_value);
-static int resolve_insert_expression_text_value(mylite_db *database,
-                                                const struct mylite_insert_table_column *column,
-                                                const struct mylite_expression_value *value,
-                                                uint64_t statement_row_count,
-                                                struct mylite_insert_execution_state *state,
-                                                struct mylite_insert_bound_value *out_value);
-static int resolve_insert_expression_identifier(void *user_data,
-                                                const struct mylite_sql_ast_node *identifier,
-                                                struct mylite_expression_value *out_value);
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_expression_value *value,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int resolve_insert_expression_null_value(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_table_column *column,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int resolve_insert_expression_uint64_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_expression_value *value,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int resolve_insert_expression_text_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_expression_value *value,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int resolve_insert_expression_identifier(
+    void *user_data,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+);
+
 static int evaluate_insert_expression_session_function(
-    void *user_data, const struct mylite_sql_ast_node *function_call,
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
-static int
-evaluate_insert_expression_default_function(void *user_data,
-                                            const struct mylite_sql_ast_node *function_call,
-                                            struct mylite_expression_value *out_value);
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_insert_expression_default_function(
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
+    struct mylite_expression_value *out_value
+);
+
 static int copy_insert_expression_column_value(
-    mylite_db *database, const struct mylite_insert_expression_context *context,
-    const struct mylite_sql_ast_node *identifier, struct mylite_expression_value *out_value);
-static int resolve_default_function_column(const struct mylite_insert_expression_context *context,
-                                           const struct mylite_sql_ast_node *function_call,
-                                           const struct mylite_insert_table_column **out_column);
-static int set_insert_unknown_column_error(mylite_db *database,
-                                           const struct mylite_insert_column_reference *reference);
-static size_t insert_table_column_pointer_index(const struct mylite_insert_table *table,
-                                                const struct mylite_insert_table_column *column);
+    mylite_db *database,
+    const struct mylite_insert_expression_context *context,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+);
+
+static int resolve_default_function_column(
+    const struct mylite_insert_expression_context *context,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_insert_table_column **out_column
+);
+
+static int set_insert_unknown_column_error(
+    mylite_db *database,
+    const struct mylite_insert_column_reference *reference
+);
+
+static size_t insert_table_column_pointer_index(
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_table_column *column
+);
+
 static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference);
 
 int mylite_dml_resolve_insert_expression_bound_value(
-    mylite_db *database, const char *schema_name, const struct mylite_insert_values_plan *plan,
-    const struct mylite_insert_table *table, const struct mylite_insert_bound_value *values,
-    const struct mylite_insert_table_column *column, const struct mylite_sql_ast_node *expression,
-    uint64_t statement_row_count, struct mylite_insert_execution_state *state,
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_sql_ast_node *expression,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
     const struct mylite_dml_expression_callbacks *callbacks,
-    struct mylite_insert_bound_value *out_value)
-{
+    struct mylite_insert_bound_value *out_value
+) {
     struct mylite_insert_expression_context user_context = {
         .database = database,
         .schema_name = schema_name,
@@ -108,19 +153,28 @@ int mylite_dml_resolve_insert_expression_bound_value(
 
     status = evaluate_insert_expression(database, expression, &context, &value);
     if (status == MYLITE_OK) {
-        status = resolve_insert_expression_bound_value(database, plan, table, column, &value,
-                                                       statement_row_count, state, out_value);
+        status = resolve_insert_expression_bound_value(
+            database,
+            plan,
+            table,
+            column,
+            &value,
+            statement_row_count,
+            state,
+            out_value
+        );
     }
 
     mylite_expression_value_deinit(&value);
     return status;
 }
 
-static int evaluate_insert_expression(mylite_db *database,
-                                      const struct mylite_sql_ast_node *expression,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_value *out_value)
-{
+static int evaluate_insert_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_value *out_value
+) {
     size_t warning_start = database->warnings.count;
     int eval_status =
         mylite_expression_eval_with_context(expression, context, &database->warnings, out_value);
@@ -143,20 +197,35 @@ static int evaluate_insert_expression(mylite_db *database,
 }
 
 static int resolve_insert_expression_bound_value(
-    mylite_db *database, const struct mylite_insert_values_plan *plan,
-    const struct mylite_insert_table *table, const struct mylite_insert_table_column *column,
-    const struct mylite_expression_value *value, uint64_t statement_row_count,
-    struct mylite_insert_execution_state *state, struct mylite_insert_bound_value *out_value)
-{
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_expression_value *value,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+) {
     switch (value->kind) {
     case MYLITE_EXPRESSION_VALUE_NULL:
-        return resolve_insert_expression_null_value(database, plan, table, column,
-                                                    statement_row_count, state, out_value);
+        return resolve_insert_expression_null_value(
+            database,
+            plan,
+            table,
+            column,
+            statement_row_count,
+            state,
+            out_value
+        );
     case MYLITE_EXPRESSION_VALUE_INT64:
         if (value->int64_value == 0 &&
             mylite_dml_insert_auto_increment_zero_generates(database, column)) {
-            return mylite_dml_allocate_insert_auto_increment(database, statement_row_count, state,
-                                                             out_value);
+            return mylite_dml_allocate_insert_auto_increment(
+                database,
+                statement_row_count,
+                state,
+                out_value
+            );
         }
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_INTEGER,
@@ -164,13 +233,23 @@ static int resolve_insert_expression_bound_value(
         };
         return MYLITE_OK;
     case MYLITE_EXPRESSION_VALUE_UINT64:
-        return resolve_insert_expression_uint64_value(database, column, value, statement_row_count,
-                                                      state, out_value);
+        return resolve_insert_expression_uint64_value(
+            database,
+            column,
+            value,
+            statement_row_count,
+            state,
+            out_value
+        );
     case MYLITE_EXPRESSION_VALUE_REAL:
         if (value->real_value == 0.0 &&
             mylite_dml_insert_auto_increment_zero_generates(database, column)) {
-            return mylite_dml_allocate_insert_auto_increment(database, statement_row_count, state,
-                                                             out_value);
+            return mylite_dml_allocate_insert_auto_increment(
+                database,
+                statement_row_count,
+                state,
+                out_value
+            );
         }
         if (column->auto_increment) {
             return mylite_dml_insert_set_unsupported_expression_error(database);
@@ -181,23 +260,34 @@ static int resolve_insert_expression_bound_value(
         };
         return MYLITE_OK;
     case MYLITE_EXPRESSION_VALUE_TEXT:
-        return resolve_insert_expression_text_value(database, column, value, statement_row_count,
-                                                    state, out_value);
+        return resolve_insert_expression_text_value(
+            database,
+            column,
+            value,
+            statement_row_count,
+            state,
+            out_value
+        );
     }
     return mylite_dml_insert_set_unsupported_expression_error(database);
 }
 
-static int resolve_insert_expression_null_value(mylite_db *database,
-                                                const struct mylite_insert_values_plan *plan,
-                                                const struct mylite_insert_table *table,
-                                                const struct mylite_insert_table_column *column,
-                                                uint64_t statement_row_count,
-                                                struct mylite_insert_execution_state *state,
-                                                struct mylite_insert_bound_value *out_value)
-{
+static int resolve_insert_expression_null_value(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_table_column *column,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+) {
     if (column->auto_increment) {
-        return mylite_dml_allocate_insert_auto_increment(database, statement_row_count, state,
-                                                         out_value);
+        return mylite_dml_allocate_insert_auto_increment(
+            database,
+            statement_row_count,
+            state,
+            out_value
+        );
     }
     if (!column->nullable) {
         if (!plan->ignore) {
@@ -219,20 +309,25 @@ static int resolve_insert_expression_null_value(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int resolve_insert_expression_uint64_value(mylite_db *database,
-                                                  const struct mylite_insert_table_column *column,
-                                                  const struct mylite_expression_value *value,
-                                                  uint64_t statement_row_count,
-                                                  struct mylite_insert_execution_state *state,
-                                                  struct mylite_insert_bound_value *out_value)
-{
+static int resolve_insert_expression_uint64_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_expression_value *value,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+) {
     if (value->uint64_value <= (uint64_t)INT64_MAX) {
         int64_t integer_value = (int64_t)value->uint64_value;
 
         if (integer_value == 0 &&
             mylite_dml_insert_auto_increment_zero_generates(database, column)) {
-            return mylite_dml_allocate_insert_auto_increment(database, statement_row_count, state,
-                                                             out_value);
+            return mylite_dml_allocate_insert_auto_increment(
+                database,
+                statement_row_count,
+                state,
+                out_value
+            );
         }
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_INTEGER,
@@ -240,17 +335,24 @@ static int resolve_insert_expression_uint64_value(mylite_db *database,
         };
         return MYLITE_OK;
     }
-    return resolve_insert_expression_text_value(database, column, value, statement_row_count, state,
-                                                out_value);
+    return resolve_insert_expression_text_value(
+        database,
+        column,
+        value,
+        statement_row_count,
+        state,
+        out_value
+    );
 }
 
-static int resolve_insert_expression_text_value(mylite_db *database,
-                                                const struct mylite_insert_table_column *column,
-                                                const struct mylite_expression_value *value,
-                                                uint64_t statement_row_count,
-                                                struct mylite_insert_execution_state *state,
-                                                struct mylite_insert_bound_value *out_value)
-{
+static int resolve_insert_expression_text_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_expression_value *value,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+) {
     char *text = mylite_expression_value_to_text(value);
     int status = MYLITE_OK;
 
@@ -260,17 +362,30 @@ static int resolve_insert_expression_text_value(mylite_db *database,
     }
     status = value->kind == MYLITE_EXPRESSION_VALUE_TEXT
                  ? mylite_dml_resolve_insert_quoted_text_value(
-                       database, column, text, statement_row_count, state, out_value)
-                 : mylite_dml_resolve_insert_text_value(database, column, text, statement_row_count,
-                                                        state, out_value);
+                       database,
+                       column,
+                       text,
+                       statement_row_count,
+                       state,
+                       out_value
+                   )
+                 : mylite_dml_resolve_insert_text_value(
+                       database,
+                       column,
+                       text,
+                       statement_row_count,
+                       state,
+                       out_value
+                   );
     free(text);
     return status;
 }
 
-static int resolve_insert_expression_identifier(void *user_data,
-                                                const struct mylite_sql_ast_node *identifier,
-                                                struct mylite_expression_value *out_value)
-{
+static int resolve_insert_expression_identifier(
+    void *user_data,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_insert_expression_context *context = user_data;
 
     if (context == NULL) {
@@ -289,26 +404,33 @@ static int resolve_insert_expression_identifier(void *user_data,
 }
 
 static int evaluate_insert_expression_session_function(
-    void *user_data, const struct mylite_sql_ast_node *function_call,
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
-{
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_insert_expression_context *context = user_data;
 
     if (context == NULL || context->callbacks == NULL ||
         context->callbacks->eval_session_function == NULL) {
         return -1;
     }
-    return context->callbacks->eval_session_function(context->callbacks->user_data, NULL,
-                                                     function_call, expression_context, warnings,
-                                                     out_value);
+    return context->callbacks->eval_session_function(
+        context->callbacks->user_data,
+        NULL,
+        function_call,
+        expression_context,
+        warnings,
+        out_value
+    );
 }
 
-static int
-evaluate_insert_expression_default_function(void *user_data,
-                                            const struct mylite_sql_ast_node *function_call,
-                                            struct mylite_expression_value *out_value)
-{
+static int evaluate_insert_expression_default_function(
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_insert_expression_context *context = user_data;
     const struct mylite_insert_table_column *column = NULL;
     int status = resolve_default_function_column(context, function_call, &column);
@@ -320,9 +442,11 @@ evaluate_insert_expression_default_function(void *user_data,
 }
 
 static int copy_insert_expression_column_value(
-    mylite_db *database, const struct mylite_insert_expression_context *context,
-    const struct mylite_sql_ast_node *identifier, struct mylite_expression_value *out_value)
-{
+    mylite_db *database,
+    const struct mylite_insert_expression_context *context,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_insert_column_reference reference = {0};
     size_t column_index = 0U;
     int status = mylite_dml_copy_insert_column_reference(identifier, &reference);
@@ -333,12 +457,18 @@ static int copy_insert_expression_column_value(
     }
 
     column_index = mylite_dml_insert_table_column_reference_index(
-        context->table, context->schema_name, context->plan->table_name, &reference);
+        context->table,
+        context->schema_name,
+        context->plan->table_name,
+        &reference
+    );
     if (column_index == context->table->column_count) {
         status = set_insert_unknown_column_error(database, &reference);
     } else {
-        status = mylite_dml_copy_insert_bound_value_to_expression(&context->values[column_index],
-                                                                  out_value);
+        status = mylite_dml_copy_insert_bound_value_to_expression(
+            &context->values[column_index],
+            out_value
+        );
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
         }
@@ -348,10 +478,11 @@ static int copy_insert_expression_column_value(
     return status;
 }
 
-static int resolve_default_function_column(const struct mylite_insert_expression_context *context,
-                                           const struct mylite_sql_ast_node *function_call,
-                                           const struct mylite_insert_table_column **out_column)
-{
+static int resolve_default_function_column(
+    const struct mylite_insert_expression_context *context,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_insert_table_column **out_column
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     const struct mylite_sql_ast_node *identifier =
         arguments == NULL ? NULL : mylite_ast_child_at(arguments, 0U);
@@ -370,7 +501,11 @@ static int resolve_default_function_column(const struct mylite_insert_expression
         return status;
     }
     column_index = mylite_dml_insert_table_column_reference_index(
-        context->table, context->schema_name, context->plan->table_name, &reference);
+        context->table,
+        context->schema_name,
+        context->plan->table_name,
+        &reference
+    );
     if (column_index == context->table->column_count) {
         status = set_insert_unknown_column_error(context->database, &reference);
     } else {
@@ -381,20 +516,24 @@ static int resolve_default_function_column(const struct mylite_insert_expression
     return status;
 }
 
-static int set_insert_unknown_column_error(mylite_db *database,
-                                           const struct mylite_insert_column_reference *reference)
-{
+static int set_insert_unknown_column_error(
+    mylite_db *database,
+    const struct mylite_insert_column_reference *reference
+) {
     int status = mylite_diagnostics_set_error_message_parts(
-        database, "Unknown column '",
+        database,
+        "Unknown column '",
         reference == NULL || reference->column_name == NULL ? "" : reference->column_name,
-        "' in 'field list'");
+        "' in 'field list'"
+    );
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static size_t insert_table_column_pointer_index(const struct mylite_insert_table *table,
-                                                const struct mylite_insert_table_column *column)
-{
+static size_t insert_table_column_pointer_index(
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_table_column *column
+) {
     for (size_t index = 0U; index < table->column_count; ++index) {
         if (&table->columns[index] == column) {
             return index;
@@ -403,8 +542,7 @@ static size_t insert_table_column_pointer_index(const struct mylite_insert_table
     return table->column_count;
 }
 
-static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference)
-{
+static void insert_column_reference_deinit(struct mylite_insert_column_reference *reference) {
     if (reference == NULL) {
         return;
     }

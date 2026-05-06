@@ -5,7 +5,10 @@
 
 #include <mylite/mylite.h>
 
-int mylite_table_ddl_validate_rename_table_plan(mylite_db *database, const char *selected_schema,
-                                                struct mylite_rename_table_plan *plan);
+int mylite_table_ddl_validate_rename_table_plan(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_rename_table_plan *plan
+);
 
 #endif

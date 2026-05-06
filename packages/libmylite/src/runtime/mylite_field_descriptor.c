@@ -2,8 +2,10 @@
 
 #include <mylite/mylite.h>
 
-void mylite_field_descriptor_set_nullable(struct mylite_field_descriptor *descriptor, bool nullable)
-{
+void mylite_field_descriptor_set_nullable(
+    struct mylite_field_descriptor *descriptor,
+    bool nullable
+) {
     if (nullable) {
         mylite_field_descriptor_set_not_null(descriptor, false);
     } else {
@@ -11,8 +13,10 @@ void mylite_field_descriptor_set_nullable(struct mylite_field_descriptor *descri
     }
 }
 
-void mylite_field_descriptor_set_not_null(struct mylite_field_descriptor *descriptor, bool not_null)
-{
+void mylite_field_descriptor_set_not_null(
+    struct mylite_field_descriptor *descriptor,
+    bool not_null
+) {
     if (descriptor == NULL) {
         return;
     }
@@ -26,8 +30,8 @@ void mylite_field_descriptor_set_not_null(struct mylite_field_descriptor *descri
 }
 
 bool mylite_field_descriptor_preserves_temporal_fraction_digits(
-    const struct mylite_field_descriptor *descriptor)
-{
+    const struct mylite_field_descriptor *descriptor
+) {
     if (descriptor == NULL) {
         return false;
     }
@@ -38,9 +42,9 @@ bool mylite_field_descriptor_preserves_temporal_fraction_digits(
     return descriptor->type == MYLITE_FIELD_TYPE_TIMESTAMP;
 }
 
-enum mylite_expression_temporal_type
-mylite_field_descriptor_expression_temporal_type(const struct mylite_field_descriptor *descriptor)
-{
+enum mylite_expression_temporal_type mylite_field_descriptor_expression_temporal_type(
+    const struct mylite_field_descriptor *descriptor
+) {
     if (descriptor == NULL) {
         return MYLITE_EXPRESSION_TEMPORAL_NONE;
     }

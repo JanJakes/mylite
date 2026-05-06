@@ -12,20 +12,30 @@
 
 #include <stdlib.h>
 
-static bool
-group_bind_callbacks_are_valid(const struct mylite_select_group_bind_callbacks *callbacks);
-static int bind_group_item(mylite_db *database, const struct mylite_sql_ast_node *group_item,
-                           struct mylite_select_plan *plan,
-                           const struct mylite_select_group_bind_callbacks *callbacks);
-static int bind_group_expression(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                 struct mylite_select_plan *plan,
-                                 const struct mylite_select_group_bind_callbacks *callbacks);
+static bool group_bind_callbacks_are_valid(
+    const struct mylite_select_group_bind_callbacks *callbacks
+);
 
-int mylite_select_bind_group_by_clause(mylite_db *database,
-                                       const struct mylite_sql_ast_node *group_by_clause,
-                                       struct mylite_select_plan *plan,
-                                       const struct mylite_select_group_bind_callbacks *callbacks)
-{
+static int bind_group_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *group_item,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_group_bind_callbacks *callbacks
+);
+
+static int bind_group_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_group_bind_callbacks *callbacks
+);
+
+int mylite_select_bind_group_by_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *group_by_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_group_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *items = mylite_ast_child_at(group_by_clause, 0U);
 
     if (!group_bind_callbacks_are_valid(callbacks)) {
@@ -48,11 +58,12 @@ int mylite_select_bind_group_by_clause(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_select_bind_having_clause(mylite_db *database,
-                                     const struct mylite_sql_ast_node *having_clause,
-                                     struct mylite_select_plan *plan,
-                                     const struct mylite_select_group_bind_callbacks *callbacks)
-{
+int mylite_select_bind_having_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *having_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_group_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(having_clause, 0U);
 
     if (!group_bind_callbacks_are_valid(callbacks)) {
@@ -66,12 +77,17 @@ int mylite_select_bind_having_clause(mylite_db *database,
     plan->has_having = true;
     plan->having_expression = expression;
     return mylite_select_bind_aggregate_aware_expression(
-        database, expression, plan, "having clause", callbacks->aggregate_callbacks);
+        database,
+        expression,
+        plan,
+        "having clause",
+        callbacks->aggregate_callbacks
+    );
 }
 
-static bool
-group_bind_callbacks_are_valid(const struct mylite_select_group_bind_callbacks *callbacks)
-{
+static bool group_bind_callbacks_are_valid(
+    const struct mylite_select_group_bind_callbacks *callbacks
+) {
     if (callbacks == NULL || callbacks->aggregate_callbacks == NULL ||
         callbacks->predicate_callbacks == NULL ||
         callbacks->set_invalid_group_function_error == NULL ||
@@ -81,10 +97,12 @@ group_bind_callbacks_are_valid(const struct mylite_select_group_bind_callbacks *
     return true;
 }
 
-static int bind_group_item(mylite_db *database, const struct mylite_sql_ast_node *group_item,
-                           struct mylite_select_plan *plan,
-                           const struct mylite_select_group_bind_callbacks *callbacks)
-{
+static int bind_group_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *group_item,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_group_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(group_item, 0U);
     struct mylite_select_group_key group_key = {
         .kind = MYLITE_SELECT_GROUP_KEY_EXPRESSION,
@@ -157,12 +175,18 @@ static int bind_group_item(mylite_db *database, const struct mylite_sql_ast_node
     return mylite_select_plan_add_group_key(plan, &group_key);
 }
 
-static int bind_group_expression(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                 struct mylite_select_plan *plan,
-                                 const struct mylite_select_group_bind_callbacks *callbacks)
-{
-    int status = mylite_select_bind_predicate_expression(database, expression, plan,
-                                                         callbacks->predicate_callbacks);
+static int bind_group_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_group_bind_callbacks *callbacks
+) {
+    int status = mylite_select_bind_predicate_expression(
+        database,
+        expression,
+        plan,
+        callbacks->predicate_callbacks
+    );
 
     if (status == MYLITE_UNSUPPORTED) {
         return mylite_select_set_unknown_group_column_error(database, "");

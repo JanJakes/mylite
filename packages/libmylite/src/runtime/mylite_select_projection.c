@@ -7,26 +7,38 @@
 
 #include <stdlib.h>
 
-static int append_select_item_outputs(mylite_db *database,
-                                      const struct mylite_sql_ast_node *select_item,
-                                      bool allow_expression_outputs,
-                                      struct mylite_select_plan *plan,
-                                      const struct mylite_select_projection_callbacks *callbacks);
-static int append_select_column_output(mylite_db *database,
-                                       const struct mylite_sql_ast_node *expression,
-                                       const struct mylite_sql_ast_node *alias,
-                                       struct mylite_select_plan *plan);
-static int
-append_select_expression_output(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                const struct mylite_sql_ast_node *alias,
-                                struct mylite_select_plan *plan,
-                                const struct mylite_select_projection_callbacks *callbacks);
+static int append_select_item_outputs(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *select_item,
+    bool allow_expression_outputs,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_projection_callbacks *callbacks
+);
+
+static int append_select_column_output(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    struct mylite_select_plan *plan
+);
+
+static int append_select_expression_output(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_projection_callbacks *callbacks
+);
+
 static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node *identifier);
 
-int mylite_select_build_outputs(mylite_db *database, const struct mylite_sql_ast_node *select_list,
-                                bool allow_expression_outputs, struct mylite_select_plan *plan,
-                                const struct mylite_select_projection_callbacks *callbacks)
-{
+int mylite_select_build_outputs(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    bool allow_expression_outputs,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_projection_callbacks *callbacks
+) {
     if (callbacks == NULL || callbacks->bind_expression == NULL ||
         callbacks->set_unsupported_projection_error == NULL) {
         return MYLITE_MISUSE;
@@ -50,12 +62,13 @@ int mylite_select_build_outputs(mylite_db *database, const struct mylite_sql_ast
     return MYLITE_OK;
 }
 
-static int append_select_item_outputs(mylite_db *database,
-                                      const struct mylite_sql_ast_node *select_item,
-                                      bool allow_expression_outputs,
-                                      struct mylite_select_plan *plan,
-                                      const struct mylite_select_projection_callbacks *callbacks)
-{
+static int append_select_item_outputs(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *select_item,
+    bool allow_expression_outputs,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_projection_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(select_item, 0U);
     const struct mylite_sql_ast_node *alias = mylite_ast_child_at(select_item, 1U);
 
@@ -79,15 +92,21 @@ static int append_select_item_outputs(mylite_db *database,
     return callbacks->set_unsupported_projection_error(database);
 }
 
-static int append_select_column_output(mylite_db *database,
-                                       const struct mylite_sql_ast_node *expression,
-                                       const struct mylite_sql_ast_node *alias,
-                                       struct mylite_select_plan *plan)
-{
+static int append_select_column_output(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    struct mylite_select_plan *plan
+) {
     size_t column_index = mylite_select_plan_column_count(plan);
     char *label = NULL;
-    int status = mylite_select_resolve_plan_column_reference(database, plan, expression,
-                                                             "field list", &column_index);
+    int status = mylite_select_resolve_plan_column_reference(
+        database,
+        plan,
+        expression,
+        "field list",
+        &column_index
+    );
 
     if (status != MYLITE_OK) {
         return status;
@@ -103,11 +122,14 @@ static int append_select_column_output(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    status = mylite_select_plan_add_output_column(plan, &(const struct mylite_select_output_column){
-                                                            .kind = MYLITE_SELECT_OUTPUT_COLUMN,
-                                                            .column_index = column_index,
-                                                            .label = label,
-                                                        });
+    status = mylite_select_plan_add_output_column(
+        plan,
+        &(const struct mylite_select_output_column){
+            .kind = MYLITE_SELECT_OUTPUT_COLUMN,
+            .column_index = column_index,
+            .label = label,
+        }
+    );
     if (status != MYLITE_OK) {
         free(label);
         if (status == MYLITE_NOMEM) {
@@ -119,12 +141,13 @@ static int append_select_column_output(mylite_db *database,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int
-append_select_expression_output(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                const struct mylite_sql_ast_node *alias,
-                                struct mylite_select_plan *plan,
-                                const struct mylite_select_projection_callbacks *callbacks)
-{
+static int append_select_expression_output(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_projection_callbacks *callbacks
+) {
     char *label = NULL;
     int status = MYLITE_OK;
 
@@ -143,11 +166,14 @@ append_select_expression_output(mylite_db *database, const struct mylite_sql_ast
         return MYLITE_NOMEM;
     }
 
-    status = mylite_select_plan_add_output_column(plan, &(const struct mylite_select_output_column){
-                                                            .kind = MYLITE_SELECT_OUTPUT_EXPRESSION,
-                                                            .expression = expression,
-                                                            .label = label,
-                                                        });
+    status = mylite_select_plan_add_output_column(
+        plan,
+        &(const struct mylite_select_output_column){
+            .kind = MYLITE_SELECT_OUTPUT_EXPRESSION,
+            .expression = expression,
+            .label = label,
+        }
+    );
     if (status != MYLITE_OK) {
         free(label);
         if (status == MYLITE_NOMEM) {
@@ -158,8 +184,7 @@ append_select_expression_output(mylite_db *database, const struct mylite_sql_ast
     return MYLITE_OK;
 }
 
-static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node *identifier)
-{
+static char *copy_select_final_identifier_label(const struct mylite_sql_ast_node *identifier) {
     const struct mylite_sql_ast_node *current = identifier;
 
     while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {

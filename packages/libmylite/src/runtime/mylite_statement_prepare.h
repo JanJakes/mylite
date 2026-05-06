@@ -18,19 +18,35 @@ struct mylite_statement_prepare_callbacks {
 };
 
 int mylite_statement_prepare_with_callbacks(
-    mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt,
-    const struct mylite_statement_prepare_callbacks *callbacks);
+    mylite_db *database,
+    const char *sql,
+    size_t length,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+);
 int mylite_statement_map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
-int mylite_statement_map_translate_status(mylite_db *database,
-                                          enum mylite_sqlite_translate_status status);
+int mylite_statement_map_translate_status(
+    mylite_db *database,
+    enum mylite_sqlite_translate_status status
+);
 int mylite_statement_prepare_schema_lifecycle_statement(
-    mylite_db *database, const struct mylite_sql_ast_node *statement, mylite_stmt **out_stmt,
-    const struct mylite_statement_prepare_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+);
 int mylite_statement_prepare_transaction_statement(
-    mylite_db *database, const struct mylite_sql_ast_node *statement, mylite_stmt **out_stmt,
-    const struct mylite_statement_prepare_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+);
 int mylite_statement_prepare_custom_statement(
-    mylite_db *database, enum mylite_stmt_kind kind, const struct mylite_sql_ast_node *statement,
-    mylite_stmt **out_stmt, const struct mylite_statement_prepare_callbacks *callbacks);
+    mylite_db *database,
+    enum mylite_stmt_kind kind,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+);
 
 #endif

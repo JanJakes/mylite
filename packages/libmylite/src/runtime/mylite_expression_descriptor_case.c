@@ -15,22 +15,31 @@ struct mylite_case_descriptor_aggregate {
     bool nullable;
 };
 
-static int
-infer_case_result_descriptor(mylite_db *database, const struct mylite_select_plan *plan,
-                             const struct mylite_sql_ast_node *expression,
-                             struct mylite_case_descriptor_aggregate *aggregate,
-                             const struct mylite_expression_descriptor_case_callbacks *callbacks);
-static void aggregate_case_result_descriptor(const struct mylite_field_descriptor *descriptor,
-                                             struct mylite_case_descriptor_aggregate *aggregate);
-static struct mylite_field_descriptor
-finalize_case_descriptor(mylite_db *database,
-                         const struct mylite_case_descriptor_aggregate *aggregate);
+static int infer_case_result_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_case_descriptor_aggregate *aggregate,
+    const struct mylite_expression_descriptor_case_callbacks *callbacks
+);
+
+static void aggregate_case_result_descriptor(
+    const struct mylite_field_descriptor *descriptor,
+    struct mylite_case_descriptor_aggregate *aggregate
+);
+
+static struct mylite_field_descriptor finalize_case_descriptor(
+    mylite_db *database,
+    const struct mylite_case_descriptor_aggregate *aggregate
+);
 
 int mylite_expression_descriptor_infer_case_expression(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_case_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_case_callbacks *callbacks
+) {
     size_t when_list_index = 0U;
     size_t else_expression_index = 1U;
     const struct mylite_sql_ast_node *when_list = NULL;
@@ -56,8 +65,13 @@ int mylite_expression_descriptor_infer_case_expression(
 
     for (const struct mylite_sql_ast_node *arm = when_list->first_child; arm != NULL;
          arm = arm->next_sibling) {
-        int status = infer_case_result_descriptor(database, plan, mylite_ast_child_at(arm, 1U),
-                                                  &aggregate, callbacks);
+        int status = infer_case_result_descriptor(
+            database,
+            plan,
+            mylite_ast_child_at(arm, 1U),
+            &aggregate,
+            callbacks
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -79,12 +93,13 @@ int mylite_expression_descriptor_infer_case_expression(
     return MYLITE_OK;
 }
 
-static int
-infer_case_result_descriptor(mylite_db *database, const struct mylite_select_plan *plan,
-                             const struct mylite_sql_ast_node *expression,
-                             struct mylite_case_descriptor_aggregate *aggregate,
-                             const struct mylite_expression_descriptor_case_callbacks *callbacks)
-{
+static int infer_case_result_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_case_descriptor_aggregate *aggregate,
+    const struct mylite_expression_descriptor_case_callbacks *callbacks
+) {
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
     int status =
         callbacks->infer_expression_descriptor(database, plan, expression, NULL, &descriptor);
@@ -96,9 +111,10 @@ infer_case_result_descriptor(mylite_db *database, const struct mylite_select_pla
     return MYLITE_OK;
 }
 
-static void aggregate_case_result_descriptor(const struct mylite_field_descriptor *descriptor,
-                                             struct mylite_case_descriptor_aggregate *aggregate)
-{
+static void aggregate_case_result_descriptor(
+    const struct mylite_field_descriptor *descriptor,
+    struct mylite_case_descriptor_aggregate *aggregate
+) {
     aggregate->has_result = true;
     if (mylite_expression_descriptor_is_nullable(descriptor)) {
         aggregate->nullable = true;
@@ -115,7 +131,9 @@ static void aggregate_case_result_descriptor(const struct mylite_field_descripto
         aggregate->descriptor.length =
             mylite_expression_descriptor_max_u64(aggregate->descriptor.length, descriptor->length);
         aggregate->descriptor.decimals = (unsigned int)mylite_expression_descriptor_max_u64(
-            aggregate->descriptor.decimals, descriptor->decimals);
+            aggregate->descriptor.decimals,
+            descriptor->decimals
+        );
         aggregate->descriptor.flags |= descriptor->flags & MYLITE_FIELD_FLAG_UNSIGNED;
         aggregate->descriptor.flags &= ~(unsigned int)MYLITE_FIELD_FLAG_NOT_NULL;
     }
@@ -131,10 +149,10 @@ static void aggregate_case_result_descriptor(const struct mylite_field_descripto
     }
 }
 
-static struct mylite_field_descriptor
-finalize_case_descriptor(mylite_db *database,
-                         const struct mylite_case_descriptor_aggregate *aggregate)
-{
+static struct mylite_field_descriptor finalize_case_descriptor(
+    mylite_db *database,
+    const struct mylite_case_descriptor_aggregate *aggregate
+) {
     struct mylite_field_descriptor descriptor = aggregate->descriptor;
 
     if (!aggregate->has_result || !aggregate->has_non_null_result) {
@@ -157,8 +175,10 @@ finalize_case_descriptor(mylite_db *database,
         descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_DOUBLE,
             .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .length = mylite_expression_descriptor_max_u64(aggregate->descriptor.length,
-                                                           mylite_mysql_double_display_length),
+            .length = mylite_expression_descriptor_max_u64(
+                aggregate->descriptor.length,
+                mylite_mysql_double_display_length
+            ),
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = mylite_mysql_binary_charset_id,
             .nullable = aggregate->nullable,

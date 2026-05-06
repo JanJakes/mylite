@@ -7,9 +7,11 @@
 #include <stdlib.h>
 
 int mylite_select_bind_count_distinct_arguments(
-    mylite_db *database, const struct mylite_sql_ast_node *arguments,
-    struct mylite_select_plan *plan, const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_EXPRESSION_LIST ||
         arguments->first_child == NULL) {
         return callbacks->set_invalid_group_function_error(database);
@@ -17,8 +19,12 @@ int mylite_select_bind_count_distinct_arguments(
 
     for (const struct mylite_sql_ast_node *argument = arguments->first_child; argument != NULL;
          argument = argument->next_sibling) {
-        int status = mylite_select_bind_predicate_expression(database, argument, plan,
-                                                             callbacks->predicate_callbacks);
+        int status = mylite_select_bind_predicate_expression(
+            database,
+            argument,
+            plan,
+            callbacks->predicate_callbacks
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -28,10 +34,12 @@ int mylite_select_bind_count_distinct_arguments(
 }
 
 int mylite_select_infer_count_distinct_argument_descriptors(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *arguments, struct mylite_select_aggregate_binding *binding,
-    const struct mylite_select_aggregate_bind_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    struct mylite_select_aggregate_binding *binding,
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+) {
     size_t argument_count = mylite_sql_ast_node_child_count(arguments);
 
     if (argument_count == 0U) {
@@ -48,8 +56,13 @@ int mylite_select_infer_count_distinct_argument_descriptors(
     size_t index = 0U;
     for (const struct mylite_sql_ast_node *argument = arguments->first_child; argument != NULL;
          argument = argument->next_sibling) {
-        int status = callbacks->infer_expression_descriptor(database, plan, argument, NULL,
-                                                            &binding->argument_descriptors[index]);
+        int status = callbacks->infer_expression_descriptor(
+            database,
+            plan,
+            argument,
+            NULL,
+            &binding->argument_descriptors[index]
+        );
 
         if (status != MYLITE_OK) {
             return status;

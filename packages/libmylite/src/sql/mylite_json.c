@@ -95,86 +95,197 @@ struct json_value_ref_list {
 };
 
 static bool parse_value(struct json_parser *parser, enum mylite_json_type *out_type);
-static int parse_document(const char *text, size_t length, struct json_value *out_value,
-                          struct mylite_json_error *out_error);
+
+static int parse_document(
+    const char *text,
+    size_t length,
+    struct json_value *out_value,
+    struct mylite_json_error *out_error
+);
+
 static int parse_dom_value(struct json_parser *parser, struct json_value *out_value);
+
 static int parse_dom_object(struct json_parser *parser, struct json_value *out_value);
+
 static int parse_dom_array(struct json_parser *parser, struct json_value *out_value);
+
 static int parse_dom_number(struct json_parser *parser, struct json_value *out_value);
+
 static bool parse_object(struct json_parser *parser);
+
 static bool parse_array(struct json_parser *parser);
+
 static bool parse_string(struct json_parser *parser, char **out_text, size_t *out_length);
+
 static bool parse_escape(struct json_parser *parser, char **out_text, size_t *out_length);
+
 static bool parse_unicode_escape(struct json_parser *parser, uint32_t *out_codepoint);
+
 static bool parse_hex_quad(struct json_parser *parser, uint32_t *out_codepoint);
+
 static bool parse_number(struct json_parser *parser, enum mylite_json_type *out_type);
+
 static bool parse_digits(struct json_parser *parser);
+
 static bool parse_literal(struct json_parser *parser, const char *literal);
+
 static bool append_utf8(char **text, size_t *length, uint32_t codepoint);
+
 static int json_value_to_text(const struct json_value *value, char **out_text, size_t *out_length);
+
 static int append_json_value(char **text, size_t *length, const struct json_value *value);
+
 static int append_json_array_value(char **text, size_t *length, const struct json_value *value);
+
 static int append_json_object_value(char **text, size_t *length, const struct json_value *value);
-static int parse_json_path(const char *path_text, size_t path_length, bool allow_multiple_matches,
-                           struct json_path *out_path, struct mylite_json_error *out_error);
-static int parse_json_path_member(struct json_parser *parser, bool allow_multiple_matches,
-                                  struct json_path *path, struct mylite_json_error *out_error);
-static int parse_json_path_array(struct json_parser *parser, bool allow_multiple_matches,
-                                 struct json_path *path, struct mylite_json_error *out_error);
-static bool parse_json_path_array_position(struct json_parser *parser,
-                                           struct json_path_array_position *out_position);
+
+static int parse_json_path(
+    const char *path_text,
+    size_t path_length,
+    bool allow_multiple_matches,
+    struct json_path *out_path,
+    struct mylite_json_error *out_error
+);
+
+static int parse_json_path_member(
+    struct json_parser *parser,
+    bool allow_multiple_matches,
+    struct json_path *path,
+    struct mylite_json_error *out_error
+);
+
+static int parse_json_path_array(
+    struct json_parser *parser,
+    bool allow_multiple_matches,
+    struct json_path *path,
+    struct mylite_json_error *out_error
+);
+
+static bool parse_json_path_array_position(
+    struct json_parser *parser,
+    struct json_path_array_position *out_position
+);
+
 static int append_json_path_leg(struct json_path *path, struct json_path_leg leg);
-static int eval_json_path(const struct json_value *root, const struct json_path *path,
-                          struct json_value_ref_list *out_matches);
-static int eval_json_path_from(const struct json_value *value, const struct json_path *path,
-                               size_t leg_index, struct json_value_ref_list *matches);
-static int eval_json_path_recursive(const struct json_value *value, const struct json_path *path,
-                                    size_t next_leg_index, struct json_value_ref_list *matches);
-static int eval_json_path_leg(const struct json_value *value, const struct json_path_leg *leg,
-                              struct json_value_ref_list *matches);
-static int eval_json_path_member(const struct json_value *value, const struct json_path_leg *leg,
-                                 struct json_value_ref_list *matches);
-static int eval_json_path_array_index(const struct json_value *value,
-                                      const struct json_path_leg *leg,
-                                      struct json_value_ref_list *matches);
-static int eval_json_path_array_range(const struct json_value *value,
-                                      const struct json_path_leg *leg,
-                                      struct json_value_ref_list *matches);
-static bool json_path_array_position_value(struct json_path_array_position position,
-                                           size_t item_count, size_t *out_index);
-static int json_value_ref_list_append(struct json_value_ref_list *list,
-                                      const struct json_value *value);
+
+static int eval_json_path(
+    const struct json_value *root,
+    const struct json_path *path,
+    struct json_value_ref_list *out_matches
+);
+
+static int eval_json_path_from(
+    const struct json_value *value,
+    const struct json_path *path,
+    size_t leg_index,
+    struct json_value_ref_list *matches
+);
+
+static int eval_json_path_recursive(
+    const struct json_value *value,
+    const struct json_path *path,
+    size_t next_leg_index,
+    struct json_value_ref_list *matches
+);
+
+static int eval_json_path_leg(
+    const struct json_value *value,
+    const struct json_path_leg *leg,
+    struct json_value_ref_list *matches
+);
+
+static int eval_json_path_member(
+    const struct json_value *value,
+    const struct json_path_leg *leg,
+    struct json_value_ref_list *matches
+);
+
+static int eval_json_path_array_index(
+    const struct json_value *value,
+    const struct json_path_leg *leg,
+    struct json_value_ref_list *matches
+);
+
+static int eval_json_path_array_range(
+    const struct json_value *value,
+    const struct json_path_leg *leg,
+    struct json_value_ref_list *matches
+);
+
+static bool json_path_array_position_value(
+    struct json_path_array_position position,
+    size_t item_count,
+    size_t *out_index
+);
+
+static int json_value_ref_list_append(
+    struct json_value_ref_list *list,
+    const struct json_value *value
+);
+
 static uint64_t json_value_length(const struct json_value *value);
-static int json_object_append_member(struct json_value *object, char *key, size_t key_length,
-                                     struct json_value *value);
+
+static int json_object_append_member(
+    struct json_value *object,
+    char *key,
+    size_t key_length,
+    struct json_value *value
+);
+
 static int json_object_member_compare(const void *left, const void *right);
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-static int normalize_json_number_text(const char *text, size_t length, enum mylite_json_type type,
-                                      char **out_text, size_t *out_length);
+static int normalize_json_number_text(
+    const char *text,
+    size_t length,
+    enum mylite_json_type type,
+    char **out_text,
+    size_t *out_length
+);
 // NOLINTEND(bugprone-easily-swappable-parameters)
 static int format_json_double_text(double value, char **out_text, size_t *out_length);
+
 static bool append_quoted_byte(char **text, size_t *length, unsigned char byte);
+
 static bool append_control_escape(char **text, size_t *length, unsigned char byte);
+
 static bool append_optional_byte(char **text, size_t *length, char byte);
+
 static bool append_optional_utf8(char **text, size_t *length, uint32_t codepoint);
+
 static bool append_byte(char **text, size_t *length, char byte);
+
 static bool append_bytes(char **text, size_t *length, const char *addition, size_t addition_length);
+
 static char *copy_text(const char *text, size_t length);
+
 static void skip_whitespace(struct json_parser *parser);
+
 static bool consume_byte(struct json_parser *parser, char expected);
+
 static bool peek_byte(const struct json_parser *parser, char *out_byte);
+
 static bool at_end(const struct json_parser *parser);
+
 static void set_error(struct json_parser *parser, const char *message, size_t position);
+
 static void set_path_error(struct mylite_json_error *error, const char *message, size_t position);
+
 static void json_value_deinit(struct json_value *value);
+
 static void json_path_deinit(struct json_path *path);
+
 static void json_value_ref_list_deinit(struct json_value_ref_list *list);
+
 static bool is_hex_digit(char byte);
+
 static uint32_t hex_digit_value(char byte);
 
-bool mylite_json_validate(const char *text, size_t length, enum mylite_json_type *out_type,
-                          struct mylite_json_error *out_error)
-{
+bool mylite_json_validate(
+    const char *text,
+    size_t length,
+    enum mylite_json_type *out_type,
+    struct mylite_json_error *out_error
+) {
     struct json_parser parser = {.text = text, .length = length, .error = out_error};
     enum mylite_json_type type = MYLITE_JSON_TYPE_INVALID;
 
@@ -187,8 +298,11 @@ bool mylite_json_validate(const char *text, size_t length, enum mylite_json_type
     }
     skip_whitespace(&parser);
     if (!at_end(&parser)) {
-        set_error(&parser, "The document root must not be followed by other values.",
-                  parser.offset);
+        set_error(
+            &parser,
+            "The document root must not be followed by other values.",
+            parser.offset
+        );
         return false;
     }
     if (out_type != NULL) {
@@ -197,8 +311,7 @@ bool mylite_json_validate(const char *text, size_t length, enum mylite_json_type
     return true;
 }
 
-const char *mylite_json_type_name(enum mylite_json_type type)
-{
+const char *mylite_json_type_name(enum mylite_json_type type) {
     switch (type) {
     case MYLITE_JSON_TYPE_NULL:
         return "NULL";
@@ -220,8 +333,7 @@ const char *mylite_json_type_name(enum mylite_json_type type)
     return NULL;
 }
 
-int mylite_json_quote_string(const char *text, size_t length, char **out_text, size_t *out_length)
-{
+int mylite_json_quote_string(const char *text, size_t length, char **out_text, size_t *out_length) {
     char *result = NULL;
     size_t result_length = 0U;
 
@@ -250,9 +362,13 @@ error:
     return -1;
 }
 
-int mylite_json_unquote_string(const char *text, size_t length, char **out_text, size_t *out_length,
-                               struct mylite_json_error *out_error)
-{
+int mylite_json_unquote_string(
+    const char *text,
+    size_t length,
+    char **out_text,
+    size_t *out_length,
+    struct mylite_json_error *out_error
+) {
     struct json_parser parser = {.text = text, .length = length, .error = out_error};
     char *result = NULL;
     size_t result_length = 0U;
@@ -279,11 +395,17 @@ int mylite_json_unquote_string(const char *text, size_t length, char **out_text,
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-int mylite_json_extract(const char *document, size_t document_length, const char *const *paths,
-                        const size_t *path_lengths, size_t path_count, char **out_json,
-                        size_t *out_json_length, bool *out_found,
-                        struct mylite_json_error *out_error)
-{
+int mylite_json_extract(
+    const char *document,
+    size_t document_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    char **out_json,
+    size_t *out_json_length,
+    bool *out_found,
+    struct mylite_json_error *out_error
+) {
     struct json_value root = {0};
     struct json_value_ref_list matches = {0};
     bool autowrap = path_count > 1U;
@@ -355,11 +477,16 @@ cleanup:
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-int mylite_json_contains_path(const char *document, size_t document_length,
-                              const char *const *paths, const size_t *path_lengths,
-                              size_t path_count, bool require_all, bool *out_contains,
-                              struct mylite_json_error *out_error)
-{
+int mylite_json_contains_path(
+    const char *document,
+    size_t document_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    bool require_all,
+    bool *out_contains,
+    struct mylite_json_error *out_error
+) {
     struct json_value root = {0};
     int status = parse_document(document, document_length, &root, out_error);
 
@@ -412,10 +539,17 @@ cleanup:
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-int mylite_json_keys(const char *document, size_t document_length, const char *path,
-                     size_t path_length, bool has_path, char **out_json, size_t *out_json_length,
-                     bool *out_found, struct mylite_json_error *out_error)
-{
+int mylite_json_keys(
+    const char *document,
+    size_t document_length,
+    const char *path,
+    size_t path_length,
+    bool has_path,
+    char **out_json,
+    size_t *out_json_length,
+    bool *out_found,
+    struct mylite_json_error *out_error
+) {
     struct json_value root = {0};
     struct json_value_ref_list matches = {0};
     const struct json_value *object = NULL;
@@ -468,11 +602,14 @@ int mylite_json_keys(const char *document, size_t document_length, const char *p
             status = MYLITE_JSON_STATUS_NOMEM;
             break;
         }
-        status =
-            mylite_json_quote_string(object->members[index].key, object->members[index].key_length,
-                                     &quoted, &quoted_length) == 0
-                ? MYLITE_JSON_STATUS_OK
-                : MYLITE_JSON_STATUS_NOMEM;
+        status = mylite_json_quote_string(
+                     object->members[index].key,
+                     object->members[index].key_length,
+                     &quoted,
+                     &quoted_length
+                 ) == 0
+                     ? MYLITE_JSON_STATUS_OK
+                     : MYLITE_JSON_STATUS_NOMEM;
         if (status == MYLITE_JSON_STATUS_OK &&
             !append_bytes(&json, &json_length, quoted, quoted_length)) {
             status = MYLITE_JSON_STATUS_NOMEM;
@@ -499,10 +636,16 @@ cleanup:
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-int mylite_json_length(const char *document, size_t document_length, const char *path,
-                       size_t path_length, bool has_path, uint64_t *out_length, bool *out_found,
-                       struct mylite_json_error *out_error)
-{
+int mylite_json_length(
+    const char *document,
+    size_t document_length,
+    const char *path,
+    size_t path_length,
+    bool has_path,
+    uint64_t *out_length,
+    bool *out_found,
+    struct mylite_json_error *out_error
+) {
     struct json_value root = {0};
     struct json_value_ref_list matches = {0};
     const struct json_value *value = NULL;
@@ -560,9 +703,12 @@ cleanup:
     return status;
 }
 
-static int parse_document(const char *text, size_t length, struct json_value *out_value,
-                          struct mylite_json_error *out_error)
-{
+static int parse_document(
+    const char *text,
+    size_t length,
+    struct json_value *out_value,
+    struct mylite_json_error *out_error
+) {
     struct json_parser parser = {.text = text, .length = length, .error = out_error};
     int status = MYLITE_JSON_STATUS_OK;
 
@@ -577,8 +723,11 @@ static int parse_document(const char *text, size_t length, struct json_value *ou
     }
     skip_whitespace(&parser);
     if (!at_end(&parser)) {
-        set_error(&parser, "The document root must not be followed by other values.",
-                  parser.offset);
+        set_error(
+            &parser,
+            "The document root must not be followed by other values.",
+            parser.offset
+        );
         json_value_deinit(out_value);
         return MYLITE_JSON_STATUS_INVALID_DOCUMENT;
     }
@@ -586,8 +735,7 @@ static int parse_document(const char *text, size_t length, struct json_value *ou
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int parse_dom_value(struct json_parser *parser, struct json_value *out_value)
-{
+static int parse_dom_value(struct json_parser *parser, struct json_value *out_value) {
     char byte = '\0';
 
     skip_whitespace(parser);
@@ -632,8 +780,7 @@ static int parse_dom_value(struct json_parser *parser, struct json_value *out_va
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int parse_dom_object(struct json_parser *parser, struct json_value *out_value)
-{
+static int parse_dom_object(struct json_parser *parser, struct json_value *out_value) {
     int status = MYLITE_JSON_STATUS_OK;
 
     out_value->type = MYLITE_JSON_TYPE_OBJECT;
@@ -678,8 +825,12 @@ static int parse_dom_object(struct json_parser *parser, struct json_value *out_v
         }
         skip_whitespace(parser);
         if (consume_byte(parser, '}')) {
-            qsort(out_value->members, out_value->member_count, sizeof(*out_value->members),
-                  json_object_member_compare);
+            qsort(
+                out_value->members,
+                out_value->member_count,
+                sizeof(*out_value->members),
+                json_object_member_compare
+            );
             return MYLITE_JSON_STATUS_OK;
         }
         if (!consume_byte(parser, ',')) {
@@ -691,8 +842,7 @@ static int parse_dom_object(struct json_parser *parser, struct json_value *out_v
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int parse_dom_array(struct json_parser *parser, struct json_value *out_value)
-{
+static int parse_dom_array(struct json_parser *parser, struct json_value *out_value) {
     int status = MYLITE_JSON_STATUS_OK;
 
     out_value->type = MYLITE_JSON_TYPE_ARRAY;
@@ -729,8 +879,7 @@ static int parse_dom_array(struct json_parser *parser, struct json_value *out_va
     }
 }
 
-static int parse_dom_number(struct json_parser *parser, struct json_value *out_value)
-{
+static int parse_dom_number(struct json_parser *parser, struct json_value *out_value) {
     enum mylite_json_type type = MYLITE_JSON_TYPE_INVALID;
     size_t start = parser->offset;
 
@@ -738,12 +887,16 @@ static int parse_dom_number(struct json_parser *parser, struct json_value *out_v
         return MYLITE_JSON_STATUS_INVALID_DOCUMENT;
     }
     out_value->type = type;
-    return normalize_json_number_text(parser->text + start, parser->offset - start, type,
-                                      &out_value->text, &out_value->text_length);
+    return normalize_json_number_text(
+        parser->text + start,
+        parser->offset - start,
+        type,
+        &out_value->text,
+        &out_value->text_length
+    );
 }
 
-static int json_value_to_text(const struct json_value *value, char **out_text, size_t *out_length)
-{
+static int json_value_to_text(const struct json_value *value, char **out_text, size_t *out_length) {
     char *text = NULL;
     size_t length = 0U;
     int status = append_json_value(&text, &length, value);
@@ -758,8 +911,7 @@ static int json_value_to_text(const struct json_value *value, char **out_text, s
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int append_json_value(char **text, size_t *length, const struct json_value *value)
-{
+static int append_json_value(char **text, size_t *length, const struct json_value *value) {
     char *quoted = NULL;
     size_t quoted_length = 0U;
     int status = MYLITE_JSON_STATUS_OK;
@@ -801,8 +953,7 @@ static int append_json_value(char **text, size_t *length, const struct json_valu
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int append_json_array_value(char **text, size_t *length, const struct json_value *value)
-{
+static int append_json_array_value(char **text, size_t *length, const struct json_value *value) {
     if (!append_byte(text, length, '[')) {
         return MYLITE_JSON_STATUS_NOMEM;
     }
@@ -824,8 +975,7 @@ static int append_json_array_value(char **text, size_t *length, const struct jso
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int append_json_object_value(char **text, size_t *length, const struct json_value *value)
-{
+static int append_json_object_value(char **text, size_t *length, const struct json_value *value) {
     if (!append_byte(text, length, '{')) {
         return MYLITE_JSON_STATUS_NOMEM;
     }
@@ -837,11 +987,14 @@ static int append_json_object_value(char **text, size_t *length, const struct js
         if (index != 0U && !append_bytes(text, length, ", ", 2U)) {
             return MYLITE_JSON_STATUS_NOMEM;
         }
-        status =
-            mylite_json_quote_string(value->members[index].key, value->members[index].key_length,
-                                     &quoted, &quoted_length) == 0
-                ? MYLITE_JSON_STATUS_OK
-                : MYLITE_JSON_STATUS_NOMEM;
+        status = mylite_json_quote_string(
+                     value->members[index].key,
+                     value->members[index].key_length,
+                     &quoted,
+                     &quoted_length
+                 ) == 0
+                     ? MYLITE_JSON_STATUS_OK
+                     : MYLITE_JSON_STATUS_NOMEM;
         if (status == MYLITE_JSON_STATUS_OK && !append_bytes(text, length, quoted, quoted_length)) {
             status = MYLITE_JSON_STATUS_NOMEM;
         }
@@ -864,8 +1017,7 @@ static int append_json_object_value(char **text, size_t *length, const struct js
 
 // Recursive descent keeps the JSON grammar small and mirrors nested document structure.
 // NOLINTNEXTLINE(misc-no-recursion)
-static bool parse_value(struct json_parser *parser, enum mylite_json_type *out_type)
-{
+static bool parse_value(struct json_parser *parser, enum mylite_json_type *out_type) {
     char byte = '\0';
 
     skip_whitespace(parser);
@@ -910,8 +1062,7 @@ static bool parse_value(struct json_parser *parser, enum mylite_json_type *out_t
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static bool parse_object(struct json_parser *parser)
-{
+static bool parse_object(struct json_parser *parser) {
     if (!consume_byte(parser, '{')) {
         return false;
     }
@@ -946,8 +1097,7 @@ static bool parse_object(struct json_parser *parser)
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static bool parse_array(struct json_parser *parser)
-{
+static bool parse_array(struct json_parser *parser) {
     if (!consume_byte(parser, '[')) {
         return false;
     }
@@ -973,8 +1123,7 @@ static bool parse_array(struct json_parser *parser)
     }
 }
 
-static bool parse_string(struct json_parser *parser, char **out_text, size_t *out_length)
-{
+static bool parse_string(struct json_parser *parser, char **out_text, size_t *out_length) {
     char *result = NULL;
     size_t result_length = 0U;
 
@@ -996,8 +1145,11 @@ static bool parse_string(struct json_parser *parser, char **out_text, size_t *ou
         }
         if (byte == '\\') {
             --parser->offset;
-            if (!parse_escape(parser, out_text == NULL ? NULL : &result,
-                              out_length == NULL ? NULL : &result_length)) {
+            if (!parse_escape(
+                    parser,
+                    out_text == NULL ? NULL : &result,
+                    out_length == NULL ? NULL : &result_length
+                )) {
                 free(result);
                 return false;
             }
@@ -1018,8 +1170,7 @@ static bool parse_string(struct json_parser *parser, char **out_text, size_t *ou
     return false;
 }
 
-static bool parse_escape(struct json_parser *parser, char **out_text, size_t *out_length)
-{
+static bool parse_escape(struct json_parser *parser, char **out_text, size_t *out_length) {
     size_t escape_position = parser->offset;
     char escaped = '\0';
 
@@ -1058,8 +1209,7 @@ static bool parse_escape(struct json_parser *parser, char **out_text, size_t *ou
     }
 }
 
-static bool parse_unicode_escape(struct json_parser *parser, uint32_t *out_codepoint)
-{
+static bool parse_unicode_escape(struct json_parser *parser, uint32_t *out_codepoint) {
     uint32_t codepoint = 0U;
 
     if (!parse_hex_quad(parser, &codepoint)) {
@@ -1089,8 +1239,7 @@ static bool parse_unicode_escape(struct json_parser *parser, uint32_t *out_codep
     return true;
 }
 
-static bool parse_hex_quad(struct json_parser *parser, uint32_t *out_codepoint)
-{
+static bool parse_hex_quad(struct json_parser *parser, uint32_t *out_codepoint) {
     uint32_t value = 0U;
 
     if (parser->offset + 4U > parser->length) {
@@ -1109,8 +1258,7 @@ static bool parse_hex_quad(struct json_parser *parser, uint32_t *out_codepoint)
     return true;
 }
 
-static bool parse_number(struct json_parser *parser, enum mylite_json_type *out_type)
-{
+static bool parse_number(struct json_parser *parser, enum mylite_json_type *out_type) {
     bool is_double = false;
 
     if (consume_byte(parser, '-')) {
@@ -1158,8 +1306,7 @@ static bool parse_number(struct json_parser *parser, enum mylite_json_type *out_
     return true;
 }
 
-static bool parse_digits(struct json_parser *parser)
-{
+static bool parse_digits(struct json_parser *parser) {
     size_t start = parser->offset;
 
     while (!at_end(parser) && isdigit((unsigned char)parser->text[parser->offset])) {
@@ -1168,8 +1315,7 @@ static bool parse_digits(struct json_parser *parser)
     return parser->offset > start;
 }
 
-static bool parse_literal(struct json_parser *parser, const char *literal)
-{
+static bool parse_literal(struct json_parser *parser, const char *literal) {
     size_t length = strlen(literal);
 
     if (parser->offset + length > parser->length ||
@@ -1180,9 +1326,13 @@ static bool parse_literal(struct json_parser *parser, const char *literal)
     return true;
 }
 
-static int parse_json_path(const char *path_text, size_t path_length, bool allow_multiple_matches,
-                           struct json_path *out_path, struct mylite_json_error *out_error)
-{
+static int parse_json_path(
+    const char *path_text,
+    size_t path_length,
+    bool allow_multiple_matches,
+    struct json_path *out_path,
+    struct mylite_json_error *out_error
+) {
     struct json_parser parser = {.text = path_text, .length = path_length};
     int status = MYLITE_JSON_STATUS_OK;
 
@@ -1198,17 +1348,24 @@ static int parse_json_path(const char *path_text, size_t path_length, bool allow
             status = parse_json_path_member(&parser, allow_multiple_matches, out_path, out_error);
         } else if (parser.text[parser.offset] == '[') {
             status = parse_json_path_array(&parser, allow_multiple_matches, out_path, out_error);
-        } else if (parser.offset + 1U < parser.length && parser.text[parser.offset] == '*' &&
-                   parser.text[parser.offset + 1U] == '*') {
+        } else if (
+            parser.offset + 1U < parser.length && parser.text[parser.offset] == '*' &&
+            parser.text[parser.offset + 1U] == '*'
+        ) {
             if (!allow_multiple_matches) {
-                set_path_error(out_error, "Path expression may not contain recursive wildcard.",
-                               parser.offset + 1U);
+                set_path_error(
+                    out_error,
+                    "Path expression may not contain recursive wildcard.",
+                    parser.offset + 1U
+                );
                 status = MYLITE_JSON_STATUS_PATH_WILDCARD_NOT_ALLOWED;
                 json_path_deinit(out_path);
                 return status;
             }
-            status = append_json_path_leg(out_path,
-                                          (struct json_path_leg){.kind = JSON_PATH_LEG_RECURSIVE});
+            status = append_json_path_leg(
+                out_path,
+                (struct json_path_leg){.kind = JSON_PATH_LEG_RECURSIVE}
+            );
             if (status == MYLITE_JSON_STATUS_OK) {
                 out_path->can_match_multiple = true;
                 parser.offset += 2U;
@@ -1229,9 +1386,12 @@ static int parse_json_path(const char *path_text, size_t path_length, bool allow
     return MYLITE_JSON_STATUS_OK;
 }
 
-static int parse_json_path_member(struct json_parser *parser, bool allow_multiple_matches,
-                                  struct json_path *path, struct mylite_json_error *out_error)
-{
+static int parse_json_path_member(
+    struct json_parser *parser,
+    bool allow_multiple_matches,
+    struct json_path *path,
+    struct mylite_json_error *out_error
+) {
     size_t member_start = 0U;
     char *member = NULL;
     size_t member_length = 0U;
@@ -1247,8 +1407,10 @@ static int parse_json_path_member(struct json_parser *parser, bool allow_multipl
             return MYLITE_JSON_STATUS_PATH_WILDCARD_NOT_ALLOWED;
         }
         path->can_match_multiple = true;
-        return append_json_path_leg(path,
-                                    (struct json_path_leg){.kind = JSON_PATH_LEG_MEMBER_WILDCARD});
+        return append_json_path_leg(
+            path,
+            (struct json_path_leg){.kind = JSON_PATH_LEG_MEMBER_WILDCARD}
+        );
     }
     if (parser->text[parser->offset] == '"') {
         if (!parse_string(parser, &member, &member_length)) {
@@ -1275,14 +1437,20 @@ static int parse_json_path_member(struct json_parser *parser, bool allow_multipl
             return MYLITE_JSON_STATUS_NOMEM;
         }
     }
-    return append_json_path_leg(path, (struct json_path_leg){.kind = JSON_PATH_LEG_MEMBER,
-                                                             .member = member,
-                                                             .member_length = member_length});
+    return append_json_path_leg(
+        path,
+        (
+            struct json_path_leg
+        ){.kind = JSON_PATH_LEG_MEMBER, .member = member, .member_length = member_length}
+    );
 }
 
-static int parse_json_path_array(struct json_parser *parser, bool allow_multiple_matches,
-                                 struct json_path *path, struct mylite_json_error *out_error)
-{
+static int parse_json_path_array(
+    struct json_parser *parser,
+    bool allow_multiple_matches,
+    struct json_path *path,
+    struct mylite_json_error *out_error
+) {
     struct json_path_array_position start = {.from_last = false, .offset = 0U};
     struct json_path_array_position end = {.from_last = false, .offset = 0U};
 
@@ -1299,8 +1467,10 @@ static int parse_json_path_array(struct json_parser *parser, bool allow_multiple
             return MYLITE_JSON_STATUS_PATH_WILDCARD_NOT_ALLOWED;
         }
         path->can_match_multiple = true;
-        return append_json_path_leg(path,
-                                    (struct json_path_leg){.kind = JSON_PATH_LEG_ARRAY_WILDCARD});
+        return append_json_path_leg(
+            path,
+            (struct json_path_leg){.kind = JSON_PATH_LEG_ARRAY_WILDCARD}
+        );
     }
     if (!parse_json_path_array_position(parser, &start)) {
         set_path_error(out_error, "Invalid JSON path expression.", parser->offset + 1U);
@@ -1325,21 +1495,27 @@ static int parse_json_path_array(struct json_parser *parser, bool allow_multiple
             return MYLITE_JSON_STATUS_PATH_WILDCARD_NOT_ALLOWED;
         }
         path->can_match_multiple = true;
-        return append_json_path_leg(path, (struct json_path_leg){.kind = JSON_PATH_LEG_ARRAY_RANGE,
-                                                                 .range_start = start,
-                                                                 .range_end = end});
+        return append_json_path_leg(
+            path,
+            (
+                struct json_path_leg
+            ){.kind = JSON_PATH_LEG_ARRAY_RANGE, .range_start = start, .range_end = end}
+        );
     }
     if (!consume_byte(parser, ']')) {
         set_path_error(out_error, "Invalid JSON path expression.", parser->offset + 1U);
         return MYLITE_JSON_STATUS_INVALID_PATH;
     }
     return append_json_path_leg(
-        path, (struct json_path_leg){.kind = JSON_PATH_LEG_ARRAY_INDEX, .index = start});
+        path,
+        (struct json_path_leg){.kind = JSON_PATH_LEG_ARRAY_INDEX, .index = start}
+    );
 }
 
-static bool parse_json_path_array_position(struct json_parser *parser,
-                                           struct json_path_array_position *out_position)
-{
+static bool parse_json_path_array_position(
+    struct json_parser *parser,
+    struct json_path_array_position *out_position
+) {
     size_t value = 0U;
     bool from_last = false;
     bool saw_digit = false;
@@ -1375,8 +1551,7 @@ static bool parse_json_path_array_position(struct json_parser *parser,
     return true;
 }
 
-static int append_json_path_leg(struct json_path *path, struct json_path_leg leg)
-{
+static int append_json_path_leg(struct json_path *path, struct json_path_leg leg) {
     struct json_path_leg *updated = realloc(path->legs, (path->leg_count + 1U) * sizeof(*updated));
 
     if (updated == NULL) {
@@ -1388,16 +1563,21 @@ static int append_json_path_leg(struct json_path *path, struct json_path_leg leg
     return MYLITE_JSON_STATUS_OK;
 }
 
-static int eval_json_path(const struct json_value *root, const struct json_path *path,
-                          struct json_value_ref_list *out_matches)
-{
+static int eval_json_path(
+    const struct json_value *root,
+    const struct json_path *path,
+    struct json_value_ref_list *out_matches
+) {
     return eval_json_path_from(root, path, 0U, out_matches);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int eval_json_path_from(const struct json_value *value, const struct json_path *path,
-                               size_t leg_index, struct json_value_ref_list *matches)
-{
+static int eval_json_path_from(
+    const struct json_value *value,
+    const struct json_path *path,
+    size_t leg_index,
+    struct json_value_ref_list *matches
+) {
     struct json_value_ref_list next = {0};
     int status = MYLITE_JSON_STATUS_OK;
 
@@ -1416,9 +1596,12 @@ static int eval_json_path_from(const struct json_value *value, const struct json
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int eval_json_path_recursive(const struct json_value *value, const struct json_path *path,
-                                    size_t next_leg_index, struct json_value_ref_list *matches)
-{
+static int eval_json_path_recursive(
+    const struct json_value *value,
+    const struct json_path *path,
+    size_t next_leg_index,
+    struct json_value_ref_list *matches
+) {
     int status = eval_json_path_from(value, path, next_leg_index, matches);
 
     if (status != MYLITE_JSON_STATUS_OK) {
@@ -1426,8 +1609,12 @@ static int eval_json_path_recursive(const struct json_value *value, const struct
     }
     if (value->type == MYLITE_JSON_TYPE_OBJECT) {
         for (size_t index = 0U; index < value->member_count; ++index) {
-            status = eval_json_path_recursive(value->members[index].value, path, next_leg_index,
-                                              matches);
+            status = eval_json_path_recursive(
+                value->members[index].value,
+                path,
+                next_leg_index,
+                matches
+            );
             if (status != MYLITE_JSON_STATUS_OK) {
                 return status;
             }
@@ -1443,9 +1630,11 @@ static int eval_json_path_recursive(const struct json_value *value, const struct
     return MYLITE_JSON_STATUS_OK;
 }
 
-static int eval_json_path_leg(const struct json_value *value, const struct json_path_leg *leg,
-                              struct json_value_ref_list *matches)
-{
+static int eval_json_path_leg(
+    const struct json_value *value,
+    const struct json_path_leg *leg,
+    struct json_value_ref_list *matches
+) {
     switch (leg->kind) {
     case JSON_PATH_LEG_MEMBER:
     case JSON_PATH_LEG_MEMBER_WILDCARD:
@@ -1472,9 +1661,11 @@ static int eval_json_path_leg(const struct json_value *value, const struct json_
     return MYLITE_JSON_STATUS_OK;
 }
 
-static int eval_json_path_member(const struct json_value *value, const struct json_path_leg *leg,
-                                 struct json_value_ref_list *matches)
-{
+static int eval_json_path_member(
+    const struct json_value *value,
+    const struct json_path_leg *leg,
+    struct json_value_ref_list *matches
+) {
     if (value->type != MYLITE_JSON_TYPE_OBJECT) {
         return MYLITE_JSON_STATUS_OK;
     }
@@ -1496,10 +1687,11 @@ static int eval_json_path_member(const struct json_value *value, const struct js
     return MYLITE_JSON_STATUS_OK;
 }
 
-static int eval_json_path_array_index(const struct json_value *value,
-                                      const struct json_path_leg *leg,
-                                      struct json_value_ref_list *matches)
-{
+static int eval_json_path_array_index(
+    const struct json_value *value,
+    const struct json_path_leg *leg,
+    struct json_value_ref_list *matches
+) {
     size_t index = 0U;
 
     if (value->type != MYLITE_JSON_TYPE_ARRAY ||
@@ -1509,10 +1701,11 @@ static int eval_json_path_array_index(const struct json_value *value,
     return json_value_ref_list_append(matches, &value->items[index]);
 }
 
-static int eval_json_path_array_range(const struct json_value *value,
-                                      const struct json_path_leg *leg,
-                                      struct json_value_ref_list *matches)
-{
+static int eval_json_path_array_range(
+    const struct json_value *value,
+    const struct json_path_leg *leg,
+    struct json_value_ref_list *matches
+) {
     size_t start = 0U;
     size_t end = 0U;
 
@@ -1534,9 +1727,11 @@ static int eval_json_path_array_range(const struct json_value *value,
     return MYLITE_JSON_STATUS_OK;
 }
 
-static bool json_path_array_position_value(struct json_path_array_position position,
-                                           size_t item_count, size_t *out_index)
-{
+static bool json_path_array_position_value(
+    struct json_path_array_position position,
+    size_t item_count,
+    size_t *out_index
+) {
     if (item_count == 0U) {
         return false;
     }
@@ -1554,11 +1749,12 @@ static bool json_path_array_position_value(struct json_path_array_position posit
     return true;
 }
 
-static int json_value_ref_list_append(struct json_value_ref_list *list,
-                                      const struct json_value *value)
-{
-    const struct json_value **updated = (const struct json_value **)realloc(
-        (void *)list->items, (list->count + 1U) * sizeof(*updated));
+static int json_value_ref_list_append(
+    struct json_value_ref_list *list,
+    const struct json_value *value
+) {
+    const struct json_value **updated = (const struct json_value **)
+        realloc((void *)list->items, (list->count + 1U) * sizeof(*updated));
 
     if (updated == NULL) {
         return MYLITE_JSON_STATUS_NOMEM;
@@ -1568,8 +1764,7 @@ static int json_value_ref_list_append(struct json_value_ref_list *list,
     return MYLITE_JSON_STATUS_OK;
 }
 
-static uint64_t json_value_length(const struct json_value *value)
-{
+static uint64_t json_value_length(const struct json_value *value) {
     if (value == NULL) {
         return 0U;
     }
@@ -1582,9 +1777,12 @@ static uint64_t json_value_length(const struct json_value *value)
     return 1U;
 }
 
-static int json_object_append_member(struct json_value *object, char *key, size_t key_length,
-                                     struct json_value *value)
-{
+static int json_object_append_member(
+    struct json_value *object,
+    char *key,
+    size_t key_length,
+    struct json_value *value
+) {
     struct json_dom_member *updated = NULL;
 
     for (size_t index = 0U; index < object->member_count; ++index) {
@@ -1611,8 +1809,7 @@ static int json_object_append_member(struct json_value *object, char *key, size_
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-static int json_object_member_compare(const void *left, const void *right)
-{
+static int json_object_member_compare(const void *left, const void *right) {
     const struct json_dom_member *left_member = left;
     const struct json_dom_member *right_member = right;
     size_t min_length = left_member->key_length < right_member->key_length
@@ -1634,8 +1831,13 @@ static int json_object_member_compare(const void *left, const void *right)
 }
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-static int normalize_json_number_text(const char *text, size_t length, enum mylite_json_type type,
-                                      char **out_text, size_t *out_length)
+static int normalize_json_number_text(
+    const char *text,
+    size_t length,
+    enum mylite_json_type type,
+    char **out_text,
+    size_t *out_length
+)
 // NOLINTEND(bugprone-easily-swappable-parameters)
 {
     char *copy = NULL;
@@ -1660,8 +1862,7 @@ static int normalize_json_number_text(const char *text, size_t length, enum myli
     return status;
 }
 
-static int format_json_double_text(double value, char **out_text, size_t *out_length)
-{
+static int format_json_double_text(double value, char **out_text, size_t *out_length) {
     char buffer[json_number_buffer_length];
     int length = snprintf(buffer, sizeof(buffer), "%.16g", value);
     bool has_decimal_marker = false;
@@ -1688,15 +1889,15 @@ static int format_json_double_text(double value, char **out_text, size_t *out_le
     return *out_text == NULL ? MYLITE_JSON_STATUS_NOMEM : MYLITE_JSON_STATUS_OK;
 }
 
-static bool append_utf8(char **text, size_t *length, uint32_t codepoint)
-{
+static bool append_utf8(char **text, size_t *length, uint32_t codepoint) {
     if (codepoint <= json_utf8_one_byte_max) {
         return append_byte(text, length, (char)codepoint);
     }
     if (codepoint <= json_utf8_two_byte_max) {
         char bytes[] = {
             (char)(json_utf8_two_byte_prefix | (codepoint >> json_utf8_shift_6)),
-            (char)(json_utf8_continuation_prefix | (codepoint & json_utf8_payload_mask))};
+            (char)(json_utf8_continuation_prefix | (codepoint & json_utf8_payload_mask))
+        };
 
         return append_bytes(text, length, bytes, sizeof(bytes));
     }
@@ -1705,7 +1906,8 @@ static bool append_utf8(char **text, size_t *length, uint32_t codepoint)
             (char)(json_utf8_three_byte_prefix | (codepoint >> json_utf8_shift_12)),
             (char)(json_utf8_continuation_prefix |
                    ((codepoint >> json_utf8_shift_6) & json_utf8_payload_mask)),
-            (char)(json_utf8_continuation_prefix | (codepoint & json_utf8_payload_mask))};
+            (char)(json_utf8_continuation_prefix | (codepoint & json_utf8_payload_mask))
+        };
 
         return append_bytes(text, length, bytes, sizeof(bytes));
     }
@@ -1716,15 +1918,15 @@ static bool append_utf8(char **text, size_t *length, uint32_t codepoint)
                    ((codepoint >> json_utf8_shift_12) & json_utf8_payload_mask)),
             (char)(json_utf8_continuation_prefix |
                    ((codepoint >> json_utf8_shift_6) & json_utf8_payload_mask)),
-            (char)(json_utf8_continuation_prefix | (codepoint & json_utf8_payload_mask))};
+            (char)(json_utf8_continuation_prefix | (codepoint & json_utf8_payload_mask))
+        };
 
         return append_bytes(text, length, bytes, sizeof(bytes));
     }
     return false;
 }
 
-static bool append_quoted_byte(char **text, size_t *length, unsigned char byte)
-{
+static bool append_quoted_byte(char **text, size_t *length, unsigned char byte) {
     switch (byte) {
     case '"':
         return append_bytes(text, length, "\\\"", 2U);
@@ -1748,38 +1950,38 @@ static bool append_quoted_byte(char **text, size_t *length, unsigned char byte)
     }
 }
 
-static bool append_control_escape(char **text, size_t *length, unsigned char byte)
-{
+static bool append_control_escape(char **text, size_t *length, unsigned char byte) {
     static const char hex[] = "0123456789abcdef";
-    char escape[] = {
-        '\\', 'u', '0', '0', hex[byte >> json_hex_nibble_shift], hex[byte & json_hex_nibble_mask]};
+    char escape[] =
+        {'\\', 'u', '0', '0', hex[byte >> json_hex_nibble_shift], hex[byte & json_hex_nibble_mask]};
 
     return append_bytes(text, length, escape, sizeof(escape));
 }
 
-static bool append_optional_byte(char **text, size_t *length, char byte)
-{
+static bool append_optional_byte(char **text, size_t *length, char byte) {
     if (text == NULL) {
         return true;
     }
     return append_byte(text, length, byte);
 }
 
-static bool append_optional_utf8(char **text, size_t *length, uint32_t codepoint)
-{
+static bool append_optional_utf8(char **text, size_t *length, uint32_t codepoint) {
     if (text == NULL) {
         return true;
     }
     return append_utf8(text, length, codepoint);
 }
 
-static bool append_byte(char **text, size_t *length, char byte)
-{
+static bool append_byte(char **text, size_t *length, char byte) {
     return append_bytes(text, length, &byte, 1U);
 }
 
-static bool append_bytes(char **text, size_t *length, const char *addition, size_t addition_length)
-{
+static bool append_bytes(
+    char **text,
+    size_t *length,
+    const char *addition,
+    size_t addition_length
+) {
     char *updated = NULL;
 
     if (text == NULL || length == NULL || addition_length > SIZE_MAX - *length - 1U) {
@@ -1798,8 +2000,7 @@ static bool append_bytes(char **text, size_t *length, const char *addition, size
     return true;
 }
 
-static char *copy_text(const char *text, size_t length)
-{
+static char *copy_text(const char *text, size_t length) {
     char *copy = malloc(length + 1U);
 
     if (copy == NULL) {
@@ -1812,15 +2013,13 @@ static char *copy_text(const char *text, size_t length)
     return copy;
 }
 
-static void skip_whitespace(struct json_parser *parser)
-{
+static void skip_whitespace(struct json_parser *parser) {
     while (!at_end(parser) && isspace((unsigned char)parser->text[parser->offset])) {
         ++parser->offset;
     }
 }
 
-static bool consume_byte(struct json_parser *parser, char expected)
-{
+static bool consume_byte(struct json_parser *parser, char expected) {
     if (at_end(parser) || parser->text[parser->offset] != expected) {
         return false;
     }
@@ -1828,8 +2027,7 @@ static bool consume_byte(struct json_parser *parser, char expected)
     return true;
 }
 
-static bool peek_byte(const struct json_parser *parser, char *out_byte)
-{
+static bool peek_byte(const struct json_parser *parser, char *out_byte) {
     if (at_end(parser)) {
         return false;
     }
@@ -1837,31 +2035,27 @@ static bool peek_byte(const struct json_parser *parser, char *out_byte)
     return true;
 }
 
-static bool at_end(const struct json_parser *parser)
-{
+static bool at_end(const struct json_parser *parser) {
     if (parser == NULL || parser->text == NULL) {
         return true;
     }
     return parser->offset >= parser->length;
 }
 
-static void set_error(struct json_parser *parser, const char *message, size_t position)
-{
+static void set_error(struct json_parser *parser, const char *message, size_t position) {
     if (parser != NULL && parser->error != NULL && parser->error->message == NULL) {
         *parser->error = (struct mylite_json_error){.message = message, .position = position};
     }
 }
 
-static void set_path_error(struct mylite_json_error *error, const char *message, size_t position)
-{
+static void set_path_error(struct mylite_json_error *error, const char *message, size_t position) {
     if (error != NULL && error->message == NULL) {
         *error = (struct mylite_json_error){.message = message, .position = position};
     }
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static void json_value_deinit(struct json_value *value)
-{
+static void json_value_deinit(struct json_value *value) {
     if (value == NULL) {
         return;
     }
@@ -1879,8 +2073,7 @@ static void json_value_deinit(struct json_value *value)
     *value = (struct json_value){0};
 }
 
-static void json_path_deinit(struct json_path *path)
-{
+static void json_path_deinit(struct json_path *path) {
     if (path == NULL) {
         return;
     }
@@ -1891,8 +2084,7 @@ static void json_path_deinit(struct json_path *path)
     *path = (struct json_path){0};
 }
 
-static void json_value_ref_list_deinit(struct json_value_ref_list *list)
-{
+static void json_value_ref_list_deinit(struct json_value_ref_list *list) {
     if (list == NULL) {
         return;
     }
@@ -1900,8 +2092,7 @@ static void json_value_ref_list_deinit(struct json_value_ref_list *list)
     *list = (struct json_value_ref_list){0};
 }
 
-static bool is_hex_digit(char byte)
-{
+static bool is_hex_digit(char byte) {
     if (byte >= '0' && byte <= '9') {
         return true;
     }
@@ -1914,8 +2105,7 @@ static bool is_hex_digit(char byte)
     return false;
 }
 
-static uint32_t hex_digit_value(char byte)
-{
+static uint32_t hex_digit_value(char byte) {
     if (byte >= '0' && byte <= '9') {
         return (uint32_t)(byte - '0');
     }

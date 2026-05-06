@@ -17,51 +17,116 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_prepare_statement_plan(const struct mylite_sql_ast_node *statement,
-                                       struct mylite_prepare_statement_plan *plan);
-static int copy_execute_statement_plan(const struct mylite_sql_ast_node *statement,
-                                       struct mylite_execute_prepared_plan *plan);
-static int copy_deallocate_statement_plan(const struct mylite_sql_ast_node *statement,
-                                          struct mylite_deallocate_prepare_plan *plan);
+static int copy_prepare_statement_plan(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_prepare_statement_plan *plan
+);
+
+static int copy_execute_statement_plan(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_execute_prepared_plan *plan
+);
+
+static int copy_deallocate_statement_plan(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_deallocate_prepare_plan *plan
+);
+
 static int copy_statement_name(const struct mylite_sql_ast_node *name_node, char **out_name);
+
 static void lowercase_ascii_text(char *text);
-static int clone_plan_source_node(const struct mylite_sql_ast_node *source,
-                                  struct mylite_prepare_statement_plan *plan);
-static int copy_prepare_source_sql(mylite_db *database, const struct mylite_sql_ast_node *source,
-                                   char **out_sql);
-static int validate_prepared_statement_sql(mylite_db *database, const char *sql, size_t sql_length,
-                                           size_t *out_parameter_count);
-static int substitute_parameter_markers(mylite_db *database, const char *sql, size_t sql_length,
-                                        char **replacements, size_t replacement_count,
-                                        char **out_sql, size_t *out_parameter_count);
-static int append_substitution_text(char **buffer, size_t *length, size_t *capacity,
-                                    const char *text, size_t text_length);
+
+static int clone_plan_source_node(
+    const struct mylite_sql_ast_node *source,
+    struct mylite_prepare_statement_plan *plan
+);
+
+static int copy_prepare_source_sql(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *source,
+    char **out_sql
+);
+
+static int validate_prepared_statement_sql(
+    mylite_db *database,
+    const char *sql,
+    size_t sql_length,
+    size_t *out_parameter_count
+);
+
+static int substitute_parameter_markers(
+    mylite_db *database,
+    const char *sql,
+    size_t sql_length,
+    char **replacements,
+    size_t replacement_count,
+    char **out_sql,
+    size_t *out_parameter_count
+);
+
+static int append_substitution_text(
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    const char *text,
+    size_t text_length
+);
+
 static bool prepared_statement_kind_is_unsupported(const struct mylite_sql_ast_node *statement);
-static int store_prepared_statement(mylite_db *database, const char *name, const char *sql,
-                                    size_t parameter_count);
-static const struct mylite_prepared_statement_entry *
-find_prepared_statement_entry(const struct mylite_prepared_statement_store *store,
-                              const char *name);
-static bool remove_prepared_statement(struct mylite_prepared_statement_store *store,
-                                      const char *name);
+
+static int store_prepared_statement(
+    mylite_db *database,
+    const char *name,
+    const char *sql,
+    size_t parameter_count
+);
+
+static const struct mylite_prepared_statement_entry *find_prepared_statement_entry(
+    const struct mylite_prepared_statement_store *store,
+    const char *name
+);
+
+static bool remove_prepared_statement(
+    struct mylite_prepared_statement_store *store,
+    const char *name
+);
+
 static void prepared_statement_entry_deinit(struct mylite_prepared_statement_entry *entry);
-static int set_unknown_prepared_statement_error(mylite_db *database, const char *name,
-                                                const char *operation);
-static int set_prepared_statement_error(mylite_db *database, unsigned int code,
-                                        const char *message);
-static int materialize_execute_sql(mylite_stmt *stmt,
-                                   const struct mylite_prepared_statement_entry *entry,
-                                   char **out_sql);
+
+static int set_unknown_prepared_statement_error(
+    mylite_db *database,
+    const char *name,
+    const char *operation
+);
+
+static int set_prepared_statement_error(
+    mylite_db *database,
+    unsigned int code,
+    const char *message
+);
+
+static int materialize_execute_sql(
+    mylite_stmt *stmt,
+    const struct mylite_prepared_statement_entry *entry,
+    char **out_sql
+);
+
 static int copy_user_variable_literal(mylite_db *database, const char *name, char **out_literal);
-static int copy_sql_literal_from_value(const struct mylite_expression_value *value,
-                                       char **out_literal);
+
+static int copy_sql_literal_from_value(
+    const struct mylite_expression_value *value,
+    char **out_literal
+);
+
 static int copy_quoted_sql_text_literal(const char *text, size_t text_length, char **out_literal);
+
 static int copy_static_text(const char *text, char **out_text);
 
-int mylite_prepared_statement_prepare_prepare_statement(mylite_db *database,
-                                                        const struct mylite_sql_ast_node *statement,
-                                                        mylite_stmt **out_stmt)
-{
+int mylite_prepared_statement_prepare_prepare_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     mylite_stmt *stmt = calloc(1U, sizeof(*stmt));
     int status = MYLITE_OK;
 
@@ -89,10 +154,11 @@ int mylite_prepared_statement_prepare_prepare_statement(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_prepared_statement_prepare_execute_statement(mylite_db *database,
-                                                        const struct mylite_sql_ast_node *statement,
-                                                        mylite_stmt **out_stmt)
-{
+int mylite_prepared_statement_prepare_execute_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     mylite_stmt *stmt = calloc(1U, sizeof(*stmt));
     int status = MYLITE_OK;
 
@@ -121,8 +187,10 @@ int mylite_prepared_statement_prepare_execute_statement(mylite_db *database,
 }
 
 int mylite_prepared_statement_prepare_deallocate_statement(
-    mylite_db *database, const struct mylite_sql_ast_node *statement, mylite_stmt **out_stmt)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     mylite_stmt *stmt = calloc(1U, sizeof(*stmt));
     int status = MYLITE_OK;
 
@@ -150,8 +218,7 @@ int mylite_prepared_statement_prepare_deallocate_statement(
     return MYLITE_OK;
 }
 
-int mylite_prepared_statement_execute_prepare(mylite_stmt *stmt)
-{
+int mylite_prepared_statement_execute_prepare(mylite_stmt *stmt) {
     const struct mylite_prepare_statement_plan *plan =
         stmt == NULL ? NULL : &stmt->prepare_statement;
     char *source_sql = NULL;
@@ -171,8 +238,12 @@ int mylite_prepared_statement_execute_prepare(mylite_stmt *stmt)
         return status;
     }
 
-    status = validate_prepared_statement_sql(stmt->database, source_sql, strlen(source_sql),
-                                             &parameter_count);
+    status = validate_prepared_statement_sql(
+        stmt->database,
+        source_sql,
+        strlen(source_sql),
+        &parameter_count
+    );
     if (status == MYLITE_OK) {
         status = store_prepared_statement(stmt->database, plan->name, source_sql, parameter_count);
     }
@@ -183,8 +254,7 @@ int mylite_prepared_statement_execute_prepare(mylite_stmt *stmt)
     return status;
 }
 
-int mylite_prepared_statement_execute_execute(mylite_stmt *stmt)
-{
+int mylite_prepared_statement_execute_execute(mylite_stmt *stmt) {
     const struct mylite_execute_prepared_plan *plan = stmt == NULL ? NULL : &stmt->execute_prepared;
     const struct mylite_prepared_statement_entry *entry = NULL;
     char *execute_sql = NULL;
@@ -199,8 +269,11 @@ int mylite_prepared_statement_execute_execute(mylite_stmt *stmt)
             return set_unknown_prepared_statement_error(stmt->database, plan->name, "EXECUTE");
         }
         if (entry->parameter_count != plan->using_count) {
-            return set_prepared_statement_error(stmt->database, MYLITE_MYSQL_ER_WRONG_ARGUMENTS,
-                                                "Incorrect arguments to EXECUTE");
+            return set_prepared_statement_error(
+                stmt->database,
+                MYLITE_MYSQL_ER_WRONG_ARGUMENTS,
+                "Incorrect arguments to EXECUTE"
+            );
         }
 
         status = materialize_execute_sql(stmt, entry, &execute_sql);
@@ -208,8 +281,12 @@ int mylite_prepared_statement_execute_execute(mylite_stmt *stmt)
             free(execute_sql);
             return status;
         }
-        status = mylite_prepare(stmt->database, execute_sql, strlen(execute_sql),
-                                &stmt->prepared_execute_stmt);
+        status = mylite_prepare(
+            stmt->database,
+            execute_sql,
+            strlen(execute_sql),
+            &stmt->prepared_execute_stmt
+        );
         free(execute_sql);
         if (status != MYLITE_OK) {
             return status;
@@ -225,8 +302,7 @@ int mylite_prepared_statement_execute_execute(mylite_stmt *stmt)
     return status;
 }
 
-int mylite_prepared_statement_execute_deallocate(mylite_stmt *stmt)
-{
+int mylite_prepared_statement_execute_deallocate(mylite_stmt *stmt) {
     const struct mylite_deallocate_prepare_plan *plan =
         stmt == NULL ? NULL : &stmt->deallocate_prepare;
 
@@ -235,14 +311,16 @@ int mylite_prepared_statement_execute_deallocate(mylite_stmt *stmt)
     }
     if (!remove_prepared_statement(&stmt->database->prepared_statements, plan->name)) {
         stmt->affected_rows = -1;
-        return set_unknown_prepared_statement_error(stmt->database, plan->name,
-                                                    "DEALLOCATE PREPARE");
+        return set_unknown_prepared_statement_error(
+            stmt->database,
+            plan->name,
+            "DEALLOCATE PREPARE"
+        );
     }
     return MYLITE_OK;
 }
 
-void mylite_prepared_statement_store_deinit(struct mylite_prepared_statement_store *store)
-{
+void mylite_prepared_statement_store_deinit(struct mylite_prepared_statement_store *store) {
     if (store == NULL) {
         return;
     }
@@ -253,8 +331,7 @@ void mylite_prepared_statement_store_deinit(struct mylite_prepared_statement_sto
     *store = (struct mylite_prepared_statement_store){0};
 }
 
-void mylite_prepared_statement_prepare_plan_deinit(struct mylite_prepare_statement_plan *plan)
-{
+void mylite_prepared_statement_prepare_plan_deinit(struct mylite_prepare_statement_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -264,8 +341,7 @@ void mylite_prepared_statement_prepare_plan_deinit(struct mylite_prepare_stateme
     *plan = (struct mylite_prepare_statement_plan){0};
 }
 
-void mylite_prepared_statement_execute_plan_deinit(struct mylite_execute_prepared_plan *plan)
-{
+void mylite_prepared_statement_execute_plan_deinit(struct mylite_execute_prepared_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -277,8 +353,7 @@ void mylite_prepared_statement_execute_plan_deinit(struct mylite_execute_prepare
     *plan = (struct mylite_execute_prepared_plan){0};
 }
 
-void mylite_prepared_statement_deallocate_plan_deinit(struct mylite_deallocate_prepare_plan *plan)
-{
+void mylite_prepared_statement_deallocate_plan_deinit(struct mylite_deallocate_prepare_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -286,9 +361,10 @@ void mylite_prepared_statement_deallocate_plan_deinit(struct mylite_deallocate_p
     *plan = (struct mylite_deallocate_prepare_plan){0};
 }
 
-static int copy_prepare_statement_plan(const struct mylite_sql_ast_node *statement,
-                                       struct mylite_prepare_statement_plan *plan)
-{
+static int copy_prepare_statement_plan(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_prepare_statement_plan *plan
+) {
     const struct mylite_sql_ast_node *name_node = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(statement, 1U);
     int status = copy_statement_name(name_node, &plan->name);
@@ -299,9 +375,10 @@ static int copy_prepare_statement_plan(const struct mylite_sql_ast_node *stateme
     return clone_plan_source_node(source, plan);
 }
 
-static int copy_execute_statement_plan(const struct mylite_sql_ast_node *statement,
-                                       struct mylite_execute_prepared_plan *plan)
-{
+static int copy_execute_statement_plan(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_execute_prepared_plan *plan
+) {
     const struct mylite_sql_ast_node *name_node = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *using_list = mylite_ast_child_at(statement, 1U);
     int status = copy_statement_name(name_node, &plan->name);
@@ -311,7 +388,8 @@ static int copy_execute_statement_plan(const struct mylite_sql_ast_node *stateme
     }
     for (const struct mylite_sql_ast_node *variable = using_list == NULL ? NULL
                                                                          : using_list->first_child;
-         variable != NULL; variable = variable->next_sibling) {
+         variable != NULL;
+         variable = variable->next_sibling) {
         char **using_names =
             realloc(plan->using_names, (plan->using_count + 1U) * sizeof(*plan->using_names));
 
@@ -320,8 +398,10 @@ static int copy_execute_statement_plan(const struct mylite_sql_ast_node *stateme
         }
         plan->using_names = using_names;
         plan->using_names[plan->using_count] = NULL;
-        status = mylite_user_variable_copy_identifier_name(variable,
-                                                           &plan->using_names[plan->using_count]);
+        status = mylite_user_variable_copy_identifier_name(
+            variable,
+            &plan->using_names[plan->using_count]
+        );
         if (status != MYLITE_OK) {
             return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
         }
@@ -330,14 +410,14 @@ static int copy_execute_statement_plan(const struct mylite_sql_ast_node *stateme
     return MYLITE_OK;
 }
 
-static int copy_deallocate_statement_plan(const struct mylite_sql_ast_node *statement,
-                                          struct mylite_deallocate_prepare_plan *plan)
-{
+static int copy_deallocate_statement_plan(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_deallocate_prepare_plan *plan
+) {
     return copy_statement_name(mylite_ast_child_at(statement, 0U), &plan->name);
 }
 
-static int copy_statement_name(const struct mylite_sql_ast_node *name_node, char **out_name)
-{
+static int copy_statement_name(const struct mylite_sql_ast_node *name_node, char **out_name) {
     if (out_name == NULL) {
         return MYLITE_MISUSE;
     }
@@ -349,8 +429,7 @@ static int copy_statement_name(const struct mylite_sql_ast_node *name_node, char
     return MYLITE_OK;
 }
 
-static void lowercase_ascii_text(char *text)
-{
+static void lowercase_ascii_text(char *text) {
     for (size_t index = 0U; text != NULL && text[index] != '\0'; ++index) {
         if (text[index] >= 'A' && text[index] <= 'Z') {
             text[index] = (char)(text[index] - 'A' + 'a');
@@ -358,9 +437,10 @@ static void lowercase_ascii_text(char *text)
     }
 }
 
-static int clone_plan_source_node(const struct mylite_sql_ast_node *source,
-                                  struct mylite_prepare_statement_plan *plan)
-{
+static int clone_plan_source_node(
+    const struct mylite_sql_ast_node *source,
+    struct mylite_prepare_statement_plan *plan
+) {
     struct mylite_sql_ast_node *source_clone = NULL;
     int status = MYLITE_OK;
 
@@ -371,9 +451,14 @@ static int clone_plan_source_node(const struct mylite_sql_ast_node *source,
     if (plan->source_sql_text == NULL) {
         return MYLITE_NOMEM;
     }
-    status = mylite_statement_ast_clone_subtree(&plan->source_ast, source, source->span.text,
-                                                plan->source_sql_text, source->span.length,
-                                                &source_clone);
+    status = mylite_statement_ast_clone_subtree(
+        &plan->source_ast,
+        source,
+        source->span.text,
+        plan->source_sql_text,
+        source->span.length,
+        &source_clone
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -381,9 +466,11 @@ static int clone_plan_source_node(const struct mylite_sql_ast_node *source,
     return MYLITE_OK;
 }
 
-static int copy_prepare_source_sql(mylite_db *database, const struct mylite_sql_ast_node *source,
-                                   char **out_sql)
-{
+static int copy_prepare_source_sql(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *source,
+    char **out_sql
+) {
     struct mylite_expression_value value = {0};
     int status = MYLITE_OK;
 
@@ -421,15 +508,25 @@ static int copy_prepare_source_sql(mylite_db *database, const struct mylite_sql_
     return status;
 }
 
-static int validate_prepared_statement_sql(mylite_db *database, const char *sql, size_t sql_length,
-                                           size_t *out_parameter_count)
-{
+static int validate_prepared_statement_sql(
+    mylite_db *database,
+    const char *sql,
+    size_t sql_length,
+    size_t *out_parameter_count
+) {
     struct mylite_sql_parse_result parse_result = {0};
     char *validation_sql = NULL;
     enum mylite_sql_parse_status parse_status = MYLITE_SQL_PARSE_OK;
     const struct mylite_sql_ast_node *statement = NULL;
-    int status = substitute_parameter_markers(database, sql, sql_length, NULL, 0U, &validation_sql,
-                                              out_parameter_count);
+    int status = substitute_parameter_markers(
+        database,
+        sql,
+        sql_length,
+        NULL,
+        0U,
+        &validation_sql,
+        out_parameter_count
+    );
 
     if (status != MYLITE_OK) {
         free(validation_sql);
@@ -442,12 +539,15 @@ static int validate_prepared_statement_sql(mylite_db *database, const char *sql,
             .length = strlen(validation_sql),
             .modes = 0U,
         },
-        &parse_result);
+        &parse_result
+    );
     if (parse_status != MYLITE_SQL_PARSE_OK) {
         status = mylite_statement_map_parse_status(database, parse_status);
         if (status != MYLITE_NOMEM) {
-            (void)mylite_diagnostics_append_current_error_condition(database,
-                                                                    MYLITE_MYSQL_ER_PARSE_ERROR);
+            (void)mylite_diagnostics_append_current_error_condition(
+                database,
+                MYLITE_MYSQL_ER_PARSE_ERROR
+            );
         }
         goto done;
     }
@@ -458,8 +558,10 @@ static int validate_prepared_statement_sql(mylite_db *database, const char *sql,
             set_prepared_statement_error(database, MYLITE_MYSQL_ER_PARSE_ERROR, "syntax_error");
     } else if (prepared_statement_kind_is_unsupported(statement)) {
         status = set_prepared_statement_error(
-            database, MYLITE_MYSQL_ER_UNSUPPORTED_PS,
-            "This command is not supported in the prepared statement protocol yet");
+            database,
+            MYLITE_MYSQL_ER_UNSUPPORTED_PS,
+            "This command is not supported in the prepared statement protocol yet"
+        );
     }
 
 done:
@@ -468,10 +570,15 @@ done:
     return status;
 }
 
-static int substitute_parameter_markers(mylite_db *database, const char *sql, size_t sql_length,
-                                        char **replacements, size_t replacement_count,
-                                        char **out_sql, size_t *out_parameter_count)
-{
+static int substitute_parameter_markers(
+    mylite_db *database,
+    const char *sql,
+    size_t sql_length,
+    char **replacements,
+    size_t replacement_count,
+    char **out_sql,
+    size_t *out_parameter_count
+) {
     struct mylite_sql_lexer lexer = {0};
     char *buffer = NULL;
     size_t length = 0U;
@@ -483,23 +590,34 @@ static int substitute_parameter_markers(mylite_db *database, const char *sql, si
     if (out_parameter_count != NULL) {
         *out_parameter_count = 0U;
     }
-    mylite_sql_lexer_init(&lexer, (struct mylite_sql_lexer_config){
-                                      .input = sql,
-                                      .length = sql_length,
-                                      .modes = 0U,
-                                  });
+    mylite_sql_lexer_init(
+        &lexer,
+        (struct mylite_sql_lexer_config){
+            .input = sql,
+            .length = sql_length,
+            .modes = 0U,
+        }
+    );
 
     for (;;) {
         struct mylite_sql_token token = {0};
 
         if (mylite_sql_lexer_next(&lexer, &token) != 0 || token.kind == MYLITE_SQL_TOKEN_ERROR) {
             free(buffer);
-            return set_prepared_statement_error(database, MYLITE_MYSQL_ER_PARSE_ERROR,
-                                                "lexer_error");
+            return set_prepared_statement_error(
+                database,
+                MYLITE_MYSQL_ER_PARSE_ERROR,
+                "lexer_error"
+            );
         }
         if (token.kind == MYLITE_SQL_TOKEN_EOF) {
-            if (append_substitution_text(&buffer, &length, &capacity, sql + copied_offset,
-                                         sql_length - copied_offset) != MYLITE_OK) {
+            if (append_substitution_text(
+                    &buffer,
+                    &length,
+                    &capacity,
+                    sql + copied_offset,
+                    sql_length - copied_offset
+                ) != MYLITE_OK) {
                 goto out_of_memory;
             }
             break;
@@ -508,8 +626,13 @@ static int substitute_parameter_markers(mylite_db *database, const char *sql, si
             continue;
         }
 
-        if (append_substitution_text(&buffer, &length, &capacity, sql + copied_offset,
-                                     token.offset - copied_offset) != MYLITE_OK) {
+        if (append_substitution_text(
+                &buffer,
+                &length,
+                &capacity,
+                sql + copied_offset,
+                token.offset - copied_offset
+            ) != MYLITE_OK) {
             goto out_of_memory;
         }
         if (replacements == NULL) {
@@ -520,8 +643,13 @@ static int substitute_parameter_markers(mylite_db *database, const char *sql, si
             if (parameter_count >= replacement_count) {
                 goto incorrect_argument_count;
             }
-            if (append_substitution_text(&buffer, &length, &capacity, replacements[parameter_count],
-                                         strlen(replacements[parameter_count])) != MYLITE_OK) {
+            if (append_substitution_text(
+                    &buffer,
+                    &length,
+                    &capacity,
+                    replacements[parameter_count],
+                    strlen(replacements[parameter_count])
+                ) != MYLITE_OK) {
                 goto out_of_memory;
             }
         }
@@ -543,8 +671,11 @@ static int substitute_parameter_markers(mylite_db *database, const char *sql, si
 
 incorrect_argument_count:
     free(buffer);
-    return set_prepared_statement_error(database, MYLITE_MYSQL_ER_WRONG_ARGUMENTS,
-                                        "Incorrect arguments to EXECUTE");
+    return set_prepared_statement_error(
+        database,
+        MYLITE_MYSQL_ER_WRONG_ARGUMENTS,
+        "Incorrect arguments to EXECUTE"
+    );
 
 out_of_memory:
     free(buffer);
@@ -552,9 +683,13 @@ out_of_memory:
     return MYLITE_NOMEM;
 }
 
-static int append_substitution_text(char **buffer, size_t *length, size_t *capacity,
-                                    const char *text, size_t text_length)
-{
+static int append_substitution_text(
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    const char *text,
+    size_t text_length
+) {
     if (text_length == 0U) {
         return MYLITE_OK;
     }
@@ -581,8 +716,7 @@ static int append_substitution_text(char **buffer, size_t *length, size_t *capac
     return MYLITE_OK;
 }
 
-static bool prepared_statement_kind_is_unsupported(const struct mylite_sql_ast_node *statement)
-{
+static bool prepared_statement_kind_is_unsupported(const struct mylite_sql_ast_node *statement) {
     if (statement == NULL) {
         return false;
     }
@@ -591,12 +725,16 @@ static bool prepared_statement_kind_is_unsupported(const struct mylite_sql_ast_n
            statement->kind == MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT;
 }
 
-static int store_prepared_statement(mylite_db *database, const char *name, const char *sql,
-                                    size_t parameter_count)
-{
+static int store_prepared_statement(
+    mylite_db *database,
+    const char *name,
+    const char *sql,
+    size_t parameter_count
+) {
     struct mylite_prepared_statement_entry *items = realloc(
         database->prepared_statements.items,
-        (database->prepared_statements.count + 1U) * sizeof(*database->prepared_statements.items));
+        (database->prepared_statements.count + 1U) * sizeof(*database->prepared_statements.items)
+    );
     struct mylite_prepared_statement_entry *entry = NULL;
 
     if (items == NULL) {
@@ -619,9 +757,10 @@ static int store_prepared_statement(mylite_db *database, const char *name, const
     return MYLITE_OK;
 }
 
-static const struct mylite_prepared_statement_entry *
-find_prepared_statement_entry(const struct mylite_prepared_statement_store *store, const char *name)
-{
+static const struct mylite_prepared_statement_entry *find_prepared_statement_entry(
+    const struct mylite_prepared_statement_store *store,
+    const char *name
+) {
     if (store == NULL || name == NULL) {
         return NULL;
     }
@@ -633,9 +772,10 @@ find_prepared_statement_entry(const struct mylite_prepared_statement_store *stor
     return NULL;
 }
 
-static bool remove_prepared_statement(struct mylite_prepared_statement_store *store,
-                                      const char *name)
-{
+static bool remove_prepared_statement(
+    struct mylite_prepared_statement_store *store,
+    const char *name
+) {
     if (store == NULL || name == NULL) {
         return false;
     }
@@ -643,8 +783,11 @@ static bool remove_prepared_statement(struct mylite_prepared_statement_store *st
         if (strcmp(store->items[index].name, name) == 0) {
             prepared_statement_entry_deinit(&store->items[index]);
             if (index + 1U < store->count) {
-                memmove(&store->items[index], &store->items[index + 1U],
-                        (store->count - index - 1U) * sizeof(*store->items));
+                memmove(
+                    &store->items[index],
+                    &store->items[index + 1U],
+                    (store->count - index - 1U) * sizeof(*store->items)
+                );
             }
             --store->count;
             return true;
@@ -653,8 +796,7 @@ static bool remove_prepared_statement(struct mylite_prepared_statement_store *st
     return false;
 }
 
-static void prepared_statement_entry_deinit(struct mylite_prepared_statement_entry *entry)
-{
+static void prepared_statement_entry_deinit(struct mylite_prepared_statement_entry *entry) {
     if (entry == NULL) {
         return;
     }
@@ -663,9 +805,11 @@ static void prepared_statement_entry_deinit(struct mylite_prepared_statement_ent
     *entry = (struct mylite_prepared_statement_entry){0};
 }
 
-static int set_unknown_prepared_statement_error(mylite_db *database, const char *name,
-                                                const char *operation)
-{
+static int set_unknown_prepared_statement_error(
+    mylite_db *database,
+    const char *name,
+    const char *operation
+) {
     char *message =
         sqlite3_mprintf("Unknown prepared statement handler (%q) given to %s", name, operation);
     int status = MYLITE_OK;
@@ -679,8 +823,11 @@ static int set_unknown_prepared_statement_error(mylite_db *database, const char 
     return status;
 }
 
-static int set_prepared_statement_error(mylite_db *database, unsigned int code, const char *message)
-{
+static int set_prepared_statement_error(
+    mylite_db *database,
+    unsigned int code,
+    const char *message
+) {
     int status = mylite_diagnostics_set_error_message(database, message);
 
     if (status == MYLITE_OK) {
@@ -689,10 +836,11 @@ static int set_prepared_statement_error(mylite_db *database, unsigned int code, 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int materialize_execute_sql(mylite_stmt *stmt,
-                                   const struct mylite_prepared_statement_entry *entry,
-                                   char **out_sql)
-{
+static int materialize_execute_sql(
+    mylite_stmt *stmt,
+    const struct mylite_prepared_statement_entry *entry,
+    char **out_sql
+) {
     char **literals = NULL;
     size_t parameter_count = 0U;
     int status = MYLITE_OK;
@@ -708,20 +856,32 @@ static int materialize_execute_sql(mylite_stmt *stmt,
 
     for (size_t index = 0U; index < entry->parameter_count; ++index) {
         status = copy_user_variable_literal(
-            stmt->database, stmt->execute_prepared.using_names[index], &literals[index]);
+            stmt->database,
+            stmt->execute_prepared.using_names[index],
+            &literals[index]
+        );
         if (status != MYLITE_OK) {
             goto done;
         }
     }
 
-    status =
-        substitute_parameter_markers(stmt->database, entry->sql_text, strlen(entry->sql_text),
-                                     literals, entry->parameter_count, out_sql, &parameter_count);
+    status = substitute_parameter_markers(
+        stmt->database,
+        entry->sql_text,
+        strlen(entry->sql_text),
+        literals,
+        entry->parameter_count,
+        out_sql,
+        &parameter_count
+    );
     if (status == MYLITE_OK && parameter_count != entry->parameter_count) {
         free(*out_sql);
         *out_sql = NULL;
-        status = set_prepared_statement_error(stmt->database, MYLITE_MYSQL_ER_WRONG_ARGUMENTS,
-                                              "Incorrect arguments to EXECUTE");
+        status = set_prepared_statement_error(
+            stmt->database,
+            MYLITE_MYSQL_ER_WRONG_ARGUMENTS,
+            "Incorrect arguments to EXECUTE"
+        );
     }
 
 done:
@@ -732,8 +892,7 @@ done:
     return status;
 }
 
-static int copy_user_variable_literal(mylite_db *database, const char *name, char **out_literal)
-{
+static int copy_user_variable_literal(mylite_db *database, const char *name, char **out_literal) {
     struct mylite_sql_ast_node variable = {
         .kind = MYLITE_SQL_AST_IDENTIFIER,
     };
@@ -765,9 +924,10 @@ static int copy_user_variable_literal(mylite_db *database, const char *name, cha
     return status;
 }
 
-static int copy_sql_literal_from_value(const struct mylite_expression_value *value,
-                                       char **out_literal)
-{
+static int copy_sql_literal_from_value(
+    const struct mylite_expression_value *value,
+    char **out_literal
+) {
     char buffer[64];
     int length = 0;
 
@@ -776,7 +936,10 @@ static int copy_sql_literal_from_value(const struct mylite_expression_value *val
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return copy_quoted_sql_text_literal(
-            value->text_value, value->text_value == NULL ? 0U : value->text_length, out_literal);
+            value->text_value,
+            value->text_value == NULL ? 0U : value->text_length,
+            out_literal
+        );
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
         length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);
@@ -796,8 +959,7 @@ static int copy_sql_literal_from_value(const struct mylite_expression_value *val
     return *out_literal == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static int copy_quoted_sql_text_literal(const char *text, size_t text_length, char **out_literal)
-{
+static int copy_quoted_sql_text_literal(const char *text, size_t text_length, char **out_literal) {
     size_t quote_count = 0U;
     char *literal = NULL;
     size_t output = 0U;
@@ -828,8 +990,7 @@ static int copy_quoted_sql_text_literal(const char *text, size_t text_length, ch
     return MYLITE_OK;
 }
 
-static int copy_static_text(const char *text, char **out_text)
-{
+static int copy_static_text(const char *text, char **out_text) {
     *out_text = mylite_copy_span_text(text, strlen(text));
     return *out_text == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }

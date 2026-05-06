@@ -7,10 +7,12 @@
 #include "sql/mylite_ast.h"
 
 int mylite_expression_descriptor_infer_aggregate_expression(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_aggregate_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_aggregate_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *argument = mylite_ast_child_at(expression, 1U);
     struct mylite_field_descriptor argument_descriptor = mylite_expression_descriptor_defaults();
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
@@ -20,8 +22,9 @@ int mylite_expression_descriptor_infer_aggregate_expression(
     }
 
     if (expression->aggregate_argument == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION) {
-        int status = callbacks->infer_expression_descriptor(database, plan, argument, NULL,
-                                                            &argument_descriptor);
+        int status =
+            callbacks
+                ->infer_expression_descriptor(database, plan, argument, NULL, &argument_descriptor);
 
         if (status != MYLITE_OK) {
             return status;
@@ -40,9 +43,11 @@ int mylite_expression_descriptor_infer_aggregate_expression(
             descriptor = mylite_expression_descriptor_decimal(true);
             descriptor.length = mylite_mysql_sum_decimal_display_length;
             descriptor.decimals = argument_descriptor.decimals;
-        } else if ((argument_descriptor.flags & MYLITE_FIELD_FLAG_NUM) != 0U &&
-                   argument_descriptor.type != MYLITE_FIELD_TYPE_FLOAT &&
-                   argument_descriptor.type != MYLITE_FIELD_TYPE_DOUBLE) {
+        } else if (
+            (argument_descriptor.flags & MYLITE_FIELD_FLAG_NUM) != 0U &&
+            argument_descriptor.type != MYLITE_FIELD_TYPE_FLOAT &&
+            argument_descriptor.type != MYLITE_FIELD_TYPE_DOUBLE
+        ) {
             descriptor = mylite_expression_descriptor_decimal(true);
             descriptor.length = mylite_mysql_sum_integer_display_length;
             descriptor.decimals = 0U;

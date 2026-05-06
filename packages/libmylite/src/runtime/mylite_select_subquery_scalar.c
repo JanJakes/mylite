@@ -8,23 +8,33 @@
 
 #include <stdint.h>
 
-static int
-evaluate_scalar_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_ast_node *subquery,
-                                    struct mylite_expression_value *out_value,
-                                    const struct mylite_select_subquery_eval_callbacks *callbacks);
-static int
-evaluate_exists_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_ast_node *subquery,
-                                    struct mylite_expression_value *out_value,
-                                    const struct mylite_select_subquery_eval_callbacks *callbacks);
-static int
-subquery_statement_has_row(mylite_stmt *stmt, bool *out_has_row,
-                           const struct mylite_select_subquery_eval_callbacks *callbacks);
+static int evaluate_scalar_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_value *out_value,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+);
 
-int mylite_select_subquery_eval(mylite_stmt *stmt, const struct mylite_sql_ast_node *subquery,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value,
-                                const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+static int evaluate_exists_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_value *out_value,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+);
+
+static int subquery_statement_has_row(
+    mylite_stmt *stmt,
+    bool *out_has_row,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+);
+
+int mylite_select_subquery_eval(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     struct mylite_expression_warnings saved_warnings = {0};
     struct mylite_expression_warnings subquery_warnings = {0};
     int status = MYLITE_UNSUPPORTED;
@@ -60,11 +70,12 @@ int mylite_select_subquery_eval(mylite_stmt *stmt, const struct mylite_sql_ast_n
     return status;
 }
 
-static int
-evaluate_scalar_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_ast_node *subquery,
-                                    struct mylite_expression_value *out_value,
-                                    const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+static int evaluate_scalar_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_value *out_value,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(subquery, 0U);
     mylite_stmt *subquery_stmt = NULL;
     int status =
@@ -110,11 +121,12 @@ evaluate_scalar_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_a
     return status;
 }
 
-static int
-evaluate_exists_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_ast_node *subquery,
-                                    struct mylite_expression_value *out_value,
-                                    const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+static int evaluate_exists_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_value *out_value,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(subquery, 0U);
     const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     mylite_stmt *subquery_stmt = NULL;
@@ -154,14 +166,18 @@ evaluate_exists_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_a
     if (has_row) {
         exists_value = 1;
     }
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = exists_value};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = exists_value
+    };
     return MYLITE_OK;
 }
 
-static int subquery_statement_has_row(mylite_stmt *stmt, bool *out_has_row,
-                                      const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+static int subquery_statement_has_row(
+    mylite_stmt *stmt,
+    bool *out_has_row,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     int status = MYLITE_OK;
 
     *out_has_row = false;

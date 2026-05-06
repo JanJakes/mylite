@@ -80,31 +80,26 @@ static const struct mylite_collation collations[] = {
      .is_default = false},
 };
 
-const char *mylite_charset_default_name(void)
-{
+const char *mylite_charset_default_name(void) {
     return "utf8mb4";
 }
 
-const char *mylite_charset_default_collation_name(void)
-{
+const char *mylite_charset_default_collation_name(void) {
     return "utf8mb4_0900_ai_ci";
 }
 
-size_t mylite_charset_count(void)
-{
+size_t mylite_charset_count(void) {
     return sizeof(character_sets) / sizeof(character_sets[0]);
 }
 
-const struct mylite_charset *mylite_charset_at(size_t index)
-{
+const struct mylite_charset *mylite_charset_at(size_t index) {
     if (index >= mylite_charset_count()) {
         return NULL;
     }
     return &character_sets[index];
 }
 
-const struct mylite_charset *mylite_charset_lookup(const char *name)
-{
+const struct mylite_charset *mylite_charset_lookup(const char *name) {
     for (size_t index = 0U; index < mylite_charset_count(); ++index) {
         if (ascii_case_equal(name, character_sets[index].name)) {
             return &character_sets[index];
@@ -113,21 +108,18 @@ const struct mylite_charset *mylite_charset_lookup(const char *name)
     return NULL;
 }
 
-size_t mylite_collation_count(void)
-{
+size_t mylite_collation_count(void) {
     return sizeof(collations) / sizeof(collations[0]);
 }
 
-const struct mylite_collation *mylite_collation_at(size_t index)
-{
+const struct mylite_collation *mylite_collation_at(size_t index) {
     if (index >= mylite_collation_count()) {
         return NULL;
     }
     return &collations[index];
 }
 
-const struct mylite_collation *mylite_collation_lookup(const char *name)
-{
+const struct mylite_collation *mylite_collation_lookup(const char *name) {
     for (size_t index = 0U; index < mylite_collation_count(); ++index) {
         if (ascii_case_equal(name, collations[index].name)) {
             return &collations[index];
@@ -136,17 +128,17 @@ const struct mylite_collation *mylite_collation_lookup(const char *name)
     return NULL;
 }
 
-bool mylite_charset_collation_match(const struct mylite_charset *character_set,
-                                    const struct mylite_collation *collation)
-{
+bool mylite_charset_collation_match(
+    const struct mylite_charset *character_set,
+    const struct mylite_collation *collation
+) {
     if (character_set == NULL || collation == NULL) {
         return false;
     }
     return ascii_case_equal(character_set->name, collation->character_set);
 }
 
-static bool ascii_case_equal(const char *left, const char *right)
-{
+static bool ascii_case_equal(const char *left, const char *right) {
     size_t index = 0U;
 
     if (left == NULL || right == NULL) {

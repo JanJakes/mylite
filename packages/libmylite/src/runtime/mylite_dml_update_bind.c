@@ -7,21 +7,33 @@
 #include <string.h>
 
 static int copy_dml_target_name(mylite_db *database, const char *source, char **out_name);
-static size_t update_column_reference_index(const struct mylite_select_table *table,
-                                            const struct mylite_update_column_reference *reference);
-static bool
-update_column_reference_qualifiers_match(const struct mylite_select_table *table,
-                                         const struct mylite_update_column_reference *reference);
-static size_t update_select_column_index(const struct mylite_select_table *table,
-                                         const char *column_name);
-static char *
-copy_update_column_reference_name(const struct mylite_update_column_reference *reference);
+
+static size_t update_column_reference_index(
+    const struct mylite_select_table *table,
+    const struct mylite_update_column_reference *reference
+);
+
+static bool update_column_reference_qualifiers_match(
+    const struct mylite_select_table *table,
+    const struct mylite_update_column_reference *reference
+);
+
+static size_t update_select_column_index(
+    const struct mylite_select_table *table,
+    const char *column_name
+);
+
+static char *copy_update_column_reference_name(
+    const struct mylite_update_column_reference *reference
+);
+
 static int set_update_unknown_field_error(mylite_db *database, const char *column_name);
 
-int mylite_dml_copy_update_target_to_select_table(mylite_db *database,
-                                                  const struct mylite_update_plan *plan,
-                                                  struct mylite_select_table *table)
-{
+int mylite_dml_copy_update_target_to_select_table(
+    mylite_db *database,
+    const struct mylite_update_plan *plan,
+    struct mylite_select_table *table
+) {
     const struct mylite_update_target *target = NULL;
     int status = MYLITE_OK;
 
@@ -49,10 +61,11 @@ int mylite_dml_copy_update_target_to_select_table(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_dml_copy_delete_target_to_select_table(mylite_db *database,
-                                                  const struct mylite_delete_plan *plan,
-                                                  struct mylite_select_table *table)
-{
+int mylite_dml_copy_delete_target_to_select_table(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan,
+    struct mylite_select_table *table
+) {
     const struct mylite_delete_target *target = NULL;
     int status = MYLITE_OK;
 
@@ -80,12 +93,13 @@ int mylite_dml_copy_delete_target_to_select_table(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_dml_bind_update_assignment_targets(mylite_db *database,
-                                              const struct mylite_update_plan *plan,
-                                              const struct mylite_select_table *table,
-                                              struct mylite_update_bound_assignment *assignments,
-                                              size_t assignment_count)
-{
+int mylite_dml_bind_update_assignment_targets(
+    mylite_db *database,
+    const struct mylite_update_plan *plan,
+    const struct mylite_select_table *table,
+    struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count
+) {
     if (database == NULL || plan == NULL || table == NULL) {
         return MYLITE_MISUSE;
     }
@@ -120,8 +134,7 @@ int mylite_dml_bind_update_assignment_targets(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int copy_dml_target_name(mylite_db *database, const char *source, char **out_name)
-{
+static int copy_dml_target_name(mylite_db *database, const char *source, char **out_name) {
     *out_name = mylite_copy_nonempty_cstring(source);
     if (*out_name == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -130,19 +143,20 @@ static int copy_dml_target_name(mylite_db *database, const char *source, char **
     return MYLITE_OK;
 }
 
-static size_t update_column_reference_index(const struct mylite_select_table *table,
-                                            const struct mylite_update_column_reference *reference)
-{
+static size_t update_column_reference_index(
+    const struct mylite_select_table *table,
+    const struct mylite_update_column_reference *reference
+) {
     if (!update_column_reference_qualifiers_match(table, reference)) {
         return table->column_count;
     }
     return update_select_column_index(table, reference->column_name);
 }
 
-static bool
-update_column_reference_qualifiers_match(const struct mylite_select_table *table,
-                                         const struct mylite_update_column_reference *reference)
-{
+static bool update_column_reference_qualifiers_match(
+    const struct mylite_select_table *table,
+    const struct mylite_update_column_reference *reference
+) {
     if (reference->schema_name != NULL) {
         if (table->alias != NULL || reference->table_name == NULL) {
             return false;
@@ -166,9 +180,10 @@ update_column_reference_qualifiers_match(const struct mylite_select_table *table
     return true;
 }
 
-static size_t update_select_column_index(const struct mylite_select_table *table,
-                                         const char *column_name)
-{
+static size_t update_select_column_index(
+    const struct mylite_select_table *table,
+    const char *column_name
+) {
     for (size_t index = 0U; index < table->column_count; ++index) {
         if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
             return index;
@@ -177,9 +192,9 @@ static size_t update_select_column_index(const struct mylite_select_table *table
     return table->column_count;
 }
 
-static char *
-copy_update_column_reference_name(const struct mylite_update_column_reference *reference)
-{
+static char *copy_update_column_reference_name(
+    const struct mylite_update_column_reference *reference
+) {
     sqlite3_str *text = sqlite3_str_new(NULL);
 
     if (text == NULL) {
@@ -191,12 +206,14 @@ copy_update_column_reference_name(const struct mylite_update_column_reference *r
     if (reference->table_name != NULL) {
         sqlite3_str_appendf(text, "%s.", reference->table_name);
     }
-    sqlite3_str_append(text, reference->column_name == NULL ? "" : reference->column_name,
-                       reference->column_name == NULL ? 0 : (int)strlen(reference->column_name));
+    sqlite3_str_append(
+        text,
+        reference->column_name == NULL ? "" : reference->column_name,
+        reference->column_name == NULL ? 0 : (int)strlen(reference->column_name)
+    );
     return sqlite3_str_finish(text);
 }
 
-static int set_update_unknown_field_error(mylite_db *database, const char *column_name)
-{
+static int set_update_unknown_field_error(mylite_db *database, const char *column_name) {
     return mylite_dml_set_update_unknown_column_error(database, column_name, "field list");
 }

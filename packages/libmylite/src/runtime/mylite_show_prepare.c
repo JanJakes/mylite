@@ -9,20 +9,30 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_node *statement,
-                                                  struct mylite_show_diagnostics_query *out_query);
-static const struct mylite_sql_ast_node *
-show_filter_where_expression(const struct mylite_sql_ast_node *filter);
+static bool show_diagnostics_query_from_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_show_diagnostics_query *out_query
+);
+
+static const struct mylite_sql_ast_node *show_filter_where_expression(
+    const struct mylite_sql_ast_node *filter
+);
+
 static char *copy_show_variables_like_pattern(const struct mylite_sql_ast_node *filter);
+
 static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *filter);
+
 static char *copy_show_character_set_like_pattern(const struct mylite_sql_ast_node *filter);
+
 static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *filter);
+
 static bool decode_show_string_escape(char escaped, char *out_character);
 
-int mylite_show_prepare_diagnostics_statement(mylite_db *database,
-                                              const struct mylite_sql_ast_node *statement,
-                                              mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_diagnostics_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     struct mylite_show_diagnostics_query query = {0};
     char *sqlite_sql = NULL;
     int status = MYLITE_OK;
@@ -45,10 +55,11 @@ int mylite_show_prepare_diagnostics_statement(mylite_db *database,
     return status;
 }
 
-int mylite_show_prepare_diagnostics_count_statement(mylite_db *database,
-                                                    const struct mylite_sql_ast_node *statement,
-                                                    mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_diagnostics_count_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     char *sqlite_sql =
         mylite_show_diagnostics_count_sql(database, statement->show_diagnostics_kind);
     int status = MYLITE_OK;
@@ -66,10 +77,11 @@ int mylite_show_prepare_diagnostics_count_statement(mylite_db *database,
     return status;
 }
 
-int mylite_show_prepare_variables_statement(mylite_db *database,
-                                            const struct mylite_sql_ast_node *statement,
-                                            mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_variables_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     const struct mylite_sql_ast_node *filter = mylite_ast_child_at(statement, 0U);
     char *like_pattern = NULL;
     char *sqlite_sql = NULL;
@@ -80,14 +92,15 @@ int mylite_show_prepare_variables_statement(mylite_db *database,
         status = MYLITE_NOMEM;
     }
     if (status == MYLITE_OK) {
-        status =
-            mylite_show_variables_sql(database,
-                                      &(const struct mylite_show_variables_query){
-                                          .scope = statement->show_variables_scope,
-                                          .like_pattern = like_pattern,
-                                          .where_expression = show_filter_where_expression(filter),
-                                      },
-                                      &sqlite_sql);
+        status = mylite_show_variables_sql(
+            database,
+            &(const struct mylite_show_variables_query){
+                .scope = statement->show_variables_scope,
+                .like_pattern = like_pattern,
+                .where_expression = show_filter_where_expression(filter),
+            },
+            &sqlite_sql
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -101,10 +114,11 @@ int mylite_show_prepare_variables_statement(mylite_db *database,
     return status;
 }
 
-int mylite_show_prepare_status_statement(mylite_db *database,
-                                         const struct mylite_sql_ast_node *statement,
-                                         mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_status_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     const struct mylite_sql_ast_node *filter = mylite_ast_child_at(statement, 0U);
     char *like_pattern = NULL;
     char *sqlite_sql = NULL;
@@ -115,14 +129,15 @@ int mylite_show_prepare_status_statement(mylite_db *database,
         status = MYLITE_NOMEM;
     }
     if (status == MYLITE_OK) {
-        status =
-            mylite_show_status_sql(database,
-                                   &(const struct mylite_show_status_query){
-                                       .scope = statement->show_status_scope,
-                                       .like_pattern = like_pattern,
-                                       .where_expression = show_filter_where_expression(filter),
-                                   },
-                                   &sqlite_sql);
+        status = mylite_show_status_sql(
+            database,
+            &(const struct mylite_show_status_query){
+                .scope = statement->show_status_scope,
+                .like_pattern = like_pattern,
+                .where_expression = show_filter_where_expression(filter),
+            },
+            &sqlite_sql
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -136,10 +151,11 @@ int mylite_show_prepare_status_statement(mylite_db *database,
     return status;
 }
 
-int mylite_show_prepare_character_set_statement(mylite_db *database,
-                                                const struct mylite_sql_ast_node *statement,
-                                                mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_character_set_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     const struct mylite_sql_ast_node *filter = mylite_ast_child_at(statement, 0U);
     char *like_pattern = NULL;
     char *sqlite_sql = NULL;
@@ -156,7 +172,8 @@ int mylite_show_prepare_character_set_statement(mylite_db *database,
                 .like_pattern = like_pattern,
                 .where_expression = show_filter_where_expression(filter),
             },
-            &sqlite_sql);
+            &sqlite_sql
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -170,10 +187,11 @@ int mylite_show_prepare_character_set_statement(mylite_db *database,
     return status;
 }
 
-int mylite_show_prepare_collation_statement(mylite_db *database,
-                                            const struct mylite_sql_ast_node *statement,
-                                            mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_collation_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     const struct mylite_sql_ast_node *filter = mylite_ast_child_at(statement, 0U);
     char *like_pattern = NULL;
     char *sqlite_sql = NULL;
@@ -184,13 +202,14 @@ int mylite_show_prepare_collation_statement(mylite_db *database,
         status = MYLITE_NOMEM;
     }
     if (status == MYLITE_OK) {
-        status =
-            mylite_show_collation_sql(database,
-                                      &(const struct mylite_show_collation_query){
-                                          .like_pattern = like_pattern,
-                                          .where_expression = show_filter_where_expression(filter),
-                                      },
-                                      &sqlite_sql);
+        status = mylite_show_collation_sql(
+            database,
+            &(const struct mylite_show_collation_query){
+                .like_pattern = like_pattern,
+                .where_expression = show_filter_where_expression(filter),
+            },
+            &sqlite_sql
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -204,9 +223,10 @@ int mylite_show_prepare_collation_statement(mylite_db *database,
     return status;
 }
 
-static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_node *statement,
-                                                  struct mylite_show_diagnostics_query *out_query)
-{
+static bool show_diagnostics_query_from_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_show_diagnostics_query *out_query
+) {
     const struct mylite_sql_ast_node *limit = mylite_ast_child_at(statement, 0U);
 
     *out_query = (struct mylite_show_diagnostics_query){
@@ -229,49 +249,44 @@ static bool show_diagnostics_query_from_statement(const struct mylite_sql_ast_no
     return true;
 }
 
-static const struct mylite_sql_ast_node *
-show_filter_where_expression(const struct mylite_sql_ast_node *filter)
-{
+static const struct mylite_sql_ast_node *show_filter_where_expression(
+    const struct mylite_sql_ast_node *filter
+) {
     if (filter == NULL || filter->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
         return NULL;
     }
     return mylite_ast_child_at(filter, 0U);
 }
 
-static char *copy_show_variables_like_pattern(const struct mylite_sql_ast_node *filter)
-{
+static char *copy_show_variables_like_pattern(const struct mylite_sql_ast_node *filter) {
     if (filter == NULL || filter->kind != MYLITE_SQL_AST_LITERAL) {
         return NULL;
     }
     return mylite_show_copy_like_pattern_span(filter);
 }
 
-static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *filter)
-{
+static char *copy_show_status_like_pattern(const struct mylite_sql_ast_node *filter) {
     if (filter == NULL || filter->kind != MYLITE_SQL_AST_LITERAL) {
         return NULL;
     }
     return mylite_show_copy_like_pattern_span(filter);
 }
 
-static char *copy_show_character_set_like_pattern(const struct mylite_sql_ast_node *filter)
-{
+static char *copy_show_character_set_like_pattern(const struct mylite_sql_ast_node *filter) {
     if (filter == NULL || filter->kind != MYLITE_SQL_AST_LITERAL) {
         return NULL;
     }
     return mylite_show_copy_like_pattern_span(filter);
 }
 
-static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *filter)
-{
+static char *copy_show_collation_like_pattern(const struct mylite_sql_ast_node *filter) {
     if (filter == NULL || filter->kind != MYLITE_SQL_AST_LITERAL) {
         return NULL;
     }
     return mylite_show_copy_like_pattern_span(filter);
 }
 
-char *mylite_show_copy_like_pattern_span(const struct mylite_sql_ast_node *node)
-{
+char *mylite_show_copy_like_pattern_span(const struct mylite_sql_ast_node *node) {
     const char *text = node == NULL ? NULL : node->span.text;
     size_t length = node == NULL ? 0U : node->span.length;
     size_t start = 0U;
@@ -285,8 +300,9 @@ char *mylite_show_copy_like_pattern_span(const struct mylite_sql_ast_node *node)
     if (length >= 2U && (text[0] == '\'' || text[0] == '"')) {
         start = 1U;
         end = length - 1U;
-    } else if (length >= 3U && (text[0] == 'N' || text[0] == 'n') &&
-               (text[1] == '\'' || text[1] == '"')) {
+    } else if (
+        length >= 3U && (text[0] == 'N' || text[0] == 'n') && (text[1] == '\'' || text[1] == '"')
+    ) {
         start = 2U;
         end = length - 1U;
     }
@@ -306,8 +322,10 @@ char *mylite_show_copy_like_pattern_span(const struct mylite_sql_ast_node *node)
             } else {
                 copy[output++] = text[index];
             }
-        } else if ((text[index] == '\'' || text[index] == '"') && index + 1U < end &&
-                   text[index + 1U] == text[index]) {
+        } else if (
+            (text[index] == '\'' || text[index] == '"') && index + 1U < end &&
+            text[index + 1U] == text[index]
+        ) {
             copy[output++] = text[index++];
         } else {
             copy[output++] = text[index];
@@ -317,8 +335,7 @@ char *mylite_show_copy_like_pattern_span(const struct mylite_sql_ast_node *node)
     return copy;
 }
 
-static bool decode_show_string_escape(char escaped, char *out_character)
-{
+static bool decode_show_string_escape(char escaped, char *out_character) {
     switch (escaped) {
     case '\'':
     case '"':

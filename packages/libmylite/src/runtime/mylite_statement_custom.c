@@ -13,10 +13,12 @@
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_statement_prepare_custom(
-    mylite_db *database, enum mylite_stmt_kind kind, const struct mylite_sql_ast_node *statement,
+    mylite_db *database,
+    enum mylite_stmt_kind kind,
+    const struct mylite_sql_ast_node *statement,
     const struct mylite_select_scalar_eval_callbacks *scalar_select_callbacks,
-    mylite_stmt **out_stmt)
-{
+    mylite_stmt **out_stmt
+) {
     mylite_stmt *stmt = calloc(1U, sizeof(*stmt));
     int status = MYLITE_OK;
 
@@ -101,19 +103,29 @@ int mylite_statement_prepare_custom(
         status = mylite_table_ddl_copy_drop_index_statement(statement, &stmt->index_ddl);
         break;
     case MYLITE_STMT_INSERT_VALUES:
-        status = mylite_dml_copy_insert_values_statement(statement, &stmt->insert_values,
-                                                         &stmt->insert_update);
+        status = mylite_dml_copy_insert_values_statement(
+            statement,
+            &stmt->insert_values,
+            &stmt->insert_update
+        );
         break;
     case MYLITE_STMT_INSERT_SET:
-        status = mylite_dml_copy_insert_set_statement(statement, &stmt->insert_values,
-                                                      &stmt->insert_set, &stmt->insert_update);
+        status = mylite_dml_copy_insert_set_statement(
+            statement,
+            &stmt->insert_values,
+            &stmt->insert_set,
+            &stmt->insert_update
+        );
         break;
     case MYLITE_STMT_REPLACE_VALUES:
         status = mylite_dml_copy_replace_values_statement(statement, &stmt->insert_values);
         break;
     case MYLITE_STMT_REPLACE_SET:
-        status = mylite_dml_copy_replace_set_statement(statement, &stmt->insert_values,
-                                                       &stmt->insert_set);
+        status = mylite_dml_copy_replace_set_statement(
+            statement,
+            &stmt->insert_values,
+            &stmt->insert_set
+        );
         break;
     case MYLITE_STMT_UPDATE:
     case MYLITE_STMT_DELETE:

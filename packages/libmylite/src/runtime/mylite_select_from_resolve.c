@@ -8,12 +8,15 @@
 #include <string.h>
 
 static int resolve_select_table_targets(mylite_db *database, struct mylite_select_plan *plan);
-static int validate_select_table_aliases(mylite_db *database,
-                                         const struct mylite_select_plan *plan);
+
+static int validate_select_table_aliases(
+    mylite_db *database,
+    const struct mylite_select_plan *plan
+);
+
 static int load_select_plan_columns(mylite_db *database, struct mylite_select_plan *plan);
 
-int mylite_select_from_resolve_tables(mylite_db *database, struct mylite_select_plan *plan)
-{
+int mylite_select_from_resolve_tables(mylite_db *database, struct mylite_select_plan *plan) {
     int status = resolve_select_table_targets(database, plan);
 
     if (status == MYLITE_OK) {
@@ -22,8 +25,7 @@ int mylite_select_from_resolve_tables(mylite_db *database, struct mylite_select_
     return status;
 }
 
-static int resolve_select_table_targets(mylite_db *database, struct mylite_select_plan *plan)
-{
+static int resolve_select_table_targets(mylite_db *database, struct mylite_select_plan *plan) {
     size_t table_count = mylite_select_plan_table_count(plan);
 
     for (size_t index = 0U; index < table_count; ++index) {
@@ -37,8 +39,10 @@ static int resolve_select_table_targets(mylite_db *database, struct mylite_selec
     return validate_select_table_aliases(database, plan);
 }
 
-static int validate_select_table_aliases(mylite_db *database, const struct mylite_select_plan *plan)
-{
+static int validate_select_table_aliases(
+    mylite_db *database,
+    const struct mylite_select_plan *plan
+) {
     size_t table_count = mylite_select_plan_table_count(plan);
 
     for (size_t left = 0U; left < table_count; ++left) {
@@ -54,11 +58,18 @@ static int validate_select_table_aliases(mylite_db *database, const struct mylit
 
             if (strcmp(left_name, right_name) == 0) {
                 int status = mylite_diagnostics_set_error_message_parts(
-                    database, "Not unique table/alias: '", left_name, "'");
+                    database,
+                    "Not unique table/alias: '",
+                    left_name,
+                    "'"
+                );
 
                 if (status == MYLITE_OK) {
                     status = mylite_diagnostics_append_error(
-                        database, MYLITE_MYSQL_ER_NONUNIQ_TABLE, mylite_error_message(database));
+                        database,
+                        MYLITE_MYSQL_ER_NONUNIQ_TABLE,
+                        mylite_error_message(database)
+                    );
                 }
                 return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
             }
@@ -67,8 +78,7 @@ static int validate_select_table_aliases(mylite_db *database, const struct mylit
     return MYLITE_OK;
 }
 
-static int load_select_plan_columns(mylite_db *database, struct mylite_select_plan *plan)
-{
+static int load_select_plan_columns(mylite_db *database, struct mylite_select_plan *plan) {
     size_t table_count = mylite_select_plan_table_count(plan);
 
     plan->column_count = 0U;

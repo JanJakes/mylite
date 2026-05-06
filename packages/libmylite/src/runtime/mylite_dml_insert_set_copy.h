@@ -3,7 +3,9 @@
 
 #include "mylite_dml_types.h"
 
-int mylite_dml_copy_insert_set_assignments(const struct mylite_sql_ast_node *assignments,
-                                           struct mylite_insert_set_plan *plan);
+int mylite_dml_copy_insert_set_assignments(
+    const struct mylite_sql_ast_node *assignments,
+    struct mylite_insert_set_plan *plan
+);
 
 #endif

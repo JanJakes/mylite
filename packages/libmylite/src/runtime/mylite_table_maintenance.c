@@ -30,45 +30,94 @@ struct mylite_table_maintenance_target {
     char *display_name;
 };
 
-static int operation_from_statement(const struct mylite_sql_ast_node *statement,
-                                    enum mylite_table_maintenance_operation *out_operation);
-static int append_table_maintenance_sql(mylite_db *database, sqlite3_str *sql, bool *first,
-                                        enum mylite_table_maintenance_operation operation,
-                                        const struct mylite_sql_ast_node *table_name);
-static int copy_maintenance_target(mylite_db *database,
-                                   const struct mylite_sql_ast_node *table_name,
-                                   struct mylite_table_maintenance_target *out_target);
-static int copy_maintenance_target_names(mylite_db *database, char **parts, size_t part_count,
-                                         struct mylite_table_maintenance_target *out_target);
-static int copy_maintenance_target_display(mylite_db *database,
-                                           struct mylite_table_maintenance_target *target);
-static int classify_maintenance_target(mylite_db *database,
-                                       const struct mylite_table_maintenance_target *target,
-                                       enum mylite_table_maintenance_target_status *out_status);
-static int append_target_rows(sqlite3_str *sql, bool *first,
-                              enum mylite_table_maintenance_operation operation,
-                              const struct mylite_table_maintenance_target *target,
-                              enum mylite_table_maintenance_target_status target_status);
-static int append_existing_target_rows(sqlite3_str *sql, bool *first,
-                                       enum mylite_table_maintenance_operation operation,
-                                       const char *display_name);
-static int append_unknown_schema_rows(sqlite3_str *sql, bool *first,
-                                      enum mylite_table_maintenance_operation operation,
-                                      const struct mylite_table_maintenance_target *target);
-static int append_missing_table_rows(sqlite3_str *sql, bool *first,
-                                     enum mylite_table_maintenance_operation operation,
-                                     const struct mylite_table_maintenance_target *target);
-static void append_result_row(sqlite3_str *sql, bool *first, const char *table_name,
-                              const char *operation, const char *msg_type, const char *msg_text);
+static int operation_from_statement(
+    const struct mylite_sql_ast_node *statement,
+    enum mylite_table_maintenance_operation *out_operation
+);
+
+static int append_table_maintenance_sql(
+    mylite_db *database,
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_sql_ast_node *table_name
+);
+
+static int copy_maintenance_target(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *table_name,
+    struct mylite_table_maintenance_target *out_target
+);
+
+static int copy_maintenance_target_names(
+    mylite_db *database,
+    char **parts,
+    size_t part_count,
+    struct mylite_table_maintenance_target *out_target
+);
+
+static int copy_maintenance_target_display(
+    mylite_db *database,
+    struct mylite_table_maintenance_target *target
+);
+
+static int classify_maintenance_target(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target,
+    enum mylite_table_maintenance_target_status *out_status
+);
+
+static int append_target_rows(
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_table_maintenance_target *target,
+    enum mylite_table_maintenance_target_status target_status
+);
+
+static int append_existing_target_rows(
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const char *display_name
+);
+
+static int append_unknown_schema_rows(
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_table_maintenance_target *target
+);
+
+static int append_missing_table_rows(
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_table_maintenance_target *target
+);
+
+static void append_result_row(
+    sqlite3_str *sql,
+    bool *first,
+    const char *table_name,
+    const char *operation,
+    const char *msg_type,
+    const char *msg_text
+);
+
 static const char *operation_name(enum mylite_table_maintenance_operation operation);
+
 static void table_maintenance_target_deinit(struct mylite_table_maintenance_target *target);
+
 static void free_identifier_parts(char **parts, size_t part_count);
+
 static int set_maintenance_out_of_memory(mylite_db *database);
 
-int mylite_table_maintenance_prepare_statement(mylite_db *database,
-                                               const struct mylite_sql_ast_node *statement,
-                                               mylite_stmt **out_stmt)
-{
+int mylite_table_maintenance_prepare_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     const struct mylite_sql_ast_node *table_list = mylite_ast_child_at(statement, 0U);
     enum mylite_table_maintenance_operation operation = MYLITE_TABLE_MAINTENANCE_CHECK;
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
@@ -89,7 +138,8 @@ int mylite_table_maintenance_prepare_statement(mylite_db *database,
 
     for (const struct mylite_sql_ast_node *table_name =
              table_list == NULL ? NULL : table_list->first_child;
-         table_name != NULL; table_name = table_name->next_sibling) {
+         table_name != NULL;
+         table_name = table_name->next_sibling) {
         status = append_table_maintenance_sql(database, sql, &first, operation, table_name);
         if (status != MYLITE_OK) {
             sqlite3_str_finish(sql);
@@ -98,8 +148,10 @@ int mylite_table_maintenance_prepare_statement(mylite_db *database,
     }
     if (first) {
         sqlite3_str_finish(sql);
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "table maintenance requires at least one table");
+        (void)mylite_diagnostics_set_error_message(
+            database,
+            "table maintenance requires at least one table"
+        );
         return MYLITE_UNSUPPORTED;
     }
     if (sqlite3_str_errcode(sql) != SQLITE_OK) {
@@ -117,9 +169,10 @@ int mylite_table_maintenance_prepare_statement(mylite_db *database,
     return status;
 }
 
-static int operation_from_statement(const struct mylite_sql_ast_node *statement,
-                                    enum mylite_table_maintenance_operation *out_operation)
-{
+static int operation_from_statement(
+    const struct mylite_sql_ast_node *statement,
+    enum mylite_table_maintenance_operation *out_operation
+) {
     switch (statement->placeholder_statement_kind) {
     case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
         *out_operation = MYLITE_TABLE_MAINTENANCE_CHECK;
@@ -135,10 +188,13 @@ static int operation_from_statement(const struct mylite_sql_ast_node *statement,
     }
 }
 
-static int append_table_maintenance_sql(mylite_db *database, sqlite3_str *sql, bool *first,
-                                        enum mylite_table_maintenance_operation operation,
-                                        const struct mylite_sql_ast_node *table_name)
-{
+static int append_table_maintenance_sql(
+    mylite_db *database,
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_sql_ast_node *table_name
+) {
     struct mylite_table_maintenance_target target = {0};
     enum mylite_table_maintenance_target_status target_status =
         MYLITE_TABLE_MAINTENANCE_TARGET_EXISTS;
@@ -158,10 +214,11 @@ static int append_table_maintenance_sql(mylite_db *database, sqlite3_str *sql, b
     return status;
 }
 
-static int copy_maintenance_target(mylite_db *database,
-                                   const struct mylite_sql_ast_node *table_name,
-                                   struct mylite_table_maintenance_target *out_target)
-{
+static int copy_maintenance_target(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *table_name,
+    struct mylite_table_maintenance_target *out_target
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     int status = mylite_copy_identifier_parts(table_name, parts, &part_count);
@@ -170,7 +227,9 @@ static int copy_maintenance_target(mylite_db *database,
     if (status != MYLITE_OK) {
         if (status == MYLITE_UNSUPPORTED) {
             (void)mylite_diagnostics_set_error_message(
-                database, "table maintenance names with more than two parts are not supported");
+                database,
+                "table maintenance names with more than two parts are not supported"
+            );
         }
         return status;
     }
@@ -184,9 +243,12 @@ static int copy_maintenance_target(mylite_db *database,
     return copy_maintenance_target_display(database, out_target);
 }
 
-static int copy_maintenance_target_names(mylite_db *database, char **parts, size_t part_count,
-                                         struct mylite_table_maintenance_target *out_target)
-{
+static int copy_maintenance_target_names(
+    mylite_db *database,
+    char **parts,
+    size_t part_count,
+    struct mylite_table_maintenance_target *out_target
+) {
     if (part_count == 1U) {
         if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
             (void)mylite_diagnostics_set_error_message(database, "No database selected");
@@ -202,7 +264,9 @@ static int copy_maintenance_target_names(mylite_db *database, char **parts, size
         parts[1] = NULL;
     } else {
         (void)mylite_diagnostics_set_error_message(
-            database, "table maintenance names with more than two parts are not supported");
+            database,
+            "table maintenance names with more than two parts are not supported"
+        );
         return MYLITE_UNSUPPORTED;
     }
 
@@ -212,9 +276,10 @@ static int copy_maintenance_target_names(mylite_db *database, char **parts, size
     return MYLITE_OK;
 }
 
-static int copy_maintenance_target_display(mylite_db *database,
-                                           struct mylite_table_maintenance_target *target)
-{
+static int copy_maintenance_target_display(
+    mylite_db *database,
+    struct mylite_table_maintenance_target *target
+) {
     target->display_name = sqlite3_mprintf("%s.%s", target->schema_name, target->table_name);
     if (target->display_name == NULL) {
         return set_maintenance_out_of_memory(database);
@@ -222,10 +287,11 @@ static int copy_maintenance_target_display(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int classify_maintenance_target(mylite_db *database,
-                                       const struct mylite_table_maintenance_target *target,
-                                       enum mylite_table_maintenance_target_status *out_status)
-{
+static int classify_maintenance_target(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target,
+    enum mylite_table_maintenance_target_status *out_status
+) {
     struct mylite_schema_presence presence = {
         .exists = false,
         .is_system = false,
@@ -251,8 +317,12 @@ static int classify_maintenance_target(mylite_db *database,
         return MYLITE_OK;
     }
 
-    status = mylite_catalog_temporary_table_exists(database, target->schema_name,
-                                                   target->table_name, &exists);
+    status = mylite_catalog_temporary_table_exists(
+        database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
     if (status != MYLITE_OK || exists) {
         if (exists) {
             *out_status = MYLITE_TABLE_MAINTENANCE_TARGET_EXISTS;
@@ -262,8 +332,12 @@ static int classify_maintenance_target(mylite_db *database,
         return status;
     }
 
-    status = mylite_catalog_persistent_table_exists(database, target->schema_name,
-                                                    target->table_name, &exists);
+    status = mylite_catalog_persistent_table_exists(
+        database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -275,11 +349,13 @@ static int classify_maintenance_target(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int append_target_rows(sqlite3_str *sql, bool *first,
-                              enum mylite_table_maintenance_operation operation,
-                              const struct mylite_table_maintenance_target *target,
-                              enum mylite_table_maintenance_target_status target_status)
-{
+static int append_target_rows(
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_table_maintenance_target *target,
+    enum mylite_table_maintenance_target_status target_status
+) {
     switch (target_status) {
     case MYLITE_TABLE_MAINTENANCE_TARGET_EXISTS:
         return append_existing_target_rows(sql, first, operation, target->display_name);
@@ -291,10 +367,12 @@ static int append_target_rows(sqlite3_str *sql, bool *first,
     return MYLITE_UNSUPPORTED;
 }
 
-static int append_existing_target_rows(sqlite3_str *sql, bool *first,
-                                       enum mylite_table_maintenance_operation operation,
-                                       const char *display_name)
-{
+static int append_existing_target_rows(
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const char *display_name
+) {
     const char *operation_text = operation_name(operation);
 
     switch (operation) {
@@ -302,68 +380,117 @@ static int append_existing_target_rows(sqlite3_str *sql, bool *first,
         append_result_row(sql, first, display_name, operation_text, "status", "OK");
         break;
     case MYLITE_TABLE_MAINTENANCE_OPTIMIZE:
-        append_result_row(sql, first, display_name, operation_text, "note",
-                          "Table does not support optimize, doing recreate + analyze instead");
+        append_result_row(
+            sql,
+            first,
+            display_name,
+            operation_text,
+            "note",
+            "Table does not support optimize, doing recreate + analyze instead"
+        );
         append_result_row(sql, first, display_name, operation_text, "status", "OK");
         break;
     case MYLITE_TABLE_MAINTENANCE_REPAIR:
-        append_result_row(sql, first, display_name, operation_text, "note",
-                          "The storage engine for the table doesn't support repair");
+        append_result_row(
+            sql,
+            first,
+            display_name,
+            operation_text,
+            "note",
+            "The storage engine for the table doesn't support repair"
+        );
         break;
     }
     return sqlite3_str_errcode(sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
 }
 
-static int append_unknown_schema_rows(sqlite3_str *sql, bool *first,
-                                      enum mylite_table_maintenance_operation operation,
-                                      const struct mylite_table_maintenance_target *target)
-{
+static int append_unknown_schema_rows(
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_table_maintenance_target *target
+) {
     char *message = sqlite3_mprintf("Unknown database '%q'", target->schema_name);
 
     if (message == NULL) {
         return MYLITE_NOMEM;
     }
-    append_result_row(sql, first, target->display_name, operation_name(operation), "Error",
-                      message);
-    append_result_row(sql, first, target->display_name, operation_name(operation), "error",
-                      "Corrupt");
+    append_result_row(
+        sql,
+        first,
+        target->display_name,
+        operation_name(operation),
+        "Error",
+        message
+    );
+    append_result_row(
+        sql,
+        first,
+        target->display_name,
+        operation_name(operation),
+        "error",
+        "Corrupt"
+    );
     sqlite3_free(message);
     return sqlite3_str_errcode(sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
 }
 
-static int append_missing_table_rows(sqlite3_str *sql, bool *first,
-                                     enum mylite_table_maintenance_operation operation,
-                                     const struct mylite_table_maintenance_target *target)
-{
+static int append_missing_table_rows(
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_table_maintenance_target *target
+) {
     char *message =
         sqlite3_mprintf("Table '%q.%q' doesn't exist", target->schema_name, target->table_name);
 
     if (message == NULL) {
         return MYLITE_NOMEM;
     }
-    append_result_row(sql, first, target->display_name, operation_name(operation), "Error",
-                      message);
-    append_result_row(sql, first, target->display_name, operation_name(operation), "status",
-                      "Operation failed");
+    append_result_row(
+        sql,
+        first,
+        target->display_name,
+        operation_name(operation),
+        "Error",
+        message
+    );
+    append_result_row(
+        sql,
+        first,
+        target->display_name,
+        operation_name(operation),
+        "status",
+        "Operation failed"
+    );
     sqlite3_free(message);
     return sqlite3_str_errcode(sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
 }
 
-static void append_result_row(sqlite3_str *sql, bool *first, const char *table_name,
-                              const char *operation, const char *msg_type, const char *msg_text)
-{
+static void append_result_row(
+    sqlite3_str *sql,
+    bool *first,
+    const char *table_name,
+    const char *operation,
+    const char *msg_type,
+    const char *msg_text
+) {
     if (!*first) {
         sqlite3_str_appendall(sql, " UNION ALL ");
     }
-    sqlite3_str_appendf(sql,
-                        "SELECT %Q AS \"Table\", %Q AS \"Op\", %Q AS \"Msg_type\", "
-                        "%Q AS \"Msg_text\"",
-                        table_name, operation, msg_type, msg_text);
+    sqlite3_str_appendf(
+        sql,
+        "SELECT %Q AS \"Table\", %Q AS \"Op\", %Q AS \"Msg_type\", "
+        "%Q AS \"Msg_text\"",
+        table_name,
+        operation,
+        msg_type,
+        msg_text
+    );
     *first = false;
 }
 
-static const char *operation_name(enum mylite_table_maintenance_operation operation)
-{
+static const char *operation_name(enum mylite_table_maintenance_operation operation) {
     switch (operation) {
     case MYLITE_TABLE_MAINTENANCE_CHECK:
         return "check";
@@ -375,8 +502,7 @@ static const char *operation_name(enum mylite_table_maintenance_operation operat
     return "";
 }
 
-static void table_maintenance_target_deinit(struct mylite_table_maintenance_target *target)
-{
+static void table_maintenance_target_deinit(struct mylite_table_maintenance_target *target) {
     if (target == NULL) {
         return;
     }
@@ -386,16 +512,14 @@ static void table_maintenance_target_deinit(struct mylite_table_maintenance_targ
     *target = (struct mylite_table_maintenance_target){0};
 }
 
-static void free_identifier_parts(char **parts, size_t part_count)
-{
+static void free_identifier_parts(char **parts, size_t part_count) {
     for (size_t index = 0U; index < part_count; ++index) {
         free(parts[index]);
         parts[index] = NULL;
     }
 }
 
-static int set_maintenance_out_of_memory(mylite_db *database)
-{
+static int set_maintenance_out_of_memory(mylite_db *database) {
     (void)mylite_diagnostics_set_error_message(database, "out of memory");
     return MYLITE_NOMEM;
 }

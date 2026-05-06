@@ -10,17 +10,23 @@ struct mylite_expression_collation_callbacks;
 struct mylite_sql_ast_node;
 
 int mylite_expression_infer_literal_collation_info(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_collation_callbacks *callbacks,
-    struct mylite_charset_collation_info *out_info);
-int mylite_expression_infer_identifier_collation_info(
-    mylite_db *database, const struct mylite_expression_collation_context *context,
+    mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_collation_callbacks *callbacks,
-    struct mylite_charset_collation_info *out_info);
-int mylite_expression_infer_cast_collation_info(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    struct mylite_charset_collation_info *out_info
+);
+int mylite_expression_infer_identifier_collation_info(
+    mylite_db *database,
+    const struct mylite_expression_collation_context *context,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_collation_callbacks *callbacks,
-    struct mylite_charset_collation_info *out_info);
+    struct mylite_charset_collation_info *out_info
+);
+int mylite_expression_infer_cast_collation_info(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_collation_callbacks *callbacks,
+    struct mylite_charset_collation_info *out_info
+);
 
 #endif

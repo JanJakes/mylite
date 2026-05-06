@@ -5,13 +5,17 @@
 
 #include <stdlib.h>
 
-static int copy_insert_row(const struct mylite_sql_ast_node *row,
-                           struct mylite_insert_values_plan *plan);
+static int copy_insert_row(
+    const struct mylite_sql_ast_node *row,
+    struct mylite_insert_values_plan *plan
+);
+
 static int add_insert_row(struct mylite_insert_values_plan *plan, struct mylite_insert_row row);
 
-int mylite_dml_copy_insert_rows(const struct mylite_sql_ast_node *rows,
-                                struct mylite_insert_values_plan *plan)
-{
+int mylite_dml_copy_insert_rows(
+    const struct mylite_sql_ast_node *rows,
+    struct mylite_insert_values_plan *plan
+) {
     if (rows == NULL || rows->kind != MYLITE_SQL_AST_INSERT_ROW_LIST) {
         return MYLITE_UNSUPPORTED;
     }
@@ -27,9 +31,10 @@ int mylite_dml_copy_insert_rows(const struct mylite_sql_ast_node *rows,
     return plan->row_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
 }
 
-static int copy_insert_row(const struct mylite_sql_ast_node *row,
-                           struct mylite_insert_values_plan *plan)
-{
+static int copy_insert_row(
+    const struct mylite_sql_ast_node *row,
+    struct mylite_insert_values_plan *plan
+) {
     struct mylite_insert_row insert_row = {0};
     int status = MYLITE_OK;
 
@@ -67,8 +72,7 @@ static int copy_insert_row(const struct mylite_sql_ast_node *row,
     return status;
 }
 
-static int add_insert_row(struct mylite_insert_values_plan *plan, struct mylite_insert_row row)
-{
+static int add_insert_row(struct mylite_insert_values_plan *plan, struct mylite_insert_row row) {
     struct mylite_insert_row *rows =
         realloc(plan->rows, (plan->row_count + 1U) * sizeof(*plan->rows));
 

@@ -10,28 +10,51 @@
 
 #include <stdlib.h>
 
-static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
-                                           const struct mylite_field_descriptor *descriptor,
-                                           struct mylite_expression_value *out_value);
-static int merge_sort_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
-                                  size_t first, size_t last,
-                                  const struct mylite_update_order_plan *order_plan);
-static void merge_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
-                              size_t first, size_t middle, size_t last,
-                              const struct mylite_update_order_plan *order_plan);
-static int compare_update_rows(const struct mylite_update_row *left,
-                               const struct mylite_update_row *right,
-                               const struct mylite_update_order_plan *order_plan);
+static int copy_update_sqlite_column_value(
+    sqlite3_stmt *scan,
+    int column,
+    const struct mylite_field_descriptor *descriptor,
+    struct mylite_expression_value *out_value
+);
 
-int mylite_dml_copy_update_sqlite_row(mylite_db *database, const struct mylite_select_table *table,
-                                      sqlite3_stmt *scan, struct mylite_update_row *out_row)
-{
+static int merge_sort_update_rows(
+    struct mylite_update_row *rows,
+    struct mylite_update_row *scratch,
+    size_t first,
+    size_t last,
+    const struct mylite_update_order_plan *order_plan
+);
+
+static void merge_update_rows(
+    struct mylite_update_row *rows,
+    struct mylite_update_row *scratch,
+    size_t first,
+    size_t middle,
+    size_t last,
+    const struct mylite_update_order_plan *order_plan
+);
+
+static int compare_update_rows(
+    const struct mylite_update_row *left,
+    const struct mylite_update_row *right,
+    const struct mylite_update_order_plan *order_plan
+);
+
+int mylite_dml_copy_update_sqlite_row(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    sqlite3_stmt *scan,
+    struct mylite_update_row *out_row
+) {
     if (database == NULL || table == NULL || scan == NULL || out_row == NULL) {
         return MYLITE_MISUSE;
     }
     if (table->column_count == 0U) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(database, table->schema_name,
-                                                               table->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            database,
+            table->schema_name,
+            table->table_name
+        );
     }
 
     out_row->rowid = sqlite3_column_int64(scan, 0);
@@ -43,8 +66,12 @@ int mylite_dml_copy_update_sqlite_row(mylite_db *database, const struct mylite_s
     out_row->value_count = table->column_count;
 
     for (size_t index = 0U; index < table->column_count; ++index) {
-        if (copy_update_sqlite_column_value(scan, (int)index + 1, &table->columns[index].descriptor,
-                                            &out_row->values[index]) != 0) {
+        if (copy_update_sqlite_column_value(
+                scan,
+                (int)index + 1,
+                &table->columns[index].descriptor,
+                &out_row->values[index]
+            ) != 0) {
             mylite_dml_update_row_deinit(out_row);
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
@@ -53,9 +80,11 @@ int mylite_dml_copy_update_sqlite_row(mylite_db *database, const struct mylite_s
     return MYLITE_OK;
 }
 
-int mylite_dml_append_update_row(mylite_db *database, struct mylite_update_rowset *rowset,
-                                 struct mylite_update_row *row)
-{
+int mylite_dml_append_update_row(
+    mylite_db *database,
+    struct mylite_update_rowset *rowset,
+    struct mylite_update_row *row
+) {
     struct mylite_update_row *rows = NULL;
 
     if (database == NULL || rowset == NULL || row == NULL) {
@@ -74,9 +103,10 @@ int mylite_dml_append_update_row(mylite_db *database, struct mylite_update_rowse
     return MYLITE_OK;
 }
 
-int mylite_dml_add_update_order_key(struct mylite_update_order_plan *plan,
-                                    const struct mylite_select_order_key *order_key)
-{
+int mylite_dml_add_update_order_key(
+    struct mylite_update_order_plan *plan,
+    const struct mylite_select_order_key *order_key
+) {
     struct mylite_select_order_key *keys =
         realloc(plan->order_keys, (plan->order_key_count + 1U) * sizeof(*plan->order_keys));
 
@@ -88,9 +118,10 @@ int mylite_dml_add_update_order_key(struct mylite_update_order_plan *plan,
     return MYLITE_OK;
 }
 
-int mylite_dml_sort_update_rowset(struct mylite_update_rowset *rowset,
-                                  const struct mylite_update_order_plan *order_plan)
-{
+int mylite_dml_sort_update_rowset(
+    struct mylite_update_rowset *rowset,
+    const struct mylite_update_order_plan *order_plan
+) {
     struct mylite_update_row *scratch = NULL;
     int status = MYLITE_OK;
 
@@ -110,9 +141,10 @@ int mylite_dml_sort_update_rowset(struct mylite_update_rowset *rowset,
     return status;
 }
 
-void mylite_dml_apply_update_limit(const struct mylite_sql_ast_node *limit_clause,
-                                   struct mylite_update_rowset *rowset)
-{
+void mylite_dml_apply_update_limit(
+    const struct mylite_sql_ast_node *limit_clause,
+    struct mylite_update_rowset *rowset
+) {
     const struct mylite_sql_ast_node *bound = mylite_ast_child_at(limit_clause, 0U);
     size_t keep_count = 0U;
 
@@ -136,10 +168,12 @@ void mylite_dml_apply_update_limit(const struct mylite_sql_ast_node *limit_claus
     rowset->row_count = keep_count;
 }
 
-static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
-                                           const struct mylite_field_descriptor *descriptor,
-                                           struct mylite_expression_value *out_value)
-{
+static int copy_update_sqlite_column_value(
+    sqlite3_stmt *scan,
+    int column,
+    const struct mylite_field_descriptor *descriptor,
+    struct mylite_expression_value *out_value
+) {
     int sqlite_type = sqlite3_column_type(scan, column);
 
     switch (sqlite_type) {
@@ -178,10 +212,13 @@ static int copy_update_sqlite_column_value(sqlite3_stmt *scan, int column,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int merge_sort_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
-                                  size_t first, size_t last,
-                                  const struct mylite_update_order_plan *order_plan)
-{
+static int merge_sort_update_rows(
+    struct mylite_update_row *rows,
+    struct mylite_update_row *scratch,
+    size_t first,
+    size_t last,
+    const struct mylite_update_order_plan *order_plan
+) {
     size_t count = last - first;
     size_t middle = first + (count / 2U);
     int status = MYLITE_OK;
@@ -200,10 +237,14 @@ static int merge_sort_update_rows(struct mylite_update_row *rows, struct mylite_
     return status;
 }
 
-static void merge_update_rows(struct mylite_update_row *rows, struct mylite_update_row *scratch,
-                              size_t first, size_t middle, size_t last,
-                              const struct mylite_update_order_plan *order_plan)
-{
+static void merge_update_rows(
+    struct mylite_update_row *rows,
+    struct mylite_update_row *scratch,
+    size_t first,
+    size_t middle,
+    size_t last,
+    const struct mylite_update_order_plan *order_plan
+) {
     size_t left = first;
     size_t right = middle;
     size_t output = first;
@@ -226,10 +267,11 @@ static void merge_update_rows(struct mylite_update_row *rows, struct mylite_upda
     }
 }
 
-static int compare_update_rows(const struct mylite_update_row *left,
-                               const struct mylite_update_row *right,
-                               const struct mylite_update_order_plan *order_plan)
-{
+static int compare_update_rows(
+    const struct mylite_update_row *left,
+    const struct mylite_update_row *right,
+    const struct mylite_update_order_plan *order_plan
+) {
     for (size_t index = 0U; index < order_plan->order_key_count; ++index) {
         int comparison =
             mylite_select_compare_values(&left->order_values[index], &right->order_values[index]);

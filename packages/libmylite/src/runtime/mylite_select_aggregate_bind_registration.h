@@ -8,10 +8,13 @@
 #include <stdbool.h>
 
 bool mylite_select_aggregate_bind_callbacks_are_valid(
-    const struct mylite_select_aggregate_bind_callbacks *callbacks);
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
 int mylite_select_bind_aggregate_call(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     struct mylite_select_plan *plan,
-    const struct mylite_select_aggregate_bind_callbacks *callbacks);
+    const struct mylite_select_aggregate_bind_callbacks *callbacks
+);
 
 #endif

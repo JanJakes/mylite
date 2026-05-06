@@ -9,29 +9,49 @@
 #include <stdint.h>
 
 static int infer_hex_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static int infer_unhex_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static int infer_to_base64_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static int infer_from_base64_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static uint64_t base64_encoded_descriptor_length(uint64_t source_length);
+
 static uint64_t base64_decoded_descriptor_length(uint64_t source_length);
 
 int mylite_expression_descriptor_infer_string_encoding_function(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks, bool *out_matched)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks,
+    bool *out_matched
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
 
     if (callbacks == NULL || callbacks->infer_expression_descriptor == NULL ||
@@ -43,27 +63,43 @@ int mylite_expression_descriptor_infer_string_encoding_function(
         return infer_hex_function_descriptor(database, plan, expression, out_descriptor, callbacks);
     }
     if (mylite_function_name_is_unhex(name)) {
-        return infer_unhex_function_descriptor(database, plan, expression, out_descriptor,
-                                               callbacks);
+        return infer_unhex_function_descriptor(
+            database,
+            plan,
+            expression,
+            out_descriptor,
+            callbacks
+        );
     }
     if (mylite_function_name_is_to_base64(name)) {
-        return infer_to_base64_function_descriptor(database, plan, expression, out_descriptor,
-                                                   callbacks);
+        return infer_to_base64_function_descriptor(
+            database,
+            plan,
+            expression,
+            out_descriptor,
+            callbacks
+        );
     }
     if (mylite_function_name_is_from_base64(name)) {
-        return infer_from_base64_function_descriptor(database, plan, expression, out_descriptor,
-                                                     callbacks);
+        return infer_from_base64_function_descriptor(
+            database,
+            plan,
+            expression,
+            out_descriptor,
+            callbacks
+        );
     }
     *out_matched = false;
     return MYLITE_OK;
 }
 
-static int
-infer_hex_function_descriptor(mylite_db *database, const struct mylite_select_plan *plan,
-                              const struct mylite_sql_ast_node *expression,
-                              struct mylite_field_descriptor *out_descriptor,
-                              const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+static int infer_hex_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = mylite_expression_descriptor_defaults();
@@ -82,8 +118,10 @@ infer_hex_function_descriptor(mylite_db *database, const struct mylite_select_pl
         length = max_bytes_per_character > UINT64_MAX / mylite_mysql_hex_numeric_result_chars
                      ? mylite_mysql_long_text_length
                      : mylite_mysql_hex_numeric_result_chars * max_bytes_per_character;
-    } else if (source_descriptor.length > UINT64_MAX / 2U ||
-               (source_descriptor.length * 2U) > UINT64_MAX / max_bytes_per_character) {
+    } else if (
+        source_descriptor.length > UINT64_MAX / 2U ||
+        (source_descriptor.length * 2U) > UINT64_MAX / max_bytes_per_character
+    ) {
         length = mylite_mysql_long_text_length;
     } else {
         length = source_descriptor.length * 2U * max_bytes_per_character;
@@ -102,10 +140,12 @@ infer_hex_function_descriptor(mylite_db *database, const struct mylite_select_pl
 }
 
 static int infer_unhex_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = mylite_expression_descriptor_defaults();
@@ -137,10 +177,12 @@ static int infer_unhex_function_descriptor(
 }
 
 static int infer_to_base64_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = mylite_expression_descriptor_defaults();
@@ -174,10 +216,12 @@ static int infer_to_base64_function_descriptor(
 }
 
 static int infer_from_base64_function_descriptor(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = mylite_expression_descriptor_defaults();
@@ -204,8 +248,7 @@ static int infer_from_base64_function_descriptor(
     return MYLITE_OK;
 }
 
-static uint64_t base64_encoded_descriptor_length(uint64_t source_length)
-{
+static uint64_t base64_encoded_descriptor_length(uint64_t source_length) {
     uint64_t groups = 0U;
     uint64_t encoded = 0U;
     uint64_t newlines = 0U;
@@ -229,8 +272,7 @@ static uint64_t base64_encoded_descriptor_length(uint64_t source_length)
     return encoded + newlines;
 }
 
-static uint64_t base64_decoded_descriptor_length(uint64_t source_length)
-{
+static uint64_t base64_decoded_descriptor_length(uint64_t source_length) {
     return ((source_length / mylite_mysql_base64_output_group) * mylite_mysql_base64_input_group) +
            (((source_length % mylite_mysql_base64_output_group) * mylite_mysql_base64_input_group) /
             mylite_mysql_base64_output_group);

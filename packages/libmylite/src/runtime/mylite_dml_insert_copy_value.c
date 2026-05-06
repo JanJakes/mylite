@@ -5,22 +5,41 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node,
-                                    struct mylite_insert_value *out_value);
-static int copy_insert_values_function(const struct mylite_sql_ast_node *value_node,
-                                       struct mylite_insert_value *out_value);
-static int copy_insert_column_reference_parts(const struct mylite_sql_ast_node *identifier,
-                                              char **parts, size_t *part_count);
-static int copy_insert_literal_value(const struct mylite_sql_ast_node *literal,
-                                     struct mylite_insert_value *out_value);
-static int copy_insert_unary_value(const struct mylite_sql_ast_node *expression,
-                                   struct mylite_insert_value *out_value);
-static int copy_insert_binary_value(const struct mylite_sql_ast_node *expression,
-                                    struct mylite_insert_value *out_value);
+static int copy_insert_simple_value(
+    const struct mylite_sql_ast_node *value_node,
+    struct mylite_insert_value *out_value
+);
 
-int mylite_dml_copy_insert_value(const struct mylite_sql_ast_node *value_node,
-                                 struct mylite_insert_value *out_value)
-{
+static int copy_insert_values_function(
+    const struct mylite_sql_ast_node *value_node,
+    struct mylite_insert_value *out_value
+);
+
+static int copy_insert_column_reference_parts(
+    const struct mylite_sql_ast_node *identifier,
+    char **parts,
+    size_t *part_count
+);
+
+static int copy_insert_literal_value(
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_insert_value *out_value
+);
+
+static int copy_insert_unary_value(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_insert_value *out_value
+);
+
+static int copy_insert_binary_value(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_insert_value *out_value
+);
+
+int mylite_dml_copy_insert_value(
+    const struct mylite_sql_ast_node *value_node,
+    struct mylite_insert_value *out_value
+) {
     while (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         value_node = mylite_ast_child_at(value_node, 0U);
     }
@@ -37,9 +56,10 @@ int mylite_dml_copy_insert_value(const struct mylite_sql_ast_node *value_node,
     return copy_insert_simple_value(value_node, out_value);
 }
 
-int mylite_dml_copy_insert_column_reference(const struct mylite_sql_ast_node *identifier,
-                                            struct mylite_insert_column_reference *out_reference)
-{
+int mylite_dml_copy_insert_column_reference(
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_insert_column_reference *out_reference
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     int status = copy_insert_column_reference_parts(identifier, parts, &part_count);
@@ -70,9 +90,10 @@ int mylite_dml_copy_insert_column_reference(const struct mylite_sql_ast_node *id
     return MYLITE_UNSUPPORTED;
 }
 
-static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node,
-                                    struct mylite_insert_value *out_value)
-{
+static int copy_insert_simple_value(
+    const struct mylite_sql_ast_node *value_node,
+    struct mylite_insert_value *out_value
+) {
     while (value_node != NULL && value_node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         value_node = mylite_ast_child_at(value_node, 0U);
     }
@@ -104,9 +125,10 @@ static int copy_insert_simple_value(const struct mylite_sql_ast_node *value_node
     return MYLITE_OK;
 }
 
-static int copy_insert_values_function(const struct mylite_sql_ast_node *value_node,
-                                       struct mylite_insert_value *out_value)
-{
+static int copy_insert_values_function(
+    const struct mylite_sql_ast_node *value_node,
+    struct mylite_insert_value *out_value
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(value_node, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(value_node, 1U);
     const struct mylite_sql_ast_node *argument = NULL;
@@ -130,9 +152,11 @@ static int copy_insert_values_function(const struct mylite_sql_ast_node *value_n
     return mylite_dml_copy_insert_column_reference(argument, &out_value->column_reference);
 }
 
-static int copy_insert_column_reference_parts(const struct mylite_sql_ast_node *identifier,
-                                              char **parts, size_t *part_count)
-{
+static int copy_insert_column_reference_parts(
+    const struct mylite_sql_ast_node *identifier,
+    char **parts,
+    size_t *part_count
+) {
     const struct mylite_sql_ast_node *segments[3] = {0};
     const struct mylite_sql_ast_node *current = identifier;
     size_t segment_count = 0U;
@@ -170,9 +194,10 @@ static int copy_insert_column_reference_parts(const struct mylite_sql_ast_node *
     return MYLITE_OK;
 }
 
-static int copy_insert_literal_value(const struct mylite_sql_ast_node *literal,
-                                     struct mylite_insert_value *out_value)
-{
+static int copy_insert_literal_value(
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_insert_value *out_value
+) {
     if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
         out_value->kind = MYLITE_INSERT_VALUE_INTEGER;
         out_value->text = mylite_copy_span_text(literal->span.text, literal->span.length);
@@ -208,9 +233,10 @@ static int copy_insert_literal_value(const struct mylite_sql_ast_node *literal,
     return MYLITE_OK;
 }
 
-static int copy_insert_unary_value(const struct mylite_sql_ast_node *expression,
-                                   struct mylite_insert_value *out_value)
-{
+static int copy_insert_unary_value(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_insert_value *out_value
+) {
     const struct mylite_sql_ast_node *operand = mylite_ast_child_at(expression, 0U);
     const char *sign = expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ? "-" : "+";
     size_t sign_length = strlen(sign);
@@ -246,9 +272,10 @@ static int copy_insert_unary_value(const struct mylite_sql_ast_node *expression,
     return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static int copy_insert_binary_value(const struct mylite_sql_ast_node *expression,
-                                    struct mylite_insert_value *out_value)
-{
+static int copy_insert_binary_value(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_insert_value *out_value
+) {
     int status = MYLITE_OK;
 
     out_value->left = calloc(1U, sizeof(*out_value->left));

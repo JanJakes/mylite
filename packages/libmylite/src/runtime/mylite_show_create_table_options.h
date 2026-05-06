@@ -5,7 +5,9 @@
 
 struct mylite_show_create_table_info;
 
-void mylite_show_create_table_append_options(sqlite3_str *create_sql,
-                                             const struct mylite_show_create_table_info *info);
+void mylite_show_create_table_append_options(
+    sqlite3_str *create_sql,
+    const struct mylite_show_create_table_info *info
+);
 
 #endif

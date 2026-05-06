@@ -10,15 +10,21 @@ struct mylite_select_plan;
 struct mylite_sql_ast_node;
 
 struct mylite_expression_descriptor_case_callbacks {
-    int (*infer_expression_descriptor)(mylite_db *database, const struct mylite_select_plan *plan,
-                                       const struct mylite_sql_ast_node *expression,
-                                       const struct mylite_expression_value *value,
-                                       struct mylite_field_descriptor *out_descriptor);
+    int (*infer_expression_descriptor)(
+        mylite_db *database,
+        const struct mylite_select_plan *plan,
+        const struct mylite_sql_ast_node *expression,
+        const struct mylite_expression_value *value,
+        struct mylite_field_descriptor *out_descriptor
+    );
 };
 
 int mylite_expression_descriptor_infer_case_expression(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_case_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_case_callbacks *callbacks
+);
 
 #endif

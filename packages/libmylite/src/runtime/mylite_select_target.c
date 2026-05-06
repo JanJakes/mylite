@@ -6,22 +6,28 @@
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 
-static int resolve_select_table_target(mylite_db *database, struct mylite_select_table *table,
-                                       bool information_schema_selectable);
+static int resolve_select_table_target(
+    mylite_db *database,
+    struct mylite_select_table *table,
+    bool information_schema_selectable
+);
 
-int mylite_select_resolve_table_target(mylite_db *database, struct mylite_select_table *table)
-{
+int mylite_select_resolve_table_target(mylite_db *database, struct mylite_select_table *table) {
     return resolve_select_table_target(database, table, false);
 }
 
-int mylite_select_resolve_query_table_target(mylite_db *database, struct mylite_select_table *table)
-{
+int mylite_select_resolve_query_table_target(
+    mylite_db *database,
+    struct mylite_select_table *table
+) {
     return resolve_select_table_target(database, table, true);
 }
 
-static int resolve_select_table_target(mylite_db *database, struct mylite_select_table *table,
-                                       bool information_schema_selectable)
-{
+static int resolve_select_table_target(
+    mylite_db *database,
+    struct mylite_select_table *table,
+    bool information_schema_selectable
+) {
     struct mylite_schema_presence presence;
     bool exists = false;
     int status = MYLITE_OK;
@@ -39,8 +45,11 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
     }
     if (information_schema_selectable &&
         mylite_ascii_case_equal(table->schema_name, "information_schema")) {
-        return mylite_information_schema_prepare_table_view(database, table->table_name,
-                                                            &table->physical_name);
+        return mylite_information_schema_prepare_table_view(
+            database,
+            table->table_name,
+            &table->physical_name
+        );
     }
     if (mylite_select_schema_name_is_system(table->schema_name)) {
         return MYLITE_UNSUPPORTED;
@@ -51,8 +60,12 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
         return status;
     }
     if (!presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
-                                                         table->schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Unknown database '",
+            table->schema_name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
@@ -64,8 +77,11 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
         return status;
     }
     if (!exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(database, table->schema_name,
-                                                               table->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            database,
+            table->schema_name,
+            table->table_name
+        );
     }
 
     table->physical_name =
@@ -77,8 +93,7 @@ static int resolve_select_table_target(mylite_db *database, struct mylite_select
     return MYLITE_OK;
 }
 
-bool mylite_select_schema_name_is_system(const char *schema_name)
-{
+bool mylite_select_schema_name_is_system(const char *schema_name) {
     if (mylite_ascii_case_equal(schema_name, "information_schema")) {
         return true;
     }

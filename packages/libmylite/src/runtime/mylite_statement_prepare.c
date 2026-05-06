@@ -20,23 +20,38 @@
 
 #include <stdbool.h>
 
-static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
-                                    const char *sql, size_t sql_length, mylite_stmt **out_stmt,
-                                    const struct mylite_statement_prepare_callbacks *callbacks);
-static enum mylite_stmt_kind
-placeholder_statement_kind(const struct mylite_sql_ast_node *statement);
+static int prepare_parsed_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *root,
+    const char *sql,
+    size_t sql_length,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+);
+
+static enum mylite_stmt_kind placeholder_statement_kind(
+    const struct mylite_sql_ast_node *statement
+);
+
 static bool placeholder_statement_is_table_maintenance(const struct mylite_sql_ast_node *statement);
 
-int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt)
-{
+int mylite_prepare(mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt) {
     return mylite_statement_prepare_with_callbacks(
-        database, sql, length, out_stmt, mylite_select_context_statement_prepare_callbacks());
+        database,
+        sql,
+        length,
+        out_stmt,
+        mylite_select_context_statement_prepare_callbacks()
+    );
 }
 
 int mylite_statement_prepare_with_callbacks(
-    mylite_db *database, const char *sql, size_t length, mylite_stmt **out_stmt,
-    const struct mylite_statement_prepare_callbacks *callbacks)
-{
+    mylite_db *database,
+    const char *sql,
+    size_t length,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+) {
     struct mylite_sql_parse_result parse_result;
     enum mylite_sql_parse_status parse_status = MYLITE_SQL_PARSE_OK;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -63,13 +78,16 @@ int mylite_statement_prepare_with_callbacks(
             .length = length,
             .modes = 0U,
         },
-        &parse_result);
+        &parse_result
+    );
     if (parse_status != MYLITE_SQL_PARSE_OK) {
         mylite_diagnostics_clear_warnings(database);
         status = mylite_statement_map_parse_status(database, parse_status);
         if (status != MYLITE_NOMEM) {
-            (void)mylite_diagnostics_append_current_error_condition(database,
-                                                                    MYLITE_MYSQL_ER_PARSE_ERROR);
+            (void)mylite_diagnostics_append_current_error_condition(
+                database,
+                MYLITE_MYSQL_ER_PARSE_ERROR
+            );
         }
         mylite_sql_parse_result_deinit(&parse_result);
         return status;
@@ -83,17 +101,23 @@ int mylite_statement_prepare_with_callbacks(
     status =
         prepare_parsed_statement(database, parse_result.root, sql, length, out_stmt, callbacks);
     if (status != MYLITE_OK && status != MYLITE_NOMEM) {
-        (void)mylite_diagnostics_ensure_current_error_condition(database,
-                                                                MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+        (void)mylite_diagnostics_ensure_current_error_condition(
+            database,
+            MYLITE_MYSQL_ER_UNKNOWN_ERROR
+        );
     }
     mylite_sql_parse_result_deinit(&parse_result);
     return status;
 }
 
-static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql_ast_node *root,
-                                    const char *sql, size_t sql_length, mylite_stmt **out_stmt,
-                                    const struct mylite_statement_prepare_callbacks *callbacks)
-{
+static int prepare_parsed_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *root,
+    const char *sql,
+    size_t sql_length,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+) {
     struct mylite_sqlite_translate_result translate_result;
     enum mylite_sqlite_translate_status translate_status = MYLITE_SQLITE_TRANSLATE_OK;
     const struct mylite_sql_ast_node *statement = mylite_ast_single_statement(root);
@@ -105,70 +129,156 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_ALTER_SCHEMA_STATEMENT:
         case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
         case MYLITE_SQL_AST_USE_STATEMENT:
-            return mylite_statement_prepare_schema_lifecycle_statement(database, statement,
-                                                                       out_stmt, callbacks);
+            return mylite_statement_prepare_schema_lifecycle_statement(
+                database,
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
         case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
             return mylite_connection_prepare_charset_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
-            return mylite_connection_prepare_system_variable_statement(database, statement,
-                                                                       out_stmt);
+            return mylite_connection_prepare_system_variable_statement(
+                database,
+                statement,
+                out_stmt
+            );
         case MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT:
             return mylite_user_variable_prepare_set_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_PREPARE_STATEMENT:
-            return mylite_prepared_statement_prepare_prepare_statement(database, statement,
-                                                                       out_stmt);
+            return mylite_prepared_statement_prepare_prepare_statement(
+                database,
+                statement,
+                out_stmt
+            );
         case MYLITE_SQL_AST_EXECUTE_STATEMENT:
-            return mylite_prepared_statement_prepare_execute_statement(database, statement,
-                                                                       out_stmt);
+            return mylite_prepared_statement_prepare_execute_statement(
+                database,
+                statement,
+                out_stmt
+            );
         case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
-            return mylite_prepared_statement_prepare_deallocate_statement(database, statement,
-                                                                          out_stmt);
+            return mylite_prepared_statement_prepare_deallocate_statement(
+                database,
+                statement,
+                out_stmt
+            );
         case MYLITE_SQL_AST_PLACEHOLDER_STATEMENT:
             if (placeholder_statement_is_table_maintenance(statement)) {
                 return mylite_table_maintenance_prepare_statement(database, statement, out_stmt);
             }
             return mylite_statement_prepare_custom_statement(
-                database, placeholder_statement_kind(statement), statement, out_stmt, callbacks);
+                database,
+                placeholder_statement_kind(statement),
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_CREATE_TABLE,
-                                                             statement, out_stmt, callbacks);
+            return mylite_statement_prepare_custom_statement(
+                database,
+                MYLITE_STMT_CREATE_TABLE,
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_DROP_TABLE,
-                                                             statement, out_stmt, callbacks);
+            return mylite_statement_prepare_custom_statement(
+                database,
+                MYLITE_STMT_DROP_TABLE,
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_RENAME_TABLE,
-                                                             statement, out_stmt, callbacks);
+            return mylite_statement_prepare_custom_statement(
+                database,
+                MYLITE_STMT_RENAME_TABLE,
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_TRUNCATE_TABLE,
-                                                             statement, out_stmt, callbacks);
+            return mylite_statement_prepare_custom_statement(
+                database,
+                MYLITE_STMT_TRUNCATE_TABLE,
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_ALTER_TABLE_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_ALTER_TABLE,
-                                                             statement, out_stmt, callbacks);
+            return mylite_statement_prepare_custom_statement(
+                database,
+                MYLITE_STMT_ALTER_TABLE,
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_CREATE_INDEX,
-                                                             statement, out_stmt, callbacks);
+            return mylite_statement_prepare_custom_statement(
+                database,
+                MYLITE_STMT_CREATE_INDEX,
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
-            return mylite_statement_prepare_custom_statement(database, MYLITE_STMT_DROP_INDEX,
-                                                             statement, out_stmt, callbacks);
+            return mylite_statement_prepare_custom_statement(
+                database,
+                MYLITE_STMT_DROP_INDEX,
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_INSERT_VALUES_STATEMENT:
-            return mylite_dml_prepare_insert_values_statement(database, statement, sql, sql_length,
-                                                              out_stmt);
+            return mylite_dml_prepare_insert_values_statement(
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt
+            );
         case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
-            return mylite_dml_prepare_insert_set_statement(database, statement, sql, sql_length,
-                                                           out_stmt);
+            return mylite_dml_prepare_insert_set_statement(
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt
+            );
         case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
-            return mylite_dml_prepare_replace_values_statement(database, statement, sql, sql_length,
-                                                               out_stmt);
+            return mylite_dml_prepare_replace_values_statement(
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt
+            );
         case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
-            return mylite_dml_prepare_replace_set_statement(database, statement, sql, sql_length,
-                                                            out_stmt);
+            return mylite_dml_prepare_replace_set_statement(
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt
+            );
         case MYLITE_SQL_AST_UPDATE_STATEMENT:
-            return mylite_dml_prepare_update_statement(database, statement, sql, sql_length,
-                                                       out_stmt);
+            return mylite_dml_prepare_update_statement(
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt
+            );
         case MYLITE_SQL_AST_DELETE_STATEMENT:
-            return mylite_dml_prepare_delete_statement(database, statement, sql, sql_length,
-                                                       out_stmt);
+            return mylite_dml_prepare_delete_statement(
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt
+            );
         case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
         case MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT:
         case MYLITE_SQL_AST_COMMIT_STATEMENT:
@@ -176,8 +286,12 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
         case MYLITE_SQL_AST_SAVEPOINT_STATEMENT:
         case MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT:
         case MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT:
-            return mylite_statement_prepare_transaction_statement(database, statement, out_stmt,
-                                                                  callbacks);
+            return mylite_statement_prepare_transaction_statement(
+                database,
+                statement,
+                out_stmt,
+                callbacks
+            );
         case MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT:
             return mylite_show_prepare_schemas_statement(database, out_stmt);
         case MYLITE_SQL_AST_SHOW_VARIABLES_STATEMENT:
@@ -210,14 +324,32 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
             return mylite_show_prepare_describe_table_statement(database, statement, out_stmt);
         case MYLITE_SQL_AST_QUERY_EXPRESSION:
             return mylite_select_union_prepare_query_expression(
-                database, statement, sql, sql_length, out_stmt, callbacks->union_callbacks);
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt,
+                callbacks->union_callbacks
+            );
         case MYLITE_SQL_AST_VALUES_STATEMENT:
-            return mylite_values_query_prepare_statement(database, statement, sql, sql_length,
-                                                         out_stmt, callbacks->scalar_callbacks,
-                                                         callbacks->union_callbacks);
+            return mylite_values_query_prepare_statement(
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt,
+                callbacks->scalar_callbacks,
+                callbacks->union_callbacks
+            );
         case MYLITE_SQL_AST_SELECT_STATEMENT:
-            status = mylite_select_prepare_statement(database, statement, sql, sql_length, out_stmt,
-                                                     callbacks->select_callbacks);
+            status = mylite_select_prepare_statement(
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt,
+                callbacks->select_callbacks
+            );
             if (status != MYLITE_UNSUPPORTED || database->error_message != NULL) {
                 return status;
             }
@@ -344,8 +476,9 @@ static int prepare_parsed_statement(mylite_db *database, const struct mylite_sql
     return status;
 }
 
-static bool placeholder_statement_is_table_maintenance(const struct mylite_sql_ast_node *statement)
-{
+static bool placeholder_statement_is_table_maintenance(
+    const struct mylite_sql_ast_node *statement
+) {
     switch (statement->placeholder_statement_kind) {
     case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE:
@@ -356,8 +489,9 @@ static bool placeholder_statement_is_table_maintenance(const struct mylite_sql_a
     }
 }
 
-static enum mylite_stmt_kind placeholder_statement_kind(const struct mylite_sql_ast_node *statement)
-{
+static enum mylite_stmt_kind placeholder_statement_kind(
+    const struct mylite_sql_ast_node *statement
+) {
     switch (statement->placeholder_statement_kind) {
     case MYLITE_SQL_AST_PLACEHOLDER_CALL:
         return MYLITE_STMT_CALL_PLACEHOLDER;

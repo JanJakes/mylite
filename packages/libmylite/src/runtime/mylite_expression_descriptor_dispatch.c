@@ -44,38 +44,43 @@ static const struct mylite_expression_descriptor_function_callbacks function_des
 };
 
 // NOLINTNEXTLINE(misc-no-recursion)
-int mylite_expression_descriptor_infer_select(mylite_db *database,
-                                              const struct mylite_select_plan *plan,
-                                              const struct mylite_sql_ast_node *expression,
-                                              struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_expression_descriptor_infer_select(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor
+) {
     return mylite_expression_descriptor_infer(database, plan, expression, NULL, out_descriptor);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-int mylite_expression_descriptor_infer_scalar(mylite_db *database,
-                                              const struct mylite_sql_ast_node *expression,
-                                              const struct mylite_expression_value *value,
-                                              struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_expression_descriptor_infer_scalar(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor
+) {
     return mylite_expression_descriptor_infer(database, NULL, expression, value, out_descriptor);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-int mylite_expression_descriptor_infer_collation(mylite_db *database,
-                                                 const struct mylite_select_plan *plan,
-                                                 const struct mylite_sql_ast_node *expression,
-                                                 struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_expression_descriptor_infer_collation(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor
+) {
     return mylite_expression_descriptor_infer(database, plan, expression, NULL, out_descriptor);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-int mylite_expression_descriptor_infer(mylite_db *database, const struct mylite_select_plan *plan,
-                                       const struct mylite_sql_ast_node *expression,
-                                       const struct mylite_expression_value *value,
-                                       struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_expression_descriptor_infer(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor
+) {
     const struct mylite_sql_ast_node *node = expression;
 
     if (out_descriptor == NULL) {
@@ -99,24 +104,59 @@ int mylite_expression_descriptor_infer(mylite_db *database, const struct mylite_
         break;
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return mylite_expression_descriptor_infer_unary_expression(
-            database, plan, node, value, out_descriptor, &operator_descriptor_callbacks);
+            database,
+            plan,
+            node,
+            value,
+            out_descriptor,
+            &operator_descriptor_callbacks
+        );
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         return mylite_expression_descriptor_infer_binary_expression(
-            database, plan, node, value, out_descriptor, &operator_descriptor_callbacks);
+            database,
+            plan,
+            node,
+            value,
+            out_descriptor,
+            &operator_descriptor_callbacks
+        );
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
         return mylite_expression_descriptor_infer_ternary_expression(
-            database, plan, node, value, out_descriptor, &operator_descriptor_callbacks);
+            database,
+            plan,
+            node,
+            value,
+            out_descriptor,
+            &operator_descriptor_callbacks
+        );
     case MYLITE_SQL_AST_CASE_EXPRESSION:
         return mylite_expression_descriptor_infer_case_expression(
-            database, plan, node, out_descriptor, &case_descriptor_callbacks);
+            database,
+            plan,
+            node,
+            out_descriptor,
+            &case_descriptor_callbacks
+        );
     case MYLITE_SQL_AST_FUNCTION_CALL:
         return mylite_expression_descriptor_infer_function_expression(
-            database, plan, node, value, out_descriptor, &function_descriptor_callbacks);
+            database,
+            plan,
+            node,
+            value,
+            out_descriptor,
+            &function_descriptor_callbacks
+        );
     case MYLITE_SQL_AST_AGGREGATE_CALL:
         return mylite_expression_descriptor_infer_aggregate(database, plan, node, out_descriptor);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return mylite_expression_descriptor_infer_cast_expression(
-            database, plan, node, value, out_descriptor, &cast_descriptor_callbacks);
+            database,
+            plan,
+            node,
+            value,
+            out_descriptor,
+            &cast_descriptor_callbacks
+        );
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP: {
         unsigned int fsp = 0U;
 
@@ -130,7 +170,12 @@ int mylite_expression_descriptor_infer(mylite_db *database, const struct mylite_
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         return mylite_expression_descriptor_infer_subquery_expression(
-            database, plan, node, out_descriptor, &subquery_descriptor_callbacks);
+            database,
+            plan,
+            node,
+            out_descriptor,
+            &subquery_descriptor_callbacks
+        );
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST:
@@ -283,11 +328,17 @@ int mylite_expression_descriptor_infer(mylite_db *database, const struct mylite_
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-int mylite_expression_descriptor_infer_aggregate(mylite_db *database,
-                                                 const struct mylite_select_plan *plan,
-                                                 const struct mylite_sql_ast_node *expression,
-                                                 struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_expression_descriptor_infer_aggregate(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor
+) {
     return mylite_expression_descriptor_infer_aggregate_expression(
-        database, plan, expression, out_descriptor, &aggregate_descriptor_callbacks);
+        database,
+        plan,
+        expression,
+        out_descriptor,
+        &aggregate_descriptor_callbacks
+    );
 }

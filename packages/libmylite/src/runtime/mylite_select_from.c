@@ -9,56 +9,103 @@
 
 #include <stdlib.h>
 
-static int copy_select_from_clause(mylite_db *database,
-                                   const struct mylite_sql_ast_node *from_clause,
-                                   struct mylite_select_plan *plan);
-static int copy_select_table_reference(const struct mylite_sql_ast_node *from_clause,
-                                       struct mylite_select_table *table);
-static int copy_select_table_reference_node(mylite_db *database,
-                                            const struct mylite_sql_ast_node *reference,
-                                            struct mylite_select_plan *plan,
-                                            struct mylite_select_table_range *out_range);
-static int copy_select_base_table_reference_node(mylite_db *database,
-                                                 const struct mylite_sql_ast_node *reference,
-                                                 struct mylite_select_plan *plan,
-                                                 struct mylite_select_table_range *out_range);
-static int copy_select_table_reference_list(mylite_db *database,
-                                            const struct mylite_sql_ast_node *list,
-                                            struct mylite_select_plan *plan);
-static int add_select_from_range(mylite_db *database, struct mylite_select_plan *plan,
-                                 struct mylite_select_table_range range);
-static int copy_select_join_expression(mylite_db *database, const struct mylite_sql_ast_node *join,
-                                       struct mylite_select_plan *plan,
-                                       struct mylite_select_table_range *out_range);
-static int add_select_join_stack_entry(mylite_db *database,
-                                       struct mylite_select_join_stack_entry **entries,
-                                       size_t *entry_count, const struct mylite_sql_ast_node *right,
-                                       const struct mylite_sql_ast_node *condition,
-                                       enum mylite_sql_ast_join_type join_type);
-static int copy_select_join_right_operand(mylite_db *database,
-                                          const struct mylite_select_join_stack_entry *entry,
-                                          struct mylite_select_plan *plan,
-                                          struct mylite_select_table_range *left_range);
-static int apply_select_join_condition(mylite_db *database,
-                                       const struct mylite_select_join_stack_entry *entry,
-                                       struct mylite_select_plan *plan,
-                                       struct mylite_select_table_range left_range,
-                                       struct mylite_select_table_range right_range);
-static int add_select_join_step(mylite_db *database, struct mylite_select_plan *plan,
-                                enum mylite_sql_ast_join_type join_type,
-                                struct mylite_select_table_range left_range,
-                                struct mylite_select_table_range right_range,
-                                struct mylite_select_table_range joined_range);
-static int add_select_plan_table(mylite_db *database, struct mylite_select_plan *plan,
-                                 struct mylite_select_table *table, size_t *out_table_index);
-static int add_select_join_predicate(mylite_db *database, struct mylite_select_plan *plan,
-                                     const struct mylite_sql_ast_node *expression,
-                                     size_t first_table, size_t table_count);
+static int copy_select_from_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct mylite_select_plan *plan
+);
 
-int mylite_select_bind_from_clause(mylite_db *database,
-                                   const struct mylite_sql_ast_node *from_clause,
-                                   struct mylite_select_plan *plan)
-{
+static int copy_select_table_reference(
+    const struct mylite_sql_ast_node *from_clause,
+    struct mylite_select_table *table
+);
+
+static int copy_select_table_reference_node(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *reference,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range *out_range
+);
+
+static int copy_select_base_table_reference_node(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *reference,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range *out_range
+);
+
+static int copy_select_table_reference_list(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *list,
+    struct mylite_select_plan *plan
+);
+
+static int add_select_from_range(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range range
+);
+
+static int copy_select_join_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *join,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range *out_range
+);
+
+static int add_select_join_stack_entry(
+    mylite_db *database,
+    struct mylite_select_join_stack_entry **entries,
+    size_t *entry_count,
+    const struct mylite_sql_ast_node *right,
+    const struct mylite_sql_ast_node *condition,
+    enum mylite_sql_ast_join_type join_type
+);
+
+static int copy_select_join_right_operand(
+    mylite_db *database,
+    const struct mylite_select_join_stack_entry *entry,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range *left_range
+);
+
+static int apply_select_join_condition(
+    mylite_db *database,
+    const struct mylite_select_join_stack_entry *entry,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range left_range,
+    struct mylite_select_table_range right_range
+);
+
+static int add_select_join_step(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    enum mylite_sql_ast_join_type join_type,
+    struct mylite_select_table_range left_range,
+    struct mylite_select_table_range right_range,
+    struct mylite_select_table_range joined_range
+);
+
+static int add_select_plan_table(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table *table,
+    size_t *out_table_index
+);
+
+static int add_select_join_predicate(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    size_t first_table,
+    size_t table_count
+);
+
+int mylite_select_bind_from_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct mylite_select_plan *plan
+) {
     int status = MYLITE_OK;
 
     if (database == NULL || plan == NULL) {
@@ -78,10 +125,11 @@ int mylite_select_bind_from_clause(mylite_db *database,
     return status;
 }
 
-static int copy_select_from_clause(mylite_db *database,
-                                   const struct mylite_sql_ast_node *from_clause,
-                                   struct mylite_select_plan *plan)
-{
+static int copy_select_from_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct mylite_select_plan *plan
+) {
     const struct mylite_sql_ast_node *references = NULL;
 
     if (from_clause == NULL) {
@@ -92,11 +140,14 @@ static int copy_select_from_clause(mylite_db *database,
         int status = copy_select_table_reference(from_clause, &plan->table);
 
         if (status == MYLITE_OK) {
-            status = add_select_from_range(database, plan,
-                                           (struct mylite_select_table_range){
-                                               .first_table = 0U,
-                                               .table_count = 1U,
-                                           });
+            status = add_select_from_range(
+                database,
+                plan,
+                (struct mylite_select_table_range){
+                    .first_table = 0U,
+                    .table_count = 1U,
+                }
+            );
         }
         return status;
     }
@@ -107,9 +158,10 @@ static int copy_select_from_clause(mylite_db *database,
     return copy_select_table_reference_list(database, references, plan);
 }
 
-static int copy_select_table_reference(const struct mylite_sql_ast_node *from_clause,
-                                       struct mylite_select_table *table)
-{
+static int copy_select_table_reference(
+    const struct mylite_sql_ast_node *from_clause,
+    struct mylite_select_table *table
+) {
     const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(from_clause, 0U);
     const struct mylite_sql_ast_node *alias = mylite_ast_child_at(from_clause, 1U);
 
@@ -121,11 +173,13 @@ static int copy_select_table_reference(const struct mylite_sql_ast_node *from_cl
         if (table->table_name == NULL) {
             return MYLITE_NOMEM;
         }
-    } else if (table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
-               mylite_ast_child_at(table_name, 0U) != NULL &&
-               mylite_ast_child_at(table_name, 1U) != NULL &&
-               mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
-               mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER) {
+    } else if (
+        table_name->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 0U) != NULL &&
+        mylite_ast_child_at(table_name, 1U) != NULL &&
+        mylite_ast_child_at(table_name, 0U)->kind == MYLITE_SQL_AST_IDENTIFIER &&
+        mylite_ast_child_at(table_name, 1U)->kind == MYLITE_SQL_AST_IDENTIFIER
+    ) {
         table->schema_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 0U));
         table->table_name = mylite_copy_identifier_span(mylite_ast_child_at(table_name, 1U));
         if (table->schema_name == NULL || table->table_name == NULL) {
@@ -147,11 +201,12 @@ static int copy_select_table_reference(const struct mylite_sql_ast_node *from_cl
     return MYLITE_OK;
 }
 
-static int copy_select_table_reference_node(mylite_db *database,
-                                            const struct mylite_sql_ast_node *reference,
-                                            struct mylite_select_plan *plan,
-                                            struct mylite_select_table_range *out_range)
-{
+static int copy_select_table_reference_node(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *reference,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range *out_range
+) {
     if (reference == NULL) {
         return MYLITE_UNSUPPORTED;
     }
@@ -164,11 +219,12 @@ static int copy_select_table_reference_node(mylite_db *database,
     return MYLITE_UNSUPPORTED;
 }
 
-static int copy_select_base_table_reference_node(mylite_db *database,
-                                                 const struct mylite_sql_ast_node *reference,
-                                                 struct mylite_select_plan *plan,
-                                                 struct mylite_select_table_range *out_range)
-{
+static int copy_select_base_table_reference_node(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *reference,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range *out_range
+) {
     struct mylite_select_table table = {0};
     int status = MYLITE_OK;
 
@@ -191,12 +247,14 @@ static int copy_select_base_table_reference_node(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int copy_select_table_reference_list(mylite_db *database,
-                                            const struct mylite_sql_ast_node *list,
-                                            struct mylite_select_plan *plan)
-{
+static int copy_select_table_reference_list(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *list,
+    struct mylite_select_plan *plan
+) {
     for (const struct mylite_sql_ast_node *reference = list == NULL ? NULL : list->first_child;
-         reference != NULL; reference = reference->next_sibling) {
+         reference != NULL;
+         reference = reference->next_sibling) {
         struct mylite_select_table_range range = {0};
         int status = copy_select_table_reference_node(database, reference, plan, &range);
 
@@ -210,9 +268,11 @@ static int copy_select_table_reference_list(mylite_db *database,
     return mylite_select_plan_table_count(plan) == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
 }
 
-static int add_select_from_range(mylite_db *database, struct mylite_select_plan *plan,
-                                 struct mylite_select_table_range range)
-{
+static int add_select_from_range(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range range
+) {
     struct mylite_select_table_range *ranges =
         realloc(plan->from_ranges, (plan->from_range_count + 1U) * sizeof(*plan->from_ranges));
 
@@ -225,10 +285,12 @@ static int add_select_from_range(mylite_db *database, struct mylite_select_plan 
     return MYLITE_OK;
 }
 
-static int copy_select_join_expression(mylite_db *database, const struct mylite_sql_ast_node *join,
-                                       struct mylite_select_plan *plan,
-                                       struct mylite_select_table_range *out_range)
-{
+static int copy_select_join_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *join,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range *out_range
+) {
     struct mylite_select_join_stack_entry *entries = NULL;
     size_t entry_count = 0U;
     const struct mylite_sql_ast_node *leftmost = join;
@@ -236,8 +298,13 @@ static int copy_select_join_expression(mylite_db *database, const struct mylite_
 
     while (leftmost != NULL && leftmost->kind == MYLITE_SQL_AST_JOIN_EXPRESSION) {
         status = add_select_join_stack_entry(
-            database, &entries, &entry_count, mylite_ast_child_at(leftmost, 1U),
-            mylite_ast_child_at(leftmost, 2U), leftmost->join_type);
+            database,
+            &entries,
+            &entry_count,
+            mylite_ast_child_at(leftmost, 1U),
+            mylite_ast_child_at(leftmost, 2U),
+            leftmost->join_type
+        );
         if (status != MYLITE_OK) {
             free(entries);
             return status;
@@ -254,12 +321,14 @@ static int copy_select_join_expression(mylite_db *database, const struct mylite_
     return status;
 }
 
-static int add_select_join_stack_entry(mylite_db *database,
-                                       struct mylite_select_join_stack_entry **entries,
-                                       size_t *entry_count, const struct mylite_sql_ast_node *right,
-                                       const struct mylite_sql_ast_node *condition,
-                                       enum mylite_sql_ast_join_type join_type)
-{
+static int add_select_join_stack_entry(
+    mylite_db *database,
+    struct mylite_select_join_stack_entry **entries,
+    size_t *entry_count,
+    const struct mylite_sql_ast_node *right,
+    const struct mylite_sql_ast_node *condition,
+    enum mylite_sql_ast_join_type join_type
+) {
     struct mylite_select_join_stack_entry *new_entries = NULL;
 
     if (right == NULL) {
@@ -279,11 +348,12 @@ static int add_select_join_stack_entry(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int copy_select_join_right_operand(mylite_db *database,
-                                          const struct mylite_select_join_stack_entry *entry,
-                                          struct mylite_select_plan *plan,
-                                          struct mylite_select_table_range *left_range)
-{
+static int copy_select_join_right_operand(
+    mylite_db *database,
+    const struct mylite_select_join_stack_entry *entry,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range *left_range
+) {
     struct mylite_select_table_range right_range = {0};
     struct mylite_select_table_range joined_range = {0};
     int status = copy_select_base_table_reference_node(database, entry->right, plan, &right_range);
@@ -297,8 +367,14 @@ static int copy_select_join_right_operand(mylite_db *database,
             .first_table = left_range->first_table,
             .table_count = left_range->table_count + right_range.table_count,
         };
-        status = add_select_join_step(database, plan, entry->join_type, *left_range, right_range,
-                                      joined_range);
+        status = add_select_join_step(
+            database,
+            plan,
+            entry->join_type,
+            *left_range,
+            right_range,
+            joined_range
+        );
     }
     if (status == MYLITE_OK) {
         *left_range = joined_range;
@@ -306,36 +382,50 @@ static int copy_select_join_right_operand(mylite_db *database,
     return status;
 }
 
-static int apply_select_join_condition(mylite_db *database,
-                                       const struct mylite_select_join_stack_entry *entry,
-                                       struct mylite_select_plan *plan,
-                                       struct mylite_select_table_range left_range,
-                                       struct mylite_select_table_range right_range)
-{
+static int apply_select_join_condition(
+    mylite_db *database,
+    const struct mylite_select_join_stack_entry *entry,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table_range left_range,
+    struct mylite_select_table_range right_range
+) {
     const struct mylite_sql_ast_node *condition = entry->condition;
 
     if (condition == NULL) {
         return MYLITE_OK;
     }
     if (condition->join_condition_type == MYLITE_SQL_AST_JOIN_CONDITION_ON) {
-        return add_select_join_predicate(database, plan, mylite_ast_child_at(condition, 0U),
-                                         left_range.first_table,
-                                         left_range.table_count + right_range.table_count);
+        return add_select_join_predicate(
+            database,
+            plan,
+            mylite_ast_child_at(condition, 0U),
+            left_range.first_table,
+            left_range.table_count + right_range.table_count
+        );
     }
     if (condition->join_condition_type == MYLITE_SQL_AST_JOIN_CONDITION_USING) {
         return mylite_select_from_add_using_request(
-            database, plan, condition, left_range.first_table, left_range.table_count,
-            right_range.first_table, right_range.table_count, entry->join_type);
+            database,
+            plan,
+            condition,
+            left_range.first_table,
+            left_range.table_count,
+            right_range.first_table,
+            right_range.table_count,
+            entry->join_type
+        );
     }
     return MYLITE_UNSUPPORTED;
 }
 
-static int add_select_join_step(mylite_db *database, struct mylite_select_plan *plan,
-                                enum mylite_sql_ast_join_type join_type,
-                                struct mylite_select_table_range left_range,
-                                struct mylite_select_table_range right_range,
-                                struct mylite_select_table_range joined_range)
-{
+static int add_select_join_step(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    enum mylite_sql_ast_join_type join_type,
+    struct mylite_select_table_range left_range,
+    struct mylite_select_table_range right_range,
+    struct mylite_select_table_range joined_range
+) {
     struct mylite_select_join_step *steps =
         realloc(plan->join_steps, (plan->join_step_count + 1U) * sizeof(*plan->join_steps));
 
@@ -353,9 +443,12 @@ static int add_select_join_step(mylite_db *database, struct mylite_select_plan *
     return MYLITE_OK;
 }
 
-static int add_select_plan_table(mylite_db *database, struct mylite_select_plan *plan,
-                                 struct mylite_select_table *table, size_t *out_table_index)
-{
+static int add_select_plan_table(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    struct mylite_select_table *table,
+    size_t *out_table_index
+) {
     struct mylite_select_table *tables =
         realloc(plan->tables, (plan->table_count + 1U) * sizeof(*plan->tables));
 
@@ -370,17 +463,22 @@ static int add_select_plan_table(mylite_db *database, struct mylite_select_plan 
     return MYLITE_OK;
 }
 
-static int add_select_join_predicate(mylite_db *database, struct mylite_select_plan *plan,
-                                     const struct mylite_sql_ast_node *expression,
-                                     size_t first_table, size_t table_count)
-{
+static int add_select_join_predicate(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    size_t first_table,
+    size_t table_count
+) {
     struct mylite_select_join_predicate *predicates = NULL;
 
     if (expression == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    predicates = realloc(plan->join_predicates,
-                         (plan->join_predicate_count + 1U) * sizeof(*plan->join_predicates));
+    predicates = realloc(
+        plan->join_predicates,
+        (plan->join_predicate_count + 1U) * sizeof(*plan->join_predicates)
+    );
     if (predicates == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;

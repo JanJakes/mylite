@@ -9,44 +9,68 @@
 
 #include <stdlib.h>
 
-static int evaluate_update_row_matches(mylite_db *database, const struct mylite_update_plan *plan,
-                                       const struct mylite_select_table *table,
-                                       const struct mylite_update_row *row,
-                                       const struct mylite_dml_expression_callbacks *callbacks,
-                                       bool *out_matches);
-static int evaluate_update_order_values(mylite_db *database,
-                                        const struct mylite_select_table *table,
-                                        const struct mylite_update_order_plan *order_plan,
-                                        const struct mylite_dml_expression_callbacks *callbacks,
-                                        struct mylite_update_row *row);
-static int evaluate_update_order_key(mylite_db *database, const struct mylite_select_table *table,
-                                     const struct mylite_update_row *row,
-                                     const struct mylite_select_order_key *order_key,
-                                     const struct mylite_dml_expression_callbacks *callbacks,
-                                     struct mylite_expression_value *out_value);
-static int evaluate_delete_row_matches(mylite_db *database, const struct mylite_delete_plan *plan,
-                                       const struct mylite_select_table *table,
-                                       const struct mylite_update_row *row,
-                                       const struct mylite_dml_expression_callbacks *callbacks,
-                                       bool *out_matches);
-static int evaluate_delete_order_values(mylite_db *database,
-                                        const struct mylite_select_table *table,
-                                        const struct mylite_update_order_plan *order_plan,
-                                        const struct mylite_dml_expression_callbacks *callbacks,
-                                        struct mylite_update_row *row);
-static int evaluate_delete_order_key(mylite_db *database, const struct mylite_select_table *table,
-                                     const struct mylite_update_row *row,
-                                     const struct mylite_select_order_key *order_key,
-                                     const struct mylite_dml_expression_callbacks *callbacks,
-                                     struct mylite_expression_value *out_value);
+static int evaluate_update_row_matches(
+    mylite_db *database,
+    const struct mylite_update_plan *plan,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    bool *out_matches
+);
+
+static int evaluate_update_order_values(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_order_plan *order_plan,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_update_row *row
+);
+
+static int evaluate_update_order_key(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    const struct mylite_select_order_key *order_key,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_delete_row_matches(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    bool *out_matches
+);
+
+static int evaluate_delete_order_values(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_order_plan *order_plan,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_update_row *row
+);
+
+static int evaluate_delete_order_key(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    const struct mylite_select_order_key *order_key,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_expression_value *out_value
+);
+
 static int set_where_predicate_eval_error(const struct mylite_dml_expression_callbacks *callbacks);
 
-int mylite_dml_materialize_update_rows(mylite_db *database, const struct mylite_update_plan *plan,
-                                       const struct mylite_select_table *table,
-                                       const struct mylite_update_order_plan *order_plan,
-                                       const struct mylite_dml_expression_callbacks *callbacks,
-                                       struct mylite_update_rowset *rowset)
-{
+int mylite_dml_materialize_update_rows(
+    mylite_db *database,
+    const struct mylite_update_plan *plan,
+    const struct mylite_select_table *table,
+    const struct mylite_update_order_plan *order_plan,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_update_rowset *rowset
+) {
     sqlite3_stmt *scan = NULL;
     char *scan_sql = NULL;
     int rc = SQLITE_OK;
@@ -93,12 +117,14 @@ int mylite_dml_materialize_update_rows(mylite_db *database, const struct mylite_
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int evaluate_update_row_matches(mylite_db *database, const struct mylite_update_plan *plan,
-                                       const struct mylite_select_table *table,
-                                       const struct mylite_update_row *row,
-                                       const struct mylite_dml_expression_callbacks *callbacks,
-                                       bool *out_matches)
-{
+static int evaluate_update_row_matches(
+    mylite_db *database,
+    const struct mylite_update_plan *plan,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    bool *out_matches
+) {
     struct mylite_update_expression_context user_context = {
         .database = database,
         .table = table,
@@ -122,8 +148,12 @@ static int evaluate_update_row_matches(mylite_db *database, const struct mylite_
         return MYLITE_OK;
     }
 
-    status = mylite_expression_eval_with_context(mylite_ast_child_at(plan->where_clause, 0U),
-                                                 &context, &database->warnings, &value);
+    status = mylite_expression_eval_with_context(
+        mylite_ast_child_at(plan->where_clause, 0U),
+        &context,
+        &database->warnings,
+        &value
+    );
     if (status == 0) {
         status = mylite_expression_value_truth(&value, &database->warnings, &truth);
     }
@@ -143,12 +173,13 @@ static int evaluate_update_row_matches(mylite_db *database, const struct mylite_
     return MYLITE_OK;
 }
 
-static int evaluate_update_order_values(mylite_db *database,
-                                        const struct mylite_select_table *table,
-                                        const struct mylite_update_order_plan *order_plan,
-                                        const struct mylite_dml_expression_callbacks *callbacks,
-                                        struct mylite_update_row *row)
-{
+static int evaluate_update_order_values(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_order_plan *order_plan,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_update_row *row
+) {
     if (order_plan->order_key_count == 0U) {
         return MYLITE_OK;
     }
@@ -161,8 +192,14 @@ static int evaluate_update_order_values(mylite_db *database,
     row->order_value_count = order_plan->order_key_count;
 
     for (size_t index = 0U; index < order_plan->order_key_count; ++index) {
-        int status = evaluate_update_order_key(database, table, row, &order_plan->order_keys[index],
-                                               callbacks, &row->order_values[index]);
+        int status = evaluate_update_order_key(
+            database,
+            table,
+            row,
+            &order_plan->order_keys[index],
+            callbacks,
+            &row->order_values[index]
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -171,12 +208,14 @@ static int evaluate_update_order_values(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int evaluate_update_order_key(mylite_db *database, const struct mylite_select_table *table,
-                                     const struct mylite_update_row *row,
-                                     const struct mylite_select_order_key *order_key,
-                                     const struct mylite_dml_expression_callbacks *callbacks,
-                                     struct mylite_expression_value *out_value)
-{
+static int evaluate_update_order_key(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    const struct mylite_select_order_key *order_key,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_update_expression_context user_context = {
         .database = database,
         .table = table,
@@ -191,8 +230,12 @@ static int evaluate_update_order_key(mylite_db *database, const struct mylite_se
         .eval_default_function = mylite_dml_evaluate_default_function,
     };
     size_t warning_start = database->warnings.count;
-    int status = mylite_expression_eval_with_context(order_key->expression, &context,
-                                                     &database->warnings, out_value);
+    int status = mylite_expression_eval_with_context(
+        order_key->expression,
+        &context,
+        &database->warnings,
+        out_value
+    );
 
     if (status != 0) {
         int condition_status = mylite_dml_set_expression_condition_error(database, warning_start);
@@ -204,12 +247,14 @@ static int evaluate_update_order_key(mylite_db *database, const struct mylite_se
     return mylite_dml_promote_expression_warnings(database, warning_start);
 }
 
-int mylite_dml_materialize_delete_rows(mylite_db *database, const struct mylite_delete_plan *plan,
-                                       const struct mylite_select_table *table,
-                                       const struct mylite_update_order_plan *order_plan,
-                                       const struct mylite_dml_expression_callbacks *callbacks,
-                                       struct mylite_update_rowset *rowset)
-{
+int mylite_dml_materialize_delete_rows(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan,
+    const struct mylite_select_table *table,
+    const struct mylite_update_order_plan *order_plan,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_update_rowset *rowset
+) {
     sqlite3_stmt *scan = NULL;
     char *scan_sql = NULL;
     int rc = SQLITE_OK;
@@ -256,12 +301,14 @@ int mylite_dml_materialize_delete_rows(mylite_db *database, const struct mylite_
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int evaluate_delete_row_matches(mylite_db *database, const struct mylite_delete_plan *plan,
-                                       const struct mylite_select_table *table,
-                                       const struct mylite_update_row *row,
-                                       const struct mylite_dml_expression_callbacks *callbacks,
-                                       bool *out_matches)
-{
+static int evaluate_delete_row_matches(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    bool *out_matches
+) {
     struct mylite_update_expression_context user_context = {
         .database = database,
         .table = table,
@@ -285,8 +332,12 @@ static int evaluate_delete_row_matches(mylite_db *database, const struct mylite_
         return MYLITE_OK;
     }
 
-    status = mylite_expression_eval_with_context(mylite_ast_child_at(plan->where_clause, 0U),
-                                                 &context, &database->warnings, &value);
+    status = mylite_expression_eval_with_context(
+        mylite_ast_child_at(plan->where_clause, 0U),
+        &context,
+        &database->warnings,
+        &value
+    );
     if (status == 0) {
         status = mylite_expression_value_truth(&value, &database->warnings, &truth);
     }
@@ -306,12 +357,13 @@ static int evaluate_delete_row_matches(mylite_db *database, const struct mylite_
     return MYLITE_OK;
 }
 
-static int evaluate_delete_order_values(mylite_db *database,
-                                        const struct mylite_select_table *table,
-                                        const struct mylite_update_order_plan *order_plan,
-                                        const struct mylite_dml_expression_callbacks *callbacks,
-                                        struct mylite_update_row *row)
-{
+static int evaluate_delete_order_values(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_order_plan *order_plan,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_update_row *row
+) {
     if (order_plan->order_key_count == 0U) {
         return MYLITE_OK;
     }
@@ -324,8 +376,14 @@ static int evaluate_delete_order_values(mylite_db *database,
     row->order_value_count = order_plan->order_key_count;
 
     for (size_t index = 0U; index < order_plan->order_key_count; ++index) {
-        int status = evaluate_delete_order_key(database, table, row, &order_plan->order_keys[index],
-                                               callbacks, &row->order_values[index]);
+        int status = evaluate_delete_order_key(
+            database,
+            table,
+            row,
+            &order_plan->order_keys[index],
+            callbacks,
+            &row->order_values[index]
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -334,12 +392,14 @@ static int evaluate_delete_order_values(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int evaluate_delete_order_key(mylite_db *database, const struct mylite_select_table *table,
-                                     const struct mylite_update_row *row,
-                                     const struct mylite_select_order_key *order_key,
-                                     const struct mylite_dml_expression_callbacks *callbacks,
-                                     struct mylite_expression_value *out_value)
-{
+static int evaluate_delete_order_key(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_row *row,
+    const struct mylite_select_order_key *order_key,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_update_expression_context user_context = {
         .database = database,
         .table = table,
@@ -354,8 +414,12 @@ static int evaluate_delete_order_key(mylite_db *database, const struct mylite_se
         .eval_default_function = mylite_dml_evaluate_default_function,
     };
     size_t warning_start = database->warnings.count;
-    int status = mylite_expression_eval_with_context(order_key->expression, &context,
-                                                     &database->warnings, out_value);
+    int status = mylite_expression_eval_with_context(
+        order_key->expression,
+        &context,
+        &database->warnings,
+        out_value
+    );
 
     if (status != 0) {
         int condition_status = mylite_dml_set_expression_condition_error(database, warning_start);
@@ -367,8 +431,7 @@ static int evaluate_delete_order_key(mylite_db *database, const struct mylite_se
     return mylite_dml_promote_expression_warnings(database, warning_start);
 }
 
-static int set_where_predicate_eval_error(const struct mylite_dml_expression_callbacks *callbacks)
-{
+static int set_where_predicate_eval_error(const struct mylite_dml_expression_callbacks *callbacks) {
     if (callbacks == NULL || callbacks->set_where_predicate_eval_error == NULL) {
         return MYLITE_EXEC_ERROR;
     }

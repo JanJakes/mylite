@@ -10,13 +10,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool update_values_equal(const struct mylite_expression_value *left,
-                                const struct mylite_expression_value *right);
+static bool update_values_equal(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right
+);
 
-int mylite_dml_copy_update_candidate_values(mylite_db *database,
-                                            const struct mylite_update_row *row,
-                                            struct mylite_update_row *candidate)
-{
+int mylite_dml_copy_update_candidate_values(
+    mylite_db *database,
+    const struct mylite_update_row *row,
+    struct mylite_update_row *candidate
+) {
     if (database == NULL || row == NULL || candidate == NULL) {
         return MYLITE_MISUSE;
     }
@@ -39,10 +42,11 @@ int mylite_dml_copy_update_candidate_values(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_dml_resolve_update_default_value(mylite_db *database,
-                                            const struct mylite_insert_table_column *column,
-                                            struct mylite_expression_value *out_value)
-{
+int mylite_dml_resolve_update_default_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_insert_bound_value value = {0};
     int status = mylite_dml_resolve_insert_default_bound_value(database, column, 0U, NULL, &value);
 
@@ -56,10 +60,11 @@ int mylite_dml_resolve_update_default_value(mylite_db *database,
     return status;
 }
 
-int mylite_dml_resolve_default_function_value(mylite_db *database,
-                                              const struct mylite_insert_table_column *column,
-                                              struct mylite_expression_value *out_value)
-{
+int mylite_dml_resolve_default_function_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_insert_bound_value value = {0};
     int status = MYLITE_OK;
 
@@ -82,8 +87,14 @@ int mylite_dml_resolve_default_function_value(mylite_db *database,
         return mylite_dml_insert_set_default_function_generated_error(database);
     }
 
-    status = mylite_dml_resolve_insert_text_value(database, column, column->default_text, 0U, NULL,
-                                                  &value);
+    status = mylite_dml_resolve_insert_text_value(
+        database,
+        column,
+        column->default_text,
+        0U,
+        NULL,
+        &value
+    );
     if (status == MYLITE_OK) {
         status = mylite_dml_copy_insert_bound_value_to_expression(&value, out_value);
         if (status == MYLITE_NOMEM) {
@@ -94,9 +105,10 @@ int mylite_dml_resolve_default_function_value(mylite_db *database,
     return status;
 }
 
-int mylite_dml_copy_insert_bound_value_to_expression(const struct mylite_insert_bound_value *value,
-                                                     struct mylite_expression_value *out_value)
-{
+int mylite_dml_copy_insert_bound_value_to_expression(
+    const struct mylite_insert_bound_value *value,
+    struct mylite_expression_value *out_value
+) {
     if (value == NULL || out_value == NULL) {
         return MYLITE_MISUSE;
     }
@@ -129,10 +141,11 @@ int mylite_dml_copy_insert_bound_value_to_expression(const struct mylite_insert_
     return MYLITE_UNSUPPORTED;
 }
 
-int mylite_dml_validate_update_assignment_value(mylite_db *database,
-                                                const struct mylite_insert_table_column *column,
-                                                struct mylite_expression_value *value)
-{
+int mylite_dml_validate_update_assignment_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_expression_value *value
+) {
     int64_t integer_value = 0;
 
     if (value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
@@ -166,21 +179,24 @@ int mylite_dml_validate_update_assignment_value(mylite_db *database,
     return mylite_dml_set_update_unsupported_assignment_error(database);
 }
 
-int mylite_dml_advance_update_auto_increment(mylite_db *database,
-                                             const struct mylite_insert_table *write_table,
-                                             const struct mylite_update_row *candidate,
-                                             uint64_t *next_auto_increment)
-{
+int mylite_dml_advance_update_auto_increment(
+    mylite_db *database,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_row *candidate,
+    uint64_t *next_auto_increment
+) {
     uint64_t value = 0U;
 
     if (!write_table->has_auto_increment ||
         !mylite_dml_update_expression_value_positive_uint64(
-            &candidate->values[write_table->auto_increment_column_index], &value)) {
+            &candidate->values[write_table->auto_increment_column_index],
+            &value
+        )) {
         return MYLITE_OK;
     }
     if (value == UINT64_MAX) {
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "AUTO_INCREMENT value is out of range");
+        (void)
+            mylite_diagnostics_set_error_message(database, "AUTO_INCREMENT value is out of range");
         return MYLITE_EXEC_ERROR;
     }
     if (value >= *next_auto_increment) {
@@ -189,9 +205,10 @@ int mylite_dml_advance_update_auto_increment(mylite_db *database,
     return MYLITE_OK;
 }
 
-bool mylite_dml_update_expression_value_positive_uint64(const struct mylite_expression_value *value,
-                                                        uint64_t *out_value)
-{
+bool mylite_dml_update_expression_value_positive_uint64(
+    const struct mylite_expression_value *value,
+    uint64_t *out_value
+) {
     if (value == NULL || out_value == NULL) {
         return false;
     }
@@ -206,9 +223,10 @@ bool mylite_dml_update_expression_value_positive_uint64(const struct mylite_expr
     return false;
 }
 
-bool mylite_dml_update_row_changed(const struct mylite_update_row *stored,
-                                   const struct mylite_update_row *candidate)
-{
+bool mylite_dml_update_row_changed(
+    const struct mylite_update_row *stored,
+    const struct mylite_update_row *candidate
+) {
     if (stored == NULL || candidate == NULL || stored->value_count != candidate->value_count) {
         return true;
     }
@@ -220,9 +238,10 @@ bool mylite_dml_update_row_changed(const struct mylite_update_row *stored,
     return false;
 }
 
-static bool update_values_equal(const struct mylite_expression_value *left,
-                                const struct mylite_expression_value *right)
-{
+static bool update_values_equal(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right
+) {
     if (left->kind != right->kind) {
         return false;
     }

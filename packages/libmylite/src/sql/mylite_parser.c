@@ -11,8 +11,12 @@
 #include <string.h>
 
 void *mylite_sql_lemonAlloc(void *(*malloc_proc)(size_t));
-void mylite_sql_lemon(void *parser, int parser_token, struct mylite_sql_token token,
-                      struct mylite_sql_parser_state *state);
+void mylite_sql_lemon(
+    void *parser,
+    int parser_token,
+    struct mylite_sql_token token,
+    struct mylite_sql_parser_state *state
+);
 void mylite_sql_lemonFree(void *parser, void (*free_proc)(void *));
 
 struct mylite_sql_parser_token_map {
@@ -40,103 +44,199 @@ struct mylite_sql_parser_aggregate_function_call_parts {
 };
 
 static unsigned int parse_display_width(const struct mylite_sql_ast_node *display_width);
-static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64_t *out_length);
-static char *copy_column_type_option_text(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_source_span span);
-static struct mylite_sql_ast_node *
-make_checked_integer_literal(struct mylite_sql_parser_state *state,
-                             struct mylite_sql_token integer_token);
-static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type column_type);
-static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column_type column_type);
-static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type column_type);
-static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type);
-static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
-                            bool previous_token_allows_subquery_quantifier,
-                            bool token_starts_parenthesized_select_subquery,
-                            struct mylite_sql_parser_token_map *out_map);
-static void record_parse_error(struct mylite_sql_parse_result *result,
-                               struct mylite_sql_parse_error error);
-static bool is_comment_token(enum mylite_sql_token_kind kind);
-static bool map_keyword_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
-                              bool previous_token_allows_subquery_quantifier,
-                              bool token_starts_parenthesized_select_subquery,
-                              int *out_parser_token);
-static bool lookup_keyword_parser_token(const struct mylite_sql_token *token,
-                                        int *out_parser_token);
-static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token);
-static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token);
-static bool parser_token_allows_subquery_quantifier(int parser_token);
-static bool lexer_starts_parenthesized_select_subquery(const struct mylite_sql_lexer *lexer);
-static bool lexer_next_non_comment(struct mylite_sql_lexer *lexer,
-                                   struct mylite_sql_token *out_token);
-static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
-static bool span_text_equals(struct mylite_sql_source_span span, const char *text);
-static bool function_name_is_position(const struct mylite_sql_ast_node *name);
-static bool function_name_is_extract(const struct mylite_sql_ast_node *name);
-static bool function_name_is_timestampadd(const struct mylite_sql_ast_node *name);
-static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name);
-static bool function_name_is_group_concat(const struct mylite_sql_ast_node *name);
-static bool normalize_timestampdiff_function_call(struct mylite_sql_parser_state *state,
-                                                  const struct mylite_sql_ast_node *name,
-                                                  struct mylite_sql_ast_node *arguments,
-                                                  struct mylite_sql_ast_node **out_arguments,
-                                                  enum mylite_sql_ast_interval_unit *out_unit);
-static bool normalize_timestampadd_function_call(struct mylite_sql_parser_state *state,
-                                                 const struct mylite_sql_ast_node *name,
-                                                 struct mylite_sql_ast_node *arguments,
-                                                 struct mylite_sql_ast_node **out_arguments,
-                                                 enum mylite_sql_ast_interval_unit *out_unit);
-static bool extract_interval_unit_from_expression(const struct mylite_sql_ast_node *expression,
-                                                  enum mylite_sql_ast_interval_unit *out_unit);
-static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name);
-static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_node *name,
-                                                   size_t *out_arity);
-static bool
-validate_current_temporal_function_call(struct mylite_sql_parser_state *state,
-                                        const struct mylite_sql_ast_node *name, size_t arity,
-                                        const struct mylite_sql_ast_node *first_argument);
-static bool function_name_is_current_temporal_datetime(const struct mylite_sql_ast_node *name);
-static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name);
-static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_node *name);
-static bool temporal_fsp_argument(const struct mylite_sql_ast_node *argument, uint64_t *out_fsp);
-static bool function_name_is_trim(const struct mylite_sql_ast_node *name);
-static bool function_name_is_substring(const struct mylite_sql_ast_node *name);
-static bool function_name_matches(const struct mylite_sql_ast_node *name, const char *text);
-static bool window_function_arity_is_valid(enum mylite_sql_ast_window_function_kind function_kind,
-                                           size_t arity);
-static bool
-window_function_accepts_null_treatment(enum mylite_sql_ast_window_function_kind function_kind);
-static enum mylite_sql_ast_aggregate_kind
-aggregate_kind_from_name(struct mylite_sql_source_span name);
-static struct mylite_sql_ast_node *
-make_aggregate_function_call(struct mylite_sql_parser_state *state,
-                             struct mylite_sql_parser_aggregate_function_call_parts parts);
-static struct mylite_sql_ast_node *
-make_group_concat_aggregate_call(struct mylite_sql_parser_state *state,
-                                 struct mylite_sql_parser_group_concat_call_parts parts,
-                                 enum mylite_sql_ast_aggregate_argument argument_kind);
-static bool aggregate_accepts_star(enum mylite_sql_ast_aggregate_kind aggregate_kind);
-static bool transaction_characteristics_conflict(const struct mylite_sql_ast_node *left,
-                                                 const struct mylite_sql_ast_node *right);
-static bool
-delete_targets_are_unsupported_delete_modifier(const struct mylite_sql_ast_node *targets);
-static bool expression_contains_function_call(const struct mylite_sql_ast_node *expression);
-static void set_syntax_error_at_span(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_source_span span);
-static char ascii_upper(unsigned char byte);
-static bool is_parse_ok(const struct mylite_sql_parser_state *state);
-static void set_state_status(struct mylite_sql_parser_state *state,
-                             enum mylite_sql_parse_status status);
-static struct mylite_sql_ast_node *make_node(struct mylite_sql_parser_state *state,
-                                             enum mylite_sql_ast_node_kind kind,
-                                             struct mylite_sql_source_span span);
-static struct mylite_sql_source_span span_from_token(const struct mylite_sql_token *token);
-static struct mylite_sql_source_span span_join(struct mylite_sql_source_span left,
-                                               struct mylite_sql_source_span right);
 
-enum mylite_sql_parse_status mylite_sql_parse(struct mylite_sql_parse_config config,
-                                              struct mylite_sql_parse_result *out_result)
-{
+static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64_t *out_length);
+
+static char *copy_column_type_option_text(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_source_span span
+);
+
+static struct mylite_sql_ast_node *make_checked_integer_literal(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token integer_token
+);
+
+static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type column_type);
+
+static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column_type column_type);
+
+static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type column_type);
+
+static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type);
+
+static bool map_lexer_token(
+    const struct mylite_sql_token *token,
+    bool previous_token_was_dot,
+    bool previous_token_allows_subquery_quantifier,
+    bool token_starts_parenthesized_select_subquery,
+    struct mylite_sql_parser_token_map *out_map
+);
+
+static void record_parse_error(
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parse_error error
+);
+
+static bool is_comment_token(enum mylite_sql_token_kind kind);
+
+static bool map_keyword_token(
+    const struct mylite_sql_token *token,
+    bool previous_token_was_dot,
+    bool previous_token_allows_subquery_quantifier,
+    bool token_starts_parenthesized_select_subquery,
+    int *out_parser_token
+);
+
+static bool lookup_keyword_parser_token(
+    const struct mylite_sql_token *token,
+    int *out_parser_token
+);
+
+static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token);
+
+static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token);
+
+static bool parser_token_allows_subquery_quantifier(int parser_token);
+
+static bool lexer_starts_parenthesized_select_subquery(const struct mylite_sql_lexer *lexer);
+
+static bool lexer_next_non_comment(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_token
+);
+
+static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
+
+static bool span_text_equals(struct mylite_sql_source_span span, const char *text);
+
+static bool function_name_is_position(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_extract(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_timestampadd(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_group_concat(const struct mylite_sql_ast_node *name);
+
+static bool normalize_timestampdiff_function_call(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_ast_node **out_arguments,
+    enum mylite_sql_ast_interval_unit *out_unit
+);
+
+static bool normalize_timestampadd_function_call(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_ast_node **out_arguments,
+    enum mylite_sql_ast_interval_unit *out_unit
+);
+
+static bool extract_interval_unit_from_expression(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_interval_unit *out_unit
+);
+
+static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name);
+
+static bool function_name_has_parser_checked_arity(
+    const struct mylite_sql_ast_node *name,
+    size_t *out_arity
+);
+
+static bool validate_current_temporal_function_call(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *name,
+    size_t arity,
+    const struct mylite_sql_ast_node *first_argument
+);
+
+static bool function_name_is_current_temporal_datetime(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_node *name);
+
+static bool temporal_fsp_argument(const struct mylite_sql_ast_node *argument, uint64_t *out_fsp);
+
+static bool function_name_is_trim(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_substring(const struct mylite_sql_ast_node *name);
+
+static bool function_name_matches(const struct mylite_sql_ast_node *name, const char *text);
+
+static bool window_function_arity_is_valid(
+    enum mylite_sql_ast_window_function_kind function_kind,
+    size_t arity
+);
+
+static bool window_function_accepts_null_treatment(
+    enum mylite_sql_ast_window_function_kind function_kind
+);
+
+static enum mylite_sql_ast_aggregate_kind aggregate_kind_from_name(
+    struct mylite_sql_source_span name
+);
+
+static struct mylite_sql_ast_node *make_aggregate_function_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_aggregate_function_call_parts parts
+);
+
+static struct mylite_sql_ast_node *make_group_concat_aggregate_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_group_concat_call_parts parts,
+    enum mylite_sql_ast_aggregate_argument argument_kind
+);
+
+static bool aggregate_accepts_star(enum mylite_sql_ast_aggregate_kind aggregate_kind);
+
+static bool transaction_characteristics_conflict(
+    const struct mylite_sql_ast_node *left,
+    const struct mylite_sql_ast_node *right
+);
+
+static bool delete_targets_are_unsupported_delete_modifier(
+    const struct mylite_sql_ast_node *targets
+);
+
+static bool expression_contains_function_call(const struct mylite_sql_ast_node *expression);
+
+static void set_syntax_error_at_span(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_source_span span
+);
+
+static char ascii_upper(unsigned char byte);
+
+static bool is_parse_ok(const struct mylite_sql_parser_state *state);
+
+static void set_state_status(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_parse_status status
+);
+
+static struct mylite_sql_ast_node *make_node(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_source_span span
+);
+
+static struct mylite_sql_source_span span_from_token(const struct mylite_sql_token *token);
+
+static struct mylite_sql_source_span span_join(
+    struct mylite_sql_source_span left,
+    struct mylite_sql_source_span right
+);
+
+enum mylite_sql_parse_status mylite_sql_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *out_result
+) {
     struct mylite_sql_parser_state state;
     struct mylite_sql_lexer lexer;
     void *parser = NULL;
@@ -167,11 +267,14 @@ enum mylite_sql_parse_status mylite_sql_parse(struct mylite_sql_parse_config con
         return out_result->status;
     }
 
-    mylite_sql_lexer_init(&lexer, (struct mylite_sql_lexer_config){
-                                      .input = config.input,
-                                      .length = config.length,
-                                      .modes = config.modes,
-                                  });
+    mylite_sql_lexer_init(
+        &lexer,
+        (struct mylite_sql_lexer_config){
+            .input = config.input,
+            .length = config.length,
+            .modes = config.modes,
+        }
+    );
     for (;;) {
         struct mylite_sql_token token;
         struct mylite_sql_parser_token_map token_map;
@@ -187,11 +290,14 @@ enum mylite_sql_parse_status mylite_sql_parse(struct mylite_sql_parse_config con
         }
 
         if (token.kind == MYLITE_SQL_TOKEN_ERROR) {
-            record_parse_error(out_result, (struct mylite_sql_parse_error){
-                                               .status = MYLITE_SQL_PARSE_LEXER_ERROR,
-                                               .parser_token = 0,
-                                               .token = token,
-                                           });
+            record_parse_error(
+                out_result,
+                (struct mylite_sql_parse_error){
+                    .status = MYLITE_SQL_PARSE_LEXER_ERROR,
+                    .parser_token = 0,
+                    .token = token,
+                }
+            );
             break;
         }
 
@@ -201,14 +307,21 @@ enum mylite_sql_parse_status mylite_sql_parse(struct mylite_sql_parse_config con
                 lexer_starts_parenthesized_select_subquery(&lexer);
         }
 
-        if (!map_lexer_token(&token, previous_token_was_dot,
-                             previous_token_allows_subquery_quantifier,
-                             token_starts_parenthesized_select_subquery, &token_map)) {
-            record_parse_error(out_result, (struct mylite_sql_parse_error){
-                                               .status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
-                                               .parser_token = -1,
-                                               .token = token,
-                                           });
+        if (!map_lexer_token(
+                &token,
+                previous_token_was_dot,
+                previous_token_allows_subquery_quantifier,
+                token_starts_parenthesized_select_subquery,
+                &token_map
+            )) {
+            record_parse_error(
+                out_result,
+                (struct mylite_sql_parse_error){
+                    .status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                    .parser_token = -1,
+                    .token = token,
+                }
+            );
             break;
         }
 
@@ -231,8 +344,7 @@ enum mylite_sql_parse_status mylite_sql_parse(struct mylite_sql_parse_config con
     return out_result->status;
 }
 
-void mylite_sql_parse_result_deinit(struct mylite_sql_parse_result *result)
-{
+void mylite_sql_parse_result_deinit(struct mylite_sql_parse_result *result) {
     if (result == NULL) {
         return;
     }
@@ -241,8 +353,7 @@ void mylite_sql_parse_result_deinit(struct mylite_sql_parse_result *result)
     memset(result, 0, sizeof(*result));
 }
 
-const char *mylite_sql_parse_status_name(enum mylite_sql_parse_status status)
-{
+const char *mylite_sql_parse_status_name(enum mylite_sql_parse_status status) {
     switch (status) {
     case MYLITE_SQL_PARSE_OK:
         return "ok";
@@ -261,9 +372,10 @@ const char *mylite_sql_parse_status_name(enum mylite_sql_parse_status status)
     return "unknown";
 }
 
-void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
-                                      struct mylite_sql_ast_node *root)
-{
+void mylite_sql_parser_state_set_root(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *root
+) {
     if (!is_parse_ok(state)) {
         return;
     }
@@ -271,22 +383,26 @@ void mylite_sql_parser_state_set_root(struct mylite_sql_parser_state *state,
     state->result->root = root;
 }
 
-void mylite_sql_parser_state_syntax_error(struct mylite_sql_parser_state *state, int parser_token,
-                                          struct mylite_sql_token token)
-{
+void mylite_sql_parser_state_syntax_error(
+    struct mylite_sql_parser_state *state,
+    int parser_token,
+    struct mylite_sql_token token
+) {
     if (!is_parse_ok(state)) {
         return;
     }
 
-    record_parse_error(state->result, (struct mylite_sql_parse_error){
-                                          .status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
-                                          .parser_token = parser_token,
-                                          .token = token,
-                                      });
+    record_parse_error(
+        state->result,
+        (struct mylite_sql_parse_error){
+            .status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
+            .parser_token = parser_token,
+            .token = token,
+        }
+    );
 }
 
-void mylite_sql_parser_state_parse_failed(struct mylite_sql_parser_state *state)
-{
+void mylite_sql_parser_state_parse_failed(struct mylite_sql_parser_state *state) {
     if (!is_parse_ok(state)) {
         return;
     }
@@ -294,8 +410,7 @@ void mylite_sql_parser_state_parse_failed(struct mylite_sql_parser_state *state)
     set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
 }
 
-void mylite_sql_parser_state_accept(struct mylite_sql_parser_state *state)
-{
+void mylite_sql_parser_state_accept(struct mylite_sql_parser_state *state) {
     if (!is_parse_ok(state)) {
         return;
     }
@@ -303,8 +418,7 @@ void mylite_sql_parser_state_accept(struct mylite_sql_parser_state *state)
     state->accepted = true;
 }
 
-void mylite_sql_parser_state_stack_overflow(struct mylite_sql_parser_state *state)
-{
+void mylite_sql_parser_state_stack_overflow(struct mylite_sql_parser_state *state) {
     if (!is_parse_ok(state)) {
         return;
     }
@@ -312,15 +426,14 @@ void mylite_sql_parser_state_stack_overflow(struct mylite_sql_parser_state *stat
     set_state_status(state, MYLITE_SQL_PARSE_STACK_OVERFLOW);
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_script(struct mylite_sql_parser_state *state)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_script(struct mylite_sql_parser_state *state) {
     return make_node(state, MYLITE_SQL_AST_SCRIPT, (struct mylite_sql_source_span){0});
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_script_with_statement(struct mylite_sql_parser_state *state,
-                                             struct mylite_sql_ast_node *statement)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_script_with_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *statement
+) {
     struct mylite_sql_ast_node *script = mylite_sql_parser_make_script(state);
     if (script == NULL) {
         return NULL;
@@ -333,11 +446,11 @@ mylite_sql_parser_make_script_with_statement(struct mylite_sql_parser_state *sta
     return script;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
-                                   struct mylite_sql_ast_node *script,
-                                   struct mylite_sql_ast_node *statement)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *script,
+    struct mylite_sql_ast_node *statement
+) {
     if (!is_parse_ok(state) || script == NULL) {
         return script;
     }
@@ -350,13 +463,18 @@ mylite_sql_parser_append_statement(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token select_token,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
     struct mylite_sql_parser_select_duplicate_mode duplicate_mode,
-    struct mylite_sql_ast_node *select_list, struct mylite_sql_ast_node *from_clause,
-    struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *group_by_clause,
-    struct mylite_sql_ast_node *having_clause, struct mylite_sql_ast_node *window_clause,
-    struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause)
-{
+    struct mylite_sql_ast_node *select_list,
+    struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *group_by_clause,
+    struct mylite_sql_ast_node *having_clause,
+    struct mylite_sql_ast_node *window_clause,
+    struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
     struct mylite_sql_source_span span = span_from_token(&select_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -391,13 +509,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     }
 
     mylite_sql_ast_node_set_select_duplicate_mode(
-        statement, duplicate_mode.mode, duplicate_mode.explicit_mode, duplicate_mode.conflict,
+        statement,
+        duplicate_mode.mode,
+        duplicate_mode.explicit_mode,
+        duplicate_mode.conflict,
         duplicate_mode.modifier_count,
         (struct mylite_sql_ast_select_duplicate_mode_spans){
             .first = duplicate_mode.first_span,
             .last = duplicate_mode.last_span,
             .conflict = duplicate_mode.conflict_span,
-        });
+        }
+    );
     if (duplicate_mode.calc_found_rows) {
         mylite_sql_ast_node_set_select_calc_found_rows(statement);
     }
@@ -413,9 +535,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_query_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *body,
-    struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *body,
+    struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
     struct mylite_sql_source_span span =
         body == NULL ? (struct mylite_sql_source_span){0} : body->span;
     struct mylite_sql_ast_node *expression = NULL;
@@ -439,10 +563,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_query_expression(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_values_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token values_token,
-    struct mylite_sql_ast_node *rows, struct mylite_sql_ast_node *order_by_clause,
-    struct mylite_sql_ast_node *limit_clause)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token values_token,
+    struct mylite_sql_ast_node *rows,
+    struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
     struct mylite_sql_source_span span = span_from_token(&values_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -468,21 +594,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_values_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_query_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token table_token,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *order_by_clause,
-    struct mylite_sql_ast_node *limit_clause)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token table_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
     return mylite_sql_parser_make_select_statement(
-        state, table_token, mylite_sql_parser_make_implicit_select_duplicate_mode(),
+        state,
+        table_token,
+        mylite_sql_parser_make_implicit_select_duplicate_mode(),
         mylite_sql_parser_make_wildcard_select_list(state, table_token),
-        mylite_sql_parser_make_from_table(state, table_token, table_name, NULL), NULL, NULL, NULL,
-        NULL, order_by_clause, limit_clause);
+        mylite_sql_parser_make_from_table(state, table_token, table_name, NULL),
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        order_by_clause,
+        limit_clause
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_query_primary(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token left_paren,
-    struct mylite_sql_ast_node *select_statement, struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_token right_paren
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&left_paren), span_from_token(&right_paren));
     struct mylite_sql_ast_node *primary = NULL;
@@ -497,9 +635,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_query_primary(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_union_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
-    struct mylite_sql_parser_union_operator union_operator, struct mylite_sql_ast_node *right)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_parser_union_operator union_operator,
+    struct mylite_sql_ast_node *right
+) {
     struct mylite_sql_source_span span =
         left == NULL ? union_operator.span : span_join(left->span, union_operator.span);
     struct mylite_sql_ast_node *expression = NULL;
@@ -520,10 +660,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_union_expression(
     return expression;
 }
 
-struct mylite_sql_parser_union_operator
-mylite_sql_parser_make_default_set_operator(struct mylite_sql_token operator_token,
-                                            enum mylite_sql_ast_set_operation operation)
-{
+struct mylite_sql_parser_union_operator mylite_sql_parser_make_default_set_operator(
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_set_operation operation
+) {
     return (struct mylite_sql_parser_union_operator){
         .operation = operation,
         .mode = MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT,
@@ -531,11 +671,11 @@ mylite_sql_parser_make_default_set_operator(struct mylite_sql_token operator_tok
     };
 }
 
-struct mylite_sql_parser_union_operator
-mylite_sql_parser_make_all_set_operator(struct mylite_sql_token operator_token,
-                                        struct mylite_sql_token all_token,
-                                        enum mylite_sql_ast_set_operation operation)
-{
+struct mylite_sql_parser_union_operator mylite_sql_parser_make_all_set_operator(
+    struct mylite_sql_token operator_token,
+    struct mylite_sql_token all_token,
+    enum mylite_sql_ast_set_operation operation
+) {
     return (struct mylite_sql_parser_union_operator){
         .operation = operation,
         .mode = MYLITE_SQL_AST_SET_DUPLICATES_ALL,
@@ -543,11 +683,11 @@ mylite_sql_parser_make_all_set_operator(struct mylite_sql_token operator_token,
     };
 }
 
-struct mylite_sql_parser_union_operator
-mylite_sql_parser_make_distinct_set_operator(struct mylite_sql_token operator_token,
-                                             struct mylite_sql_token distinct_token,
-                                             enum mylite_sql_ast_set_operation operation)
-{
+struct mylite_sql_parser_union_operator mylite_sql_parser_make_distinct_set_operator(
+    struct mylite_sql_token operator_token,
+    struct mylite_sql_token distinct_token,
+    enum mylite_sql_ast_set_operation operation
+) {
     return (struct mylite_sql_parser_union_operator){
         .operation = operation,
         .mode = MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT,
@@ -555,17 +695,17 @@ mylite_sql_parser_make_distinct_set_operator(struct mylite_sql_token operator_to
     };
 }
 
-struct mylite_sql_parser_select_duplicate_mode
-mylite_sql_parser_make_implicit_select_duplicate_mode(void)
-{
+struct mylite_sql_parser_select_duplicate_mode mylite_sql_parser_make_implicit_select_duplicate_mode(
+    void
+) {
     return (struct mylite_sql_parser_select_duplicate_mode){
         .mode = MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL,
     };
 }
 
-struct mylite_sql_parser_select_duplicate_mode
-mylite_sql_parser_make_all_select_duplicate_mode(struct mylite_sql_token token)
-{
+struct mylite_sql_parser_select_duplicate_mode mylite_sql_parser_make_all_select_duplicate_mode(
+    struct mylite_sql_token token
+) {
     struct mylite_sql_source_span span = span_from_token(&token);
 
     return (struct mylite_sql_parser_select_duplicate_mode){
@@ -577,9 +717,9 @@ mylite_sql_parser_make_all_select_duplicate_mode(struct mylite_sql_token token)
     };
 }
 
-struct mylite_sql_parser_select_duplicate_mode
-mylite_sql_parser_make_distinct_select_duplicate_mode(struct mylite_sql_token token)
-{
+struct mylite_sql_parser_select_duplicate_mode mylite_sql_parser_make_distinct_select_duplicate_mode(
+    struct mylite_sql_token token
+) {
     struct mylite_sql_source_span span = span_from_token(&token);
 
     return (struct mylite_sql_parser_select_duplicate_mode){
@@ -591,9 +731,9 @@ mylite_sql_parser_make_distinct_select_duplicate_mode(struct mylite_sql_token to
     };
 }
 
-struct mylite_sql_parser_select_duplicate_mode
-mylite_sql_parser_make_sql_calc_found_rows_select_duplicate_mode(struct mylite_sql_token token)
-{
+struct mylite_sql_parser_select_duplicate_mode mylite_sql_parser_make_sql_calc_found_rows_select_duplicate_mode(
+    struct mylite_sql_token token
+) {
     (void)token;
 
     return (struct mylite_sql_parser_select_duplicate_mode){
@@ -602,11 +742,11 @@ mylite_sql_parser_make_sql_calc_found_rows_select_duplicate_mode(struct mylite_s
     };
 }
 
-struct mylite_sql_parser_select_duplicate_mode
-mylite_sql_parser_append_select_duplicate_mode(struct mylite_sql_parser_state *state,
-                                               struct mylite_sql_parser_select_duplicate_mode list,
-                                               struct mylite_sql_parser_select_duplicate_mode item)
-{
+struct mylite_sql_parser_select_duplicate_mode mylite_sql_parser_append_select_duplicate_mode(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_select_duplicate_mode list,
+    struct mylite_sql_parser_select_duplicate_mode item
+) {
     (void)state;
 
     if (list.modifier_count == 0U && !list.calc_found_rows) {
@@ -632,11 +772,11 @@ mylite_sql_parser_append_select_duplicate_mode(struct mylite_sql_parser_state *s
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_where_clause(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_token where_token,
-                                    struct mylite_sql_ast_node *expression)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_where_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token where_token,
+    struct mylite_sql_ast_node *expression
+) {
     struct mylite_sql_source_span span = span_from_token(&where_token);
     struct mylite_sql_ast_node *where_clause = NULL;
 
@@ -654,9 +794,11 @@ mylite_sql_parser_make_where_clause(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token group_token,
-    struct mylite_sql_token by_token, struct mylite_sql_ast_node *items)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token group_token,
+    struct mylite_sql_token by_token,
+    struct mylite_sql_ast_node *items
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&group_token), span_from_token(&by_token));
     struct mylite_sql_ast_node *group_by_clause = NULL;
@@ -674,13 +816,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
     return group_by_clause;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_group_item_list(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_ast_node *item)
-{
-    struct mylite_sql_ast_node *list =
-        make_node(state, MYLITE_SQL_AST_GROUP_ITEM_LIST,
-                  item == NULL ? (struct mylite_sql_source_span){0} : item->span);
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_item_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *item
+) {
+    struct mylite_sql_ast_node *list = make_node(
+        state,
+        MYLITE_SQL_AST_GROUP_ITEM_LIST,
+        item == NULL ? (struct mylite_sql_source_span){0} : item->span
+    );
 
     if (list == NULL) {
         return NULL;
@@ -690,11 +834,11 @@ mylite_sql_parser_make_group_item_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_group_item(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_ast_node *list,
-                                    struct mylite_sql_ast_node *item)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_group_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *item
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -706,11 +850,11 @@ mylite_sql_parser_append_group_item(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_group_item(struct mylite_sql_parser_state *state,
-                                  struct mylite_sql_ast_node *expression,
-                                  struct mylite_sql_token direction_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token direction_token
+) {
     enum mylite_sql_ast_key_part_order direction = MYLITE_SQL_AST_KEY_PART_ORDER_NONE;
     struct mylite_sql_source_span span =
         expression == NULL ? (struct mylite_sql_source_span){0} : expression->span;
@@ -735,11 +879,11 @@ mylite_sql_parser_make_group_item(struct mylite_sql_parser_state *state,
     return item;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_having_clause(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_token having_token,
-                                     struct mylite_sql_ast_node *expression)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_having_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token having_token,
+    struct mylite_sql_ast_node *expression
+) {
     struct mylite_sql_source_span span = span_from_token(&having_token);
     struct mylite_sql_ast_node *having_clause = NULL;
 
@@ -757,9 +901,11 @@ mylite_sql_parser_make_having_clause(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token order_token,
-    struct mylite_sql_token by_token, struct mylite_sql_ast_node *items)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token order_token,
+    struct mylite_sql_token by_token,
+    struct mylite_sql_ast_node *items
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&order_token), span_from_token(&by_token));
     struct mylite_sql_ast_node *order_by_clause = NULL;
@@ -777,11 +923,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     return order_by_clause;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_window_clause(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_token window_token,
-                                     struct mylite_sql_ast_node *definitions)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token window_token,
+    struct mylite_sql_ast_node *definitions
+) {
     struct mylite_sql_source_span span = span_from_token(&window_token);
     struct mylite_sql_ast_node *clause = NULL;
 
@@ -798,13 +944,15 @@ mylite_sql_parser_make_window_clause(struct mylite_sql_parser_state *state,
     return clause;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_window_definition_list(struct mylite_sql_parser_state *state,
-                                              struct mylite_sql_ast_node *definition)
-{
-    struct mylite_sql_ast_node *list =
-        make_node(state, MYLITE_SQL_AST_WINDOW_DEFINITION_LIST,
-                  definition == NULL ? (struct mylite_sql_source_span){0} : definition->span);
+struct mylite_sql_ast_node *mylite_sql_parser_make_window_definition_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *definition
+) {
+    struct mylite_sql_ast_node *list = make_node(
+        state,
+        MYLITE_SQL_AST_WINDOW_DEFINITION_LIST,
+        definition == NULL ? (struct mylite_sql_source_span){0} : definition->span
+    );
 
     if (list == NULL) {
         return NULL;
@@ -814,11 +962,11 @@ mylite_sql_parser_make_window_definition_list(struct mylite_sql_parser_state *st
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_window_definition(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *list,
-                                           struct mylite_sql_ast_node *definition)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_window_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *definition
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -831,10 +979,12 @@ mylite_sql_parser_append_window_definition(struct mylite_sql_parser_state *state
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_definition(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_token as_token, struct mylite_sql_ast_node *specification,
-    struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token as_token,
+    struct mylite_sql_ast_node *specification,
+    struct mylite_sql_token right_paren
+) {
     struct mylite_sql_source_span span = name == NULL ? span_from_token(&as_token) : name->span;
     struct mylite_sql_ast_node *definition = NULL;
 
@@ -849,11 +999,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_definition(
     return definition;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_over_clause_with_name(struct mylite_sql_parser_state *state,
-                                             struct mylite_sql_token over_token,
-                                             struct mylite_sql_ast_node *window_name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_over_clause_with_name(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token over_token,
+    struct mylite_sql_ast_node *window_name
+) {
     struct mylite_sql_source_span span = span_from_token(&over_token);
     struct mylite_sql_ast_node *clause = NULL;
 
@@ -871,12 +1021,16 @@ mylite_sql_parser_make_over_clause_with_name(struct mylite_sql_parser_state *sta
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_over_clause_with_specification(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token over_token,
-    struct mylite_sql_ast_node *specification, struct mylite_sql_token right_paren)
-{
-    struct mylite_sql_ast_node *clause =
-        make_node(state, MYLITE_SQL_AST_OVER_CLAUSE,
-                  span_join(span_from_token(&over_token), span_from_token(&right_paren)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token over_token,
+    struct mylite_sql_ast_node *specification,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *clause = make_node(
+        state,
+        MYLITE_SQL_AST_OVER_CLAUSE,
+        span_join(span_from_token(&over_token), span_from_token(&right_paren))
+    );
 
     if (clause == NULL) {
         return NULL;
@@ -887,10 +1041,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_over_clause_with_specificatio
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_specification(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_ast_node *partition_clause, struct mylite_sql_ast_node *order_by_clause,
-    struct mylite_sql_ast_node *frame_clause)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *partition_clause,
+    struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *frame_clause
+) {
     struct mylite_sql_source_span span = {0};
     struct mylite_sql_ast_node *specification = NULL;
 
@@ -920,9 +1076,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_specification(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_partition_clause(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token partition_token,
-    struct mylite_sql_token by_token, struct mylite_sql_ast_node *expressions)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token partition_token,
+    struct mylite_sql_token by_token,
+    struct mylite_sql_ast_node *expressions
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&partition_token), span_from_token(&by_token));
     struct mylite_sql_ast_node *clause = NULL;
@@ -941,9 +1099,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_partition_clause(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_frame_clause(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_window_frame_unit_token unit,
-    struct mylite_sql_ast_node *start_bound, struct mylite_sql_ast_node *end_bound)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_window_frame_unit_token unit,
+    struct mylite_sql_ast_node *start_bound,
+    struct mylite_sql_ast_node *end_bound
+) {
     struct mylite_sql_source_span span = span_from_token(&unit.token);
     struct mylite_sql_ast_node *clause = NULL;
 
@@ -966,10 +1126,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_frame_clause(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_frame_bound(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
-    enum mylite_sql_ast_window_frame_bound_kind bound_kind, struct mylite_sql_ast_node *expression,
-    struct mylite_sql_token end_token)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    enum mylite_sql_ast_window_frame_bound_kind bound_kind,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token end_token
+) {
     struct mylite_sql_source_span span =
         expression == NULL ? span_from_token(&start_token) : expression->span;
     struct mylite_sql_ast_node *bound = NULL;
@@ -989,12 +1151,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_frame_bound(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_null_treatment(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_window_null_treatment treatment,
-    struct mylite_sql_token nulls_token)
-{
-    struct mylite_sql_ast_node *node =
-        make_node(state, MYLITE_SQL_AST_WINDOW_NULL_TREATMENT,
-                  span_join(span_from_token(&treatment.token), span_from_token(&nulls_token)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_window_null_treatment treatment,
+    struct mylite_sql_token nulls_token
+) {
+    struct mylite_sql_ast_node *node = make_node(
+        state,
+        MYLITE_SQL_AST_WINDOW_NULL_TREATMENT,
+        span_join(span_from_token(&treatment.token), span_from_token(&nulls_token))
+    );
 
     if (node == NULL) {
         return NULL;
@@ -1004,20 +1169,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_null_treatment(
     return node;
 }
 
-struct mylite_sql_parser_window_function_token
-mylite_sql_parser_make_window_function_token(struct mylite_sql_token token,
-                                             enum mylite_sql_ast_window_function_kind function_kind)
-{
+struct mylite_sql_parser_window_function_token mylite_sql_parser_make_window_function_token(
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_window_function_kind function_kind
+) {
     return (struct mylite_sql_parser_window_function_token){
         .token = token,
         .function_kind = function_kind,
     };
 }
 
-struct mylite_sql_parser_window_frame_unit_token
-mylite_sql_parser_make_window_frame_unit_token(struct mylite_sql_token token,
-                                               enum mylite_sql_ast_window_frame_unit unit)
-{
+struct mylite_sql_parser_window_frame_unit_token mylite_sql_parser_make_window_frame_unit_token(
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_window_frame_unit unit
+) {
     return (struct mylite_sql_parser_window_frame_unit_token){
         .token = token,
         .unit = unit,
@@ -1025,8 +1190,9 @@ mylite_sql_parser_make_window_frame_unit_token(struct mylite_sql_token token,
 }
 
 struct mylite_sql_parser_window_null_treatment mylite_sql_parser_make_window_null_treatment_token(
-    struct mylite_sql_token token, enum mylite_sql_ast_window_null_treatment treatment)
-{
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_window_null_treatment treatment
+) {
     return (struct mylite_sql_parser_window_null_treatment){
         .token = token,
         .treatment = treatment,
@@ -1036,10 +1202,12 @@ struct mylite_sql_parser_window_null_treatment mylite_sql_parser_make_window_nul
 struct mylite_sql_ast_node *mylite_sql_parser_make_window_function_call(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_window_function_token function_token,
-    struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
-    struct mylite_sql_token right_paren, struct mylite_sql_ast_node *null_treatment,
-    struct mylite_sql_ast_node *over_clause)
-{
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *null_treatment,
+    struct mylite_sql_ast_node *over_clause
+) {
     size_t arity = mylite_sql_ast_node_child_count(arguments);
     struct mylite_sql_ast_node *name = NULL;
     struct mylite_sql_ast_node *call = NULL;
@@ -1072,11 +1240,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_window_function_call(
     return window_call;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_aggregate_window_function_call(struct mylite_sql_parser_state *state,
-                                                      struct mylite_sql_ast_node *aggregate_call,
-                                                      struct mylite_sql_ast_node *over_clause)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_aggregate_window_function_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *aggregate_call,
+    struct mylite_sql_ast_node *over_clause
+) {
     struct mylite_sql_source_span span =
         aggregate_call == NULL ? (struct mylite_sql_source_span){0} : aggregate_call->span;
     struct mylite_sql_ast_node *window_call = NULL;
@@ -1100,13 +1268,15 @@ mylite_sql_parser_make_aggregate_window_function_call(struct mylite_sql_parser_s
     return window_call;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_order_item_list(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_ast_node *item)
-{
-    struct mylite_sql_ast_node *list =
-        make_node(state, MYLITE_SQL_AST_ORDER_ITEM_LIST,
-                  item == NULL ? (struct mylite_sql_source_span){0} : item->span);
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_item_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *item
+) {
+    struct mylite_sql_ast_node *list = make_node(
+        state,
+        MYLITE_SQL_AST_ORDER_ITEM_LIST,
+        item == NULL ? (struct mylite_sql_source_span){0} : item->span
+    );
 
     if (list == NULL) {
         return NULL;
@@ -1116,11 +1286,11 @@ mylite_sql_parser_make_order_item_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_order_item(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_ast_node *list,
-                                    struct mylite_sql_ast_node *item)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_order_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *item
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -1132,11 +1302,11 @@ mylite_sql_parser_append_order_item(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_order_item(struct mylite_sql_parser_state *state,
-                                  struct mylite_sql_ast_node *expression,
-                                  struct mylite_sql_token direction_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token direction_token
+) {
     enum mylite_sql_ast_key_part_order direction = MYLITE_SQL_AST_KEY_PART_ORDER_ASC;
     struct mylite_sql_source_span span =
         expression == NULL ? (struct mylite_sql_source_span){0} : expression->span;
@@ -1160,9 +1330,11 @@ mylite_sql_parser_make_order_item(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_limit_clause(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token limit_token,
-    struct mylite_sql_ast_node *offset_bound, struct mylite_sql_ast_node *row_count_bound)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token limit_token,
+    struct mylite_sql_ast_node *offset_bound,
+    struct mylite_sql_ast_node *row_count_bound
+) {
     struct mylite_sql_source_span span = span_from_token(&limit_token);
     struct mylite_sql_ast_node *limit_clause = NULL;
 
@@ -1191,10 +1363,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_limit_clause(
     return limit_clause;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_limit_bound(struct mylite_sql_parser_state *state,
-                                   struct mylite_sql_token integer_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_limit_bound(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token integer_token
+) {
     struct mylite_sql_ast_node *bound =
         make_node(state, MYLITE_SQL_AST_LIMIT_BOUND, span_from_token(&integer_token));
     uint64_t value = 0U;
@@ -1211,11 +1383,11 @@ mylite_sql_parser_make_limit_bound(struct mylite_sql_parser_state *state,
     return bound;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_use_statement(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_token use_token,
-                                     struct mylite_sql_ast_node *schema_name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token use_token,
+    struct mylite_sql_ast_node *schema_name
+) {
     struct mylite_sql_source_span span = span_from_token(&use_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -1233,10 +1405,12 @@ mylite_sql_parser_make_use_statement(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
-    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *schema_name,
-    struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *if_not_exists,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_source_span span = span_from_token(&create_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -1259,9 +1433,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_schema_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token alter_token,
-    struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -1283,9 +1459,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_schema_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token drop_token,
-    struct mylite_sql_ast_node *if_exists, struct mylite_sql_ast_node *schema_name)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists,
+    struct mylite_sql_ast_node *schema_name
+) {
     struct mylite_sql_source_span span = span_from_token(&drop_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -1304,9 +1482,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_drop_table_tokens tokens,
-    struct mylite_sql_ast_node *if_exists, struct mylite_sql_ast_node *table_names)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_drop_table_tokens tokens,
+    struct mylite_sql_ast_node *if_exists,
+    struct mylite_sql_ast_node *table_names
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.drop);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -1337,11 +1517,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_rename_table_statement(struct mylite_sql_parser_state *state,
-                                              struct mylite_sql_token rename_token,
-                                              struct mylite_sql_ast_node *pairs)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token rename_token,
+    struct mylite_sql_ast_node *pairs
+) {
     struct mylite_sql_source_span span = span_from_token(&rename_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -1358,10 +1538,10 @@ mylite_sql_parser_make_rename_table_statement(struct mylite_sql_parser_state *st
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_rename_table_pair_list(struct mylite_sql_parser_state *state,
-                                              struct mylite_sql_ast_node *pair)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_pair_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *pair
+) {
     struct mylite_sql_source_span span =
         pair == NULL ? (struct mylite_sql_source_span){0} : pair->span;
     struct mylite_sql_ast_node *list =
@@ -1374,11 +1554,11 @@ mylite_sql_parser_make_rename_table_pair_list(struct mylite_sql_parser_state *st
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_rename_table_pair(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *list,
-                                           struct mylite_sql_ast_node *pair)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_rename_table_pair(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *pair
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -1391,9 +1571,11 @@ mylite_sql_parser_append_rename_table_pair(struct mylite_sql_parser_state *state
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_pair(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *old_name,
-    struct mylite_sql_token to_token, struct mylite_sql_ast_node *new_name)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *old_name,
+    struct mylite_sql_token to_token,
+    struct mylite_sql_ast_node *new_name
+) {
     struct mylite_sql_source_span span =
         old_name == NULL ? span_from_token(&to_token) : old_name->span;
     struct mylite_sql_ast_node *pair = NULL;
@@ -1413,11 +1595,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_pair(
     return pair;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_truncate_table_statement(struct mylite_sql_parser_state *state,
-                                                struct mylite_sql_token truncate_token,
-                                                struct mylite_sql_ast_node *table_name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_truncate_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token truncate_token,
+    struct mylite_sql_ast_node *table_name
+) {
     struct mylite_sql_source_span span = span_from_token(&truncate_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -1435,9 +1617,11 @@ mylite_sql_parser_make_truncate_table_statement(struct mylite_sql_parser_state *
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token alter_token,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *items)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *items
+) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -1458,10 +1642,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_statement(
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_alter_table_item_list(struct mylite_sql_parser_state *state,
-                                             struct mylite_sql_ast_node *item)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_item_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *item
+) {
     struct mylite_sql_source_span span =
         item == NULL ? (struct mylite_sql_source_span){0} : item->span;
     struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ITEM_LIST, span);
@@ -1473,11 +1657,11 @@ mylite_sql_parser_make_alter_table_item_list(struct mylite_sql_parser_state *sta
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_alter_table_item(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_ast_node *list,
-                                          struct mylite_sql_ast_node *item)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_alter_table_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *item
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -1492,8 +1676,9 @@ mylite_sql_parser_append_alter_table_item(struct mylite_sql_parser_state *state,
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_action(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_alter_table_action_tokens tokens,
-    struct mylite_sql_ast_node *column_definition, struct mylite_sql_ast_node *position)
-{
+    struct mylite_sql_ast_node *column_definition,
+    struct mylite_sql_ast_node *position
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.action);
     struct mylite_sql_ast_node *action = NULL;
 
@@ -1512,8 +1697,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_action
         return NULL;
     }
 
-    mylite_sql_ast_node_set_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_COLUMN,
-                                               tokens.column.text != NULL);
+    mylite_sql_ast_node_set_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_COLUMN,
+        tokens.column.text != NULL
+    );
     mylite_sql_ast_node_append_child(action, column_definition);
     mylite_sql_ast_node_append_child(action, position);
     return action;
@@ -1522,8 +1710,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_action
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_column_action(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_alter_table_action_tokens tokens,
-    struct mylite_sql_ast_node *column_name)
-{
+    struct mylite_sql_ast_node *column_name
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.action);
     struct mylite_sql_ast_node *action = NULL;
 
@@ -1540,16 +1728,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_column_actio
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_COLUMN, tokens.column.text != NULL);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_COLUMN,
+        tokens.column.text != NULL
+    );
     mylite_sql_ast_node_append_child(action, column_name);
     return action;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_column_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token rename_token,
-    struct mylite_sql_ast_node *old_name, struct mylite_sql_token to_token,
-    struct mylite_sql_ast_node *new_name)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token rename_token,
+    struct mylite_sql_ast_node *old_name,
+    struct mylite_sql_token to_token,
+    struct mylite_sql_ast_node *new_name
+) {
     struct mylite_sql_source_span span = span_from_token(&rename_token);
     struct mylite_sql_ast_node *action = NULL;
 
@@ -1567,17 +1760,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_column_act
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_COLUMN, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_COLUMN,
+        false
+    );
     mylite_sql_ast_node_append_child(action, old_name);
     mylite_sql_ast_node_append_child(action, new_name);
     return action;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_alter_table_rename_table_action(struct mylite_sql_parser_state *state,
-                                                       struct mylite_sql_token rename_token,
-                                                       struct mylite_sql_ast_node *new_name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_table_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token rename_token,
+    struct mylite_sql_ast_node *new_name
+) {
     struct mylite_sql_source_span span = span_from_token(&rename_token);
     struct mylite_sql_ast_node *action = NULL;
 
@@ -1591,16 +1787,21 @@ mylite_sql_parser_make_alter_table_rename_table_action(struct mylite_sql_parser_
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_TABLE, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_TABLE,
+        false
+    );
     mylite_sql_ast_node_append_child(action, new_name);
     return action;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_change_column_action(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_parser_alter_table_action_tokens tokens, struct mylite_sql_ast_node *old_name,
-    struct mylite_sql_ast_node *column_definition, struct mylite_sql_ast_node *position)
-{
+    struct mylite_sql_parser_alter_table_action_tokens tokens,
+    struct mylite_sql_ast_node *old_name,
+    struct mylite_sql_ast_node *column_definition,
+    struct mylite_sql_ast_node *position
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.action);
     struct mylite_sql_ast_node *action = NULL;
 
@@ -1623,7 +1824,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_change_column_act
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_CHANGE_COLUMN, tokens.column.text != NULL);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_CHANGE_COLUMN,
+        tokens.column.text != NULL
+    );
     mylite_sql_ast_node_append_child(action, old_name);
     mylite_sql_ast_node_append_child(action, column_definition);
     mylite_sql_ast_node_append_child(action, position);
@@ -1633,8 +1837,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_change_column_act
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_action(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_alter_table_action_tokens tokens,
-    struct mylite_sql_ast_node *column_definition, struct mylite_sql_ast_node *position)
-{
+    struct mylite_sql_ast_node *column_definition,
+    struct mylite_sql_ast_node *position
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.action);
     struct mylite_sql_ast_node *action = NULL;
 
@@ -1654,17 +1859,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_act
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_MODIFY_COLUMN, tokens.column.text != NULL);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_MODIFY_COLUMN,
+        tokens.column.text != NULL
+    );
     mylite_sql_ast_node_append_child(action, column_definition);
     mylite_sql_ast_node_append_child(action, position);
     return action;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_column_position(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
     enum mylite_sql_ast_alter_table_column_position position,
-    struct mylite_sql_ast_node *column_name)
-{
+    struct mylite_sql_ast_node *column_name
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
     struct mylite_sql_ast_node *node = NULL;
 
@@ -1683,12 +1892,22 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_column_position(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_primary_key_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token add_token,
-    struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *index_type,
-    struct mylite_sql_ast_node *key_parts, struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token add_token,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_ast_node *index_type,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_ast_node *primary_key = mylite_sql_parser_make_primary_key_constraint(
-        state, add_token, constraint_name, NULL, index_type, key_parts, options);
+        state,
+        add_token,
+        constraint_name,
+        NULL,
+        index_type,
+        key_parts,
+        options
+    );
     struct mylite_sql_ast_node *action = NULL;
 
     if (primary_key == NULL) {
@@ -1701,36 +1920,54 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_primary_key_a
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY,
+        false
+    );
     mylite_sql_ast_node_append_child(action, primary_key);
     return action;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_alter_table_drop_primary_key_action(struct mylite_sql_parser_state *state,
-                                                           struct mylite_sql_token drop_token,
-                                                           struct mylite_sql_token key_token)
-{
-    struct mylite_sql_ast_node *action =
-        make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ACTION,
-                  span_join(span_from_token(&drop_token), span_from_token(&key_token)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_primary_key_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_token key_token
+) {
+    struct mylite_sql_ast_node *action = make_node(
+        state,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION,
+        span_join(span_from_token(&drop_token), span_from_token(&key_token))
+    );
     if (action == NULL) {
         return NULL;
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY,
+        false
+    );
     return action;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_unique_index_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token add_token,
-    struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *index_name,
-    struct mylite_sql_ast_node *index_type, struct mylite_sql_ast_node *key_parts,
-    struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token add_token,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_ast_node *index = mylite_sql_parser_make_unique_index(
-        state, add_token, constraint_name, index_name, index_type, key_parts, options);
+        state,
+        add_token,
+        constraint_name,
+        index_name,
+        index_type,
+        key_parts,
+        options
+    );
     struct mylite_sql_ast_node *action = NULL;
 
     if (index == NULL) {
@@ -1743,18 +1980,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_unique_index_
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX,
+        false
+    );
     mylite_sql_ast_node_append_child(action, index);
     return action;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_secondary_index_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token add_token,
-    struct mylite_sql_ast_node *index_name, struct mylite_sql_ast_node *index_type,
-    struct mylite_sql_ast_node *key_parts, struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token add_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_ast_node *index = mylite_sql_parser_make_secondary_index(
-        state, add_token, index_name, index_type, key_parts, options);
+        state,
+        add_token,
+        index_name,
+        index_type,
+        key_parts,
+        options
+    );
     struct mylite_sql_ast_node *action = NULL;
 
     if (index == NULL) {
@@ -1767,22 +2016,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_secondary_ind
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX,
+        false
+    );
     mylite_sql_ast_node_append_child(action, index);
     return action;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_special_index_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_index_class_token index_class,
-    struct mylite_sql_ast_node *index_name, struct mylite_sql_ast_node *key_parts,
-    struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_index_class_token index_class,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options
+) {
     enum mylite_sql_ast_alter_table_action action_kind =
         index_class.index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT
             ? MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX
             : MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX;
     struct mylite_sql_ast_node *index = mylite_sql_parser_make_secondary_index(
-        state, index_class.token, index_name, NULL, key_parts, options);
+        state,
+        index_class.token,
+        index_name,
+        NULL,
+        key_parts,
+        options
+    );
     struct mylite_sql_ast_node *action = NULL;
 
     if (index == NULL) {
@@ -1802,10 +2062,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_special_index
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_index_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token drop_token,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
     struct mylite_sql_parser_alter_table_index_spelling_token spelling,
-    struct mylite_sql_ast_node *index_name)
-{
+    struct mylite_sql_ast_node *index_name
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&drop_token), span_from_token(&spelling.token));
     struct mylite_sql_ast_node *action = NULL;
@@ -1819,19 +2080,24 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_index_action
         return NULL;
     }
 
-    mylite_sql_ast_node_set_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_INDEX,
-                                               false);
+    mylite_sql_ast_node_set_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_INDEX,
+        false
+    );
     mylite_sql_ast_node_set_alter_table_index_spelling(action, spelling.spelling);
     mylite_sql_ast_node_append_child(action, index_name);
     return action;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token rename_token,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token rename_token,
     struct mylite_sql_parser_alter_table_index_spelling_token spelling,
-    struct mylite_sql_ast_node *old_name, struct mylite_sql_token to_token,
-    struct mylite_sql_ast_node *new_name)
-{
+    struct mylite_sql_ast_node *old_name,
+    struct mylite_sql_token to_token,
+    struct mylite_sql_ast_node *new_name
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&rename_token), span_from_token(&spelling.token));
     struct mylite_sql_ast_node *action = NULL;
@@ -1850,7 +2116,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_acti
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_INDEX, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_INDEX,
+        false
+    );
     mylite_sql_ast_node_set_alter_table_index_spelling(action, spelling.spelling);
     mylite_sql_ast_node_append_child(action, old_name);
     mylite_sql_ast_node_append_child(action, new_name);
@@ -1858,10 +2127,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_index_acti
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_alter_index_visibility_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token alter_token,
-    struct mylite_sql_ast_node *index_name, struct mylite_sql_token visibility_token,
-    enum mylite_sql_ast_index_option visibility)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_token visibility_token,
+    enum mylite_sql_ast_index_option visibility
+) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *action = NULL;
 
@@ -1876,17 +2147,22 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_alter_index_visib
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY,
+        false
+    );
     mylite_sql_ast_node_set_index_option(action, visibility);
     mylite_sql_ast_node_append_child(action, index_name);
     return action;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_check_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token add_token,
-    struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *expression,
-    struct mylite_sql_parser_constraint_enforcement enforcement)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token add_token,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_parser_constraint_enforcement enforcement
+) {
     struct mylite_sql_source_span span = span_from_token(&add_token);
     struct mylite_sql_ast_node *action = NULL;
 
@@ -1905,8 +2181,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_check_action(
         return NULL;
     }
 
-    mylite_sql_ast_node_set_alter_table_action(action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK,
-                                               false);
+    mylite_sql_ast_node_set_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK,
+        false
+    );
     mylite_sql_ast_node_set_constraint_enforcement(action, enforcement.enforcement);
     mylite_sql_ast_node_append_child(action, constraint_name);
     mylite_sql_ast_node_append_child(action, expression);
@@ -1914,10 +2193,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_check_action(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_check_or_constraint_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token drop_token,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
     struct mylite_sql_parser_alter_table_constraint_spelling_token spelling,
-    struct mylite_sql_ast_node *constraint_name)
-{
+    struct mylite_sql_ast_node *constraint_name
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&drop_token), span_from_token(&spelling.token));
     struct mylite_sql_ast_node *action = NULL;
@@ -1932,18 +2212,22 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_check_or_con
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_CHECK_OR_CONSTRAINT, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_CHECK_OR_CONSTRAINT,
+        false
+    );
     mylite_sql_ast_node_set_alter_table_constraint_spelling(action, spelling.spelling);
     mylite_sql_ast_node_append_child(action, constraint_name);
     return action;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_alter_check_or_constraint_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token alter_token,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
     struct mylite_sql_parser_alter_table_constraint_spelling_token spelling,
     struct mylite_sql_ast_node *constraint_name,
-    struct mylite_sql_parser_constraint_enforcement enforcement)
-{
+    struct mylite_sql_parser_constraint_enforcement enforcement
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&alter_token), span_from_token(&spelling.token));
     struct mylite_sql_ast_node *action = NULL;
@@ -1959,7 +2243,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_alter_check_or_co
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_CHECK_OR_CONSTRAINT, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_CHECK_OR_CONSTRAINT,
+        false
+    );
     mylite_sql_ast_node_set_alter_table_constraint_spelling(action, spelling.spelling);
     mylite_sql_ast_node_set_constraint_enforcement(action, enforcement.enforcement);
     mylite_sql_ast_node_append_child(action, constraint_name);
@@ -1967,10 +2254,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_alter_check_or_co
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_foreign_key_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token add_token,
-    struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *index_name,
-    struct mylite_sql_ast_node *columns, struct mylite_sql_ast_node *reference)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token add_token,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *reference
+) {
     struct mylite_sql_source_span span = span_from_token(&add_token);
     struct mylite_sql_ast_node *action = NULL;
 
@@ -1993,7 +2283,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_foreign_key_a
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY,
+        false
+    );
     mylite_sql_ast_node_append_child(action, constraint_name);
     mylite_sql_ast_node_append_child(action, index_name);
     mylite_sql_ast_node_append_child(action, columns);
@@ -2002,9 +2295,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_foreign_key_a
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_foreign_key_action(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token drop_token,
-    struct mylite_sql_token key_token, struct mylite_sql_ast_node *constraint_name)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_token key_token,
+    struct mylite_sql_ast_node *constraint_name
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&drop_token), span_from_token(&key_token));
     struct mylite_sql_ast_node *action = NULL;
@@ -2019,15 +2314,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_foreign_key_
     }
 
     mylite_sql_ast_node_set_alter_table_action(
-        action, MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY, false);
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY,
+        false
+    );
     mylite_sql_ast_node_append_child(action, constraint_name);
     return action;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_table_name_list(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_ast_node *table_name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_name_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name
+) {
     struct mylite_sql_ast_node *list = NULL;
 
     if (table_name == NULL) {
@@ -2043,11 +2341,11 @@ mylite_sql_parser_make_table_name_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_table_name(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_ast_node *list,
-                                    struct mylite_sql_ast_node *table_name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_table_name(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *table_name
+) {
     (void)state;
 
     if (list == NULL || table_name == NULL) {
@@ -2060,11 +2358,14 @@ mylite_sql_parser_append_table_name(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_values_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_insert_tokens tokens,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
-    struct mylite_sql_ast_node *rows, struct mylite_sql_ast_node *row_alias,
-    struct mylite_sql_ast_node *duplicate_update)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_insert_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *rows,
+    struct mylite_sql_ast_node *row_alias,
+    struct mylite_sql_ast_node *duplicate_update
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.insert);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2104,10 +2405,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_values_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_insert_tokens tokens,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *assignments,
-    struct mylite_sql_ast_node *row_alias, struct mylite_sql_ast_node *duplicate_update)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_insert_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *assignments,
+    struct mylite_sql_ast_node *row_alias,
+    struct mylite_sql_ast_node *duplicate_update
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.insert);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2143,10 +2447,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_replace_values_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_replace_tokens tokens,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
-    struct mylite_sql_ast_node *rows)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_replace_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *rows
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.replace);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2184,9 +2490,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_values_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_replace_tokens tokens,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *assignments)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_replace_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *assignments
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.replace);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2219,10 +2527,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_insert_column_list(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_ast_node *column)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_column_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column
+) {
     struct mylite_sql_source_span span =
         column == NULL ? (struct mylite_sql_source_span){0} : column->span;
     struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_INSERT_COLUMN_LIST, span);
@@ -2234,11 +2542,11 @@ mylite_sql_parser_make_insert_column_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_insert_column(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_ast_node *list,
-                                       struct mylite_sql_ast_node *column)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_insert_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *column
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -2250,10 +2558,10 @@ mylite_sql_parser_append_insert_column(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_insert_row_list(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_ast_node *row)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *row
+) {
     struct mylite_sql_source_span span =
         row == NULL ? (struct mylite_sql_source_span){0} : row->span;
     struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_INSERT_ROW_LIST, span);
@@ -2265,11 +2573,11 @@ mylite_sql_parser_make_insert_row_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_insert_row(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_ast_node *list,
-                                    struct mylite_sql_ast_node *row)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_insert_row(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *row
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -2281,11 +2589,12 @@ mylite_sql_parser_append_insert_row(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row(struct mylite_sql_parser_state *state,
-                                                              struct mylite_sql_token start_token,
-                                                              struct mylite_sql_ast_node *values,
-                                                              struct mylite_sql_token end_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *values,
+    struct mylite_sql_token end_token
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
     struct mylite_sql_ast_node *row = NULL;
 
@@ -2310,10 +2619,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row(struct mylite_sql_
     return row;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_insert_value_list(struct mylite_sql_parser_state *state,
-                                         struct mylite_sql_ast_node *value)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_value_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span =
         value == NULL ? (struct mylite_sql_source_span){0} : value->span;
     struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_INSERT_VALUE_LIST, span);
@@ -2325,11 +2634,11 @@ mylite_sql_parser_make_insert_value_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_insert_value(struct mylite_sql_parser_state *state,
-                                      struct mylite_sql_ast_node *list,
-                                      struct mylite_sql_ast_node *value)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_insert_value(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *value
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -2341,10 +2650,10 @@ mylite_sql_parser_append_insert_value(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_insert_set_assignment_list(struct mylite_sql_parser_state *state,
-                                                  struct mylite_sql_ast_node *assignment)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_assignment_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *assignment
+) {
     struct mylite_sql_source_span span =
         assignment == NULL ? (struct mylite_sql_source_span){0} : assignment->span;
     struct mylite_sql_ast_node *list =
@@ -2357,11 +2666,11 @@ mylite_sql_parser_make_insert_set_assignment_list(struct mylite_sql_parser_state
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_insert_set_assignment(struct mylite_sql_parser_state *state,
-                                               struct mylite_sql_ast_node *list,
-                                               struct mylite_sql_ast_node *assignment)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_insert_set_assignment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *assignment
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -2374,9 +2683,11 @@ mylite_sql_parser_append_insert_set_assignment(struct mylite_sql_parser_state *s
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_assignment(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *target,
-    struct mylite_sql_token equal_token, struct mylite_sql_ast_node *value)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_token equal_token,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span =
         target == NULL ? span_from_token(&equal_token) : target->span;
     struct mylite_sql_ast_node *assignment = NULL;
@@ -2394,11 +2705,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_assignment(
     return assignment;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_insert_duplicate_update_clause(struct mylite_sql_parser_state *state,
-                                                      struct mylite_sql_token on_token,
-                                                      struct mylite_sql_ast_node *assignments)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_duplicate_update_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token on_token,
+    struct mylite_sql_ast_node *assignments
+) {
     struct mylite_sql_source_span span = span_from_token(&on_token);
     struct mylite_sql_ast_node *clause = NULL;
 
@@ -2414,10 +2725,10 @@ mylite_sql_parser_make_insert_duplicate_update_clause(struct mylite_sql_parser_s
     return clause;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_insert_update_assignment_list(struct mylite_sql_parser_state *state,
-                                                     struct mylite_sql_ast_node *assignment)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_update_assignment_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *assignment
+) {
     struct mylite_sql_source_span span =
         assignment == NULL ? (struct mylite_sql_source_span){0} : assignment->span;
     struct mylite_sql_ast_node *list =
@@ -2430,11 +2741,11 @@ mylite_sql_parser_make_insert_update_assignment_list(struct mylite_sql_parser_st
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_insert_update_assignment(struct mylite_sql_parser_state *state,
-                                                  struct mylite_sql_ast_node *list,
-                                                  struct mylite_sql_ast_node *assignment)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_insert_update_assignment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *assignment
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -2447,9 +2758,11 @@ mylite_sql_parser_append_insert_update_assignment(struct mylite_sql_parser_state
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_update_assignment(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *target,
-    struct mylite_sql_token equal_token, struct mylite_sql_ast_node *value)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_token equal_token,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span =
         target == NULL ? span_from_token(&equal_token) : target->span;
     struct mylite_sql_ast_node *assignment = NULL;
@@ -2468,9 +2781,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_update_assignment(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row_alias(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token as_token,
-    struct mylite_sql_ast_node *alias, struct mylite_sql_ast_node *columns)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token as_token,
+    struct mylite_sql_ast_node *alias,
+    struct mylite_sql_ast_node *columns
+) {
     struct mylite_sql_source_span span = span_from_token(&as_token);
     struct mylite_sql_ast_node *row_alias = NULL;
 
@@ -2490,10 +2805,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row_alias(
     return row_alias;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_insert_alias_column_list(struct mylite_sql_parser_state *state,
-                                                struct mylite_sql_ast_node *column)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_alias_column_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column
+) {
     struct mylite_sql_source_span span =
         column == NULL ? (struct mylite_sql_source_span){0} : column->span;
     struct mylite_sql_ast_node *list =
@@ -2506,11 +2821,11 @@ mylite_sql_parser_make_insert_alias_column_list(struct mylite_sql_parser_state *
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_insert_alias_column(struct mylite_sql_parser_state *state,
-                                             struct mylite_sql_ast_node *list,
-                                             struct mylite_sql_ast_node *column)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_insert_alias_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *column
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -2523,11 +2838,14 @@ mylite_sql_parser_append_insert_alias_column(struct mylite_sql_parser_state *sta
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token update_token,
-    struct mylite_sql_ast_node *target, struct mylite_sql_ast_node *assignments,
-    struct mylite_sql_ast_node *where_clause, struct mylite_sql_ast_node *order_by_clause,
-    struct mylite_sql_ast_node *limit_clause)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token update_token,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_ast_node *assignments,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
     struct mylite_sql_source_span span = span_from_token(&update_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2560,11 +2878,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_update_statement(
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_update_target(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_ast_node *table_name,
-                                     struct mylite_sql_ast_node *alias)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_update_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *alias
+) {
     struct mylite_sql_source_span span =
         table_name == NULL ? (struct mylite_sql_source_span){0} : table_name->span;
     struct mylite_sql_ast_node *target = NULL;
@@ -2583,10 +2901,10 @@ mylite_sql_parser_make_update_target(struct mylite_sql_parser_state *state,
     return target;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_update_assignment_list(struct mylite_sql_parser_state *state,
-                                              struct mylite_sql_ast_node *assignment)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_update_assignment_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *assignment
+) {
     struct mylite_sql_source_span span =
         assignment == NULL ? (struct mylite_sql_source_span){0} : assignment->span;
     struct mylite_sql_ast_node *list =
@@ -2599,11 +2917,11 @@ mylite_sql_parser_make_update_assignment_list(struct mylite_sql_parser_state *st
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_update_assignment(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *list,
-                                           struct mylite_sql_ast_node *assignment)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_update_assignment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *assignment
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -2616,9 +2934,11 @@ mylite_sql_parser_append_update_assignment(struct mylite_sql_parser_state *state
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_update_assignment(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *target,
-    struct mylite_sql_token equal_token, struct mylite_sql_ast_node *value)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_token equal_token,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span =
         target == NULL ? span_from_token(&equal_token) : target->span;
     struct mylite_sql_ast_node *assignment = NULL;
@@ -2636,11 +2956,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_update_assignment(
     return assignment;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_update_limit_clause(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_token limit_token,
-                                           struct mylite_sql_ast_node *row_count_bound)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_update_limit_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token limit_token,
+    struct mylite_sql_ast_node *row_count_bound
+) {
     struct mylite_sql_source_span span = span_from_token(&limit_token);
     struct mylite_sql_ast_node *limit_clause = NULL;
 
@@ -2657,10 +2977,13 @@ mylite_sql_parser_make_update_limit_clause(struct mylite_sql_parser_state *state
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_delete_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token delete_token,
-    struct mylite_sql_ast_node *target, struct mylite_sql_ast_node *where_clause,
-    struct mylite_sql_ast_node *order_by_clause, struct mylite_sql_ast_node *limit_clause)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token delete_token,
+    struct mylite_sql_ast_node *target,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
     struct mylite_sql_source_span span = span_from_token(&delete_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2691,10 +3014,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_delete_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_multi_delete_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token delete_token,
-    enum mylite_sql_ast_delete_form form, struct mylite_sql_ast_node *targets,
-    struct mylite_sql_ast_node *from_clause, struct mylite_sql_ast_node *where_clause)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token delete_token,
+    enum mylite_sql_ast_delete_form form,
+    struct mylite_sql_ast_node *targets,
+    struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause
+) {
     struct mylite_sql_source_span span = span_from_token(&delete_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2725,11 +3051,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_multi_delete_statement(
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_start_transaction_statement(struct mylite_sql_parser_state *state,
-                                                   struct mylite_sql_token start_token,
-                                                   struct mylite_sql_ast_node *characteristics)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_start_transaction_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *characteristics
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2746,10 +3072,10 @@ mylite_sql_parser_make_start_transaction_statement(struct mylite_sql_parser_stat
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_begin_transaction_statement(struct mylite_sql_parser_state *state,
-                                                   struct mylite_sql_parser_statement_tokens tokens)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_begin_transaction_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_statement_tokens tokens
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.start);
 
     if (tokens.end.text != NULL) {
@@ -2759,10 +3085,10 @@ mylite_sql_parser_make_begin_transaction_statement(struct mylite_sql_parser_stat
     return make_node(state, MYLITE_SQL_AST_BEGIN_TRANSACTION_STATEMENT, span);
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_transaction_characteristic_list(struct mylite_sql_parser_state *state,
-                                                       struct mylite_sql_ast_node *characteristic)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_characteristic_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *characteristic
+) {
     struct mylite_sql_ast_node *list = NULL;
 
     if (characteristic == NULL) {
@@ -2778,11 +3104,11 @@ mylite_sql_parser_make_transaction_characteristic_list(struct mylite_sql_parser_
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_transaction_characteristic(struct mylite_sql_parser_state *state,
-                                                    struct mylite_sql_ast_node *list,
-                                                    struct mylite_sql_ast_node *characteristic)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_transaction_characteristic(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *characteristic
+) {
     const struct mylite_sql_ast_node *existing = NULL;
 
     if (!is_parse_ok(state) || list == NULL || characteristic == NULL) {
@@ -2802,12 +3128,16 @@ mylite_sql_parser_append_transaction_characteristic(struct mylite_sql_parser_sta
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_access_mode(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token read_token,
-    struct mylite_sql_token end_token, enum mylite_sql_ast_transaction_access_mode access_mode)
-{
-    struct mylite_sql_ast_node *characteristic =
-        make_node(state, MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC,
-                  span_join(span_from_token(&read_token), span_from_token(&end_token)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token read_token,
+    struct mylite_sql_token end_token,
+    enum mylite_sql_ast_transaction_access_mode access_mode
+) {
+    struct mylite_sql_ast_node *characteristic = make_node(
+        state,
+        MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC,
+        span_join(span_from_token(&read_token), span_from_token(&end_token))
+    );
 
     if (characteristic == NULL) {
         return NULL;
@@ -2817,14 +3147,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_access_mode(
     return characteristic;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_transaction_consistent_snapshot(struct mylite_sql_parser_state *state,
-                                                       struct mylite_sql_token with_token,
-                                                       struct mylite_sql_token snapshot_token)
-{
-    struct mylite_sql_ast_node *characteristic =
-        make_node(state, MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC,
-                  span_join(span_from_token(&with_token), span_from_token(&snapshot_token)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_consistent_snapshot(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token with_token,
+    struct mylite_sql_token snapshot_token
+) {
+    struct mylite_sql_ast_node *characteristic = make_node(
+        state,
+        MYLITE_SQL_AST_TRANSACTION_CHARACTERISTIC,
+        span_join(span_from_token(&with_token), span_from_token(&snapshot_token))
+    );
 
     if (characteristic == NULL) {
         return NULL;
@@ -2834,11 +3166,11 @@ mylite_sql_parser_make_transaction_consistent_snapshot(struct mylite_sql_parser_
     return characteristic;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_commit_statement(struct mylite_sql_parser_state *state,
-                                        struct mylite_sql_parser_statement_tokens tokens,
-                                        struct mylite_sql_ast_node *completion)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_commit_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_statement_tokens tokens,
+    struct mylite_sql_ast_node *completion
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.start);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2858,11 +3190,11 @@ mylite_sql_parser_make_commit_statement(struct mylite_sql_parser_state *state,
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_rollback_statement(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_parser_statement_tokens tokens,
-                                          struct mylite_sql_ast_node *completion)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_rollback_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_statement_tokens tokens,
+    struct mylite_sql_ast_node *completion
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.start);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2882,11 +3214,11 @@ mylite_sql_parser_make_rollback_statement(struct mylite_sql_parser_state *state,
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_savepoint_statement(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_token savepoint_token,
-                                           struct mylite_sql_ast_node *name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_savepoint_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token savepoint_token,
+    struct mylite_sql_ast_node *name
+) {
     struct mylite_sql_source_span span = span_from_token(&savepoint_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2903,11 +3235,11 @@ mylite_sql_parser_make_savepoint_statement(struct mylite_sql_parser_state *state
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_rollback_to_savepoint_statement(struct mylite_sql_parser_state *state,
-                                                       struct mylite_sql_token rollback_token,
-                                                       struct mylite_sql_ast_node *name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_rollback_to_savepoint_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token rollback_token,
+    struct mylite_sql_ast_node *name
+) {
     struct mylite_sql_source_span span = span_from_token(&rollback_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2924,11 +3256,11 @@ mylite_sql_parser_make_rollback_to_savepoint_statement(struct mylite_sql_parser_
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_release_savepoint_statement(struct mylite_sql_parser_state *state,
-                                                   struct mylite_sql_token release_token,
-                                                   struct mylite_sql_ast_node *name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_release_savepoint_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token release_token,
+    struct mylite_sql_ast_node *name
+) {
     struct mylite_sql_source_span span = span_from_token(&release_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -2946,9 +3278,11 @@ mylite_sql_parser_make_release_savepoint_statement(struct mylite_sql_parser_stat
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_completion(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_completion_tokens tokens,
-    enum mylite_sql_ast_transaction_chain chain, enum mylite_sql_ast_transaction_release release)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_completion_tokens tokens,
+    enum mylite_sql_ast_transaction_chain chain,
+    enum mylite_sql_ast_transaction_release release
+) {
     struct mylite_sql_source_span span = {0};
     struct mylite_sql_ast_node *completion = NULL;
 
@@ -2968,11 +3302,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_completion(
     return completion;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_delete_target(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_ast_node *table_name,
-                                     struct mylite_sql_ast_node *alias)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_delete_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *alias
+) {
     struct mylite_sql_source_span span =
         table_name == NULL ? (struct mylite_sql_source_span){0} : table_name->span;
     struct mylite_sql_ast_node *target = NULL;
@@ -2991,10 +3325,10 @@ mylite_sql_parser_make_delete_target(struct mylite_sql_parser_state *state,
     return target;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_delete_target_list(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_ast_node *target)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_delete_target_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *target
+) {
     struct mylite_sql_source_span span =
         target == NULL ? (struct mylite_sql_source_span){0} : target->span;
     struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_DELETE_TARGET_LIST, span);
@@ -3007,11 +3341,11 @@ mylite_sql_parser_make_delete_target_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_delete_target_name(struct mylite_sql_parser_state *state,
-                                            struct mylite_sql_ast_node *list,
-                                            struct mylite_sql_ast_node *target)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_delete_target_name(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *target
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -3023,11 +3357,11 @@ mylite_sql_parser_append_delete_target_name(struct mylite_sql_parser_state *stat
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_delete_target_name(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_ast_node *table_name,
-                                          struct mylite_sql_token wildcard_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_delete_target_name(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_token wildcard_token
+) {
     struct mylite_sql_source_span span =
         table_name == NULL ? (struct mylite_sql_source_span){0} : table_name->span;
     struct mylite_sql_ast_node *target = NULL;
@@ -3045,11 +3379,11 @@ mylite_sql_parser_make_delete_target_name(struct mylite_sql_parser_state *state,
     return target;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_delete_limit_clause(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_token limit_token,
-                                           struct mylite_sql_ast_node *row_count_bound)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_delete_limit_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token limit_token,
+    struct mylite_sql_ast_node *row_count_bound
+) {
     struct mylite_sql_source_span span = span_from_token(&limit_token);
     struct mylite_sql_ast_node *limit_clause = NULL;
 
@@ -3065,20 +3399,25 @@ mylite_sql_parser_make_delete_limit_clause(struct mylite_sql_parser_state *state
     return limit_clause;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_show_schemas_statement(struct mylite_sql_parser_state *state,
-                                              struct mylite_sql_token show_token,
-                                              struct mylite_sql_token schemas_token)
-{
-    return make_node(state, MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT,
-                     span_join(span_from_token(&show_token), span_from_token(&schemas_token)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_schemas_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token schemas_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_SCHEMAS_STATEMENT,
+        span_join(span_from_token(&show_token), span_from_token(&schemas_token))
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_variables_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
-    struct mylite_sql_parser_show_variables_scope scope, struct mylite_sql_token variables_token,
-    struct mylite_sql_ast_node *filter)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_parser_show_variables_scope scope,
+    struct mylite_sql_token variables_token,
+    struct mylite_sql_ast_node *filter
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&show_token), span_from_token(&variables_token));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3096,10 +3435,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_variables_statement(
     return statement;
 }
 
-struct mylite_sql_parser_show_variables_scope
-mylite_sql_parser_make_show_variables_scope(struct mylite_sql_token token,
-                                            enum mylite_sql_ast_show_variables_scope scope)
-{
+struct mylite_sql_parser_show_variables_scope mylite_sql_parser_make_show_variables_scope(
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_show_variables_scope scope
+) {
     return (struct mylite_sql_parser_show_variables_scope){
         .token = token,
         .scope = scope,
@@ -3107,10 +3446,12 @@ mylite_sql_parser_make_show_variables_scope(struct mylite_sql_token token,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_status_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
-    struct mylite_sql_parser_show_status_scope scope, struct mylite_sql_token status_token,
-    struct mylite_sql_ast_node *filter)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_parser_show_status_scope scope,
+    struct mylite_sql_token status_token,
+    struct mylite_sql_ast_node *filter
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&show_token), span_from_token(&status_token));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3128,20 +3469,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_status_statement(
     return statement;
 }
 
-struct mylite_sql_parser_show_status_scope
-mylite_sql_parser_make_show_status_scope(struct mylite_sql_token token,
-                                         enum mylite_sql_ast_show_status_scope scope)
-{
+struct mylite_sql_parser_show_status_scope mylite_sql_parser_make_show_status_scope(
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_show_status_scope scope
+) {
     return (struct mylite_sql_parser_show_status_scope){
         .token = token,
         .scope = scope,
     };
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_show_engines_statement(struct mylite_sql_parser_state *state,
-                                              struct mylite_sql_parser_show_engines_tokens tokens)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_engines_tokens tokens
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&tokens.show), span_from_token(&tokens.engines));
 
@@ -3149,9 +3490,11 @@ mylite_sql_parser_make_show_engines_statement(struct mylite_sql_parser_state *st
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_character_set_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
-    struct mylite_sql_token character_set_token, struct mylite_sql_ast_node *filter)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token character_set_token,
+    struct mylite_sql_ast_node *filter
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&show_token), span_from_token(&character_set_token));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3169,9 +3512,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_character_set_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_collation_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
-    struct mylite_sql_token collation_token, struct mylite_sql_ast_node *filter)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token collation_token,
+    struct mylite_sql_ast_node *filter
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&show_token), span_from_token(&collation_token));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3189,9 +3534,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_collation_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_tables_tokens tokens,
-    struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_tables_tokens tokens,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *filter
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&tokens.show), span_from_token(&tokens.tables));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3219,9 +3566,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_table_status_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_table_status_tokens tokens,
-    struct mylite_sql_ast_node *schema_name, struct mylite_sql_ast_node *filter)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_table_status_tokens tokens,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *filter
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&tokens.show), span_from_token(&tokens.status));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3243,10 +3592,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_table_status_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_columns_tokens tokens,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *schema_name,
-    struct mylite_sql_ast_node *filter)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_columns_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *filter
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&tokens.show), span_from_token(&tokens.columns));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3278,10 +3629,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_index_tokens tokens,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *schema_name,
-    struct mylite_sql_ast_node *filter)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_index_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *filter
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&tokens.show), span_from_token(&tokens.index));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3310,9 +3663,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_show_create_table_tokens tokens,
-    struct mylite_sql_ast_node *table_name)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_show_create_table_tokens tokens,
+    struct mylite_sql_ast_node *table_name
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&tokens.show), span_from_token(&tokens.table));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3332,8 +3686,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_schema_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_show_create_schema_tokens tokens,
-    struct mylite_sql_ast_node *if_not_exists, struct mylite_sql_ast_node *schema_name)
-{
+    struct mylite_sql_ast_node *if_not_exists,
+    struct mylite_sql_ast_node *schema_name
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&tokens.show), span_from_token(&tokens.schema));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3357,9 +3712,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_schema_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token show_token,
-    struct mylite_sql_parser_show_diagnostics_kind kind, struct mylite_sql_ast_node *limit_clause)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_parser_show_diagnostics_kind kind,
+    struct mylite_sql_ast_node *limit_clause
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&show_token), span_from_token(&kind.token));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3380,8 +3737,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_count_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_show_diagnostics_count_tokens tokens,
-    struct mylite_sql_parser_show_diagnostics_kind kind)
-{
+    struct mylite_sql_parser_show_diagnostics_kind kind
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&tokens.show), span_from_token(&kind.token));
     struct mylite_sql_ast_node *statement = NULL;
@@ -3396,10 +3753,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_diagnostics_count_statem
     return statement;
 }
 
-struct mylite_sql_parser_show_diagnostics_kind
-mylite_sql_parser_make_show_diagnostics_kind(struct mylite_sql_token token,
-                                             enum mylite_sql_ast_show_diagnostics_kind kind)
-{
+struct mylite_sql_parser_show_diagnostics_kind mylite_sql_parser_make_show_diagnostics_kind(
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_show_diagnostics_kind kind
+) {
     return (struct mylite_sql_parser_show_diagnostics_kind){
         .token = token,
         .kind = kind,
@@ -3407,9 +3764,11 @@ mylite_sql_parser_make_show_diagnostics_kind(struct mylite_sql_token token,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_describe_table_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_describe_table_tokens tokens,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *filter)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_describe_table_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *filter
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.keyword);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3430,9 +3789,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_describe_table_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token set_token,
-    struct mylite_sql_ast_node *character_set, struct mylite_sql_ast_node *collation)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *character_set,
+    struct mylite_sql_ast_node *collation
+) {
     struct mylite_sql_source_span span = span_from_token(&set_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3453,11 +3814,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_set_character_set_statement(struct mylite_sql_parser_state *state,
-                                                   struct mylite_sql_token set_token,
-                                                   struct mylite_sql_ast_node *character_set)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_character_set_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *character_set
+) {
     struct mylite_sql_source_span span = span_from_token(&set_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3475,10 +3836,12 @@ mylite_sql_parser_make_set_character_set_statement(struct mylite_sql_parser_stat
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_system_variable_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token set_token,
-    enum mylite_sql_ast_set_system_variable_scope scope, struct mylite_sql_ast_node *variable_name,
-    struct mylite_sql_ast_node *value)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    enum mylite_sql_ast_set_system_variable_scope scope,
+    struct mylite_sql_ast_node *variable_name,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span = span_from_token(&set_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3497,11 +3860,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_system_variable_statement
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_set_user_variable_statement(struct mylite_sql_parser_state *state,
-                                                   struct mylite_sql_token set_token,
-                                                   struct mylite_sql_ast_node *assignments)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_user_variable_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *assignments
+) {
     struct mylite_sql_source_span span = span_from_token(&set_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3517,13 +3880,15 @@ mylite_sql_parser_make_set_user_variable_statement(struct mylite_sql_parser_stat
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_user_variable_assignment_list(struct mylite_sql_parser_state *state,
-                                                     struct mylite_sql_ast_node *assignment)
-{
-    struct mylite_sql_ast_node *list =
-        make_node(state, MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST,
-                  assignment == NULL ? (struct mylite_sql_source_span){0} : assignment->span);
+struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable_assignment_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *assignment
+) {
+    struct mylite_sql_ast_node *list = make_node(
+        state,
+        MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST,
+        assignment == NULL ? (struct mylite_sql_source_span){0} : assignment->span
+    );
 
     if (list == NULL) {
         return NULL;
@@ -3532,11 +3897,11 @@ mylite_sql_parser_make_user_variable_assignment_list(struct mylite_sql_parser_st
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_user_variable_assignment(struct mylite_sql_parser_state *state,
-                                                  struct mylite_sql_ast_node *list,
-                                                  struct mylite_sql_ast_node *assignment)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_user_variable_assignment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *assignment
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -3547,11 +3912,11 @@ mylite_sql_parser_append_user_variable_assignment(struct mylite_sql_parser_state
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_user_variable_assignment(struct mylite_sql_parser_state *state,
-                                                struct mylite_sql_ast_node *variable,
-                                                struct mylite_sql_ast_node *expression)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_user_variable_assignment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *variable,
+    struct mylite_sql_ast_node *expression
+) {
     struct mylite_sql_source_span span =
         variable == NULL ? (struct mylite_sql_source_span){0} : variable->span;
     struct mylite_sql_ast_node *assignment = NULL;
@@ -3570,9 +3935,11 @@ mylite_sql_parser_make_user_variable_assignment(struct mylite_sql_parser_state *
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_prepare_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token prepare_token,
-    struct mylite_sql_ast_node *statement_name, struct mylite_sql_ast_node *source)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token prepare_token,
+    struct mylite_sql_ast_node *statement_name,
+    struct mylite_sql_ast_node *source
+) {
     struct mylite_sql_source_span span = span_from_token(&prepare_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3590,9 +3957,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_prepare_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_execute_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token execute_token,
-    struct mylite_sql_ast_node *statement_name, struct mylite_sql_ast_node *using_list)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token execute_token,
+    struct mylite_sql_ast_node *statement_name,
+    struct mylite_sql_ast_node *using_list
+) {
     struct mylite_sql_source_span span = span_from_token(&execute_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3611,13 +3980,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_execute_statement(
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_execute_using_list(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_ast_node *variable)
-{
-    struct mylite_sql_ast_node *list =
-        make_node(state, MYLITE_SQL_AST_EXECUTE_USING_LIST,
-                  variable == NULL ? (struct mylite_sql_source_span){0} : variable->span);
+struct mylite_sql_ast_node *mylite_sql_parser_make_execute_using_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *variable
+) {
+    struct mylite_sql_ast_node *list = make_node(
+        state,
+        MYLITE_SQL_AST_EXECUTE_USING_LIST,
+        variable == NULL ? (struct mylite_sql_source_span){0} : variable->span
+    );
 
     if (list == NULL) {
         return NULL;
@@ -3626,11 +3997,11 @@ mylite_sql_parser_make_execute_using_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_execute_using_variable(struct mylite_sql_parser_state *state,
-                                                struct mylite_sql_ast_node *list,
-                                                struct mylite_sql_ast_node *variable)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_execute_using_variable(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *variable
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -3641,11 +4012,11 @@ mylite_sql_parser_append_execute_using_variable(struct mylite_sql_parser_state *
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_deallocate_prepare_statement(struct mylite_sql_parser_state *state,
-                                                    struct mylite_sql_token keyword_token,
-                                                    struct mylite_sql_ast_node *statement_name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_deallocate_prepare_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token keyword_token,
+    struct mylite_sql_ast_node *statement_name
+) {
     struct mylite_sql_source_span span = span_from_token(&keyword_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3662,9 +4033,11 @@ mylite_sql_parser_make_deallocate_prepare_statement(struct mylite_sql_parser_sta
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement(
-    struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
-    struct mylite_sql_token start_token, struct mylite_sql_ast_node *last_node)
-{
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_placeholder_statement_kind kind,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *last_node
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3677,9 +4050,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement_with_child(
-    struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
-    struct mylite_sql_token start_token, struct mylite_sql_ast_node *child)
-{
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_placeholder_statement_kind kind,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *child
+) {
     struct mylite_sql_ast_node *statement =
         mylite_sql_parser_make_placeholder_statement(state, kind, start_token, child);
 
@@ -3691,21 +4066,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement_with_ch
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_placeholder_statement_with_end_token(
-    struct mylite_sql_parser_state *state, enum mylite_sql_ast_placeholder_statement_kind kind,
-    struct mylite_sql_token start_token, struct mylite_sql_token end_token)
-{
-    struct mylite_sql_ast_node *statement =
-        make_node(state, MYLITE_SQL_AST_PLACEHOLDER_STATEMENT,
-                  span_join(span_from_token(&start_token), span_from_token(&end_token)));
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_placeholder_statement_kind kind,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_token end_token
+) {
+    struct mylite_sql_ast_node *statement = make_node(
+        state,
+        MYLITE_SQL_AST_PLACEHOLDER_STATEMENT,
+        span_join(span_from_token(&start_token), span_from_token(&end_token))
+    );
     mylite_sql_ast_node_set_placeholder_statement_kind(statement, kind);
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_stored_program_body(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_token start_token,
-                                           struct mylite_sql_ast_node *last_node)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_stored_program_body(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *last_node
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
 
     if (last_node != NULL) {
@@ -3714,21 +4093,27 @@ mylite_sql_parser_make_stored_program_body(struct mylite_sql_parser_state *state
     return make_node(state, MYLITE_SQL_AST_SCRIPT, span);
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_stored_program_body_with_end_token(struct mylite_sql_parser_state *state,
-                                                          struct mylite_sql_token start_token,
-                                                          struct mylite_sql_token end_token)
-{
-    return make_node(state, MYLITE_SQL_AST_SCRIPT,
-                     span_join(span_from_token(&start_token), span_from_token(&end_token)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_stored_program_body_with_end_token(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_token end_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SCRIPT,
+        span_join(span_from_token(&start_token), span_from_token(&end_token))
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token create_token,
-    struct mylite_sql_token temporary_token, struct mylite_sql_ast_node *if_not_exists,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
-    struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_token temporary_token,
+    struct mylite_sql_ast_node *if_not_exists,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_source_span span = span_from_token(&create_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3761,12 +4146,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_create_index_tokens tokens,
-    enum mylite_sql_ast_index_class index_class, struct mylite_sql_ast_node *index_name,
-    struct mylite_sql_ast_node *pre_index_type, struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *key_parts, struct mylite_sql_ast_node *options,
-    struct mylite_sql_ast_node *ddl_options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_create_index_tokens tokens,
+    enum mylite_sql_ast_index_class index_class,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *pre_index_type,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options,
+    struct mylite_sql_ast_node *ddl_options
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.create);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3808,10 +4197,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_index_statement(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token drop_token,
-    struct mylite_sql_ast_node *index_name, struct mylite_sql_ast_node *table_name,
-    struct mylite_sql_ast_node *ddl_options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *ddl_options
+) {
     struct mylite_sql_source_span span = span_from_token(&drop_token);
     struct mylite_sql_ast_node *statement = NULL;
 
@@ -3836,18 +4227,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_index_statement(
     return statement;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_ddl_table_option_list(struct mylite_sql_parser_state *state)
-{
-    return make_node(state, MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST,
-                     (struct mylite_sql_source_span){0});
+struct mylite_sql_ast_node *mylite_sql_parser_make_ddl_table_option_list(
+    struct mylite_sql_parser_state *state
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST,
+        (struct mylite_sql_source_span){0}
+    );
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_ddl_table_option(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_ast_node *list,
-                                          struct mylite_sql_ast_node *option)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_ddl_table_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -3859,14 +4253,16 @@ mylite_sql_parser_append_ddl_table_option(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_ddl_table_option(struct mylite_sql_parser_state *state,
-                                        struct mylite_sql_parser_ddl_table_option_tokens tokens,
-                                        enum mylite_sql_ast_ddl_table_option option_kind)
-{
-    struct mylite_sql_ast_node *option =
-        make_node(state, MYLITE_SQL_AST_DDL_TABLE_OPTION,
-                  span_join(span_from_token(&tokens.option), span_from_token(&tokens.value)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_ddl_table_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_ddl_table_option_tokens tokens,
+    enum mylite_sql_ast_ddl_table_option option_kind
+) {
+    struct mylite_sql_ast_node *option = make_node(
+        state,
+        MYLITE_SQL_AST_DDL_TABLE_OPTION,
+        span_join(span_from_token(&tokens.option), span_from_token(&tokens.value))
+    );
     if (option == NULL) {
         return NULL;
     }
@@ -3875,17 +4271,17 @@ mylite_sql_parser_make_ddl_table_option(struct mylite_sql_parser_state *state,
     return option;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_table_option_list(struct mylite_sql_parser_state *state)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_option_list(
+    struct mylite_sql_parser_state *state
+) {
     return make_node(state, MYLITE_SQL_AST_TABLE_OPTION_LIST, (struct mylite_sql_source_span){0});
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_table_option(struct mylite_sql_parser_state *state,
-                                      struct mylite_sql_ast_node *list,
-                                      struct mylite_sql_ast_node *option)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_table_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -3898,9 +4294,11 @@ mylite_sql_parser_append_table_option(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_option(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token option_token,
-    enum mylite_sql_ast_table_option option_kind, struct mylite_sql_ast_node *value)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token option_token,
+    enum mylite_sql_ast_table_option option_kind,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span = span_from_token(&option_token);
     struct mylite_sql_ast_node *option = NULL;
 
@@ -3920,26 +4318,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_option(
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_comment_option(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_parser_table_string_option_tokens tokens)
-{
+    struct mylite_sql_parser_table_string_option_tokens tokens
+) {
     return mylite_sql_parser_make_table_option(
-        state, tokens.option, MYLITE_SQL_AST_TABLE_OPTION_COMMENT,
-        mylite_sql_parser_make_literal(state, tokens.string, MYLITE_SQL_AST_LITERAL_STRING));
+        state,
+        tokens.option,
+        MYLITE_SQL_AST_TABLE_OPTION_COMMENT,
+        mylite_sql_parser_make_literal(state, tokens.string, MYLITE_SQL_AST_LITERAL_STRING)
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_auto_increment_option(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_parser_table_integer_option_tokens tokens)
-{
-    return mylite_sql_parser_make_table_option(state, tokens.option,
-                                               MYLITE_SQL_AST_TABLE_OPTION_AUTO_INCREMENT,
-                                               make_checked_integer_literal(state, tokens.integer));
+    struct mylite_sql_parser_table_integer_option_tokens tokens
+) {
+    return mylite_sql_parser_make_table_option(
+        state,
+        tokens.option,
+        MYLITE_SQL_AST_TABLE_OPTION_AUTO_INCREMENT,
+        make_checked_integer_literal(state, tokens.integer)
+    );
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_definition_list(struct mylite_sql_parser_state *state,
-                                              struct mylite_sql_ast_node *column)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column
+) {
     struct mylite_sql_source_span span =
         column == NULL ? (struct mylite_sql_source_span){0} : column->span;
     struct mylite_sql_ast_node *list =
@@ -3952,11 +4356,11 @@ mylite_sql_parser_make_column_definition_list(struct mylite_sql_parser_state *st
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_column_definition(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *list,
-                                           struct mylite_sql_ast_node *column)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *column
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -3969,11 +4373,14 @@ mylite_sql_parser_append_column_definition(struct mylite_sql_parser_state *state
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_constraint(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
-    struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *index_name,
-    struct mylite_sql_ast_node *index_type, struct mylite_sql_ast_node *key_parts,
-    struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
     struct mylite_sql_ast_node *constraint = NULL;
 
@@ -4007,10 +4414,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_primary_key_constraint(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
-    struct mylite_sql_ast_node *index_name, struct mylite_sql_ast_node *index_type,
-    struct mylite_sql_ast_node *key_parts, struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
     struct mylite_sql_ast_node *index = NULL;
 
@@ -4040,11 +4450,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_secondary_index(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
-    struct mylite_sql_ast_node *constraint_name, struct mylite_sql_ast_node *index_name,
-    struct mylite_sql_ast_node *index_type, struct mylite_sql_ast_node *key_parts,
-    struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *constraint_name,
+    struct mylite_sql_ast_node *index_name,
+    struct mylite_sql_ast_node *index_type,
+    struct mylite_sql_ast_node *key_parts,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
     struct mylite_sql_ast_node *index = NULL;
 
@@ -4077,10 +4490,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_unique_index(
     return index;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_key_part_list(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_ast_node *key_part)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_key_part_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *key_part
+) {
     struct mylite_sql_source_span span =
         key_part == NULL ? (struct mylite_sql_source_span){0} : key_part->span;
     struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_KEY_PART_LIST, span);
@@ -4092,10 +4505,11 @@ mylite_sql_parser_make_key_part_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_append_key_part(struct mylite_sql_parser_state *state,
-                                                              struct mylite_sql_ast_node *list,
-                                                              struct mylite_sql_ast_node *key_part)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_key_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *key_part
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -4108,10 +4522,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_key_part(struct mylite_sql_
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_key_part(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_ast_node *prefix, enum mylite_sql_ast_key_part_order order,
-    struct mylite_sql_token order_token)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *prefix,
+    enum mylite_sql_ast_key_part_order order,
+    struct mylite_sql_token order_token
+) {
     struct mylite_sql_source_span span =
         name == NULL ? (struct mylite_sql_source_span){0} : name->span;
     struct mylite_sql_ast_node *key_part = NULL;
@@ -4134,27 +4550,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_key_part(
     return key_part;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_key_part_prefix(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_parser_key_part_prefix_tokens tokens)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_key_part_prefix(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_key_part_prefix_tokens tokens
+) {
     struct mylite_sql_ast_node *prefix = make_checked_integer_literal(state, tokens.integer);
     if (prefix == NULL) {
         return NULL;
     }
 
-    mylite_sql_ast_node_set_span(prefix, span_join(span_from_token(&tokens.left_paren),
-                                                   span_from_token(&tokens.right_paren)));
+    mylite_sql_ast_node_set_span(
+        prefix,
+        span_join(span_from_token(&tokens.left_paren), span_from_token(&tokens.right_paren))
+    );
     return prefix;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_type(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token using_token,
-    struct mylite_sql_token algorithm_token, enum mylite_sql_ast_index_algorithm algorithm)
-{
-    struct mylite_sql_ast_node *index_type =
-        make_node(state, MYLITE_SQL_AST_INDEX_TYPE,
-                  span_join(span_from_token(&using_token), span_from_token(&algorithm_token)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token using_token,
+    struct mylite_sql_token algorithm_token,
+    enum mylite_sql_ast_index_algorithm algorithm
+) {
+    struct mylite_sql_ast_node *index_type = make_node(
+        state,
+        MYLITE_SQL_AST_INDEX_TYPE,
+        span_join(span_from_token(&using_token), span_from_token(&algorithm_token))
+    );
     if (index_type == NULL) {
         return NULL;
     }
@@ -4163,17 +4585,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_index_type(
     return index_type;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_index_option_list(struct mylite_sql_parser_state *state)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_option_list(
+    struct mylite_sql_parser_state *state
+) {
     return make_node(state, MYLITE_SQL_AST_INDEX_OPTION_LIST, (struct mylite_sql_source_span){0});
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_index_option(struct mylite_sql_parser_state *state,
-                                      struct mylite_sql_ast_node *list,
-                                      struct mylite_sql_ast_node *option)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_index_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -4185,10 +4607,10 @@ mylite_sql_parser_append_index_option(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_index_using_option(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_ast_node *index_type)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_using_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *index_type
+) {
     struct mylite_sql_source_span span =
         index_type == NULL ? (struct mylite_sql_source_span){0} : index_type->span;
     struct mylite_sql_ast_node *option = make_node(state, MYLITE_SQL_AST_INDEX_OPTION, span);
@@ -4206,8 +4628,8 @@ mylite_sql_parser_make_index_using_option(struct mylite_sql_parser_state *state,
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_key_block_size_option(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_parser_index_key_block_size_tokens tokens)
-{
+    struct mylite_sql_parser_index_key_block_size_tokens tokens
+) {
     struct mylite_sql_ast_node *value = make_checked_integer_literal(state, tokens.integer);
     struct mylite_sql_source_span span = span_from_token(&tokens.key_block_size);
     struct mylite_sql_ast_node *option = NULL;
@@ -4228,8 +4650,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_index_key_block_size_option(
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_comment_option(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_parser_index_string_option_tokens tokens)
-{
+    struct mylite_sql_parser_index_string_option_tokens tokens
+) {
     struct mylite_sql_ast_node *value =
         mylite_sql_parser_make_literal(state, tokens.string, MYLITE_SQL_AST_LITERAL_STRING);
     struct mylite_sql_source_span span = span_from_token(&tokens.option);
@@ -4249,11 +4671,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_index_comment_option(
     return option;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_index_visibility_option(struct mylite_sql_parser_state *state,
-                                               struct mylite_sql_token visibility_token,
-                                               enum mylite_sql_ast_index_option visibility)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_visibility_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token visibility_token,
+    enum mylite_sql_ast_index_option visibility
+) {
     struct mylite_sql_ast_node *option =
         make_node(state, MYLITE_SQL_AST_INDEX_OPTION, span_from_token(&visibility_token));
     if (option == NULL) {
@@ -4267,8 +4689,8 @@ mylite_sql_parser_make_index_visibility_option(struct mylite_sql_parser_state *s
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_attribute_option(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_index_string_option_tokens tokens,
-    enum mylite_sql_ast_index_option option_kind)
-{
+    enum mylite_sql_ast_index_option option_kind
+) {
     struct mylite_sql_ast_node *value =
         mylite_sql_parser_make_literal(state, tokens.string, MYLITE_SQL_AST_LITERAL_STRING);
     struct mylite_sql_source_span span = span_from_token(&tokens.option);
@@ -4288,11 +4710,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_index_attribute_option(
     return option;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_index_with_parser_option(struct mylite_sql_parser_state *state,
-                                                struct mylite_sql_token with_token,
-                                                struct mylite_sql_ast_node *parser_name)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_index_with_parser_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token with_token,
+    struct mylite_sql_ast_node *parser_name
+) {
     struct mylite_sql_source_span span = span_from_token(&with_token);
     struct mylite_sql_ast_node *option = NULL;
 
@@ -4310,10 +4732,10 @@ mylite_sql_parser_make_index_with_parser_option(struct mylite_sql_parser_state *
     return option;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_identifier_list(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_ast_node *identifier)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_identifier_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *identifier
+) {
     struct mylite_sql_source_span span =
         identifier == NULL ? (struct mylite_sql_source_span){0} : identifier->span;
     struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_INSERT_COLUMN_LIST, span);
@@ -4325,11 +4747,11 @@ mylite_sql_parser_make_identifier_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_identifier(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_ast_node *list,
-                                    struct mylite_sql_ast_node *identifier)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_identifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *identifier
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -4342,10 +4764,12 @@ mylite_sql_parser_append_identifier(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_reference_definition(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token references_token,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *columns,
-    struct mylite_sql_ast_node *options)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token references_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *options
+) {
     struct mylite_sql_source_span span = span_from_token(&references_token);
     struct mylite_sql_ast_node *reference = NULL;
 
@@ -4370,18 +4794,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_reference_definition(
     return reference;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_reference_option_list(struct mylite_sql_parser_state *state)
-{
-    return make_node(state, MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST,
-                     (struct mylite_sql_source_span){0});
+struct mylite_sql_ast_node *mylite_sql_parser_make_reference_option_list(
+    struct mylite_sql_parser_state *state
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_DDL_TABLE_OPTION_LIST,
+        (struct mylite_sql_source_span){0}
+    );
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_reference_option(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_ast_node *list,
-                                          struct mylite_sql_ast_node *option)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_reference_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -4393,15 +4820,17 @@ mylite_sql_parser_append_reference_option(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_reference_action_option(struct mylite_sql_parser_state *state,
-                                               struct mylite_sql_token on_token,
-                                               enum mylite_sql_ast_reference_option option_kind,
-                                               struct mylite_sql_parser_reference_action action)
-{
-    struct mylite_sql_ast_node *option =
-        make_node(state, MYLITE_SQL_AST_DDL_TABLE_OPTION,
-                  span_join(span_from_token(&on_token), span_from_token(&action.end)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_reference_action_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token on_token,
+    enum mylite_sql_ast_reference_option option_kind,
+    struct mylite_sql_parser_reference_action action
+) {
+    struct mylite_sql_ast_node *option = make_node(
+        state,
+        MYLITE_SQL_AST_DDL_TABLE_OPTION,
+        span_join(span_from_token(&on_token), span_from_token(&action.end))
+    );
     if (option == NULL) {
         return NULL;
     }
@@ -4411,14 +4840,16 @@ mylite_sql_parser_make_reference_action_option(struct mylite_sql_parser_state *s
     return option;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_reference_match_option(struct mylite_sql_parser_state *state,
-                                              struct mylite_sql_token match_token,
-                                              struct mylite_sql_parser_reference_match match)
-{
-    struct mylite_sql_ast_node *option =
-        make_node(state, MYLITE_SQL_AST_DDL_TABLE_OPTION,
-                  span_join(span_from_token(&match_token), span_from_token(&match.token)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_reference_match_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token match_token,
+    struct mylite_sql_parser_reference_match match
+) {
+    struct mylite_sql_ast_node *option = make_node(
+        state,
+        MYLITE_SQL_AST_DDL_TABLE_OPTION,
+        span_join(span_from_token(&match_token), span_from_token(&match.token))
+    );
     if (option == NULL) {
         return NULL;
     }
@@ -4429,9 +4860,11 @@ mylite_sql_parser_make_reference_match_option(struct mylite_sql_parser_state *st
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_ast_node *column_type, struct mylite_sql_ast_node *attributes)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_ast_node *attributes
+) {
     struct mylite_sql_source_span span =
         name == NULL ? (struct mylite_sql_source_span){0} : name->span;
     struct mylite_sql_ast_node *column = NULL;
@@ -4454,11 +4887,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     return column;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_type(struct mylite_sql_parser_state *state,
-                                   struct mylite_sql_token type_token,
-                                   enum mylite_sql_ast_column_type column_type)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token type_token,
+    enum mylite_sql_ast_column_type column_type
+) {
     struct mylite_sql_ast_node *node =
         make_node(state, MYLITE_SQL_AST_COLUMN_TYPE, span_from_token(&type_token));
     if (node == NULL) {
@@ -4469,11 +4902,11 @@ mylite_sql_parser_make_column_type(struct mylite_sql_parser_state *state,
     return node;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_display_width(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *column_type,
-                                           struct mylite_sql_ast_node *display_width)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_display_width(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_ast_node *display_width
+) {
     if (!is_parse_ok(state) || column_type == NULL || display_width == NULL) {
         return column_type;
     }
@@ -4483,10 +4916,10 @@ mylite_sql_parser_set_column_display_width(struct mylite_sql_parser_state *state
     return column_type;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_integer_display_width(struct mylite_sql_parser_state *state,
-                                             struct mylite_sql_parser_display_width_tokens tokens)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_integer_display_width(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_display_width_tokens tokens
+) {
     enum { display_width_max = 255U };
     struct mylite_sql_ast_node *display_width =
         mylite_sql_parser_make_literal(state, tokens.integer, MYLITE_SQL_AST_LITERAL_INTEGER);
@@ -4498,23 +4931,27 @@ mylite_sql_parser_make_integer_display_width(struct mylite_sql_parser_state *sta
         return NULL;
     }
 
-    mylite_sql_ast_node_set_span(display_width, span_join(span_from_token(&tokens.left_paren),
-                                                          span_from_token(&tokens.right_paren)));
+    mylite_sql_ast_node_set_span(
+        display_width,
+        span_join(span_from_token(&tokens.left_paren), span_from_token(&tokens.right_paren))
+    );
     return display_width;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_length(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_parser_column_length_tokens tokens)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_length(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_column_length_tokens tokens
+) {
     struct mylite_sql_ast_node *length =
         mylite_sql_parser_make_literal(state, tokens.integer, MYLITE_SQL_AST_LITERAL_INTEGER);
     if (length == NULL) {
         return NULL;
     }
 
-    mylite_sql_ast_node_set_span(length, span_join(span_from_token(&tokens.left_paren),
-                                                   span_from_token(&tokens.right_paren)));
+    mylite_sql_ast_node_set_span(
+        length,
+        span_join(span_from_token(&tokens.left_paren), span_from_token(&tokens.right_paren))
+    );
     {
         uint64_t column_length = 0ULL;
         if (!parse_column_length(length, &column_length)) {
@@ -4526,11 +4963,11 @@ mylite_sql_parser_make_column_length(struct mylite_sql_parser_state *state,
     return length;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_length(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_ast_node *column_type,
-                                    struct mylite_sql_ast_node *length)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_length(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_ast_node *length
+) {
     if (!is_parse_ok(state) || column_type == NULL || length == NULL) {
         return column_type;
     }
@@ -4540,10 +4977,10 @@ mylite_sql_parser_set_column_length(struct mylite_sql_parser_state *state,
     return column_type;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_precision(struct mylite_sql_parser_state *state,
-                                        struct mylite_sql_parser_precision_tokens tokens)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_precision(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_precision_tokens tokens
+) {
     struct mylite_sql_ast_node *precision =
         mylite_sql_parser_make_literal(state, tokens.precision, MYLITE_SQL_AST_LITERAL_INTEGER);
     if (precision == NULL) {
@@ -4558,20 +4995,25 @@ mylite_sql_parser_make_column_precision(struct mylite_sql_parser_state *state,
         }
         mylite_sql_ast_node_set_column_precision(precision, value);
     }
-    mylite_sql_ast_node_set_span(precision, span_join(span_from_token(&tokens.left_paren),
-                                                      span_from_token(&tokens.right_paren)));
+    mylite_sql_ast_node_set_span(
+        precision,
+        span_join(span_from_token(&tokens.left_paren), span_from_token(&tokens.right_paren))
+    );
     return precision;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_precision_scale(
-    struct mylite_sql_parser_state *state, struct mylite_sql_parser_precision_scale_tokens tokens)
-{
-    struct mylite_sql_ast_node *precision_scale =
-        mylite_sql_parser_make_column_precision(state, (struct mylite_sql_parser_precision_tokens){
-                                                           .left_paren = tokens.left_paren,
-                                                           .precision = tokens.precision,
-                                                           .right_paren = tokens.right_paren,
-                                                       });
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_precision_scale_tokens tokens
+) {
+    struct mylite_sql_ast_node *precision_scale = mylite_sql_parser_make_column_precision(
+        state,
+        (struct mylite_sql_parser_precision_tokens){
+            .left_paren = tokens.left_paren,
+            .precision = tokens.precision,
+            .right_paren = tokens.right_paren,
+        }
+    );
     if (precision_scale == NULL) {
         return NULL;
     }
@@ -4589,11 +5031,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_precision_scale(
     return precision_scale;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_precision_scale(struct mylite_sql_parser_state *state,
-                                             struct mylite_sql_ast_node *column_type,
-                                             struct mylite_sql_ast_node *precision_scale)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_precision_scale(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_ast_node *precision_scale
+) {
     if (!is_parse_ok(state) || column_type == NULL || precision_scale == NULL) {
         return column_type;
     }
@@ -4606,48 +5048,55 @@ mylite_sql_parser_set_column_precision_scale(struct mylite_sql_parser_state *sta
     return column_type;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_type_signed(struct mylite_sql_parser_state *state,
-                                         struct mylite_sql_ast_node *column_type,
-                                         struct mylite_sql_token signed_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_signed(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_token signed_token
+) {
     if (!is_parse_ok(state) || column_type == NULL) {
         return column_type;
     }
 
     mylite_sql_ast_node_set_column_type_signed(column_type);
-    mylite_sql_ast_node_set_span(column_type,
-                                 span_join(column_type->span, span_from_token(&signed_token)));
+    mylite_sql_ast_node_set_span(
+        column_type,
+        span_join(column_type->span, span_from_token(&signed_token))
+    );
     return column_type;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_type_unsigned(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *column_type,
-                                           struct mylite_sql_token unsigned_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_unsigned(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_token unsigned_token
+) {
     if (!is_parse_ok(state) || column_type == NULL) {
         return column_type;
     }
 
     mylite_sql_ast_node_set_column_type_unsigned(column_type);
-    mylite_sql_ast_node_set_span(column_type,
-                                 span_join(column_type->span, span_from_token(&unsigned_token)));
+    mylite_sql_ast_node_set_span(
+        column_type,
+        span_join(column_type->span, span_from_token(&unsigned_token))
+    );
     return column_type;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_type_attribute_list(struct mylite_sql_parser_state *state)
-{
-    return make_node(state, MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST,
-                     (struct mylite_sql_source_span){0});
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_type_attribute_list(
+    struct mylite_sql_parser_state *state
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_COLUMN_TYPE_ATTRIBUTE_LIST,
+        (struct mylite_sql_source_span){0}
+    );
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_type_character_set(struct mylite_sql_parser_state *state,
-                                                struct mylite_sql_ast_node *attributes,
-                                                struct mylite_sql_ast_node *character_set)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_character_set(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *attributes,
+    struct mylite_sql_ast_node *character_set
+) {
     if (!is_parse_ok(state) || attributes == NULL || character_set == NULL) {
         return attributes;
     }
@@ -4657,11 +5106,11 @@ mylite_sql_parser_set_column_type_character_set(struct mylite_sql_parser_state *
     return attributes;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_type_collation(struct mylite_sql_parser_state *state,
-                                            struct mylite_sql_ast_node *attributes,
-                                            struct mylite_sql_ast_node *collation)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_collation(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *attributes,
+    struct mylite_sql_ast_node *collation
+) {
     if (!is_parse_ok(state) || attributes == NULL || collation == NULL) {
         return attributes;
     }
@@ -4671,56 +5120,62 @@ mylite_sql_parser_set_column_type_collation(struct mylite_sql_parser_state *stat
     return attributes;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_type_binary_attribute(struct mylite_sql_parser_state *state,
-                                                   struct mylite_sql_ast_node *attributes,
-                                                   struct mylite_sql_token binary_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_binary_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *attributes,
+    struct mylite_sql_token binary_token
+) {
     if (!is_parse_ok(state) || attributes == NULL) {
         return attributes;
     }
 
     mylite_sql_ast_node_set_column_binary_attribute(attributes);
-    mylite_sql_ast_node_set_span(attributes,
-                                 span_join(attributes->span, span_from_token(&binary_token)));
+    mylite_sql_ast_node_set_span(
+        attributes,
+        span_join(attributes->span, span_from_token(&binary_token))
+    );
     return attributes;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_type_byte_attribute(struct mylite_sql_parser_state *state,
-                                                 struct mylite_sql_ast_node *attributes,
-                                                 struct mylite_sql_token byte_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_byte_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *attributes,
+    struct mylite_sql_token byte_token
+) {
     if (!is_parse_ok(state) || attributes == NULL) {
         return attributes;
     }
 
     mylite_sql_ast_node_set_column_byte_attribute(attributes);
-    mylite_sql_ast_node_set_span(attributes,
-                                 span_join(attributes->span, span_from_token(&byte_token)));
+    mylite_sql_ast_node_set_span(
+        attributes,
+        span_join(attributes->span, span_from_token(&byte_token))
+    );
     return attributes;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_type_zerofill_attribute(struct mylite_sql_parser_state *state,
-                                                     struct mylite_sql_ast_node *attributes,
-                                                     struct mylite_sql_token zerofill_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_zerofill_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *attributes,
+    struct mylite_sql_token zerofill_token
+) {
     if (!is_parse_ok(state) || attributes == NULL) {
         return attributes;
     }
 
     mylite_sql_ast_node_set_column_zerofill_attribute(attributes);
-    mylite_sql_ast_node_set_span(attributes,
-                                 span_join(attributes->span, span_from_token(&zerofill_token)));
+    mylite_sql_ast_node_set_span(
+        attributes,
+        span_join(attributes->span, span_from_token(&zerofill_token))
+    );
     return attributes;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *state,
-                                               struct mylite_sql_ast_node *column_type,
-                                               struct mylite_sql_ast_node *attributes)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_apply_column_type_attributes(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_ast_node *attributes
+) {
     if (!is_parse_ok(state) || column_type == NULL || attributes == NULL) {
         return column_type;
     }
@@ -4753,47 +5208,55 @@ mylite_sql_parser_apply_column_type_attributes(struct mylite_sql_parser_state *s
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_cast_character_target(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token char_token,
-    struct mylite_sql_parser_cast_character_target_parts parts)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token char_token,
+    struct mylite_sql_parser_cast_character_target_parts parts
+) {
     struct mylite_sql_ast_node *column_type = mylite_sql_parser_set_column_length(
         state,
         mylite_sql_parser_make_column_type(state, char_token, MYLITE_SQL_AST_COLUMN_TYPE_CHAR),
-        parts.length);
+        parts.length
+    );
 
     if (!is_parse_ok(state) || column_type == NULL || parts.attributes == NULL) {
         return column_type;
     }
     if (parts.attributes->has_column_character_set) {
-        mylite_sql_ast_node_set_column_character_set(column_type,
-                                                     parts.attributes->column_character_set);
+        mylite_sql_ast_node_set_column_character_set(
+            column_type,
+            parts.attributes->column_character_set
+        );
     }
     if (parts.attributes->span.text != NULL) {
-        mylite_sql_ast_node_set_span(column_type,
-                                     span_join(column_type->span, parts.attributes->span));
+        mylite_sql_ast_node_set_span(
+            column_type,
+            span_join(column_type->span, parts.attributes->span)
+        );
     }
     return column_type;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_set_column_type_national(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *column_type,
-                                           struct mylite_sql_token national_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_national(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type,
+    struct mylite_sql_token national_token
+) {
     if (!is_parse_ok(state) || column_type == NULL) {
         return column_type;
     }
 
     mylite_sql_ast_node_set_column_national_attribute(column_type);
-    mylite_sql_ast_node_set_span(column_type,
-                                 span_join(span_from_token(&national_token), column_type->span));
+    mylite_sql_ast_node_set_span(
+        column_type,
+        span_join(span_from_token(&national_token), column_type->span)
+    );
     return mylite_sql_parser_validate_column_type(state, column_type);
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_ast_node *column_type)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_validate_column_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column_type
+) {
     const char *type_name = NULL;
     char *character_set = NULL;
     char *collation = NULL;
@@ -4844,14 +5307,26 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
     };
 
     if (column_type_uses_temporal_descriptor(column_type->column_type)) {
-        status = mylite_column_type_describe_temporal(type_name, strlen(type_name), attributes,
-                                                      &descriptor);
+        status = mylite_column_type_describe_temporal(
+            type_name,
+            strlen(type_name),
+            attributes,
+            &descriptor
+        );
     } else if (column_type_uses_numeric_descriptor(column_type->column_type)) {
-        status = mylite_column_type_describe_numeric(type_name, strlen(type_name), attributes,
-                                                     &descriptor);
+        status = mylite_column_type_describe_numeric(
+            type_name,
+            strlen(type_name),
+            attributes,
+            &descriptor
+        );
     } else {
-        status = mylite_column_type_describe_string_binary(type_name, strlen(type_name), attributes,
-                                                           &descriptor);
+        status = mylite_column_type_describe_string_binary(
+            type_name,
+            strlen(type_name),
+            attributes,
+            &descriptor
+        );
     }
     if (status != MYLITE_COLUMN_TYPE_OK) {
         mylite_sql_parser_state_parse_failed(state);
@@ -4861,18 +5336,21 @@ mylite_sql_parser_validate_column_type(struct mylite_sql_parser_state *state,
     return column_type;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_attribute_list(struct mylite_sql_parser_state *state)
-{
-    return make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST,
-                     (struct mylite_sql_source_span){0});
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_attribute_list(
+    struct mylite_sql_parser_state *state
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_LIST,
+        (struct mylite_sql_source_span){0}
+    );
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_column_attribute(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_ast_node *list,
-                                          struct mylite_sql_ast_node *attribute)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_column_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *attribute
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -4884,10 +5362,10 @@ mylite_sql_parser_append_column_attribute(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_null_attribute(struct mylite_sql_parser_state *state,
-                                             struct mylite_sql_token null_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_null_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token null_token
+) {
     struct mylite_sql_ast_node *attribute =
         make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE, span_from_token(&null_token));
     if (attribute == NULL) {
@@ -4898,14 +5376,16 @@ mylite_sql_parser_make_column_null_attribute(struct mylite_sql_parser_state *sta
     return attribute;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_not_null_attribute(struct mylite_sql_parser_state *state,
-                                                 struct mylite_sql_token not_token,
-                                                 struct mylite_sql_token null_token)
-{
-    struct mylite_sql_ast_node *attribute =
-        make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE,
-                  span_join(span_from_token(&not_token), span_from_token(&null_token)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_not_null_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token not_token,
+    struct mylite_sql_token null_token
+) {
+    struct mylite_sql_ast_node *attribute = make_node(
+        state,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE,
+        span_join(span_from_token(&not_token), span_from_token(&null_token))
+    );
     if (attribute == NULL) {
         return NULL;
     }
@@ -4914,11 +5394,11 @@ mylite_sql_parser_make_column_not_null_attribute(struct mylite_sql_parser_state 
     return attribute;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_default_attribute(struct mylite_sql_parser_state *state,
-                                                struct mylite_sql_token default_token,
-                                                struct mylite_sql_ast_node *value)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_default_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token default_token,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span = span_from_token(&default_token);
     struct mylite_sql_ast_node *attribute = NULL;
 
@@ -4937,9 +5417,11 @@ mylite_sql_parser_make_column_default_attribute(struct mylite_sql_parser_state *
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_on_update_attribute(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token on_token,
-    struct mylite_sql_token update_token, struct mylite_sql_ast_node *value)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token on_token,
+    struct mylite_sql_token update_token,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&on_token), span_from_token(&update_token));
     struct mylite_sql_ast_node *attribute = NULL;
@@ -4958,11 +5440,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_on_update_attribute(
     return attribute;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_comment_attribute(struct mylite_sql_parser_state *state,
-                                                struct mylite_sql_token comment_token,
-                                                struct mylite_sql_ast_node *value)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_comment_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token comment_token,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span = span_from_token(&comment_token);
     struct mylite_sql_ast_node *attribute = NULL;
 
@@ -4980,11 +5462,11 @@ mylite_sql_parser_make_column_comment_attribute(struct mylite_sql_parser_state *
     return attribute;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_visibility_attribute(struct mylite_sql_parser_state *state,
-                                                   struct mylite_sql_token visibility_token,
-                                                   enum mylite_sql_ast_column_attribute visibility)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_visibility_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token visibility_token,
+    enum mylite_sql_ast_column_attribute visibility
+) {
     struct mylite_sql_ast_node *attribute =
         make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE, span_from_token(&visibility_token));
     if (attribute == NULL) {
@@ -4996,29 +5478,39 @@ mylite_sql_parser_make_column_visibility_attribute(struct mylite_sql_parser_stat
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_format_attribute(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token column_format_token,
-    struct mylite_sql_token value_token, enum mylite_sql_ast_column_format format)
-{
-    struct mylite_sql_ast_node *attribute =
-        make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE,
-                  span_join(span_from_token(&column_format_token), span_from_token(&value_token)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token column_format_token,
+    struct mylite_sql_token value_token,
+    enum mylite_sql_ast_column_format format
+) {
+    struct mylite_sql_ast_node *attribute = make_node(
+        state,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE,
+        span_join(span_from_token(&column_format_token), span_from_token(&value_token))
+    );
     if (attribute == NULL) {
         return NULL;
     }
 
-    mylite_sql_ast_node_set_column_attribute(attribute,
-                                             MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COLUMN_FORMAT);
+    mylite_sql_ast_node_set_column_attribute(
+        attribute,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COLUMN_FORMAT
+    );
     mylite_sql_ast_node_set_column_format(attribute, format);
     return attribute;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_storage_attribute(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token storage_token,
-    struct mylite_sql_token value_token, enum mylite_sql_ast_column_storage storage)
-{
-    struct mylite_sql_ast_node *attribute =
-        make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE,
-                  span_join(span_from_token(&storage_token), span_from_token(&value_token)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token storage_token,
+    struct mylite_sql_token value_token,
+    enum mylite_sql_ast_column_storage storage
+) {
+    struct mylite_sql_ast_node *attribute = make_node(
+        state,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE,
+        span_join(span_from_token(&storage_token), span_from_token(&value_token))
+    );
     if (attribute == NULL) {
         return NULL;
     }
@@ -5028,26 +5520,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_storage_attribute(
     return attribute;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_auto_increment_attribute(struct mylite_sql_parser_state *state,
-                                                       struct mylite_sql_token auto_increment_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_auto_increment_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token auto_increment_token
+) {
     struct mylite_sql_ast_node *attribute =
         make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE, span_from_token(&auto_increment_token));
     if (attribute == NULL) {
         return NULL;
     }
 
-    mylite_sql_ast_node_set_column_attribute(attribute,
-                                             MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT);
+    mylite_sql_ast_node_set_column_attribute(
+        attribute,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT
+    );
     return attribute;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_column_primary_key_attribute(struct mylite_sql_parser_state *state,
-                                                    struct mylite_sql_token start_token,
-                                                    struct mylite_sql_token key_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_primary_key_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_token key_token
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
     struct mylite_sql_ast_node *attribute = NULL;
 
@@ -5061,15 +5555,17 @@ mylite_sql_parser_make_column_primary_key_attribute(struct mylite_sql_parser_sta
         return NULL;
     }
 
-    mylite_sql_ast_node_set_column_attribute(attribute,
-                                             MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY);
+    mylite_sql_ast_node_set_column_attribute(
+        attribute,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY
+    );
     return attribute;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_unique_key_attribute(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_parser_column_unique_key_attribute_tokens tokens)
-{
+    struct mylite_sql_parser_column_unique_key_attribute_tokens tokens
+) {
     struct mylite_sql_source_span span = span_from_token(&tokens.unique_token);
     struct mylite_sql_ast_node *attribute = NULL;
 
@@ -5086,11 +5582,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_unique_key_attribute(
     return attribute;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_current_timestamp(struct mylite_sql_parser_state *state,
-                                         struct mylite_sql_token current_timestamp_token,
-                                         struct mylite_sql_ast_node *precision)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_timestamp(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_timestamp_token,
+    struct mylite_sql_ast_node *precision
+) {
     enum { current_timestamp_fsp_max = 6U };
     struct mylite_sql_source_span span = span_from_token(&current_timestamp_token);
     struct mylite_sql_ast_node *current_timestamp = NULL;
@@ -5115,9 +5611,11 @@ mylite_sql_parser_make_current_timestamp(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_current_timestamp_empty_parens(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token current_timestamp_token,
-    struct mylite_sql_token left_paren, struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_timestamp_token,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_token right_paren
+) {
     struct mylite_sql_ast_node *current_timestamp =
         mylite_sql_parser_make_current_timestamp(state, current_timestamp_token, NULL);
     if (current_timestamp == NULL) {
@@ -5126,39 +5624,49 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_current_timestamp_empty_paren
 
     mylite_sql_ast_node_set_span(
         current_timestamp,
-        span_join(span_from_token(&current_timestamp_token),
-                  span_join(span_from_token(&left_paren), span_from_token(&right_paren))));
+        span_join(
+            span_from_token(&current_timestamp_token),
+            span_join(span_from_token(&left_paren), span_from_token(&right_paren))
+        )
+    );
     return current_timestamp;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_if_exists(struct mylite_sql_parser_state *state,
-                                                             struct mylite_sql_token if_token,
-                                                             struct mylite_sql_token exists_token)
-{
-    return make_node(state, MYLITE_SQL_AST_IF_EXISTS,
-                     span_join(span_from_token(&if_token), span_from_token(&exists_token)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_if_exists(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token if_token,
+    struct mylite_sql_token exists_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_IF_EXISTS,
+        span_join(span_from_token(&if_token), span_from_token(&exists_token))
+    );
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_if_not_exists(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_token if_token,
-                                     struct mylite_sql_token exists_token)
-{
-    return make_node(state, MYLITE_SQL_AST_IF_NOT_EXISTS,
-                     span_join(span_from_token(&if_token), span_from_token(&exists_token)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_if_not_exists(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token if_token,
+    struct mylite_sql_token exists_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_IF_NOT_EXISTS,
+        span_join(span_from_token(&if_token), span_from_token(&exists_token))
+    );
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_schema_option_list(struct mylite_sql_parser_state *state)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_schema_option_list(
+    struct mylite_sql_parser_state *state
+) {
     return make_node(state, MYLITE_SQL_AST_SCHEMA_OPTION_LIST, (struct mylite_sql_source_span){0});
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_schema_option(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_ast_node *list,
-                                       struct mylite_sql_ast_node *option)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_schema_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -5171,9 +5679,11 @@ mylite_sql_parser_append_schema_option(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_schema_option(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
-    enum mylite_sql_ast_schema_option schema_option, struct mylite_sql_ast_node *value)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    enum mylite_sql_ast_schema_option schema_option,
+    struct mylite_sql_ast_node *value
+) {
     struct mylite_sql_source_span span = span_from_token(&start_token);
     struct mylite_sql_ast_node *option = NULL;
 
@@ -5191,19 +5701,23 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_schema_option(
     return option;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_wildcard_select_list(struct mylite_sql_parser_state *state,
-                                            struct mylite_sql_token wildcard_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard_select_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token wildcard_token
+) {
     return mylite_sql_parser_make_select_list(
-        state, mylite_sql_parser_make_select_item(
-                   state, mylite_sql_parser_make_wildcard(state, wildcard_token)));
+        state,
+        mylite_sql_parser_make_select_item(
+            state,
+            mylite_sql_parser_make_wildcard(state, wildcard_token)
+        )
+    );
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_select_list(struct mylite_sql_parser_state *state,
-                                   struct mylite_sql_ast_node *item)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *item
+) {
     struct mylite_sql_source_span span =
         item == NULL ? (struct mylite_sql_source_span){0} : item->span;
     struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_SELECT_LIST, span);
@@ -5215,11 +5729,11 @@ mylite_sql_parser_make_select_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_select_item(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_ast_node *list,
-                                     struct mylite_sql_ast_node *item)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_select_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *item
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -5231,10 +5745,10 @@ mylite_sql_parser_append_select_item(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_select_item(struct mylite_sql_parser_state *state,
-                                   struct mylite_sql_ast_node *expression)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *expression
+) {
     struct mylite_sql_source_span span =
         expression == NULL ? (struct mylite_sql_source_span){0} : expression->span;
     struct mylite_sql_ast_node *item = make_node(state, MYLITE_SQL_AST_SELECT_ITEM, span);
@@ -5246,11 +5760,11 @@ mylite_sql_parser_make_select_item(struct mylite_sql_parser_state *state,
     return item;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_aliased_select_item(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *expression,
-                                           struct mylite_sql_ast_node *alias)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_aliased_select_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_ast_node *alias
+) {
     struct mylite_sql_source_span span =
         expression == NULL ? (struct mylite_sql_source_span){0} : expression->span;
     struct mylite_sql_ast_node *item = NULL;
@@ -5269,18 +5783,24 @@ mylite_sql_parser_make_aliased_select_item(struct mylite_sql_parser_state *state
     return item;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_from_dual(struct mylite_sql_parser_state *state,
-                                                             struct mylite_sql_token from_token,
-                                                             struct mylite_sql_token dual_token)
-{
-    return make_node(state, MYLITE_SQL_AST_FROM_DUAL,
-                     span_join(span_from_token(&from_token), span_from_token(&dual_token)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_from_dual(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token from_token,
+    struct mylite_sql_token dual_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_FROM_DUAL,
+        span_join(span_from_token(&from_token), span_from_token(&dual_token))
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token from_token,
-    struct mylite_sql_ast_node *table_name, struct mylite_sql_ast_node *alias)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token from_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *alias
+) {
     struct mylite_sql_source_span span = span_from_token(&from_token);
     struct mylite_sql_ast_node *from_table = NULL;
 
@@ -5301,11 +5821,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
     return from_table;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_from_table_references(struct mylite_sql_parser_state *state,
-                                             struct mylite_sql_token from_token,
-                                             struct mylite_sql_ast_node *references)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_from_table_references(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token from_token,
+    struct mylite_sql_ast_node *references
+) {
     struct mylite_sql_source_span span = span_from_token(&from_token);
     struct mylite_sql_ast_node *first_reference = NULL;
     struct mylite_sql_ast_node *from_references = NULL;
@@ -5331,10 +5851,10 @@ mylite_sql_parser_make_from_table_references(struct mylite_sql_parser_state *sta
     return from_references;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_table_reference_list(struct mylite_sql_parser_state *state,
-                                            struct mylite_sql_ast_node *reference)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_reference_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *reference
+) {
     struct mylite_sql_source_span span =
         reference == NULL ? (struct mylite_sql_source_span){0} : reference->span;
     struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_TABLE_REFERENCE_LIST, span);
@@ -5346,11 +5866,11 @@ mylite_sql_parser_make_table_reference_list(struct mylite_sql_parser_state *stat
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_table_reference(struct mylite_sql_parser_state *state,
-                                         struct mylite_sql_ast_node *list,
-                                         struct mylite_sql_ast_node *reference)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_table_reference(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *reference
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -5363,10 +5883,12 @@ mylite_sql_parser_append_table_reference(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_join_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
-    struct mylite_sql_parser_join_operator join_operator, struct mylite_sql_ast_node *right,
-    struct mylite_sql_ast_node *condition)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_parser_join_operator join_operator,
+    struct mylite_sql_ast_node *right,
+    struct mylite_sql_ast_node *condition
+) {
     struct mylite_sql_source_span span =
         left == NULL ? span_from_token(&join_operator.token) : left->span;
     struct mylite_sql_ast_node *join = NULL;
@@ -5391,11 +5913,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_join_expression(
     return join;
 }
 
-struct mylite_sql_parser_join_operator
-mylite_sql_parser_make_join_operator(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_token token,
-                                     enum mylite_sql_ast_join_type join_type)
-{
+struct mylite_sql_parser_join_operator mylite_sql_parser_make_join_operator(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_join_type join_type
+) {
     (void)state;
     return (struct mylite_sql_parser_join_operator){
         .token = token,
@@ -5403,11 +5925,11 @@ mylite_sql_parser_make_join_operator(struct mylite_sql_parser_state *state,
     };
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_join_on_condition(struct mylite_sql_parser_state *state,
-                                         struct mylite_sql_token on_token,
-                                         struct mylite_sql_ast_node *expression)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_join_on_condition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token on_token,
+    struct mylite_sql_ast_node *expression
+) {
     struct mylite_sql_source_span span = span_from_token(&on_token);
     struct mylite_sql_ast_node *condition = NULL;
 
@@ -5426,9 +5948,11 @@ mylite_sql_parser_make_join_on_condition(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_join_using_condition(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token using_token,
-    struct mylite_sql_ast_node *columns, struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token using_token,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_token right_paren
+) {
     struct mylite_sql_source_span span = span_from_token(&using_token);
     struct mylite_sql_ast_node *condition = NULL;
 
@@ -5447,10 +5971,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_join_using_condition(
     return condition;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_using_column_list(struct mylite_sql_parser_state *state,
-                                         struct mylite_sql_ast_node *column)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_using_column_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column
+) {
     struct mylite_sql_ast_node *item = mylite_sql_parser_make_using_column(state, column);
     struct mylite_sql_source_span span =
         item == NULL ? (struct mylite_sql_source_span){0} : item->span;
@@ -5463,10 +5987,10 @@ mylite_sql_parser_make_using_column_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_using_column(struct mylite_sql_parser_state *state,
-                                      struct mylite_sql_parser_using_column_append append)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_using_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_using_column_append append
+) {
     struct mylite_sql_ast_node *item = NULL;
 
     if (!is_parse_ok(state) || append.list == NULL) {
@@ -5481,10 +6005,10 @@ mylite_sql_parser_append_using_column(struct mylite_sql_parser_state *state,
     return append.list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_using_column(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_ast_node *column)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_using_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column
+) {
     struct mylite_sql_source_span span =
         column == NULL ? (struct mylite_sql_source_span){0} : column->span;
     struct mylite_sql_ast_node *item = make_node(state, MYLITE_SQL_AST_USING_COLUMN, span);
@@ -5496,11 +6020,11 @@ mylite_sql_parser_make_using_column(struct mylite_sql_parser_state *state,
     return item;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_table_factor(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_ast_node *table_name,
-                                    struct mylite_sql_ast_node *alias)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_factor(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *alias
+) {
     struct mylite_sql_source_span span =
         table_name == NULL ? (struct mylite_sql_source_span){0} : table_name->span;
     struct mylite_sql_ast_node *from_table = NULL;
@@ -5519,23 +6043,25 @@ mylite_sql_parser_make_table_factor(struct mylite_sql_parser_state *state,
     return from_table;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(struct mylite_sql_parser_state *state,
-                                                              struct mylite_sql_token token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
     return make_node(state, MYLITE_SQL_AST_IDENTIFIER, span_from_token(&token));
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_default(struct mylite_sql_parser_state *state,
-                                                           struct mylite_sql_token token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_default(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
     return make_node(state, MYLITE_SQL_AST_DEFAULT, span_from_token(&token));
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_qualified_identifier(struct mylite_sql_parser_state *state,
-                                            struct mylite_sql_ast_node *left,
-                                            struct mylite_sql_ast_node *right)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_identifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_ast_node *right
+) {
     struct mylite_sql_source_span span =
         left == NULL ? (struct mylite_sql_source_span){0} : left->span;
     struct mylite_sql_ast_node *identifier = NULL;
@@ -5554,16 +6080,19 @@ mylite_sql_parser_make_qualified_identifier(struct mylite_sql_parser_state *stat
     return identifier;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard(struct mylite_sql_parser_state *state,
-                                                            struct mylite_sql_token token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
     return make_node(state, MYLITE_SQL_AST_WILDCARD, span_from_token(&token));
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_wildcard(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *first,
-    struct mylite_sql_ast_node *second, struct mylite_sql_token wildcard_token)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *first,
+    struct mylite_sql_ast_node *second,
+    struct mylite_sql_token wildcard_token
+) {
     struct mylite_sql_source_span span =
         first == NULL ? span_from_token(&wildcard_token) : first->span;
     struct mylite_sql_ast_node *wildcard = NULL;
@@ -5594,10 +6123,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_qualified_wildcard(
     return wildcard;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_literal(struct mylite_sql_parser_state *state, struct mylite_sql_token token,
-                               enum mylite_sql_ast_literal_kind literal_kind)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_literal(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token,
+    enum mylite_sql_ast_literal_kind literal_kind
+) {
     struct mylite_sql_ast_node *literal =
         make_node(state, MYLITE_SQL_AST_LITERAL, span_from_token(&token));
     if (literal == NULL) {
@@ -5608,10 +6138,10 @@ mylite_sql_parser_make_literal(struct mylite_sql_parser_state *state, struct myl
     return literal;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_bare_function_call(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_token name_token)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_bare_function_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token name_token
+) {
     struct mylite_sql_source_span span = span_from_token(&name_token);
     struct mylite_sql_ast_node *name = mylite_sql_parser_make_identifier(state, name_token);
     struct mylite_sql_ast_node *arguments =
@@ -5632,18 +6162,23 @@ mylite_sql_parser_make_bare_function_call(struct mylite_sql_parser_state *state,
     return call;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_char_function_call(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_parser_char_function_call_parts parts)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_char_function_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_char_function_call_parts parts
+) {
     struct mylite_sql_ast_node *name = mylite_sql_parser_make_identifier(state, parts.char_token);
     struct mylite_sql_ast_node *call = NULL;
 
     if (name == NULL) {
         return NULL;
     }
-    call = mylite_sql_parser_make_function_call(state, name, parts.left_paren, parts.arguments,
-                                                parts.right_paren);
+    call = mylite_sql_parser_make_function_call(
+        state,
+        name,
+        parts.left_paren,
+        parts.arguments,
+        parts.right_paren
+    );
     if (call != NULL && parts.charset != NULL) {
         mylite_sql_ast_node_append_child(call, parts.charset);
     }
@@ -5651,10 +6186,12 @@ mylite_sql_parser_make_char_function_call(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
-    struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren
+) {
     struct mylite_sql_source_span span = name == NULL ? span_from_token(&left_paren) : name->span;
     enum mylite_sql_ast_aggregate_kind aggregate_kind = MYLITE_SQL_AST_AGGREGATE_NONE;
     enum mylite_sql_ast_interval_unit interval_unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
@@ -5666,12 +6203,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
         name == NULL ? MYLITE_SQL_AST_AGGREGATE_NONE : aggregate_kind_from_name(name->span);
     if (aggregate_kind != MYLITE_SQL_AST_AGGREGATE_NONE) {
         return make_aggregate_function_call(
-            state, (struct mylite_sql_parser_aggregate_function_call_parts){
-                       .name = name,
-                       .arguments = arguments,
-                       .aggregate_kind = aggregate_kind,
-                       .span = span,
-                   });
+            state,
+            (struct mylite_sql_parser_aggregate_function_call_parts){
+                .name = name,
+                .arguments = arguments,
+                .aggregate_kind = aggregate_kind,
+                .span = span,
+            }
+        );
     }
 
     {
@@ -5700,8 +6239,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
         mylite_sql_parser_state_parse_failed(state);
         return NULL;
     }
-    if (!normalize_timestampdiff_function_call(state, name, arguments, &arguments,
-                                               &interval_unit)) {
+    if (!normalize_timestampdiff_function_call(
+            state,
+            name,
+            arguments,
+            &arguments,
+            &interval_unit
+        )) {
         return NULL;
     }
     if (!normalize_timestampadd_function_call(state, name, arguments, &arguments, &interval_unit)) {
@@ -5735,10 +6279,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     return call;
 }
 
-static struct mylite_sql_ast_node *
-make_aggregate_function_call(struct mylite_sql_parser_state *state,
-                             struct mylite_sql_parser_aggregate_function_call_parts parts)
-{
+static struct mylite_sql_ast_node *make_aggregate_function_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_aggregate_function_call_parts parts
+) {
     struct mylite_sql_ast_node *call = NULL;
 
     if (parts.arguments == NULL) {
@@ -5753,8 +6297,11 @@ make_aggregate_function_call(struct mylite_sql_parser_state *state,
         if (call == NULL) {
             return NULL;
         }
-        mylite_sql_ast_node_set_aggregate(call, MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT,
-                                          MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION_LIST);
+        mylite_sql_ast_node_set_aggregate(
+            call,
+            MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT,
+            MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION_LIST
+        );
         mylite_sql_ast_node_append_child(call, parts.name);
         mylite_sql_ast_node_append_child(call, parts.arguments);
         return call;
@@ -5769,17 +6316,20 @@ make_aggregate_function_call(struct mylite_sql_parser_state *state,
         return NULL;
     }
 
-    mylite_sql_ast_node_set_aggregate(call, parts.aggregate_kind,
-                                      MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION);
+    mylite_sql_ast_node_set_aggregate(
+        call,
+        parts.aggregate_kind,
+        MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION
+    );
     mylite_sql_ast_node_append_child(call, parts.name);
     mylite_sql_ast_node_append_child(call, parts.arguments->first_child);
     return call;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_group_concat_call(struct mylite_sql_parser_state *state,
-                                         struct mylite_sql_parser_group_concat_call_parts parts)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_group_concat_call_parts parts
+) {
     enum mylite_sql_ast_aggregate_argument argument_kind =
         parts.distinct.kind == 0 ? MYLITE_SQL_AST_AGGREGATE_ARGUMENT_EXPRESSION_LIST
                                  : MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST;
@@ -5791,11 +6341,11 @@ mylite_sql_parser_make_group_concat_call(struct mylite_sql_parser_state *state,
     return make_group_concat_aggregate_call(state, parts, argument_kind);
 }
 
-static struct mylite_sql_ast_node *
-make_group_concat_aggregate_call(struct mylite_sql_parser_state *state,
-                                 struct mylite_sql_parser_group_concat_call_parts parts,
-                                 enum mylite_sql_ast_aggregate_argument argument_kind)
-{
+static struct mylite_sql_ast_node *make_group_concat_aggregate_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_group_concat_call_parts parts,
+    enum mylite_sql_ast_aggregate_argument argument_kind
+) {
     struct mylite_sql_source_span span =
         parts.name == NULL ? span_from_token(&parts.left_paren) : parts.name->span;
     struct mylite_sql_ast_node *call = NULL;
@@ -5828,12 +6378,13 @@ make_group_concat_aggregate_call(struct mylite_sql_parser_state *state,
     return call;
 }
 
-static bool normalize_timestampdiff_function_call(struct mylite_sql_parser_state *state,
-                                                  const struct mylite_sql_ast_node *name,
-                                                  struct mylite_sql_ast_node *arguments,
-                                                  struct mylite_sql_ast_node **out_arguments,
-                                                  enum mylite_sql_ast_interval_unit *out_unit)
-{
+static bool normalize_timestampdiff_function_call(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_ast_node **out_arguments,
+    enum mylite_sql_ast_interval_unit *out_unit
+) {
     struct mylite_sql_ast_node *unit_argument = arguments == NULL ? NULL : arguments->first_child;
     struct mylite_sql_ast_node *start_argument =
         unit_argument == NULL ? NULL : unit_argument->next_sibling;
@@ -5870,12 +6421,13 @@ static bool normalize_timestampdiff_function_call(struct mylite_sql_parser_state
     return true;
 }
 
-static bool normalize_timestampadd_function_call(struct mylite_sql_parser_state *state,
-                                                 const struct mylite_sql_ast_node *name,
-                                                 struct mylite_sql_ast_node *arguments,
-                                                 struct mylite_sql_ast_node **out_arguments,
-                                                 enum mylite_sql_ast_interval_unit *out_unit)
-{
+static bool normalize_timestampadd_function_call(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_ast_node **out_arguments,
+    enum mylite_sql_ast_interval_unit *out_unit
+) {
     struct mylite_sql_ast_node *unit_argument = arguments == NULL ? NULL : arguments->first_child;
     struct mylite_sql_ast_node *amount_argument =
         unit_argument == NULL ? NULL : unit_argument->next_sibling;
@@ -5911,9 +6463,10 @@ static bool normalize_timestampadd_function_call(struct mylite_sql_parser_state 
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_interval_function_call(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_parser_interval_function_call_parts parts)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_parser_interval_function_call_parts parts
+) {
     struct mylite_sql_ast_node *argument_list = NULL;
     struct mylite_sql_ast_node *call = NULL;
 
@@ -5925,17 +6478,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_interval_function_call(
 
     argument_list = mylite_sql_parser_make_function_argument_list(state, parts.temporal);
     argument_list = mylite_sql_parser_append_function_argument(state, argument_list, parts.amount);
-    call = mylite_sql_parser_make_function_call(state, name, parts.left_paren, argument_list,
-                                                parts.right_paren);
+    call = mylite_sql_parser_make_function_call(
+        state,
+        name,
+        parts.left_paren,
+        argument_list,
+        parts.right_paren
+    );
     mylite_sql_ast_node_set_interval_spec(call, parts.unit);
     return call;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_token left_paren, struct mylite_sql_ast_node *first,
-    struct mylite_sql_ast_node *second, struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *first,
+    struct mylite_sql_ast_node *second,
+    struct mylite_sql_token right_paren
+) {
     if (function_name_is_extract(name)) {
         struct mylite_sql_source_span span =
             name == NULL ? span_from_token(&left_paren) : name->span;
@@ -5971,12 +6532,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
     }
     if (function_name_is_trim(name)) {
         return mylite_sql_parser_make_trim_direction_function_call(
-            state, name, left_paren, MYLITE_SQL_AST_TRIM_DIRECTION_BOTH,
+            state,
+            name,
+            left_paren,
+            MYLITE_SQL_AST_TRIM_DIRECTION_BOTH,
             (struct mylite_sql_parser_trim_operands){
                 .remove = first,
                 .source = second,
             },
-            right_paren);
+            right_paren
+        );
     }
 
     mylite_sql_parser_state_parse_failed(state);
@@ -5984,10 +6549,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_position_function_call(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_token left_paren, struct mylite_sql_parser_position_operands operands,
-    struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_parser_position_operands operands,
+    struct mylite_sql_token right_paren
+) {
     struct mylite_sql_source_span span = name == NULL ? span_from_token(&left_paren) : name->span;
     struct mylite_sql_ast_node *list = NULL;
     struct mylite_sql_ast_node *call = NULL;
@@ -6015,10 +6582,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_position_function_call(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_substring_for_function_call(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_token left_paren, struct mylite_sql_parser_substring_operands operands,
-    struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_parser_substring_operands operands,
+    struct mylite_sql_token right_paren
+) {
     struct mylite_sql_ast_node *list = NULL;
 
     if (!function_name_is_substring(name)) {
@@ -6033,10 +6602,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_substring_for_function_call(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_trim_direction_function_call(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_token left_paren, enum mylite_sql_ast_trim_direction direction,
-    struct mylite_sql_parser_trim_operands operands, struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_trim_direction direction,
+    struct mylite_sql_parser_trim_operands operands,
+    struct mylite_sql_token right_paren
+) {
     struct mylite_sql_ast_node *list = NULL;
 
     if (!function_name_is_trim(name)) {
@@ -6052,11 +6624,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_trim_direction_function_call(
     return mylite_sql_parser_make_function_call(state, name, left_paren, list, right_paren);
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_aggregate_star_call(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *name,
-                                           struct mylite_sql_parser_aggregate_star_tokens tokens)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_aggregate_star_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_parser_aggregate_star_tokens tokens
+) {
     enum mylite_sql_ast_aggregate_kind aggregate_kind =
         name == NULL ? MYLITE_SQL_AST_AGGREGATE_NONE : aggregate_kind_from_name(name->span);
     struct mylite_sql_source_span span =
@@ -6083,10 +6655,12 @@ mylite_sql_parser_make_aggregate_star_call(struct mylite_sql_parser_state *state
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_distinct_aggregate_call(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *name,
-    struct mylite_sql_token left_paren, struct mylite_sql_ast_node *arguments,
-    struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren
+) {
     struct mylite_sql_source_span span = name == NULL ? span_from_token(&left_paren) : name->span;
     enum mylite_sql_ast_aggregate_kind aggregate_kind =
         name == NULL ? MYLITE_SQL_AST_AGGREGATE_NONE : aggregate_kind_from_name(name->span);
@@ -6109,7 +6683,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_distinct_aggregate_call(
                 .arguments = arguments,
                 .right_paren = right_paren,
             },
-            MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST);
+            MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST
+        );
     }
 
     (void)left_paren;
@@ -6119,21 +6694,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_distinct_aggregate_call(
         return NULL;
     }
 
-    mylite_sql_ast_node_set_aggregate(call, MYLITE_SQL_AST_AGGREGATE_COUNT,
-                                      MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST);
+    mylite_sql_ast_node_set_aggregate(
+        call,
+        MYLITE_SQL_AST_AGGREGATE_COUNT,
+        MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST
+    );
     mylite_sql_ast_node_append_child(call, name);
     mylite_sql_ast_node_append_child(call, arguments);
     return call;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_cast_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token cast_token,
-    struct mylite_sql_ast_node *expression, struct mylite_sql_ast_node *target_type,
-    struct mylite_sql_token right_paren)
-{
-    struct mylite_sql_ast_node *cast =
-        make_node(state, MYLITE_SQL_AST_CAST_EXPRESSION,
-                  span_join(span_from_token(&cast_token), span_from_token(&right_paren)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token cast_token,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_ast_node *target_type,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *cast = make_node(
+        state,
+        MYLITE_SQL_AST_CAST_EXPRESSION,
+        span_join(span_from_token(&cast_token), span_from_token(&right_paren))
+    );
     if (cast == NULL) {
         return NULL;
     }
@@ -6145,29 +6727,44 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_cast_expression(
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_expression(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_parser_convert_using_expression_parts parts)
-{
+    struct mylite_sql_parser_convert_using_expression_parts parts
+) {
     struct mylite_sql_ast_node *attributes = mylite_sql_parser_set_column_type_character_set(
-        state, mylite_sql_parser_make_column_type_attribute_list(state), parts.charset);
+        state,
+        mylite_sql_parser_make_column_type_attribute_list(state),
+        parts.charset
+    );
     struct mylite_sql_ast_node *target = mylite_sql_parser_make_cast_character_target(
-        state, parts.convert_token,
+        state,
+        parts.convert_token,
         (struct mylite_sql_parser_cast_character_target_parts){
             .length = NULL,
             .attributes = attributes,
-        });
+        }
+    );
 
-    return mylite_sql_parser_make_cast_expression(state, parts.convert_token, parts.expression,
-                                                  target, parts.right_paren);
+    return mylite_sql_parser_make_cast_expression(
+        state,
+        parts.convert_token,
+        parts.expression,
+        target,
+        parts.right_paren
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_simple_case_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token case_token,
-    struct mylite_sql_ast_node *base, struct mylite_sql_ast_node *when_list,
-    struct mylite_sql_ast_node *else_expression, struct mylite_sql_token end_token)
-{
-    struct mylite_sql_ast_node *expression =
-        make_node(state, MYLITE_SQL_AST_CASE_EXPRESSION,
-                  span_join(span_from_token(&case_token), span_from_token(&end_token)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token case_token,
+    struct mylite_sql_ast_node *base,
+    struct mylite_sql_ast_node *when_list,
+    struct mylite_sql_ast_node *else_expression,
+    struct mylite_sql_token end_token
+) {
+    struct mylite_sql_ast_node *expression = make_node(
+        state,
+        MYLITE_SQL_AST_CASE_EXPRESSION,
+        span_join(span_from_token(&case_token), span_from_token(&end_token))
+    );
     if (expression == NULL) {
         return NULL;
     }
@@ -6180,13 +6777,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_simple_case_expression(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_searched_case_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token case_token,
-    struct mylite_sql_ast_node *when_list, struct mylite_sql_ast_node *else_expression,
-    struct mylite_sql_token end_token)
-{
-    struct mylite_sql_ast_node *expression =
-        make_node(state, MYLITE_SQL_AST_CASE_EXPRESSION,
-                  span_join(span_from_token(&case_token), span_from_token(&end_token)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token case_token,
+    struct mylite_sql_ast_node *when_list,
+    struct mylite_sql_ast_node *else_expression,
+    struct mylite_sql_token end_token
+) {
+    struct mylite_sql_ast_node *expression = make_node(
+        state,
+        MYLITE_SQL_AST_CASE_EXPRESSION,
+        span_join(span_from_token(&case_token), span_from_token(&end_token))
+    );
     if (expression == NULL) {
         return NULL;
     }
@@ -6196,13 +6797,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_searched_case_expression(
     return expression;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_case_when_list(struct mylite_sql_parser_state *state,
-                                      struct mylite_sql_ast_node *case_when)
-{
-    struct mylite_sql_ast_node *list =
-        make_node(state, MYLITE_SQL_AST_CASE_WHEN_LIST,
-                  case_when == NULL ? (struct mylite_sql_source_span){0} : case_when->span);
+struct mylite_sql_ast_node *mylite_sql_parser_make_case_when_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *case_when
+) {
+    struct mylite_sql_ast_node *list = make_node(
+        state,
+        MYLITE_SQL_AST_CASE_WHEN_LIST,
+        case_when == NULL ? (struct mylite_sql_source_span){0} : case_when->span
+    );
     if (list == NULL) {
         return NULL;
     }
@@ -6211,11 +6814,11 @@ mylite_sql_parser_make_case_when_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_case_when(struct mylite_sql_parser_state *state,
-                                   struct mylite_sql_ast_node *list,
-                                   struct mylite_sql_ast_node *case_when)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_case_when(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *case_when
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -6227,11 +6830,12 @@ mylite_sql_parser_append_case_when(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_case_when(struct mylite_sql_parser_state *state,
-                                                             struct mylite_sql_token when_token,
-                                                             struct mylite_sql_ast_node *condition,
-                                                             struct mylite_sql_ast_node *result)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_case_when(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token when_token,
+    struct mylite_sql_ast_node *condition,
+    struct mylite_sql_ast_node *result
+) {
     struct mylite_sql_source_span span = span_from_token(&when_token);
     struct mylite_sql_ast_node *case_when = NULL;
 
@@ -6251,19 +6855,22 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_case_when(struct mylite_sql_p
     return case_when;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_empty_function_argument_list(struct mylite_sql_parser_state *state,
-                                                    struct mylite_sql_token left_paren,
-                                                    struct mylite_sql_token right_paren)
-{
-    return make_node(state, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST,
-                     span_join(span_from_token(&left_paren), span_from_token(&right_paren)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_empty_function_argument_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_token right_paren
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST,
+        span_join(span_from_token(&left_paren), span_from_token(&right_paren))
+    );
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_function_argument_list(struct mylite_sql_parser_state *state,
-                                              struct mylite_sql_ast_node *argument)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *argument
+) {
     struct mylite_sql_source_span span =
         argument == NULL ? (struct mylite_sql_source_span){0} : argument->span;
     struct mylite_sql_ast_node *list =
@@ -6276,11 +6883,11 @@ mylite_sql_parser_make_function_argument_list(struct mylite_sql_parser_state *st
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_function_argument(struct mylite_sql_parser_state *state,
-                                           struct mylite_sql_ast_node *list,
-                                           struct mylite_sql_ast_node *argument)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_function_argument(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *argument
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -6293,20 +6900,25 @@ mylite_sql_parser_append_function_argument(struct mylite_sql_parser_state *state
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_column_default_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token left_paren,
-    struct mylite_sql_ast_node *expression, struct mylite_sql_token right_paren)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren
+) {
     if (expression_contains_function_call(expression)) {
         mylite_sql_parser_state_parse_failed(state);
         return NULL;
     }
-    return mylite_sql_parser_make_parenthesized_expression(state, left_paren, expression,
-                                                           right_paren);
+    return mylite_sql_parser_make_parenthesized_expression(
+        state,
+        left_paren,
+        expression,
+        right_paren
+    );
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static bool expression_contains_function_call(const struct mylite_sql_ast_node *expression)
-{
+static bool expression_contains_function_call(const struct mylite_sql_ast_node *expression) {
     if (expression == NULL) {
         return false;
     }
@@ -6324,9 +6936,11 @@ static bool expression_contains_function_call(const struct mylite_sql_ast_node *
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_unary_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token operator_token,
-    enum mylite_sql_ast_operator operator_kind, struct mylite_sql_ast_node *operand)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_ast_node *operand
+) {
     struct mylite_sql_source_span span = span_from_token(&operator_token);
     struct mylite_sql_ast_node *expression = NULL;
 
@@ -6352,10 +6966,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_unary_expression(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_binary_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
-    struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
-    struct mylite_sql_ast_node *right)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_ast_node *right
+) {
     struct mylite_sql_source_span span =
         left == NULL ? span_from_token(&operator_token) : left->span;
     struct mylite_sql_ast_node *expression = NULL;
@@ -6376,10 +6992,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_expression(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_in_subquery_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
-    struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
-    struct mylite_sql_parser_subquery subquery)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_parser_subquery subquery
+) {
     struct mylite_sql_source_span span =
         left == NULL ? span_from_token(&operator_token) : left->span;
     struct mylite_sql_ast_node *expression = NULL;
@@ -6397,10 +7015,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_in_subquery_expression(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_quantified_comparison(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *left,
-    struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
-    enum mylite_sql_ast_subquery_quantifier quantifier, struct mylite_sql_parser_subquery subquery)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_operator operator_kind,
+    enum mylite_sql_ast_subquery_quantifier quantifier,
+    struct mylite_sql_parser_subquery subquery
+) {
     struct mylite_sql_source_span span =
         left == NULL ? span_from_token(&operator_token) : left->span;
     struct mylite_sql_ast_node *expression = NULL;
@@ -6419,10 +7040,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_quantified_comparison(
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_ternary_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_ast_node *first,
-    struct mylite_sql_token operator_token, enum mylite_sql_ast_operator operator_kind,
-    struct mylite_sql_ast_node *second, struct mylite_sql_ast_node *third)
-{
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *first,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_ast_node *second,
+    struct mylite_sql_ast_node *third
+) {
     struct mylite_sql_source_span span =
         first == NULL ? span_from_token(&operator_token) : first->span;
     struct mylite_sql_ast_node *expression = NULL;
@@ -6445,13 +7069,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_ternary_expression(
     return expression;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_expression_list(struct mylite_sql_parser_state *state,
-                                       struct mylite_sql_ast_node *expression)
-{
-    struct mylite_sql_ast_node *list =
-        make_node(state, MYLITE_SQL_AST_EXPRESSION_LIST,
-                  expression == NULL ? (struct mylite_sql_source_span){0} : expression->span);
+struct mylite_sql_ast_node *mylite_sql_parser_make_expression_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *expression
+) {
+    struct mylite_sql_ast_node *list = make_node(
+        state,
+        MYLITE_SQL_AST_EXPRESSION_LIST,
+        expression == NULL ? (struct mylite_sql_source_span){0} : expression->span
+    );
 
     if (list == NULL) {
         return NULL;
@@ -6461,11 +7087,11 @@ mylite_sql_parser_make_expression_list(struct mylite_sql_parser_state *state,
     return list;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_append_expression(struct mylite_sql_parser_state *state,
-                                    struct mylite_sql_ast_node *list,
-                                    struct mylite_sql_ast_node *expression)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_append_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *expression
+) {
     if (!is_parse_ok(state) || list == NULL) {
         return list;
     }
@@ -6478,12 +7104,16 @@ mylite_sql_parser_append_expression(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token left_paren,
-    struct mylite_sql_ast_node *expression, struct mylite_sql_token right_paren)
-{
-    struct mylite_sql_ast_node *parenthesized =
-        make_node(state, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
-                  span_join(span_from_token(&left_paren), span_from_token(&right_paren)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *parenthesized = make_node(
+        state,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        span_join(span_from_token(&left_paren), span_from_token(&right_paren))
+    );
     if (parenthesized == NULL) {
         return NULL;
     }
@@ -6492,13 +7122,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     return parenthesized;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_scalar_subquery_expression(struct mylite_sql_parser_state *state,
-                                                  struct mylite_sql_parser_subquery subquery)
-{
+struct mylite_sql_ast_node *mylite_sql_parser_make_scalar_subquery_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_subquery subquery
+) {
     struct mylite_sql_ast_node *expression = make_node(
-        state, MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
-        span_join(span_from_token(&subquery.left_paren), span_from_token(&subquery.right_paren)));
+        state,
+        MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
+        span_join(span_from_token(&subquery.left_paren), span_from_token(&subquery.right_paren))
+    );
     if (expression == NULL) {
         return NULL;
     }
@@ -6507,14 +7139,17 @@ mylite_sql_parser_make_scalar_subquery_expression(struct mylite_sql_parser_state
     return expression;
 }
 
-struct mylite_sql_ast_node *
-mylite_sql_parser_make_exists_expression(struct mylite_sql_parser_state *state,
-                                         struct mylite_sql_token start_token,
-                                         struct mylite_sql_parser_subquery subquery, bool negated)
-{
-    struct mylite_sql_ast_node *expression =
-        make_node(state, MYLITE_SQL_AST_EXISTS_EXPRESSION,
-                  span_join(span_from_token(&start_token), span_from_token(&subquery.right_paren)));
+struct mylite_sql_ast_node *mylite_sql_parser_make_exists_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_parser_subquery subquery,
+    bool negated
+) {
+    struct mylite_sql_ast_node *expression = make_node(
+        state,
+        MYLITE_SQL_AST_EXISTS_EXPRESSION,
+        span_join(span_from_token(&start_token), span_from_token(&subquery.right_paren))
+    );
     if (expression == NULL) {
         return NULL;
     }
@@ -6527,12 +7162,16 @@ mylite_sql_parser_make_exists_expression(struct mylite_sql_parser_state *state,
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_row_constructor(
-    struct mylite_sql_parser_state *state, struct mylite_sql_token start_token,
-    struct mylite_sql_parser_row_constructor_elements elements, struct mylite_sql_token right_paren)
-{
-    struct mylite_sql_ast_node *row =
-        make_node(state, MYLITE_SQL_AST_ROW_CONSTRUCTOR,
-                  span_join(span_from_token(&start_token), span_from_token(&right_paren)));
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_parser_row_constructor_elements elements,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *row = make_node(
+        state,
+        MYLITE_SQL_AST_ROW_CONSTRUCTOR,
+        span_join(span_from_token(&start_token), span_from_token(&right_paren))
+    );
     if (row == NULL) {
         return NULL;
     }
@@ -6550,11 +7189,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_row_constructor(
 }
 
 // NOLINTBEGIN(bugprone-branch-clone)
-static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
-                            bool previous_token_allows_subquery_quantifier,
-                            bool token_starts_parenthesized_select_subquery,
-                            struct mylite_sql_parser_token_map *out_map)
-{
+static bool map_lexer_token(
+    const struct mylite_sql_token *token,
+    bool previous_token_was_dot,
+    bool previous_token_allows_subquery_quantifier,
+    bool token_starts_parenthesized_select_subquery,
+    struct mylite_sql_parser_token_map *out_map
+) {
     int parser_token = 0;
 
     if (token == NULL || out_map == NULL) {
@@ -6581,9 +7222,13 @@ static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_
         parser_token = MYLITE_SQL_PARSE_QUOTED_IDENTIFIER;
         break;
     case MYLITE_SQL_TOKEN_KEYWORD:
-        if (!map_keyword_token(token, previous_token_was_dot,
-                               previous_token_allows_subquery_quantifier,
-                               token_starts_parenthesized_select_subquery, &parser_token)) {
+        if (!map_keyword_token(
+                token,
+                previous_token_was_dot,
+                previous_token_allows_subquery_quantifier,
+                token_starts_parenthesized_select_subquery,
+                &parser_token
+            )) {
             return false;
         }
         break;
@@ -6642,10 +7287,11 @@ static bool map_lexer_token(const struct mylite_sql_token *token, bool previous_
     return true;
 }
 
-static unsigned int parse_display_width(const struct mylite_sql_ast_node *display_width)
-{
+static unsigned int parse_display_width(const struct mylite_sql_ast_node *display_width) {
     enum { decimal_radix = 10U };
+
     enum { out_of_range_display_width = 256U };
+
     unsigned int value = 0U;
 
     if (display_width == NULL || display_width->span.text == NULL) {
@@ -6664,9 +7310,9 @@ static unsigned int parse_display_width(const struct mylite_sql_ast_node *displa
     return value;
 }
 
-static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64_t *out_length)
-{
+static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64_t *out_length) {
     enum { decimal_radix = 10U };
+
     uint64_t value = 0ULL;
 
     if (out_length == NULL) {
@@ -6692,9 +7338,10 @@ static bool parse_column_length(const struct mylite_sql_ast_node *length, uint64
     return true;
 }
 
-static char *copy_column_type_option_text(struct mylite_sql_parser_state *state,
-                                          struct mylite_sql_source_span span)
-{
+static char *copy_column_type_option_text(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_source_span span
+) {
     const char *text = span.text == NULL ? "" : span.text;
     size_t start = 0U;
     size_t end = span.text == NULL ? 0U : span.length;
@@ -6717,10 +7364,10 @@ static char *copy_column_type_option_text(struct mylite_sql_parser_state *state,
     return copy;
 }
 
-static struct mylite_sql_ast_node *
-make_checked_integer_literal(struct mylite_sql_parser_state *state,
-                             struct mylite_sql_token integer_token)
-{
+static struct mylite_sql_ast_node *make_checked_integer_literal(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token integer_token
+) {
     struct mylite_sql_ast_node *literal =
         mylite_sql_parser_make_literal(state, integer_token, MYLITE_SQL_AST_LITERAL_INTEGER);
     uint64_t value = 0ULL;
@@ -6737,8 +7384,7 @@ make_checked_integer_literal(struct mylite_sql_parser_state *state,
     return literal;
 }
 
-static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type column_type)
-{
+static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type column_type) {
     switch (column_type) {
     case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
         return "CHAR";
@@ -6793,27 +7439,25 @@ static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type c
     return "";
 }
 
-static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column_type column_type)
-{
+static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column_type column_type) {
     return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_CHAR &&
             column_type <= MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB) != 0;
 }
 
-static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type column_type)
-{
+static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type column_type) {
     return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL &&
             column_type <= MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE) != 0;
 }
 
-static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type)
-{
+static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type) {
     return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_DATE &&
             column_type <= MYLITE_SQL_AST_COLUMN_TYPE_YEAR) != 0;
 }
 
-static void record_parse_error(struct mylite_sql_parse_result *result,
-                               struct mylite_sql_parse_error error)
-{
+static void record_parse_error(
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parse_error error
+) {
     if (result == NULL || result->status != MYLITE_SQL_PARSE_OK) {
         return;
     }
@@ -6823,8 +7467,7 @@ static void record_parse_error(struct mylite_sql_parse_result *result,
     result->error_token = error.token;
 }
 
-static bool is_comment_token(enum mylite_sql_token_kind kind)
-{
+static bool is_comment_token(enum mylite_sql_token_kind kind) {
     if (kind == MYLITE_SQL_TOKEN_COMMENT || kind == MYLITE_SQL_TOKEN_VERSION_COMMENT ||
         kind == MYLITE_SQL_TOKEN_HINT_COMMENT) {
         return true;
@@ -6832,11 +7475,13 @@ static bool is_comment_token(enum mylite_sql_token_kind kind)
     return false;
 }
 
-static bool map_keyword_token(const struct mylite_sql_token *token, bool previous_token_was_dot,
-                              bool previous_token_allows_subquery_quantifier,
-                              bool token_starts_parenthesized_select_subquery,
-                              int *out_parser_token)
-{
+static bool map_keyword_token(
+    const struct mylite_sql_token *token,
+    bool previous_token_was_dot,
+    bool previous_token_allows_subquery_quantifier,
+    bool token_starts_parenthesized_select_subquery,
+    int *out_parser_token
+) {
     if (previous_token_was_dot) {
         *out_parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
         return true;
@@ -6861,8 +7506,10 @@ static bool map_keyword_token(const struct mylite_sql_token *token, bool previou
     return true;
 }
 
-static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, int *out_parser_token)
-{
+static bool lookup_keyword_parser_token(
+    const struct mylite_sql_token *token,
+    int *out_parser_token
+) {
     static const struct mylite_sql_parser_keyword_token keywords[] = {
         {"ACTION", MYLITE_SQL_PARSE_ACTION},
         {"ADD", MYLITE_SQL_PARSE_ADD},
@@ -7245,8 +7892,7 @@ static bool lookup_keyword_parser_token(const struct mylite_sql_token *token, in
     return false;
 }
 
-static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token)
-{
+static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token) {
     if (token->length != 1U) {
         return false;
     }
@@ -7272,8 +7918,7 @@ static bool map_punctuation_token(const struct mylite_sql_token *token, int *out
     }
 }
 
-static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token)
-{
+static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token) {
     switch (token->operator_kind) {
     case MYLITE_SQL_OPERATOR_PLUS:
         *out_parser_token = MYLITE_SQL_PARSE_PLUS;
@@ -7353,10 +7998,10 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
 
     return false;
 }
+
 // NOLINTEND(bugprone-branch-clone)
 
-static bool parser_token_allows_subquery_quantifier(int parser_token)
-{
+static bool parser_token_allows_subquery_quantifier(int parser_token) {
     switch (parser_token) {
     case MYLITE_SQL_PARSE_EQ:
     case MYLITE_SQL_PARSE_NE:
@@ -7370,8 +8015,7 @@ static bool parser_token_allows_subquery_quantifier(int parser_token)
     }
 }
 
-static bool lexer_starts_parenthesized_select_subquery(const struct mylite_sql_lexer *lexer)
-{
+static bool lexer_starts_parenthesized_select_subquery(const struct mylite_sql_lexer *lexer) {
     struct mylite_sql_lexer lookahead;
     struct mylite_sql_token token;
 
@@ -7392,9 +8036,10 @@ static bool lexer_starts_parenthesized_select_subquery(const struct mylite_sql_l
     return token_text_equals(&token, "SELECT");
 }
 
-static bool lexer_next_non_comment(struct mylite_sql_lexer *lexer,
-                                   struct mylite_sql_token *out_token)
-{
+static bool lexer_next_non_comment(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_token
+) {
     do {
         if (mylite_sql_lexer_next(lexer, out_token) != 0) {
             return false;
@@ -7404,8 +8049,7 @@ static bool lexer_next_non_comment(struct mylite_sql_lexer *lexer,
     return true;
 }
 
-static bool token_text_equals(const struct mylite_sql_token *token, const char *text)
-{
+static bool token_text_equals(const struct mylite_sql_token *token, const char *text) {
     size_t length = strlen(text);
 
     if (token == NULL || token->text == NULL) {
@@ -7424,8 +8068,7 @@ static bool token_text_equals(const struct mylite_sql_token *token, const char *
     return true;
 }
 
-static bool span_text_equals(struct mylite_sql_source_span span, const char *text)
-{
+static bool span_text_equals(struct mylite_sql_source_span span, const char *text) {
     size_t length = strlen(text);
 
     if (span.text == NULL || span.length != length) {
@@ -7441,34 +8084,30 @@ static bool span_text_equals(struct mylite_sql_source_span span, const char *tex
     return true;
 }
 
-static bool function_name_is_position(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_position(const struct mylite_sql_ast_node *name) {
     return function_name_matches(name, "POSITION");
 }
 
-static bool function_name_is_extract(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_extract(const struct mylite_sql_ast_node *name) {
     return function_name_matches(name, "EXTRACT");
 }
 
-static bool function_name_is_timestampadd(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_timestampadd(const struct mylite_sql_ast_node *name) {
     return function_name_matches(name, "TIMESTAMPADD");
 }
 
-static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_timestampdiff(const struct mylite_sql_ast_node *name) {
     return function_name_matches(name, "TIMESTAMPDIFF");
 }
 
-static bool function_name_is_group_concat(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_group_concat(const struct mylite_sql_ast_node *name) {
     return function_name_matches(name, "GROUP_CONCAT");
 }
 
-static bool extract_interval_unit_from_expression(const struct mylite_sql_ast_node *expression,
-                                                  enum mylite_sql_ast_interval_unit *out_unit)
-{
+static bool extract_interval_unit_from_expression(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_interval_unit *out_unit
+) {
     enum mylite_sql_ast_interval_unit unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER || out_unit == NULL) {
@@ -7497,8 +8136,7 @@ static bool extract_interval_unit_from_expression(const struct mylite_sql_ast_no
     return true;
 }
 
-static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name) {
     if (function_name_matches(name, "DATE_ADD") || function_name_matches(name, "DATE_SUB")) {
         return true;
     }
@@ -7508,9 +8146,10 @@ static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_as
     return function_name_matches(name, "SUBDATE");
 }
 
-static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_node *name,
-                                                   size_t *out_arity)
-{
+static bool function_name_has_parser_checked_arity(
+    const struct mylite_sql_ast_node *name,
+    size_t *out_arity
+) {
     if (function_name_matches(name, "ASCII") || function_name_matches(name, "REVERSE") ||
         function_name_matches(name, "TO_DAYS") || function_name_matches(name, "TO_SECONDS") ||
         function_name_matches(name, "FROM_DAYS") || function_name_matches(name, "TIME")) {
@@ -7528,11 +8167,12 @@ static bool function_name_has_parser_checked_arity(const struct mylite_sql_ast_n
     return false;
 }
 
-static bool
-validate_current_temporal_function_call(struct mylite_sql_parser_state *state,
-                                        const struct mylite_sql_ast_node *name, size_t arity,
-                                        const struct mylite_sql_ast_node *first_argument)
-{
+static bool validate_current_temporal_function_call(
+    struct mylite_sql_parser_state *state,
+    const struct mylite_sql_ast_node *name,
+    size_t arity,
+    const struct mylite_sql_ast_node *first_argument
+) {
     if (function_name_is_current_temporal_date(name)) {
         if (arity == 0U) {
             return true;
@@ -7557,8 +8197,7 @@ validate_current_temporal_function_call(struct mylite_sql_parser_state *state,
     return true;
 }
 
-static bool function_name_is_current_temporal_datetime(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_current_temporal_datetime(const struct mylite_sql_ast_node *name) {
     if (function_name_matches(name, "NOW")) {
         return true;
     }
@@ -7568,25 +8207,23 @@ static bool function_name_is_current_temporal_datetime(const struct mylite_sql_a
     return function_name_matches(name, "LOCALTIMESTAMP");
 }
 
-static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_current_temporal_time(const struct mylite_sql_ast_node *name) {
     if (function_name_matches(name, "CURTIME")) {
         return true;
     }
     return function_name_matches(name, "CURRENT_TIME");
 }
 
-static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_current_temporal_date(const struct mylite_sql_ast_node *name) {
     if (function_name_matches(name, "CURDATE")) {
         return true;
     }
     return function_name_matches(name, "CURRENT_DATE");
 }
 
-static bool temporal_fsp_argument(const struct mylite_sql_ast_node *argument, uint64_t *out_fsp)
-{
+static bool temporal_fsp_argument(const struct mylite_sql_ast_node *argument, uint64_t *out_fsp) {
     enum { max_fsp = 6U, decimal_base = 10U };
+
     uint64_t value = 0U;
 
     if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL ||
@@ -7608,13 +8245,11 @@ static bool temporal_fsp_argument(const struct mylite_sql_ast_node *argument, ui
     return true;
 }
 
-static bool function_name_is_trim(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_trim(const struct mylite_sql_ast_node *name) {
     return function_name_matches(name, "TRIM");
 }
 
-static bool function_name_is_substring(const struct mylite_sql_ast_node *name)
-{
+static bool function_name_is_substring(const struct mylite_sql_ast_node *name) {
     if (function_name_matches(name, "SUBSTRING")) {
         return true;
     }
@@ -7624,17 +8259,17 @@ static bool function_name_is_substring(const struct mylite_sql_ast_node *name)
     return function_name_matches(name, "MID");
 }
 
-static bool function_name_matches(const struct mylite_sql_ast_node *name, const char *text)
-{
+static bool function_name_matches(const struct mylite_sql_ast_node *name, const char *text) {
     if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
         return false;
     }
     return span_text_equals(name->span, text);
 }
 
-static bool window_function_arity_is_valid(enum mylite_sql_ast_window_function_kind function_kind,
-                                           size_t arity)
-{
+static bool window_function_arity_is_valid(
+    enum mylite_sql_ast_window_function_kind function_kind,
+    size_t arity
+) {
     switch (function_kind) {
     case MYLITE_SQL_AST_WINDOW_FUNCTION_CUME_DIST:
     case MYLITE_SQL_AST_WINDOW_FUNCTION_DENSE_RANK:
@@ -7659,9 +8294,9 @@ static bool window_function_arity_is_valid(enum mylite_sql_ast_window_function_k
     return false;
 }
 
-static bool
-window_function_accepts_null_treatment(enum mylite_sql_ast_window_function_kind function_kind)
-{
+static bool window_function_accepts_null_treatment(
+    enum mylite_sql_ast_window_function_kind function_kind
+) {
     switch (function_kind) {
     case MYLITE_SQL_AST_WINDOW_FUNCTION_FIRST_VALUE:
     case MYLITE_SQL_AST_WINDOW_FUNCTION_LAG:
@@ -7683,9 +8318,9 @@ window_function_accepts_null_treatment(enum mylite_sql_ast_window_function_kind 
     return false;
 }
 
-static enum mylite_sql_ast_aggregate_kind
-aggregate_kind_from_name(struct mylite_sql_source_span name)
-{
+static enum mylite_sql_ast_aggregate_kind aggregate_kind_from_name(
+    struct mylite_sql_source_span name
+) {
     if (span_text_equals(name, "COUNT")) {
         return MYLITE_SQL_AST_AGGREGATE_COUNT;
     }
@@ -7707,14 +8342,14 @@ aggregate_kind_from_name(struct mylite_sql_source_span name)
     return MYLITE_SQL_AST_AGGREGATE_NONE;
 }
 
-static bool aggregate_accepts_star(enum mylite_sql_ast_aggregate_kind aggregate_kind)
-{
+static bool aggregate_accepts_star(enum mylite_sql_ast_aggregate_kind aggregate_kind) {
     return aggregate_kind == MYLITE_SQL_AST_AGGREGATE_COUNT;
 }
 
-static bool transaction_characteristics_conflict(const struct mylite_sql_ast_node *left,
-                                                 const struct mylite_sql_ast_node *right)
-{
+static bool transaction_characteristics_conflict(
+    const struct mylite_sql_ast_node *left,
+    const struct mylite_sql_ast_node *right
+) {
     if (left == NULL || right == NULL) {
         return false;
     }
@@ -7727,9 +8362,9 @@ static bool transaction_characteristics_conflict(const struct mylite_sql_ast_nod
     return false;
 }
 
-static bool
-delete_targets_are_unsupported_delete_modifier(const struct mylite_sql_ast_node *targets)
-{
+static bool delete_targets_are_unsupported_delete_modifier(
+    const struct mylite_sql_ast_node *targets
+) {
     const struct mylite_sql_ast_node *target = NULL;
     const struct mylite_sql_ast_node *table_name = NULL;
 
@@ -7747,47 +8382,49 @@ delete_targets_are_unsupported_delete_modifier(const struct mylite_sql_ast_node 
     return span_text_equals(table_name->span, "QUICK");
 }
 
-static void set_syntax_error_at_span(struct mylite_sql_parser_state *state,
-                                     struct mylite_sql_source_span span)
-{
+static void set_syntax_error_at_span(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_source_span span
+) {
     if (!is_parse_ok(state)) {
         return;
     }
 
-    record_parse_error(state->result, (struct mylite_sql_parse_error){
-                                          .status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
-                                          .parser_token = -1,
-                                          .token =
-                                              {
-                                                  .kind = MYLITE_SQL_TOKEN_KEYWORD,
-                                                  .text = span.text,
-                                                  .length = span.length,
-                                                  .offset = span.offset,
-                                                  .line = span.line,
-                                                  .column = span.column,
-                                              },
-                                      });
+    record_parse_error(
+        state->result,
+        (struct mylite_sql_parse_error){
+            .status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
+            .parser_token = -1,
+            .token = {
+                .kind = MYLITE_SQL_TOKEN_KEYWORD,
+                .text = span.text,
+                .length = span.length,
+                .offset = span.offset,
+                .line = span.line,
+                .column = span.column,
+            },
+        }
+    );
 }
 
-static char ascii_upper(unsigned char byte)
-{
+static char ascii_upper(unsigned char byte) {
     if (byte >= 'a' && byte <= 'z') {
         return (char)(byte - ('a' - 'A'));
     }
     return (char)byte;
 }
 
-static bool is_parse_ok(const struct mylite_sql_parser_state *state)
-{
+static bool is_parse_ok(const struct mylite_sql_parser_state *state) {
     if (state != NULL && state->result != NULL && state->result->status == MYLITE_SQL_PARSE_OK) {
         return true;
     }
     return false;
 }
 
-static void set_state_status(struct mylite_sql_parser_state *state,
-                             enum mylite_sql_parse_status status)
-{
+static void set_state_status(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_parse_status status
+) {
     if (!is_parse_ok(state)) {
         return;
     }
@@ -7795,10 +8432,11 @@ static void set_state_status(struct mylite_sql_parser_state *state,
     state->result->status = status;
 }
 
-static struct mylite_sql_ast_node *make_node(struct mylite_sql_parser_state *state,
-                                             enum mylite_sql_ast_node_kind kind,
-                                             struct mylite_sql_source_span span)
-{
+static struct mylite_sql_ast_node *make_node(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_source_span span
+) {
     struct mylite_sql_ast_node *node = NULL;
 
     if (!is_parse_ok(state)) {
@@ -7812,8 +8450,7 @@ static struct mylite_sql_ast_node *make_node(struct mylite_sql_parser_state *sta
     return node;
 }
 
-static struct mylite_sql_source_span span_from_token(const struct mylite_sql_token *token)
-{
+static struct mylite_sql_source_span span_from_token(const struct mylite_sql_token *token) {
     if (token == NULL) {
         return (struct mylite_sql_source_span){0};
     }
@@ -7827,9 +8464,10 @@ static struct mylite_sql_source_span span_from_token(const struct mylite_sql_tok
     };
 }
 
-static struct mylite_sql_source_span span_join(struct mylite_sql_source_span left,
-                                               struct mylite_sql_source_span right)
-{
+static struct mylite_sql_source_span span_join(
+    struct mylite_sql_source_span left,
+    struct mylite_sql_source_span right
+) {
     struct mylite_sql_source_span start = left;
     size_t left_end = left.offset + left.length;
     size_t right_end = right.offset + right.length;

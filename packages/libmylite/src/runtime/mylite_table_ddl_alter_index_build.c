@@ -11,17 +11,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int
-init_alter_table_index_part_from_key_part(mylite_db *database,
-                                          const struct mylite_alter_table_model *model,
-                                          const struct mylite_create_table_key_part *source,
-                                          struct mylite_alter_table_index_part *out_part);
+static int init_alter_table_index_part_from_key_part(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_key_part *source,
+    struct mylite_alter_table_index_part *out_part
+);
 
 int mylite_table_ddl_init_alter_table_index_from_create_index(
-    mylite_db *database, struct mylite_alter_table_model *model,
-    const struct mylite_create_table_index *source, bool is_primary,
-    struct mylite_alter_table_index *out_index)
-{
+    mylite_db *database,
+    struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *source,
+    bool is_primary,
+    struct mylite_alter_table_index *out_index
+) {
     const char *index_type = "BTREE";
     const char *comment = "";
     const char *index_comment = source->comment == NULL ? "" : source->comment;
@@ -54,8 +57,12 @@ int mylite_table_ddl_init_alter_table_index_from_create_index(
     for (size_t part = 0U; part < source->part_count; ++part) {
         struct mylite_alter_table_index_part table_part = {0};
 
-        status = init_alter_table_index_part_from_key_part(database, model, &source->parts[part],
-                                                           &table_part);
+        status = init_alter_table_index_part_from_key_part(
+            database,
+            model,
+            &source->parts[part],
+            &table_part
+        );
         if (status == MYLITE_OK) {
             status = mylite_table_ddl_append_alter_table_index_part(out_index, table_part);
         }
@@ -69,9 +76,11 @@ int mylite_table_ddl_init_alter_table_index_from_create_index(
 }
 
 int mylite_table_ddl_assign_alter_table_generated_index_name(
-    mylite_db *database, const struct mylite_alter_table_model *model,
-    const struct mylite_create_table_index *source, char **out_name)
-{
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *source,
+    char **out_name
+) {
     const char *base = NULL;
     unsigned int suffix = 1U;
 
@@ -98,12 +107,12 @@ int mylite_table_ddl_assign_alter_table_generated_index_name(
     }
 }
 
-static int
-init_alter_table_index_part_from_key_part(mylite_db *database,
-                                          const struct mylite_alter_table_model *model,
-                                          const struct mylite_create_table_key_part *source,
-                                          struct mylite_alter_table_index_part *out_part)
-{
+static int init_alter_table_index_part_from_key_part(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_key_part *source,
+    struct mylite_alter_table_index_part *out_part
+) {
     const struct mylite_alter_table_column *column =
         mylite_table_ddl_find_alter_table_column(model, source->column_name);
     const char *nullable = "";

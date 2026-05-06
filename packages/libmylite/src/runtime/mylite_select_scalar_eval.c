@@ -25,76 +25,133 @@ struct mylite_select_scalar_expression_context {
     const struct mylite_select_scalar_eval_callbacks *callbacks;
 };
 
-static int
-evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
-                                     const struct mylite_sql_ast_node *expression,
-                                     const struct mylite_select_scalar_eval_callbacks *callbacks,
-                                     struct mylite_expression_value *out_value);
-static int
-evaluate_scalar_count_distinct_expression(mylite_stmt *stmt,
-                                          const struct mylite_sql_ast_node *arguments,
-                                          const struct mylite_expression_eval_context *context,
-                                          struct mylite_expression_value *out_value);
-static int
-evaluate_scalar_group_concat_expression(mylite_stmt *stmt,
-                                        const struct mylite_sql_ast_node *expression,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_value *out_value);
-static int validate_scalar_group_concat_order_by(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression, size_t argument_count,
-    const struct mylite_expression_eval_context *context);
-static int validate_scalar_group_concat_order_item(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *order_item, size_t argument_count,
-    const struct mylite_expression_eval_context *context);
-static int
-set_scalar_group_concat_unknown_order_column_error(mylite_stmt *stmt,
-                                                   const struct mylite_sql_ast_node *expression);
-static int append_scalar_group_concat_value(mylite_stmt *stmt, char **result, size_t *result_length,
-                                            const struct mylite_expression_value *value,
-                                            bool *truncated);
-static int append_scalar_group_concat_truncation_warning(mylite_stmt *stmt);
-static size_t scalar_group_concat_value_text_length(const struct mylite_expression_value *value,
-                                                    const char *text);
-static int set_scalar_unknown_field_column_error(mylite_stmt *stmt,
-                                                 const struct mylite_sql_ast_node *expression);
-static int evaluate_scalar_numeric_aggregate_expression(
-    mylite_stmt *stmt, enum mylite_sql_ast_aggregate_kind aggregate_kind,
-    const struct mylite_expression_value *argument, struct mylite_expression_value *out_value);
-static struct mylite_expression_eval_context
-scalar_expression_eval_context(struct mylite_select_scalar_expression_context *context);
-static int scalar_context_resolve_identifier(void *user_data,
-                                             const struct mylite_sql_ast_node *identifier,
-                                             struct mylite_expression_value *out_value);
-static int scalar_context_eval_session_function(
-    void *user_data, const struct mylite_sql_ast_node *function_call,
-    const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
-static int scalar_context_eval_default_function(void *user_data,
-                                                const struct mylite_sql_ast_node *function_call,
-                                                struct mylite_expression_value *out_value);
-static int scalar_context_eval_subquery(void *user_data, const struct mylite_sql_ast_node *subquery,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value);
-static int scalar_context_eval_in_subquery(void *user_data,
-                                           const struct mylite_sql_ast_node *expression,
-                                           const struct mylite_expression_value *left,
-                                           struct mylite_expression_warnings *warnings,
-                                           struct mylite_expression_value *out_value);
-static int scalar_context_eval_quantified_subquery(void *user_data,
-                                                   const struct mylite_sql_ast_node *expression,
-                                                   const struct mylite_expression_value *left,
-                                                   struct mylite_expression_warnings *warnings,
-                                                   struct mylite_expression_value *out_value);
-static int
-scalar_context_eval_row_subquery(void *user_data, const struct mylite_sql_ast_node *expression,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value);
-static bool
-scalar_eval_callbacks_are_valid(const struct mylite_select_scalar_eval_callbacks *callbacks);
+static int evaluate_scalar_aggregate_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_scalar_eval_callbacks *callbacks,
+    struct mylite_expression_value *out_value
+);
 
-int mylite_select_scalar_append_warnings_to_database(mylite_stmt *stmt)
-{
+static int evaluate_scalar_count_distinct_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_scalar_group_concat_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_value *out_value
+);
+
+static int validate_scalar_group_concat_order_by(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    size_t argument_count,
+    const struct mylite_expression_eval_context *context
+);
+
+static int validate_scalar_group_concat_order_item(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *order_item,
+    size_t argument_count,
+    const struct mylite_expression_eval_context *context
+);
+
+static int set_scalar_group_concat_unknown_order_column_error(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression
+);
+
+static int append_scalar_group_concat_value(
+    mylite_stmt *stmt,
+    char **result,
+    size_t *result_length,
+    const struct mylite_expression_value *value,
+    bool *truncated
+);
+
+static int append_scalar_group_concat_truncation_warning(mylite_stmt *stmt);
+
+static size_t scalar_group_concat_value_text_length(
+    const struct mylite_expression_value *value,
+    const char *text
+);
+
+static int set_scalar_unknown_field_column_error(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression
+);
+
+static int evaluate_scalar_numeric_aggregate_expression(
+    mylite_stmt *stmt,
+    enum mylite_sql_ast_aggregate_kind aggregate_kind,
+    const struct mylite_expression_value *argument,
+    struct mylite_expression_value *out_value
+);
+
+static struct mylite_expression_eval_context scalar_expression_eval_context(
+    struct mylite_select_scalar_expression_context *context
+);
+
+static int scalar_context_resolve_identifier(
+    void *user_data,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+);
+
+static int scalar_context_eval_session_function(
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int scalar_context_eval_default_function(
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
+    struct mylite_expression_value *out_value
+);
+
+static int scalar_context_eval_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int scalar_context_eval_in_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int scalar_context_eval_quantified_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int scalar_context_eval_row_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static bool scalar_eval_callbacks_are_valid(
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+);
+
+int mylite_select_scalar_append_warnings_to_database(mylite_stmt *stmt) {
     int status = MYLITE_OK;
 
     if (stmt == NULL || stmt->database == NULL) {
@@ -104,8 +161,10 @@ int mylite_select_scalar_append_warnings_to_database(mylite_stmt *stmt)
         return MYLITE_OK;
     }
 
-    status = mylite_select_subquery_append_warnings(&stmt->database->warnings,
-                                                    &stmt->scalar_result.warnings);
+    status = mylite_select_subquery_append_warnings(
+        &stmt->database->warnings,
+        &stmt->scalar_result.warnings
+    );
     if (status != MYLITE_OK) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
@@ -113,10 +172,11 @@ int mylite_select_scalar_append_warnings_to_database(mylite_stmt *stmt)
 }
 
 int mylite_select_scalar_evaluate_expression(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_select_scalar_eval_callbacks *callbacks,
-    struct mylite_expression_value *out_value)
-{
+    struct mylite_expression_value *out_value
+) {
     struct mylite_select_scalar_expression_context scalar_context = {
         .stmt = stmt,
         .callbacks = callbacks,
@@ -132,8 +192,12 @@ int mylite_select_scalar_evaluate_expression(
         return evaluate_scalar_aggregate_expression(stmt, expression, callbacks, out_value);
     }
 
-    status = mylite_expression_eval_with_context(expression, &context,
-                                                 &stmt->scalar_result.warnings, out_value);
+    status = mylite_expression_eval_with_context(
+        expression,
+        &context,
+        &stmt->scalar_result.warnings,
+        out_value
+    );
     if (status == 0) {
         return MYLITE_OK;
     }
@@ -162,9 +226,10 @@ int mylite_select_scalar_evaluate_expression(
     return MYLITE_UNSUPPORTED;
 }
 
-static int set_scalar_unknown_field_column_error(mylite_stmt *stmt,
-                                                 const struct mylite_sql_ast_node *expression)
-{
+static int set_scalar_unknown_field_column_error(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression
+) {
     char *reference = mylite_select_copy_reference_name(expression);
     char *message = NULL;
     int status = MYLITE_OK;
@@ -181,19 +246,22 @@ static int set_scalar_unknown_field_column_error(mylite_stmt *stmt,
     }
     status = mylite_diagnostics_set_error_message(stmt->database, message);
     if (status == MYLITE_OK) {
-        status = mylite_diagnostics_append_error(stmt->database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                                 message);
+        status = mylite_diagnostics_append_error(
+            stmt->database,
+            MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+            message
+        );
     }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int
-evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
-                                     const struct mylite_sql_ast_node *expression,
-                                     const struct mylite_select_scalar_eval_callbacks *callbacks,
-                                     struct mylite_expression_value *out_value)
-{
+static int evaluate_scalar_aggregate_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_scalar_eval_callbacks *callbacks,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct mylite_select_scalar_expression_context scalar_context = {
         .stmt = stmt,
@@ -204,8 +272,10 @@ evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
 
     if (expression->aggregate_kind == MYLITE_SQL_AST_AGGREGATE_COUNT &&
         expression->aggregate_argument == MYLITE_SQL_AST_AGGREGATE_ARGUMENT_STAR) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 1};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 1
+        };
         return MYLITE_OK;
     }
     if (expression->aggregate_kind == MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT) {
@@ -216,13 +286,21 @@ evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
             expression->aggregate_argument ==
                 MYLITE_SQL_AST_AGGREGATE_ARGUMENT_DISTINCT_EXPRESSION_LIST) {
             return evaluate_scalar_count_distinct_expression(
-                stmt, mylite_ast_child_at(expression, 1U), &context, out_value);
+                stmt,
+                mylite_ast_child_at(expression, 1U),
+                &context,
+                out_value
+            );
         }
         return MYLITE_UNSUPPORTED;
     }
 
-    status = mylite_expression_eval_with_context(mylite_ast_child_at(expression, 1U), &context,
-                                                 &stmt->scalar_result.warnings, &argument);
+    status = mylite_expression_eval_with_context(
+        mylite_ast_child_at(expression, 1U),
+        &context,
+        &stmt->scalar_result.warnings,
+        &argument
+    );
     if (status != 0) {
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -251,8 +329,12 @@ evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
     switch (expression->aggregate_kind) {
     case MYLITE_SQL_AST_AGGREGATE_SUM:
     case MYLITE_SQL_AST_AGGREGATE_AVG:
-        status = evaluate_scalar_numeric_aggregate_expression(stmt, expression->aggregate_kind,
-                                                              &argument, out_value);
+        status = evaluate_scalar_numeric_aggregate_expression(
+            stmt,
+            expression->aggregate_kind,
+            &argument,
+            out_value
+        );
         if (status != MYLITE_OK) {
             mylite_expression_value_deinit(&argument);
             return status;
@@ -277,9 +359,11 @@ evaluate_scalar_aggregate_expression(mylite_stmt *stmt,
 }
 
 static int evaluate_scalar_group_concat_expression(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_eval_context *context, struct mylite_expression_value *out_value)
-{
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     size_t argument_count = mylite_sql_ast_node_child_count(arguments);
     struct mylite_expression_value *values = NULL;
@@ -311,7 +395,11 @@ static int evaluate_scalar_group_concat_expression(
     for (const struct mylite_sql_ast_node *argument = arguments->first_child; argument != NULL;
          argument = argument->next_sibling) {
         int eval_status = mylite_expression_eval_with_context(
-            argument, context, &stmt->scalar_result.warnings, &values[index]);
+            argument,
+            context,
+            &stmt->scalar_result.warnings,
+            &values[index]
+        );
 
         if (eval_status != 0) {
             if (eval_status == MYLITE_NOMEM) {
@@ -336,8 +424,13 @@ static int evaluate_scalar_group_concat_expression(
     }
 
     for (index = 0U; status == MYLITE_OK && index < argument_count; ++index) {
-        status = append_scalar_group_concat_value(stmt, &result, &result_length, &values[index],
-                                                  &truncated);
+        status = append_scalar_group_concat_value(
+            stmt,
+            &result,
+            &result_length,
+            &values[index],
+            &truncated
+        );
     }
     if (status != MYLITE_OK) {
         goto cleanup;
@@ -368,16 +461,19 @@ cleanup:
 }
 
 static int validate_scalar_group_concat_order_by(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression, size_t argument_count,
-    const struct mylite_expression_eval_context *context)
-{
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    size_t argument_count,
+    const struct mylite_expression_eval_context *context
+) {
     const struct mylite_sql_ast_node *order_by =
         mylite_ast_find_child_kind(expression, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
     const struct mylite_sql_ast_node *items =
         order_by == NULL ? NULL : mylite_ast_child_at(order_by, 0U);
 
     for (const struct mylite_sql_ast_node *item = items == NULL ? NULL : items->first_child;
-         item != NULL; item = item->next_sibling) {
+         item != NULL;
+         item = item->next_sibling) {
         int status = validate_scalar_group_concat_order_item(stmt, item, argument_count, context);
 
         if (status != MYLITE_OK) {
@@ -388,9 +484,11 @@ static int validate_scalar_group_concat_order_by(
 }
 
 static int validate_scalar_group_concat_order_item(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *order_item, size_t argument_count,
-    const struct mylite_expression_eval_context *context)
-{
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *order_item,
+    size_t argument_count,
+    const struct mylite_expression_eval_context *context
+) {
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(order_item, 0U);
     struct mylite_expression_value value = {0};
     int eval_status = 0;
@@ -413,8 +511,12 @@ static int validate_scalar_group_concat_order_item(
         return set_scalar_group_concat_unknown_order_column_error(stmt, expression);
     }
 
-    eval_status = mylite_expression_eval_with_context(expression, context,
-                                                      &stmt->scalar_result.warnings, &value);
+    eval_status = mylite_expression_eval_with_context(
+        expression,
+        context,
+        &stmt->scalar_result.warnings,
+        &value
+    );
     mylite_expression_value_deinit(&value);
     if (eval_status == 0) {
         return MYLITE_OK;
@@ -429,10 +531,10 @@ static int validate_scalar_group_concat_order_item(
     return MYLITE_UNSUPPORTED;
 }
 
-static int
-set_scalar_group_concat_unknown_order_column_error(mylite_stmt *stmt,
-                                                   const struct mylite_sql_ast_node *expression)
-{
+static int set_scalar_group_concat_unknown_order_column_error(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression
+) {
     char *reference = mylite_copy_span_text(expression->span.text, expression->span.length);
     int status = MYLITE_OK;
 
@@ -445,10 +547,13 @@ set_scalar_group_concat_unknown_order_column_error(mylite_stmt *stmt,
     return status;
 }
 
-static int append_scalar_group_concat_value(mylite_stmt *stmt, char **result, size_t *result_length,
-                                            const struct mylite_expression_value *value,
-                                            bool *truncated)
-{
+static int append_scalar_group_concat_value(
+    mylite_stmt *stmt,
+    char **result,
+    size_t *result_length,
+    const struct mylite_expression_value *value,
+    bool *truncated
+) {
     char *text = mylite_expression_value_to_text(value);
     size_t text_length = scalar_group_concat_value_text_length(value, text);
     size_t remaining = 0U;
@@ -497,23 +602,26 @@ static int append_scalar_group_concat_value(mylite_stmt *stmt, char **result, si
     return status;
 }
 
-static int append_scalar_group_concat_truncation_warning(mylite_stmt *stmt)
-{
+static int append_scalar_group_concat_truncation_warning(mylite_stmt *stmt) {
     char message[mylite_scalar_group_concat_warning_size] = {0};
     int length = snprintf(message, sizeof(message), "Row 1 was cut by GROUP_CONCAT()");
 
     if (length < 0 || (size_t)length >= sizeof(message) ||
-        mylite_expression_warnings_append(&stmt->scalar_result.warnings,
-                                          MYLITE_MYSQL_ER_CUT_VALUE_GROUP_CONCAT, message) != 0) {
+        mylite_expression_warnings_append(
+            &stmt->scalar_result.warnings,
+            MYLITE_MYSQL_ER_CUT_VALUE_GROUP_CONCAT,
+            message
+        ) != 0) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
     return MYLITE_OK;
 }
 
-static size_t scalar_group_concat_value_text_length(const struct mylite_expression_value *value,
-                                                    const char *text)
-{
+static size_t scalar_group_concat_value_text_length(
+    const struct mylite_expression_value *value,
+    const char *text
+) {
     if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return value->text_length;
     }
@@ -521,9 +629,11 @@ static size_t scalar_group_concat_value_text_length(const struct mylite_expressi
 }
 
 static int evaluate_scalar_count_distinct_expression(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *arguments,
-    const struct mylite_expression_eval_context *context, struct mylite_expression_value *out_value)
-{
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_value *out_value
+) {
     bool has_null = false;
 
     if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_EXPRESSION_LIST ||
@@ -532,10 +642,15 @@ static int evaluate_scalar_count_distinct_expression(
     }
 
     for (const struct mylite_sql_ast_node *argument_node = arguments->first_child;
-         argument_node != NULL; argument_node = argument_node->next_sibling) {
+         argument_node != NULL;
+         argument_node = argument_node->next_sibling) {
         struct mylite_expression_value argument = {0};
-        int status = mylite_expression_eval_with_context(argument_node, context,
-                                                         &stmt->scalar_result.warnings, &argument);
+        int status = mylite_expression_eval_with_context(
+            argument_node,
+            context,
+            &stmt->scalar_result.warnings,
+            &argument
+        );
 
         if (status != 0) {
             mylite_expression_value_deinit(&argument);
@@ -567,9 +682,11 @@ static int evaluate_scalar_count_distinct_expression(
 }
 
 static int evaluate_scalar_numeric_aggregate_expression(
-    mylite_stmt *stmt, enum mylite_sql_ast_aggregate_kind aggregate_kind,
-    const struct mylite_expression_value *argument, struct mylite_expression_value *out_value)
-{
+    mylite_stmt *stmt,
+    enum mylite_sql_ast_aggregate_kind aggregate_kind,
+    const struct mylite_expression_value *argument,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_aggregate_numeric_value numeric = {0};
     int status =
         mylite_select_aggregate_value_to_double(&stmt->scalar_result.warnings, argument, &numeric);
@@ -609,9 +726,9 @@ static int evaluate_scalar_numeric_aggregate_expression(
     return status;
 }
 
-static struct mylite_expression_eval_context
-scalar_expression_eval_context(struct mylite_select_scalar_expression_context *context)
-{
+static struct mylite_expression_eval_context scalar_expression_eval_context(
+    struct mylite_select_scalar_expression_context *context
+) {
     return (struct mylite_expression_eval_context){
         .user_data = context,
         .resolve_identifier = scalar_context_resolve_identifier,
@@ -624,18 +741,22 @@ scalar_expression_eval_context(struct mylite_select_scalar_expression_context *c
     };
 }
 
-static int scalar_context_resolve_identifier(void *user_data,
-                                             const struct mylite_sql_ast_node *identifier,
-                                             struct mylite_expression_value *out_value)
-{
+static int scalar_context_resolve_identifier(
+    void *user_data,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_select_scalar_expression_context *context = user_data;
 
     if (context == NULL || context->stmt == NULL) {
         return -1;
     }
     if (mylite_system_variable_identifier_is_system_variable(identifier)) {
-        return mylite_system_variable_eval_identifier(context->stmt->database, identifier,
-                                                      out_value);
+        return mylite_system_variable_eval_identifier(
+            context->stmt->database,
+            identifier,
+            out_value
+        );
     }
     if (mylite_user_variable_identifier_is_user_variable(identifier)) {
         return mylite_user_variable_eval_identifier(context->stmt->database, identifier, out_value);
@@ -644,24 +765,32 @@ static int scalar_context_resolve_identifier(void *user_data,
 }
 
 static int scalar_context_eval_session_function(
-    void *user_data, const struct mylite_sql_ast_node *function_call,
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
-{
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_select_scalar_expression_context *context = user_data;
 
     if (context == NULL || context->callbacks == NULL ||
         context->callbacks->eval_session_function == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    return context->callbacks->eval_session_function(context->stmt, function_call,
-                                                     expression_context, warnings, out_value);
+    return context->callbacks->eval_session_function(
+        context->stmt,
+        function_call,
+        expression_context,
+        warnings,
+        out_value
+    );
 }
 
-static int scalar_context_eval_default_function(void *user_data,
-                                                const struct mylite_sql_ast_node *function_call,
-                                                struct mylite_expression_value *out_value)
-{
+static int scalar_context_eval_default_function(
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_select_scalar_expression_context *context = user_data;
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     const struct mylite_sql_ast_node *identifier =
@@ -680,21 +809,29 @@ static int scalar_context_eval_default_function(void *user_data,
         (void)mylite_diagnostics_set_error_message(context->stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
-    status = mylite_diagnostics_set_error_message_parts(context->stmt->database, "Unknown column '",
-                                                        reference, "' in 'field list'");
+    status = mylite_diagnostics_set_error_message_parts(
+        context->stmt->database,
+        "Unknown column '",
+        reference,
+        "' in 'field list'"
+    );
     free(reference);
     if (status == MYLITE_OK) {
-        status = mylite_diagnostics_append_error(context->stmt->database,
-                                                 MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                                 mylite_error_message(context->stmt->database));
+        status = mylite_diagnostics_append_error(
+            context->stmt->database,
+            MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+            mylite_error_message(context->stmt->database)
+        );
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int scalar_context_eval_subquery(void *user_data, const struct mylite_sql_ast_node *subquery,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value)
-{
+static int scalar_context_eval_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_select_scalar_expression_context *context = user_data;
 
     if (context == NULL || context->callbacks == NULL ||
@@ -704,57 +841,60 @@ static int scalar_context_eval_subquery(void *user_data, const struct mylite_sql
     return context->callbacks->eval_subquery(context->stmt, subquery, warnings, out_value);
 }
 
-static int scalar_context_eval_in_subquery(void *user_data,
-                                           const struct mylite_sql_ast_node *expression,
-                                           const struct mylite_expression_value *left,
-                                           struct mylite_expression_warnings *warnings,
-                                           struct mylite_expression_value *out_value)
-{
+static int scalar_context_eval_in_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_select_scalar_expression_context *context = user_data;
 
     if (context == NULL || context->callbacks == NULL ||
         context->callbacks->eval_in_subquery == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    return context->callbacks->eval_in_subquery(context->stmt, expression, left, warnings,
-                                                out_value);
+    return context->callbacks
+        ->eval_in_subquery(context->stmt, expression, left, warnings, out_value);
 }
 
-static int scalar_context_eval_quantified_subquery(void *user_data,
-                                                   const struct mylite_sql_ast_node *expression,
-                                                   const struct mylite_expression_value *left,
-                                                   struct mylite_expression_warnings *warnings,
-                                                   struct mylite_expression_value *out_value)
-{
+static int scalar_context_eval_quantified_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_select_scalar_expression_context *context = user_data;
 
     if (context == NULL || context->callbacks == NULL ||
         context->callbacks->eval_quantified_subquery == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    return context->callbacks->eval_quantified_subquery(context->stmt, expression, left, warnings,
-                                                        out_value);
+    return context->callbacks
+        ->eval_quantified_subquery(context->stmt, expression, left, warnings, out_value);
 }
 
-static int
-scalar_context_eval_row_subquery(void *user_data, const struct mylite_sql_ast_node *expression,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
+static int scalar_context_eval_row_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_select_scalar_expression_context *context = user_data;
 
     if (context == NULL || context->callbacks == NULL ||
         context->callbacks->eval_row_subquery == NULL) {
         return MYLITE_UNSUPPORTED;
     }
-    return context->callbacks->eval_row_subquery(context->stmt, expression, expression_context,
-                                                 warnings, out_value);
+    return context->callbacks
+        ->eval_row_subquery(context->stmt, expression, expression_context, warnings, out_value);
 }
 
-static bool
-scalar_eval_callbacks_are_valid(const struct mylite_select_scalar_eval_callbacks *callbacks)
-{
+static bool scalar_eval_callbacks_are_valid(
+    const struct mylite_select_scalar_eval_callbacks *callbacks
+) {
     return (callbacks != NULL && callbacks->infer_expression_descriptor != NULL &&
             callbacks->eval_session_function != NULL && callbacks->eval_subquery != NULL &&
             callbacks->eval_in_subquery != NULL && callbacks->eval_quantified_subquery != NULL &&

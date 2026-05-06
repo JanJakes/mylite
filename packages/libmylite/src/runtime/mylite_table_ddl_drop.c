@@ -13,26 +13,52 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int validate_drop_table_plan(mylite_db *database, const char *selected_schema,
-                                    struct mylite_drop_table_plan *plan, bool if_exists);
-static int validate_drop_table_temporary_target(mylite_db *database,
-                                                struct mylite_drop_table_target *target,
-                                                bool if_exists);
-static int validate_drop_table_target(mylite_db *database, struct mylite_drop_table_target *target,
-                                      bool if_exists);
-static bool drop_table_target_is_duplicate(const struct mylite_drop_table_plan *plan,
-                                           size_t target_index);
-static int drop_table_transaction(mylite_db *database, const struct mylite_drop_table_plan *plan);
-static int drop_physical_table(mylite_db *database, const struct mylite_drop_table_target *target);
-static int set_unknown_table_error(mylite_db *database, const char *schema_name,
-                                   const char *table_name);
-static int append_unknown_table_note(mylite_db *database, const char *schema_name,
-                                     const char *table_name);
+static int validate_drop_table_plan(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_drop_table_plan *plan,
+    bool if_exists
+);
 
-int mylite_table_ddl_execute_drop_table_statement(mylite_db *database, const char *selected_schema,
-                                                  struct mylite_drop_table_plan *plan,
-                                                  bool if_exists)
-{
+static int validate_drop_table_temporary_target(
+    mylite_db *database,
+    struct mylite_drop_table_target *target,
+    bool if_exists
+);
+
+static int validate_drop_table_target(
+    mylite_db *database,
+    struct mylite_drop_table_target *target,
+    bool if_exists
+);
+
+static bool drop_table_target_is_duplicate(
+    const struct mylite_drop_table_plan *plan,
+    size_t target_index
+);
+
+static int drop_table_transaction(mylite_db *database, const struct mylite_drop_table_plan *plan);
+
+static int drop_physical_table(mylite_db *database, const struct mylite_drop_table_target *target);
+
+static int set_unknown_table_error(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+);
+
+static int append_unknown_table_note(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+);
+
+int mylite_table_ddl_execute_drop_table_statement(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_drop_table_plan *plan,
+    bool if_exists
+) {
     int status = validate_drop_table_plan(database, selected_schema, plan, if_exists);
 
     if (status != MYLITE_OK) {
@@ -42,9 +68,12 @@ int mylite_table_ddl_execute_drop_table_statement(mylite_db *database, const cha
     return drop_table_transaction(database, plan);
 }
 
-static int validate_drop_table_plan(mylite_db *database, const char *selected_schema,
-                                    struct mylite_drop_table_plan *plan, bool if_exists)
-{
+static int validate_drop_table_plan(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_drop_table_plan *plan,
+    bool if_exists
+) {
     for (size_t index = 0U; index < plan->target_count; ++index) {
         struct mylite_drop_table_target *target = &plan->targets[index];
 
@@ -61,8 +90,12 @@ static int validate_drop_table_plan(mylite_db *database, const char *selected_sc
         }
 
         if (drop_table_target_is_duplicate(plan, index)) {
-            (void)mylite_diagnostics_set_error_message_parts(database, "Not unique table/alias: '",
-                                                             target->table_name, "'");
+            (void)mylite_diagnostics_set_error_message_parts(
+                database,
+                "Not unique table/alias: '",
+                target->table_name,
+                "'"
+            );
             return MYLITE_EXEC_ERROR;
         }
     }
@@ -90,10 +123,11 @@ static int validate_drop_table_plan(mylite_db *database, const char *selected_sc
     return MYLITE_OK;
 }
 
-static int validate_drop_table_temporary_target(mylite_db *database,
-                                                struct mylite_drop_table_target *target,
-                                                bool if_exists)
-{
+static int validate_drop_table_temporary_target(
+    mylite_db *database,
+    struct mylite_drop_table_target *target,
+    bool if_exists
+) {
     struct mylite_schema_presence presence;
     bool exists = false;
     int status = mylite_catalog_schema_exists(database, target->schema_name, &presence);
@@ -102,8 +136,12 @@ static int validate_drop_table_temporary_target(mylite_db *database,
         return status;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Access to system schema '",
-                                                         target->schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Access to system schema '",
+            target->schema_name,
+            "' is rejected."
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (!presence.exists) {
@@ -113,8 +151,12 @@ static int validate_drop_table_temporary_target(mylite_db *database,
         return set_unknown_table_error(database, target->schema_name, target->table_name);
     }
 
-    status = mylite_catalog_temporary_table_exists(database, target->schema_name,
-                                                   target->table_name, &exists);
+    status = mylite_catalog_temporary_table_exists(
+        database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -129,9 +171,11 @@ static int validate_drop_table_temporary_target(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int validate_drop_table_target(mylite_db *database, struct mylite_drop_table_target *target,
-                                      bool if_exists)
-{
+static int validate_drop_table_target(
+    mylite_db *database,
+    struct mylite_drop_table_target *target,
+    bool if_exists
+) {
     struct mylite_schema_presence presence;
     bool exists = false;
     int status = mylite_catalog_schema_exists(database, target->schema_name, &presence);
@@ -140,8 +184,12 @@ static int validate_drop_table_target(mylite_db *database, struct mylite_drop_ta
         return status;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Access to system schema '",
-                                                         target->schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Access to system schema '",
+            target->schema_name,
+            "' is rejected."
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (!presence.exists) {
@@ -151,8 +199,12 @@ static int validate_drop_table_target(mylite_db *database, struct mylite_drop_ta
         return set_unknown_table_error(database, target->schema_name, target->table_name);
     }
 
-    status = mylite_catalog_temporary_table_exists(database, target->schema_name,
-                                                   target->table_name, &exists);
+    status = mylite_catalog_temporary_table_exists(
+        database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -162,8 +214,12 @@ static int validate_drop_table_target(mylite_db *database, struct mylite_drop_ta
         return MYLITE_OK;
     }
 
-    status = mylite_catalog_persistent_table_exists(database, target->schema_name,
-                                                    target->table_name, &exists);
+    status = mylite_catalog_persistent_table_exists(
+        database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -178,9 +234,10 @@ static int validate_drop_table_target(mylite_db *database, struct mylite_drop_ta
     return MYLITE_OK;
 }
 
-static bool drop_table_target_is_duplicate(const struct mylite_drop_table_plan *plan,
-                                           size_t target_index)
-{
+static bool drop_table_target_is_duplicate(
+    const struct mylite_drop_table_plan *plan,
+    size_t target_index
+) {
     const struct mylite_drop_table_target *target = &plan->targets[target_index];
 
     for (size_t index = 0U; index < target_index; ++index) {
@@ -192,8 +249,7 @@ static bool drop_table_target_is_duplicate(const struct mylite_drop_table_plan *
     return false;
 }
 
-static int drop_table_transaction(mylite_db *database, const struct mylite_drop_table_plan *plan)
-{
+static int drop_table_transaction(mylite_db *database, const struct mylite_drop_table_plan *plan) {
     int status = mylite_transaction_begin_storage(database);
 
     if (status != MYLITE_OK) {
@@ -212,12 +268,18 @@ static int drop_table_transaction(mylite_db *database, const struct mylite_drop_
 
             if (plan->targets[index].temporary) {
                 status = mylite_catalog_delete_temporary_table_rows(
-                    database, plan->targets[index].schema_name, plan->targets[index].table_name,
-                    flags);
+                    database,
+                    plan->targets[index].schema_name,
+                    plan->targets[index].table_name,
+                    flags
+                );
             } else {
-                status =
-                    mylite_catalog_delete_table_rows(database, plan->targets[index].schema_name,
-                                                     plan->targets[index].table_name, flags);
+                status = mylite_catalog_delete_table_rows(
+                    database,
+                    plan->targets[index].schema_name,
+                    plan->targets[index].table_name,
+                    flags
+                );
             }
         }
     }
@@ -233,8 +295,7 @@ static int drop_table_transaction(mylite_db *database, const struct mylite_drop_
     return status;
 }
 
-static int drop_physical_table(mylite_db *database, const struct mylite_drop_table_target *target)
-{
+static int drop_physical_table(mylite_db *database, const struct mylite_drop_table_target *target) {
     char *physical_name =
         mylite_catalog_physical_table_name(target->schema_name, target->table_name);
     char *drop_sql = NULL;
@@ -269,9 +330,11 @@ static int drop_physical_table(mylite_db *database, const struct mylite_drop_tab
     return MYLITE_OK;
 }
 
-static int set_unknown_table_error(mylite_db *database, const char *schema_name,
-                                   const char *table_name)
-{
+static int set_unknown_table_error(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+) {
     char *message = sqlite3_mprintf("Unknown table '%q.%q'", schema_name, table_name);
     int status = MYLITE_OK;
 
@@ -289,9 +352,11 @@ static int set_unknown_table_error(mylite_db *database, const char *schema_name,
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int append_unknown_table_note(mylite_db *database, const char *schema_name,
-                                     const char *table_name)
-{
+static int append_unknown_table_note(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+) {
     char *message = sqlite3_mprintf("Unknown table '%q.%q'", schema_name, table_name);
     int status = MYLITE_OK;
 

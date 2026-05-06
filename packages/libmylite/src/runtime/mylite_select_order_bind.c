@@ -11,16 +11,23 @@
 
 #include <stdlib.h>
 
-static bool
-order_bind_callbacks_are_valid(const struct mylite_select_order_bind_callbacks *callbacks);
-static int bind_order_item(mylite_db *database, const struct mylite_sql_ast_node *order_item,
-                           struct mylite_select_plan *plan,
-                           const struct mylite_select_order_bind_callbacks *callbacks);
-int mylite_select_bind_order_by_clause(mylite_db *database,
-                                       const struct mylite_sql_ast_node *order_by_clause,
-                                       struct mylite_select_plan *plan,
-                                       const struct mylite_select_order_bind_callbacks *callbacks)
-{
+static bool order_bind_callbacks_are_valid(
+    const struct mylite_select_order_bind_callbacks *callbacks
+);
+
+static int bind_order_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_item,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_order_bind_callbacks *callbacks
+);
+
+int mylite_select_bind_order_by_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_order_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *items = mylite_ast_child_at(order_by_clause, 0U);
 
     if (!order_bind_callbacks_are_valid(callbacks)) {
@@ -45,9 +52,9 @@ int mylite_select_bind_order_by_clause(mylite_db *database,
     return mylite_select_validate_distinct_order(database, plan);
 }
 
-static bool
-order_bind_callbacks_are_valid(const struct mylite_select_order_bind_callbacks *callbacks)
-{
+static bool order_bind_callbacks_are_valid(
+    const struct mylite_select_order_bind_callbacks *callbacks
+) {
     if (callbacks == NULL || callbacks->aggregate_callbacks == NULL ||
         callbacks->subquery_callbacks == NULL || callbacks->set_unsupported_order_error == NULL) {
         return false;
@@ -55,10 +62,12 @@ order_bind_callbacks_are_valid(const struct mylite_select_order_bind_callbacks *
     return true;
 }
 
-static int bind_order_item(mylite_db *database, const struct mylite_sql_ast_node *order_item,
-                           struct mylite_select_plan *plan,
-                           const struct mylite_select_order_bind_callbacks *callbacks)
-{
+static int bind_order_item(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_item,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_order_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(order_item, 0U);
     struct mylite_select_order_key order_key = {
         .kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION,

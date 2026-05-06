@@ -5,7 +5,9 @@
 
 struct mylite_alter_table_model;
 
-int mylite_table_ddl_append_alter_table_warnings(mylite_db *database,
-                                                 const struct mylite_alter_table_model *model);
+int mylite_table_ddl_append_alter_table_warnings(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+);
 
 #endif

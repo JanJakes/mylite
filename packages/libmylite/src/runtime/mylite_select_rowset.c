@@ -7,18 +7,28 @@
 #include <string.h>
 
 static int allocate_table_select_row_copy(struct mylite_table_select_row *out_row);
-static int allocate_table_select_expression_values(struct mylite_expression_value **out_values,
-                                                   size_t value_count);
-static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t index_count);
-static int allocate_table_select_source_rowids(int64_t **out_rowids, size_t rowid_count);
-static int copy_table_select_row_copy_values(const struct mylite_table_select_row *row,
-                                             struct mylite_table_select_row *out_row);
-static int copy_table_select_expression_values(const struct mylite_expression_value *values,
-                                               struct mylite_expression_value *out_values,
-                                               size_t value_count);
 
-void mylite_select_result_deinit(struct mylite_table_select_result *result)
-{
+static int allocate_table_select_expression_values(
+    struct mylite_expression_value **out_values,
+    size_t value_count
+);
+
+static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t index_count);
+
+static int allocate_table_select_source_rowids(int64_t **out_rowids, size_t rowid_count);
+
+static int copy_table_select_row_copy_values(
+    const struct mylite_table_select_row *row,
+    struct mylite_table_select_row *out_row
+);
+
+static int copy_table_select_expression_values(
+    const struct mylite_expression_value *values,
+    struct mylite_expression_value *out_values,
+    size_t value_count
+);
+
+void mylite_select_result_deinit(struct mylite_table_select_result *result) {
     if (result == NULL) {
         return;
     }
@@ -31,8 +41,7 @@ void mylite_select_result_deinit(struct mylite_table_select_result *result)
     *result = (struct mylite_table_select_result){0};
 }
 
-void mylite_select_result_current_values_deinit(struct mylite_table_select_result *result)
-{
+void mylite_select_result_current_values_deinit(struct mylite_table_select_result *result) {
     if (result == NULL) {
         return;
     }
@@ -48,8 +57,7 @@ void mylite_select_result_current_values_deinit(struct mylite_table_select_resul
     result->has_current_row = false;
 }
 
-void mylite_select_row_deinit(struct mylite_table_select_row *row)
-{
+void mylite_select_row_deinit(struct mylite_table_select_row *row) {
     if (row == NULL) {
         return;
     }
@@ -75,9 +83,10 @@ void mylite_select_row_deinit(struct mylite_table_select_row *row)
     *row = (struct mylite_table_select_row){0};
 }
 
-int mylite_select_row_copy(const struct mylite_table_select_row *row,
-                           struct mylite_table_select_row *out_row)
-{
+int mylite_select_row_copy(
+    const struct mylite_table_select_row *row,
+    struct mylite_table_select_row *out_row
+) {
     int status = MYLITE_OK;
 
     *out_row = (struct mylite_table_select_row){0};
@@ -98,9 +107,11 @@ int mylite_select_row_copy(const struct mylite_table_select_row *row,
     return status;
 }
 
-int mylite_select_result_append_row(mylite_db *database, struct mylite_table_select_result *result,
-                                    struct mylite_table_select_row *row)
-{
+int mylite_select_result_append_row(
+    mylite_db *database,
+    struct mylite_table_select_result *result,
+    struct mylite_table_select_row *row
+) {
     struct mylite_table_select_row *rows =
         realloc(result->rows, (result->row_count + 1U) * sizeof(*result->rows));
 
@@ -115,10 +126,11 @@ int mylite_select_result_append_row(mylite_db *database, struct mylite_table_sel
     return MYLITE_OK;
 }
 
-int mylite_select_result_append_row_copy(mylite_db *database,
-                                         struct mylite_table_select_result *result,
-                                         const struct mylite_table_select_row *row)
-{
+int mylite_select_result_append_row_copy(
+    mylite_db *database,
+    struct mylite_table_select_result *result,
+    const struct mylite_table_select_row *row
+) {
     struct mylite_table_select_row copy = {0};
     int status = mylite_select_row_copy(row, &copy);
 
@@ -132,9 +144,10 @@ int mylite_select_result_append_row_copy(mylite_db *database,
     return status;
 }
 
-int mylite_select_result_apply_limit(struct mylite_table_select_result *result,
-                                     const struct mylite_select_limit *limit)
-{
+int mylite_select_result_apply_limit(
+    struct mylite_table_select_result *result,
+    const struct mylite_select_limit *limit
+) {
     size_t kept = 0U;
 
     if (!limit->has_limit) {
@@ -142,10 +155,13 @@ int mylite_select_result_apply_limit(struct mylite_table_select_result *result,
     }
 
     for (size_t index = 0U; index < result->row_count; ++index) {
-        if (mylite_select_limit_row_is_kept(limit, (struct mylite_select_limit_position){
-                                                       .matched_row = (uint64_t)index,
-                                                       .kept_count = kept,
-                                                   })) {
+        if (mylite_select_limit_row_is_kept(
+                limit,
+                (struct mylite_select_limit_position){
+                    .matched_row = (uint64_t)index,
+                    .kept_count = kept,
+                }
+            )) {
             if (kept != index) {
                 result->rows[kept] = result->rows[index];
                 result->rows[index] = (struct mylite_table_select_row){0};
@@ -159,10 +175,11 @@ int mylite_select_result_apply_limit(struct mylite_table_select_result *result,
     return MYLITE_OK;
 }
 
-int mylite_select_rowset_append_row(mylite_db *database,
-                                    struct mylite_table_select_table_rowset *rowset,
-                                    struct mylite_table_select_row *row)
-{
+int mylite_select_rowset_append_row(
+    mylite_db *database,
+    struct mylite_table_select_table_rowset *rowset,
+    struct mylite_table_select_row *row
+) {
     struct mylite_table_select_row *rows =
         realloc(rowset->rows, (rowset->row_count + 1U) * sizeof(*rowset->rows));
 
@@ -176,10 +193,11 @@ int mylite_select_rowset_append_row(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_select_rowset_append_row_copy(mylite_db *database,
-                                         struct mylite_table_select_table_rowset *rowset,
-                                         const struct mylite_table_select_row *row)
-{
+int mylite_select_rowset_append_row_copy(
+    mylite_db *database,
+    struct mylite_table_select_table_rowset *rowset,
+    const struct mylite_table_select_row *row
+) {
     struct mylite_table_select_row copy = {0};
     int status = mylite_select_row_copy(row, &copy);
 
@@ -194,8 +212,7 @@ int mylite_select_rowset_append_row_copy(mylite_db *database,
     return status;
 }
 
-void mylite_select_rowset_deinit(struct mylite_table_select_table_rowset *rowset)
-{
+void mylite_select_rowset_deinit(struct mylite_table_select_table_rowset *rowset) {
     if (rowset == NULL) {
         return;
     }
@@ -206,9 +223,10 @@ void mylite_select_rowset_deinit(struct mylite_table_select_table_rowset *rowset
     *rowset = (struct mylite_table_select_table_rowset){0};
 }
 
-void mylite_select_rowsets_deinit(struct mylite_table_select_table_rowset *rowsets,
-                                  size_t rowset_count)
-{
+void mylite_select_rowsets_deinit(
+    struct mylite_table_select_table_rowset *rowsets,
+    size_t rowset_count
+) {
     if (rowsets == NULL) {
         return;
     }
@@ -218,36 +236,46 @@ void mylite_select_rowsets_deinit(struct mylite_table_select_table_rowset *rowse
     free(rowsets);
 }
 
-static int allocate_table_select_row_copy(struct mylite_table_select_row *out_row)
-{
+static int allocate_table_select_row_copy(struct mylite_table_select_row *out_row) {
     int status = allocate_table_select_expression_values(&out_row->values, out_row->value_count);
 
     if (status == MYLITE_OK) {
-        status = allocate_table_select_expression_values(&out_row->output_values,
-                                                         out_row->output_value_count);
+        status = allocate_table_select_expression_values(
+            &out_row->output_values,
+            out_row->output_value_count
+        );
     }
     if (status == MYLITE_OK) {
-        status = allocate_table_select_expression_values(&out_row->order_values,
-                                                         out_row->order_value_count);
+        status = allocate_table_select_expression_values(
+            &out_row->order_values,
+            out_row->order_value_count
+        );
     }
     if (status == MYLITE_OK) {
-        status = allocate_table_select_expression_values(&out_row->aggregate_values,
-                                                         out_row->aggregate_value_count);
+        status = allocate_table_select_expression_values(
+            &out_row->aggregate_values,
+            out_row->aggregate_value_count
+        );
     }
     if (status == MYLITE_OK) {
-        status = allocate_table_select_source_row_indexes(&out_row->source_row_indexes,
-                                                          out_row->source_row_index_count);
+        status = allocate_table_select_source_row_indexes(
+            &out_row->source_row_indexes,
+            out_row->source_row_index_count
+        );
     }
     if (status == MYLITE_OK) {
-        status = allocate_table_select_source_rowids(&out_row->source_rowids,
-                                                     out_row->source_rowid_count);
+        status = allocate_table_select_source_rowids(
+            &out_row->source_rowids,
+            out_row->source_rowid_count
+        );
     }
     return status;
 }
 
-static int allocate_table_select_expression_values(struct mylite_expression_value **out_values,
-                                                   size_t value_count)
-{
+static int allocate_table_select_expression_values(
+    struct mylite_expression_value **out_values,
+    size_t value_count
+) {
     if (value_count == 0U) {
         return MYLITE_OK;
     }
@@ -255,8 +283,7 @@ static int allocate_table_select_expression_values(struct mylite_expression_valu
     return *out_values == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t index_count)
-{
+static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t index_count) {
     if (index_count == 0U) {
         return MYLITE_OK;
     }
@@ -264,8 +291,7 @@ static int allocate_table_select_source_row_indexes(size_t **out_indexes, size_t
     return *out_indexes == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static int allocate_table_select_source_rowids(int64_t **out_rowids, size_t rowid_count)
-{
+static int allocate_table_select_source_rowids(int64_t **out_rowids, size_t rowid_count) {
     if (rowid_count == 0U) {
         return MYLITE_OK;
     }
@@ -273,39 +299,56 @@ static int allocate_table_select_source_rowids(int64_t **out_rowids, size_t rowi
     return *out_rowids == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static int copy_table_select_row_copy_values(const struct mylite_table_select_row *row,
-                                             struct mylite_table_select_row *out_row)
-{
+static int copy_table_select_row_copy_values(
+    const struct mylite_table_select_row *row,
+    struct mylite_table_select_row *out_row
+) {
     int status =
         copy_table_select_expression_values(row->values, out_row->values, out_row->value_count);
 
     if (status == MYLITE_OK) {
-        status = copy_table_select_expression_values(row->output_values, out_row->output_values,
-                                                     out_row->output_value_count);
-    }
-    if (status == MYLITE_OK) {
-        status = copy_table_select_expression_values(row->order_values, out_row->order_values,
-                                                     out_row->order_value_count);
+        status = copy_table_select_expression_values(
+            row->output_values,
+            out_row->output_values,
+            out_row->output_value_count
+        );
     }
     if (status == MYLITE_OK) {
         status = copy_table_select_expression_values(
-            row->aggregate_values, out_row->aggregate_values, out_row->aggregate_value_count);
+            row->order_values,
+            out_row->order_values,
+            out_row->order_value_count
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = copy_table_select_expression_values(
+            row->aggregate_values,
+            out_row->aggregate_values,
+            out_row->aggregate_value_count
+        );
     }
     if (status == MYLITE_OK && out_row->source_row_index_count != 0U) {
-        memcpy(out_row->source_row_indexes, row->source_row_indexes,
-               out_row->source_row_index_count * sizeof(*out_row->source_row_indexes));
+        memcpy(
+            out_row->source_row_indexes,
+            row->source_row_indexes,
+            out_row->source_row_index_count * sizeof(*out_row->source_row_indexes)
+        );
     }
     if (status == MYLITE_OK && out_row->source_rowid_count != 0U) {
-        memcpy(out_row->source_rowids, row->source_rowids,
-               out_row->source_rowid_count * sizeof(*out_row->source_rowids));
+        memcpy(
+            out_row->source_rowids,
+            row->source_rowids,
+            out_row->source_rowid_count * sizeof(*out_row->source_rowids)
+        );
     }
     return status;
 }
 
-static int copy_table_select_expression_values(const struct mylite_expression_value *values,
-                                               struct mylite_expression_value *out_values,
-                                               size_t value_count)
-{
+static int copy_table_select_expression_values(
+    const struct mylite_expression_value *values,
+    struct mylite_expression_value *out_values,
+    size_t value_count
+) {
     for (size_t index = 0U; index < value_count; ++index) {
         if (mylite_expression_value_copy(&values[index], &out_values[index]) != 0) {
             return MYLITE_NOMEM;

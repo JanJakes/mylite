@@ -22,11 +22,13 @@
 #include <string.h>
 
 static const mylite_stmt *mylite_statement_result_stmt(const mylite_stmt *stmt);
-static uint64_t expression_value_column_bytes(const struct mylite_expression_value *value,
-                                              const char *text);
 
-int64_t mylite_affected_rows(const mylite_stmt *stmt)
-{
+static uint64_t expression_value_column_bytes(
+    const struct mylite_expression_value *value,
+    const char *text
+);
+
+int64_t mylite_affected_rows(const mylite_stmt *stmt) {
     stmt = mylite_statement_result_stmt(stmt);
     if (stmt == NULL) {
         return -1;
@@ -35,8 +37,7 @@ int64_t mylite_affected_rows(const mylite_stmt *stmt)
     return stmt->affected_rows;
 }
 
-int mylite_step(mylite_stmt *stmt)
-{
+int mylite_step(mylite_stmt *stmt) {
     int rc = SQLITE_OK;
 
     if (stmt == NULL) {
@@ -58,8 +59,10 @@ int mylite_step(mylite_stmt *stmt)
         }
         if (status != MYLITE_ROW && status != MYLITE_DONE && status != MYLITE_OK &&
             status != MYLITE_NOMEM) {
-            (void)mylite_diagnostics_ensure_current_error_condition(stmt->database,
-                                                                    MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+            (void)mylite_diagnostics_ensure_current_error_condition(
+                stmt->database,
+                MYLITE_MYSQL_ER_UNKNOWN_ERROR
+            );
         }
         return status;
     }
@@ -89,19 +92,29 @@ int mylite_step(mylite_stmt *stmt)
 
     rc = mylite_diagnostics_set_sqlite_error(stmt->database);
     if (rc != MYLITE_NOMEM) {
-        (void)mylite_diagnostics_ensure_current_error_condition(stmt->database,
-                                                                MYLITE_MYSQL_ER_UNKNOWN_ERROR);
+        (void)mylite_diagnostics_ensure_current_error_condition(
+            stmt->database,
+            MYLITE_MYSQL_ER_UNKNOWN_ERROR
+        );
     }
     return rc;
 }
 
-int mylite_statement_prepare_sqlite(mylite_db *database, const char *sqlite_sql,
-                                    mylite_stmt **out_stmt)
-{
+int mylite_statement_prepare_sqlite(
+    mylite_db *database,
+    const char *sqlite_sql,
+    mylite_stmt **out_stmt
+) {
     sqlite3_stmt *sqlite_stmt = NULL;
     mylite_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v3(database->sqlite, sqlite_sql, -1, SQLITE_PREPARE_PERSISTENT,
-                                &sqlite_stmt, NULL);
+    int rc = sqlite3_prepare_v3(
+        database->sqlite,
+        sqlite_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &sqlite_stmt,
+        NULL
+    );
 
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
@@ -124,8 +137,7 @@ int mylite_statement_prepare_sqlite(mylite_db *database, const char *sqlite_sql,
     return MYLITE_OK;
 }
 
-int mylite_statement_map_parse_status(mylite_db *database, enum mylite_sql_parse_status status)
-{
+int mylite_statement_map_parse_status(mylite_db *database, enum mylite_sql_parse_status status) {
     switch (status) {
     case MYLITE_SQL_PARSE_OK:
         return MYLITE_OK;
@@ -147,9 +159,10 @@ int mylite_statement_map_parse_status(mylite_db *database, enum mylite_sql_parse
     return MYLITE_PARSE_ERROR;
 }
 
-int mylite_statement_map_translate_status(mylite_db *database,
-                                          enum mylite_sqlite_translate_status status)
-{
+int mylite_statement_map_translate_status(
+    mylite_db *database,
+    enum mylite_sqlite_translate_status status
+) {
     switch (status) {
     case MYLITE_SQLITE_TRANSLATE_OK:
         return MYLITE_OK;
@@ -167,8 +180,7 @@ int mylite_statement_map_translate_status(mylite_db *database,
     return MYLITE_UNSUPPORTED;
 }
 
-bool mylite_statement_kind_writes(enum mylite_stmt_kind kind)
-{
+bool mylite_statement_kind_writes(enum mylite_stmt_kind kind) {
     if (kind == MYLITE_STMT_INSERT_VALUES || kind == MYLITE_STMT_INSERT_SET ||
         kind == MYLITE_STMT_REPLACE_VALUES || kind == MYLITE_STMT_REPLACE_SET ||
         kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE ||
@@ -179,8 +191,7 @@ bool mylite_statement_kind_writes(enum mylite_stmt_kind kind)
     return false;
 }
 
-bool mylite_statement_ast_preserves_diagnostics(const struct mylite_sql_ast_node *statement)
-{
+bool mylite_statement_ast_preserves_diagnostics(const struct mylite_sql_ast_node *statement) {
     if (statement == NULL) {
         return false;
     }
@@ -194,8 +205,7 @@ bool mylite_statement_ast_preserves_diagnostics(const struct mylite_sql_ast_node
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-void mylite_finalize(mylite_stmt *stmt)
-{
+void mylite_finalize(mylite_stmt *stmt) {
     if (stmt == NULL) {
         return;
     }
@@ -243,8 +253,7 @@ void mylite_finalize(mylite_stmt *stmt)
     free(stmt);
 }
 
-int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
-{
+int64_t mylite_column_int64(const mylite_stmt *stmt, int column) {
     stmt = mylite_statement_result_stmt(stmt);
 
     const struct mylite_expression_value *value =
@@ -271,8 +280,7 @@ int64_t mylite_column_int64(const mylite_stmt *stmt, int column)
     return (int64_t)sqlite3_column_int64(stmt->sqlite_stmt, column);
 }
 
-const char *mylite_column_text(const mylite_stmt *stmt, int column)
-{
+const char *mylite_column_text(const mylite_stmt *stmt, int column) {
     stmt = mylite_statement_result_stmt(stmt);
     if (stmt != NULL &&
         (stmt->kind == MYLITE_STMT_TABLE_SELECT || stmt->kind == MYLITE_STMT_UNION_QUERY ||
@@ -298,15 +306,16 @@ const char *mylite_column_text(const mylite_stmt *stmt, int column)
     return (const char *)sqlite3_column_text(stmt->sqlite_stmt, column);
 }
 
-uint64_t mylite_column_bytes(const mylite_stmt *stmt, int column)
-{
+uint64_t mylite_column_bytes(const mylite_stmt *stmt, int column) {
     const struct mylite_expression_value *value = NULL;
 
     stmt = mylite_statement_result_stmt(stmt);
     value = mylite_statement_table_select_current_output_value(stmt, column);
     if (value != NULL) {
         return expression_value_column_bytes(
-            value, mylite_statement_table_select_current_output_text(stmt, column));
+            value,
+            mylite_statement_table_select_current_output_text(stmt, column)
+        );
     }
     if (stmt != NULL && stmt->sqlite_stmt != NULL && stmt->kind == MYLITE_STMT_TABLE_SELECT &&
         column >= 0 && (size_t)column < stmt->select_plan.output_count) {
@@ -318,8 +327,10 @@ uint64_t mylite_column_bytes(const mylite_stmt *stmt, int column)
         column >= sqlite3_column_count(stmt->sqlite_stmt)) {
         if (stmt != NULL && stmt->kind == MYLITE_STMT_SCALAR_SELECT && column >= 0 &&
             (size_t)column < stmt->scalar_result.value_count) {
-            return expression_value_column_bytes(&stmt->scalar_result.values[column],
-                                                 stmt->scalar_result.texts[column]);
+            return expression_value_column_bytes(
+                &stmt->scalar_result.values[column],
+                stmt->scalar_result.texts[column]
+            );
         }
         return 0U;
     }
@@ -327,9 +338,10 @@ uint64_t mylite_column_bytes(const mylite_stmt *stmt, int column)
     return (uint64_t)sqlite3_column_bytes(stmt->sqlite_stmt, column);
 }
 
-const struct mylite_expression_value *
-mylite_statement_table_select_current_output_value(const mylite_stmt *stmt, int column)
-{
+const struct mylite_expression_value *mylite_statement_table_select_current_output_value(
+    const mylite_stmt *stmt,
+    int column
+) {
     if (stmt == NULL ||
         (stmt->kind != MYLITE_STMT_TABLE_SELECT && stmt->kind != MYLITE_STMT_UNION_QUERY &&
          stmt->kind != MYLITE_STMT_VALUES_QUERY) ||
@@ -340,8 +352,7 @@ mylite_statement_table_select_current_output_value(const mylite_stmt *stmt, int 
     return &stmt->select_result.current_values[column];
 }
 
-const char *mylite_statement_table_select_current_output_text(const mylite_stmt *stmt, int column)
-{
+const char *mylite_statement_table_select_current_output_text(const mylite_stmt *stmt, int column) {
     if (stmt == NULL ||
         (stmt->kind != MYLITE_STMT_TABLE_SELECT && stmt->kind != MYLITE_STMT_UNION_QUERY &&
          stmt->kind != MYLITE_STMT_VALUES_QUERY) ||
@@ -352,8 +363,7 @@ const char *mylite_statement_table_select_current_output_text(const mylite_stmt 
     return stmt->select_result.current_texts[column];
 }
 
-static const mylite_stmt *mylite_statement_result_stmt(const mylite_stmt *stmt)
-{
+static const mylite_stmt *mylite_statement_result_stmt(const mylite_stmt *stmt) {
     const mylite_stmt *result = stmt;
 
     while (result != NULL && result->kind == MYLITE_STMT_EXECUTE_PREPARED &&
@@ -363,9 +373,10 @@ static const mylite_stmt *mylite_statement_result_stmt(const mylite_stmt *stmt)
     return result;
 }
 
-static uint64_t expression_value_column_bytes(const struct mylite_expression_value *value,
-                                              const char *text)
-{
+static uint64_t expression_value_column_bytes(
+    const struct mylite_expression_value *value,
+    const char *text
+) {
     if (value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
         return 0U;
     }
@@ -375,8 +386,7 @@ static uint64_t expression_value_column_bytes(const struct mylite_expression_val
     return text == NULL ? 0U : (uint64_t)strlen(text);
 }
 
-void mylite_statement_record_row_count(mylite_stmt *stmt)
-{
+void mylite_statement_record_row_count(mylite_stmt *stmt) {
     if (stmt == NULL || stmt->database == NULL || stmt->previous_row_count_recorded) {
         return;
     }
@@ -385,8 +395,7 @@ void mylite_statement_record_row_count(mylite_stmt *stmt)
     stmt->previous_row_count_recorded = true;
 }
 
-void mylite_statement_scalar_result_deinit(struct mylite_scalar_result *result)
-{
+void mylite_statement_scalar_result_deinit(struct mylite_scalar_result *result) {
     if (result == NULL) {
         return;
     }
@@ -402,8 +411,7 @@ void mylite_statement_scalar_result_deinit(struct mylite_scalar_result *result)
     *result = (struct mylite_scalar_result){0};
 }
 
-void mylite_statement_select_constant_values_deinit(mylite_stmt *stmt)
-{
+void mylite_statement_select_constant_values_deinit(mylite_stmt *stmt) {
     if (stmt == NULL) {
         return;
     }
@@ -416,8 +424,7 @@ void mylite_statement_select_constant_values_deinit(mylite_stmt *stmt)
     stmt->select_constant_value_count = 0U;
 }
 
-void mylite_statement_values_query_plan_deinit(struct mylite_values_query_plan *plan)
-{
+void mylite_statement_values_query_plan_deinit(struct mylite_values_query_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -427,8 +434,7 @@ void mylite_statement_values_query_plan_deinit(struct mylite_values_query_plan *
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-void mylite_statement_union_plan_deinit(struct mylite_union_plan *plan)
-{
+void mylite_statement_union_plan_deinit(struct mylite_union_plan *plan) {
     if (plan == NULL) {
         return;
     }

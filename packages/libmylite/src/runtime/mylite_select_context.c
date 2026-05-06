@@ -22,53 +22,88 @@
 #include "mylite_statement_functions.h"
 #include "mylite_statement_prepare.h"
 
-static int bind_select_projection_expression(mylite_db *database,
-                                             const struct mylite_sql_ast_node *expression,
-                                             struct mylite_select_plan *plan);
-static int bind_select_aggregate_aware_expression(mylite_db *database,
-                                                  const struct mylite_sql_ast_node *expression,
-                                                  struct mylite_select_plan *plan,
-                                                  const char *clause_context);
+static int bind_select_projection_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan
+);
+
+static int bind_select_aggregate_aware_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const char *clause_context
+);
+
 static int execute_scalar_select_statement(mylite_stmt *stmt);
+
 static int evaluate_scalar_select_session_function(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
-    const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
-static int evaluate_dml_materialize_session_function(
-    void *user_data, const struct mylite_select_table *table,
+    mylite_stmt *stmt,
     const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value);
-static int evaluate_dml_materialize_subquery(void *user_data,
-                                             const struct mylite_sql_ast_node *subquery,
-                                             struct mylite_expression_warnings *warnings,
-                                             struct mylite_expression_value *out_value);
-static int set_dml_materialize_where_predicate_eval_error(void *user_data);
-static int evaluate_statement_session_function(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_dml_materialize_session_function(
+    void *user_data,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
-    struct mylite_expression_value *out_value);
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_dml_materialize_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int set_dml_materialize_where_predicate_eval_error(void *user_data);
+
+static int evaluate_statement_session_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_select_table *table,
+    struct mylite_expression_value *out_value
+);
+
 static int execute_table_select_statement(mylite_stmt *stmt);
-static int evaluate_select_subquery_expression(mylite_stmt *stmt,
-                                               const struct mylite_sql_ast_node *subquery,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct mylite_expression_value *out_value);
-static int evaluate_in_subquery_expression(mylite_stmt *stmt,
-                                           const struct mylite_sql_ast_node *expression,
-                                           const struct mylite_expression_value *left,
-                                           struct mylite_expression_warnings *warnings,
-                                           struct mylite_expression_value *out_value);
-static int evaluate_quantified_subquery_expression(mylite_stmt *stmt,
-                                                   const struct mylite_sql_ast_node *expression,
-                                                   const struct mylite_expression_value *left,
-                                                   struct mylite_expression_warnings *warnings,
-                                                   struct mylite_expression_value *out_value);
-static int
-evaluate_row_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value);
+
+static int evaluate_select_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_in_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_quantified_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_row_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
 
 static const struct mylite_expression_collation_callbacks expression_collation_callbacks = {
     .infer_expression_descriptor = mylite_expression_descriptor_infer_collation,
@@ -194,42 +229,43 @@ static const struct mylite_statement_execute_callbacks statement_execute_callbac
         set_dml_materialize_where_predicate_eval_error,
 };
 
-const struct mylite_statement_prepare_callbacks *
-mylite_select_context_statement_prepare_callbacks(void)
-{
+const struct mylite_statement_prepare_callbacks *mylite_select_context_statement_prepare_callbacks(
+    void
+) {
     return &statement_prepare_callbacks;
 }
 
-const struct mylite_statement_execute_callbacks *
-mylite_select_context_statement_execute_callbacks(void)
-{
+const struct mylite_statement_execute_callbacks *mylite_select_context_statement_execute_callbacks(
+    void
+) {
     return &statement_execute_callbacks;
 }
 
-const struct mylite_select_eval_callbacks *mylite_select_context_table_select_eval_callbacks(void)
-{
+const struct mylite_select_eval_callbacks *mylite_select_context_table_select_eval_callbacks(void) {
     return &table_select_eval_callbacks;
 }
 
-const struct mylite_select_predicate_bind_callbacks *
-mylite_select_context_predicate_bind_callbacks(void)
-{
+const struct mylite_select_predicate_bind_callbacks *mylite_select_context_predicate_bind_callbacks(
+    void
+) {
     return &select_predicate_bind_callbacks;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-int mylite_select_context_prepare_subquery(mylite_db *database,
-                                           const struct mylite_sql_ast_node *statement,
-                                           mylite_stmt **out_stmt)
-{
+int mylite_select_context_prepare_subquery(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     return mylite_select_prepare_subquery(database, statement, out_stmt, &select_prepare_callbacks);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_projection_expression(mylite_db *database,
-                                             const struct mylite_sql_ast_node *expression,
-                                             struct mylite_select_plan *plan)
-{
+static int bind_select_projection_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan
+) {
     int status = bind_select_aggregate_aware_expression(database, expression, plan, "field list");
 
     if (status == MYLITE_UNSUPPORTED) {
@@ -239,104 +275,163 @@ static int bind_select_projection_expression(mylite_db *database,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_aggregate_aware_expression(mylite_db *database,
-                                                  const struct mylite_sql_ast_node *expression,
-                                                  struct mylite_select_plan *plan,
-                                                  const char *clause_context)
-{
-    return mylite_select_bind_aggregate_aware_expression(database, expression, plan, clause_context,
-                                                         &select_aggregate_bind_callbacks);
+static int bind_select_aggregate_aware_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const char *clause_context
+) {
+    return mylite_select_bind_aggregate_aware_expression(
+        database,
+        expression,
+        plan,
+        clause_context,
+        &select_aggregate_bind_callbacks
+    );
 }
 
-static int execute_scalar_select_statement(mylite_stmt *stmt)
-{
+static int execute_scalar_select_statement(mylite_stmt *stmt) {
     return mylite_select_scalar_execute_statement(stmt, &select_scalar_eval_callbacks);
 }
 
 static int evaluate_scalar_select_session_function(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
-{
-    return evaluate_statement_session_function(stmt, function_call, expression_context, warnings,
-                                               NULL, out_value);
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    return evaluate_statement_session_function(
+        stmt,
+        function_call,
+        expression_context,
+        warnings,
+        NULL,
+        out_value
+    );
 }
 
 static int evaluate_dml_materialize_session_function(
-    void *user_data, const struct mylite_select_table *table,
+    void *user_data,
+    const struct mylite_select_table *table,
     const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
-{
-    return evaluate_statement_session_function((mylite_stmt *)user_data, function_call,
-                                               expression_context, warnings, table, out_value);
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    return evaluate_statement_session_function(
+        (mylite_stmt *)user_data,
+        function_call,
+        expression_context,
+        warnings,
+        table,
+        out_value
+    );
 }
 
-static int evaluate_dml_materialize_subquery(void *user_data,
-                                             const struct mylite_sql_ast_node *subquery,
-                                             struct mylite_expression_warnings *warnings,
-                                             struct mylite_expression_value *out_value)
-{
-    return evaluate_select_subquery_expression((mylite_stmt *)user_data, subquery, warnings,
-                                               out_value);
+static int evaluate_dml_materialize_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    return evaluate_select_subquery_expression(
+        (mylite_stmt *)user_data,
+        subquery,
+        warnings,
+        out_value
+    );
 }
 
-static int set_dml_materialize_where_predicate_eval_error(void *user_data)
-{
+static int set_dml_materialize_where_predicate_eval_error(void *user_data) {
     return mylite_select_set_where_predicate_eval_error((mylite_stmt *)user_data);
 }
 
 static int evaluate_statement_session_function(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
-    struct mylite_expression_value *out_value)
-{
-    return mylite_statement_evaluate_session_function(stmt, function_call, expression_context,
-                                                      warnings, table,
-                                                      &expression_collation_callbacks, out_value);
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_select_table *table,
+    struct mylite_expression_value *out_value
+) {
+    return mylite_statement_evaluate_session_function(
+        stmt,
+        function_call,
+        expression_context,
+        warnings,
+        table,
+        &expression_collation_callbacks,
+        out_value
+    );
 }
 
-static int execute_table_select_statement(mylite_stmt *stmt)
-{
+static int execute_table_select_statement(mylite_stmt *stmt) {
     return mylite_select_execute_table_statement(stmt, &table_select_eval_callbacks);
 }
 
-static int evaluate_select_subquery_expression(mylite_stmt *stmt,
-                                               const struct mylite_sql_ast_node *subquery,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct mylite_expression_value *out_value)
-{
-    return mylite_select_subquery_eval(stmt, subquery, warnings, out_value,
-                                       &select_subquery_eval_callbacks);
+static int evaluate_select_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    return mylite_select_subquery_eval(
+        stmt,
+        subquery,
+        warnings,
+        out_value,
+        &select_subquery_eval_callbacks
+    );
 }
 
-static int evaluate_in_subquery_expression(mylite_stmt *stmt,
-                                           const struct mylite_sql_ast_node *expression,
-                                           const struct mylite_expression_value *left,
-                                           struct mylite_expression_warnings *warnings,
-                                           struct mylite_expression_value *out_value)
-{
-    return mylite_select_subquery_eval_in(stmt, expression, left, warnings, out_value,
-                                          &select_subquery_eval_callbacks);
+static int evaluate_in_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    return mylite_select_subquery_eval_in(
+        stmt,
+        expression,
+        left,
+        warnings,
+        out_value,
+        &select_subquery_eval_callbacks
+    );
 }
 
-static int evaluate_quantified_subquery_expression(mylite_stmt *stmt,
-                                                   const struct mylite_sql_ast_node *expression,
-                                                   const struct mylite_expression_value *left,
-                                                   struct mylite_expression_warnings *warnings,
-                                                   struct mylite_expression_value *out_value)
-{
-    return mylite_select_subquery_eval_quantified(stmt, expression, left, warnings, out_value,
-                                                  &select_subquery_eval_callbacks);
+static int evaluate_quantified_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    return mylite_select_subquery_eval_quantified(
+        stmt,
+        expression,
+        left,
+        warnings,
+        out_value,
+        &select_subquery_eval_callbacks
+    );
 }
 
-static int
-evaluate_row_subquery_expression(mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
-    return mylite_select_subquery_eval_row(stmt, expression, expression_context, warnings,
-                                           out_value, &select_subquery_eval_callbacks);
+static int evaluate_row_subquery_expression(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    return mylite_select_subquery_eval_row(
+        stmt,
+        expression,
+        expression_context,
+        warnings,
+        out_value,
+        &select_subquery_eval_callbacks
+    );
 }

@@ -10,15 +10,23 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_show_index_table_target(const struct mylite_show_index_source_nodes *source,
-                                        struct mylite_show_index_target *out_target);
-static int copy_show_index_selected_schema(mylite_db *database,
-                                           struct mylite_show_index_target *target);
+static int copy_show_index_table_target(
+    const struct mylite_show_index_source_nodes *source,
+    struct mylite_show_index_target *out_target
+);
+
+static int copy_show_index_selected_schema(
+    mylite_db *database,
+    struct mylite_show_index_target *target
+);
+
 static int normalize_show_index_schema_name(char **schema_name);
 
-int mylite_show_index_copy_target(mylite_db *database, const struct mylite_sql_ast_node *statement,
-                                  struct mylite_show_index_target *out_target)
-{
+int mylite_show_index_copy_target(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_show_index_target *out_target
+) {
     const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *possible_schema = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *explicit_schema =
@@ -33,12 +41,15 @@ int mylite_show_index_copy_target(mylite_db *database, const struct mylite_sql_a
             .table_name = table_name,
             .explicit_schema = explicit_schema,
         },
-        out_target);
+        out_target
+    );
     if (status != MYLITE_OK) {
         if (status == MYLITE_UNSUPPORTED) {
             (void)mylite_diagnostics_set_error_message(
-                database, "SHOW INDEX table names with more than two parts are not "
-                          "supported");
+                database,
+                "SHOW INDEX table names with more than two parts are not "
+                "supported"
+            );
         }
         return status;
     }
@@ -48,8 +59,10 @@ int mylite_show_index_copy_target(mylite_db *database, const struct mylite_sql_a
     return status;
 }
 
-int mylite_show_index_validate_target(mylite_db *database, struct mylite_show_index_target *target)
-{
+int mylite_show_index_validate_target(
+    mylite_db *database,
+    struct mylite_show_index_target *target
+) {
     struct mylite_schema_presence presence;
     bool exists = false;
     int status = mylite_catalog_schema_exists(database, target->schema_name, &presence);
@@ -58,8 +71,12 @@ int mylite_show_index_validate_target(mylite_db *database, struct mylite_show_in
         return status;
     }
     if (!presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
-                                                         target->schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Unknown database '",
+            target->schema_name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (mylite_ascii_case_equal(target->schema_name, "information_schema")) {
@@ -69,8 +86,12 @@ int mylite_show_index_validate_target(mylite_db *database, struct mylite_show_in
         return MYLITE_OK;
     }
 
-    status = mylite_catalog_temporary_table_exists(database, target->schema_name,
-                                                   target->table_name, &exists);
+    status = mylite_catalog_temporary_table_exists(
+        database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -78,21 +99,27 @@ int mylite_show_index_validate_target(mylite_db *database, struct mylite_show_in
         target->temporary = true;
         return MYLITE_OK;
     }
-    status = mylite_catalog_persistent_table_exists(database, target->schema_name,
-                                                    target->table_name, &exists);
+    status = mylite_catalog_persistent_table_exists(
+        database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
     if (!exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(database, target->schema_name,
-                                                               target->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            database,
+            target->schema_name,
+            target->table_name
+        );
     }
     target->temporary = false;
     return MYLITE_OK;
 }
 
-void mylite_show_index_target_deinit(struct mylite_show_index_target *target)
-{
+void mylite_show_index_target_deinit(struct mylite_show_index_target *target) {
     if (target == NULL) {
         return;
     }
@@ -102,9 +129,10 @@ void mylite_show_index_target_deinit(struct mylite_show_index_target *target)
     *target = (struct mylite_show_index_target){0};
 }
 
-static int copy_show_index_table_target(const struct mylite_show_index_source_nodes *source,
-                                        struct mylite_show_index_target *out_target)
-{
+static int copy_show_index_table_target(
+    const struct mylite_show_index_source_nodes *source,
+    struct mylite_show_index_target *out_target
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     int status = mylite_copy_identifier_parts(source->table_name, parts, &part_count);
@@ -149,9 +177,10 @@ cleanup:
     return status;
 }
 
-static int copy_show_index_selected_schema(mylite_db *database,
-                                           struct mylite_show_index_target *target)
-{
+static int copy_show_index_selected_schema(
+    mylite_db *database,
+    struct mylite_show_index_target *target
+) {
     if (database->selected_schema == NULL || database->selected_schema[0] == '\0') {
         (void)mylite_diagnostics_set_error_message(database, "No database selected");
         return MYLITE_EXEC_ERROR;
@@ -164,8 +193,7 @@ static int copy_show_index_selected_schema(mylite_db *database,
     return normalize_show_index_schema_name(&target->schema_name);
 }
 
-static int normalize_show_index_schema_name(char **schema_name)
-{
+static int normalize_show_index_schema_name(char **schema_name) {
     char *normalized = NULL;
 
     if (schema_name == NULL || *schema_name == NULL ||

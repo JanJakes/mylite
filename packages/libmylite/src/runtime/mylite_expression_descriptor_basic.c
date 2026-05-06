@@ -10,11 +10,12 @@
 
 #include <stddef.h>
 
-int mylite_expression_descriptor_infer_literal(mylite_db *database,
-                                               const struct mylite_sql_ast_node *expression,
-                                               const struct mylite_expression_value *value,
-                                               struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_expression_descriptor_infer_literal(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor
+) {
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
 
     switch (expression->literal_kind) {
@@ -55,11 +56,12 @@ int mylite_expression_descriptor_infer_literal(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_expression_descriptor_infer_identifier(mylite_db *database,
-                                                  const struct mylite_select_plan *plan,
-                                                  const struct mylite_sql_ast_node *expression,
-                                                  struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_expression_descriptor_infer_identifier(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (mylite_system_variable_identifier_is_system_variable(expression)) {
         return mylite_system_variable_infer_identifier(database, expression, out_descriptor);
     }
@@ -70,7 +72,12 @@ int mylite_expression_descriptor_infer_identifier(mylite_db *database,
     size_t column_index = plan == NULL ? 0U : mylite_select_plan_column_count(plan);
     int status = plan == NULL ? MYLITE_UNSUPPORTED
                               : mylite_select_resolve_plan_column_reference(
-                                    database, plan, expression, "field list", &column_index);
+                                    database,
+                                    plan,
+                                    expression,
+                                    "field list",
+                                    &column_index
+                                );
 
     if (status != MYLITE_OK || column_index >= mylite_select_plan_column_count(plan)) {
         *out_descriptor = mylite_expression_descriptor_defaults();

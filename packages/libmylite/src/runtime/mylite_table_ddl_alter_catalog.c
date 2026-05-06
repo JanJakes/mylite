@@ -9,29 +9,53 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-static int delete_alter_table_catalog_rows(mylite_db *database, const char *schema_name,
-                                           const char *table_name, bool temporary);
-static int insert_alter_table_column_catalog_rows(mylite_db *database,
-                                                  const struct mylite_alter_table_model *model);
-static int insert_alter_table_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
-                                                 const struct mylite_alter_table_model *model,
-                                                 const struct mylite_alter_table_column *column,
-                                                 size_t column_index);
-static int insert_alter_table_index_catalog_rows(mylite_db *database,
-                                                 const struct mylite_alter_table_model *model);
-static int insert_alter_table_index_catalog_part(mylite_db *database, sqlite3_stmt *insert,
-                                                 const struct mylite_alter_table_model *model,
-                                                 const struct mylite_alter_table_index *index,
-                                                 const struct mylite_alter_table_index_part *part,
-                                                 size_t part_index);
-static int update_alter_table_auto_increment(mylite_db *database,
-                                             const struct mylite_alter_table_model *model);
+static int delete_alter_table_catalog_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    bool temporary
+);
+
+static int insert_alter_table_column_catalog_rows(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+);
+
+static int insert_alter_table_column_catalog_row(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_column *column,
+    size_t column_index
+);
+
+static int insert_alter_table_index_catalog_rows(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+);
+
+static int insert_alter_table_index_catalog_part(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_index *index,
+    const struct mylite_alter_table_index_part *part,
+    size_t part_index
+);
+
+static int update_alter_table_auto_increment(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
-int mylite_table_ddl_rewrite_alter_table_catalog(mylite_db *database, const char *schema_name,
-                                                 const char *table_name,
-                                                 const struct mylite_alter_table_model *model)
-{
+int mylite_table_ddl_rewrite_alter_table_catalog(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const struct mylite_alter_table_model *model
+) {
     int status =
         delete_alter_table_catalog_rows(database, schema_name, table_name, model->temporary);
 
@@ -47,22 +71,32 @@ int mylite_table_ddl_rewrite_alter_table_catalog(mylite_db *database, const char
     return status;
 }
 
-static int delete_alter_table_catalog_rows(mylite_db *database, const char *schema_name,
-                                           const char *table_name, bool temporary)
-{
+static int delete_alter_table_catalog_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    bool temporary
+) {
     if (temporary) {
-        return mylite_catalog_delete_temporary_table_rows(database, schema_name, table_name,
-                                                          MYLITE_CATALOG_DELETE_TABLE_INDEXES |
-                                                              MYLITE_CATALOG_DELETE_TABLE_COLUMNS);
+        return mylite_catalog_delete_temporary_table_rows(
+            database,
+            schema_name,
+            table_name,
+            MYLITE_CATALOG_DELETE_TABLE_INDEXES | MYLITE_CATALOG_DELETE_TABLE_COLUMNS
+        );
     }
-    return mylite_catalog_delete_table_rows(database, schema_name, table_name,
-                                            MYLITE_CATALOG_DELETE_TABLE_INDEXES |
-                                                MYLITE_CATALOG_DELETE_TABLE_COLUMNS);
+    return mylite_catalog_delete_table_rows(
+        database,
+        schema_name,
+        table_name,
+        MYLITE_CATALOG_DELETE_TABLE_INDEXES | MYLITE_CATALOG_DELETE_TABLE_COLUMNS
+    );
 }
 
-static int insert_alter_table_column_catalog_rows(mylite_db *database,
-                                                  const struct mylite_alter_table_model *model)
-{
+static int insert_alter_table_column_catalog_rows(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+) {
     sqlite3_stmt *insert = NULL;
     char *sql = sqlite3_mprintf(
         "INSERT INTO %s("
@@ -73,7 +107,8 @@ static int insert_alter_table_column_catalog_rows(mylite_db *database,
         "generation_expression, srs_id)"
         " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
         "'select,insert,update,references', ?, ?, ?)",
-        mylite_catalog_column_catalog_name(model->temporary));
+        mylite_catalog_column_catalog_name(model->temporary)
+    );
     int rc = SQLITE_OK;
 
     if (sql == NULL) {
@@ -87,8 +122,13 @@ static int insert_alter_table_column_catalog_rows(mylite_db *database,
     }
 
     for (size_t index = 0U; index < model->column_count; ++index) {
-        int status = insert_alter_table_column_catalog_row(database, insert, model,
-                                                           &model->columns[index], index);
+        int status = insert_alter_table_column_catalog_row(
+            database,
+            insert,
+            model,
+            &model->columns[index],
+            index
+        );
 
         if (status != MYLITE_OK) {
             sqlite3_finalize(insert);
@@ -99,11 +139,13 @@ static int insert_alter_table_column_catalog_rows(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int insert_alter_table_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
-                                                 const struct mylite_alter_table_model *model,
-                                                 const struct mylite_alter_table_column *column,
-                                                 size_t column_index)
-{
+static int insert_alter_table_column_catalog_row(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_column *column,
+    size_t column_index
+) {
     enum {
         bind_table_schema = 1,
         bind_table_name = 2,
@@ -126,45 +168,80 @@ static int insert_alter_table_column_catalog_row(mylite_db *database, sqlite3_st
         bind_generation_expression = 19,
         bind_srs_id = 20,
     };
+
     int rc = SQLITE_OK;
 
     sqlite3_reset(insert);
     sqlite3_clear_bindings(insert);
-    sqlite3_bind_text(insert, bind_table_schema, model->schema_name, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(insert, bind_table_name, model->table_name, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_table_schema,
+        model->schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_table_name,
+        model->table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
     sqlite3_bind_text(insert, bind_column_name, column->name, -1, sqlite_transient_destructor());
     sqlite3_bind_int64(insert, bind_ordinal_position, (sqlite3_int64)column_index + 1);
     if (column->column_default == NULL) {
         sqlite3_bind_null(insert, bind_column_default);
     } else {
-        sqlite3_bind_text(insert, bind_column_default, column->column_default, -1,
-                          sqlite_transient_destructor());
+        sqlite3_bind_text(
+            insert,
+            bind_column_default,
+            column->column_default,
+            -1,
+            sqlite_transient_destructor()
+        );
     }
-    sqlite3_bind_text(insert, bind_is_nullable, column->is_nullable, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_is_nullable,
+        column->is_nullable,
+        -1,
+        sqlite_transient_destructor()
+    );
     if (column->data_type == NULL) {
         sqlite3_bind_null(insert, bind_data_type);
     } else {
-        sqlite3_bind_text(insert, bind_data_type, column->data_type, -1,
-                          sqlite_transient_destructor());
+        sqlite3_bind_text(
+            insert,
+            bind_data_type,
+            column->data_type,
+            -1,
+            sqlite_transient_destructor()
+        );
     }
     if (column->has_character_maximum_length) {
-        sqlite3_bind_int64(insert, bind_character_maximum_length,
-                           (sqlite3_int64)column->character_maximum_length);
+        sqlite3_bind_int64(
+            insert,
+            bind_character_maximum_length,
+            (sqlite3_int64)column->character_maximum_length
+        );
     } else {
         sqlite3_bind_null(insert, bind_character_maximum_length);
     }
     if (column->has_character_octet_length) {
-        sqlite3_bind_int64(insert, bind_character_octet_length,
-                           (sqlite3_int64)column->character_octet_length);
+        sqlite3_bind_int64(
+            insert,
+            bind_character_octet_length,
+            (sqlite3_int64)column->character_octet_length
+        );
     } else {
         sqlite3_bind_null(insert, bind_character_octet_length);
     }
     if (column->has_numeric_precision) {
-        sqlite3_bind_int64(insert, bind_numeric_precision,
-                           (sqlite3_int64)column->numeric_precision);
+        sqlite3_bind_int64(
+            insert,
+            bind_numeric_precision,
+            (sqlite3_int64)column->numeric_precision
+        );
     } else {
         sqlite3_bind_null(insert, bind_numeric_precision);
     }
@@ -174,36 +251,69 @@ static int insert_alter_table_column_catalog_row(mylite_db *database, sqlite3_st
         sqlite3_bind_null(insert, bind_numeric_scale);
     }
     if (column->has_datetime_precision) {
-        sqlite3_bind_int64(insert, bind_datetime_precision,
-                           (sqlite3_int64)column->datetime_precision);
+        sqlite3_bind_int64(
+            insert,
+            bind_datetime_precision,
+            (sqlite3_int64)column->datetime_precision
+        );
     } else {
         sqlite3_bind_null(insert, bind_datetime_precision);
     }
     if (column->character_set_name == NULL) {
         sqlite3_bind_null(insert, bind_character_set_name);
     } else {
-        sqlite3_bind_text(insert, bind_character_set_name, column->character_set_name, -1,
-                          sqlite_transient_destructor());
+        sqlite3_bind_text(
+            insert,
+            bind_character_set_name,
+            column->character_set_name,
+            -1,
+            sqlite_transient_destructor()
+        );
     }
     if (column->collation_name == NULL) {
         sqlite3_bind_null(insert, bind_collation_name);
     } else {
-        sqlite3_bind_text(insert, bind_collation_name, column->collation_name, -1,
-                          sqlite_transient_destructor());
+        sqlite3_bind_text(
+            insert,
+            bind_collation_name,
+            column->collation_name,
+            -1,
+            sqlite_transient_destructor()
+        );
     }
-    sqlite3_bind_text(insert, bind_column_type, column->column_type, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(insert, bind_column_key, column->column_key, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_column_type,
+        column->column_type,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_column_key,
+        column->column_key,
+        -1,
+        sqlite_transient_destructor()
+    );
     if (column->extra == NULL) {
         sqlite3_bind_null(insert, bind_extra);
     } else {
         sqlite3_bind_text(insert, bind_extra, column->extra, -1, sqlite_transient_destructor());
     }
-    sqlite3_bind_text(insert, bind_column_comment, column->column_comment, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(insert, bind_generation_expression, column->generation_expression, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_column_comment,
+        column->column_comment,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_generation_expression,
+        column->generation_expression,
+        -1,
+        sqlite_transient_destructor()
+    );
     if (column->has_srs_id) {
         sqlite3_bind_int64(insert, bind_srs_id, (sqlite3_int64)column->srs_id);
     } else {
@@ -214,9 +324,10 @@ static int insert_alter_table_column_catalog_row(mylite_db *database, sqlite3_st
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int insert_alter_table_index_catalog_rows(mylite_db *database,
-                                                 const struct mylite_alter_table_model *model)
-{
+static int insert_alter_table_index_catalog_rows(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+) {
     sqlite3_stmt *insert = NULL;
     char *sql = sqlite3_mprintf(
         "INSERT INTO %s("
@@ -224,7 +335,8 @@ static int insert_alter_table_index_catalog_rows(mylite_db *database,
         "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
         "index_type, comment, index_comment, is_visible, expression)"
         " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, ?, NULL)",
-        mylite_catalog_index_catalog_name(model->temporary));
+        mylite_catalog_index_catalog_name(model->temporary)
+    );
     int rc = SQLITE_OK;
 
     if (sql == NULL) {
@@ -240,8 +352,13 @@ static int insert_alter_table_index_catalog_rows(mylite_db *database,
     for (size_t index = 0U; index < model->index_count; ++index) {
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
             int status = insert_alter_table_index_catalog_part(
-                database, insert, model, &model->indexes[index], &model->indexes[index].parts[part],
-                part);
+                database,
+                insert,
+                model,
+                &model->indexes[index],
+                &model->indexes[index].parts[part],
+                part
+            );
 
             if (status != MYLITE_OK) {
                 sqlite3_finalize(insert);
@@ -253,12 +370,14 @@ static int insert_alter_table_index_catalog_rows(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int insert_alter_table_index_catalog_part(mylite_db *database, sqlite3_stmt *insert,
-                                                 const struct mylite_alter_table_model *model,
-                                                 const struct mylite_alter_table_index *index,
-                                                 const struct mylite_alter_table_index_part *part,
-                                                 size_t part_index)
-{
+static int insert_alter_table_index_catalog_part(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_index *index,
+    const struct mylite_alter_table_index_part *part,
+    size_t part_index
+) {
     enum {
         bind_table_schema = 1,
         bind_table_name = 2,
@@ -275,26 +394,52 @@ static int insert_alter_table_index_catalog_part(mylite_db *database, sqlite3_st
         bind_index_comment = 13,
         bind_is_visible = 14,
     };
+
     int rc = SQLITE_OK;
 
     sqlite3_reset(insert);
     sqlite3_clear_bindings(insert);
-    sqlite3_bind_text(insert, bind_table_schema, model->schema_name, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(insert, bind_table_name, model->table_name, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_table_schema,
+        model->schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_table_name,
+        model->table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
     sqlite3_bind_int(insert, bind_non_unique, index->non_unique);
-    sqlite3_bind_text(insert, bind_index_schema, index->index_schema, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_index_schema,
+        index->index_schema,
+        -1,
+        sqlite_transient_destructor()
+    );
     sqlite3_bind_text(insert, bind_index_name, index->name, -1, sqlite_transient_destructor());
     sqlite3_bind_int64(insert, bind_seq_in_index, (sqlite3_int64)part_index + 1);
-    sqlite3_bind_text(insert, bind_column_name, part->column_name, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_column_name,
+        part->column_name,
+        -1,
+        sqlite_transient_destructor()
+    );
     if (part->collation == NULL) {
         sqlite3_bind_null(insert, bind_collation);
     } else {
-        sqlite3_bind_text(insert, bind_collation, part->collation, -1,
-                          sqlite_transient_destructor());
+        sqlite3_bind_text(
+            insert,
+            bind_collation,
+            part->collation,
+            -1,
+            sqlite_transient_destructor()
+        );
     }
     if (part->has_sub_part) {
         sqlite3_bind_int64(insert, bind_sub_part, (sqlite3_int64)part->sub_part);
@@ -302,21 +447,37 @@ static int insert_alter_table_index_catalog_part(mylite_db *database, sqlite3_st
         sqlite3_bind_null(insert, bind_sub_part);
     }
     sqlite3_bind_text(insert, bind_nullable, part->nullable, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(insert, bind_index_type, index->index_type, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_index_type,
+        index->index_type,
+        -1,
+        sqlite_transient_destructor()
+    );
     sqlite3_bind_text(insert, bind_comment, index->comment, -1, sqlite_transient_destructor());
-    sqlite3_bind_text(insert, bind_index_comment, index->index_comment, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(insert, bind_is_visible, index->is_visible, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_index_comment,
+        index->index_comment,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_is_visible,
+        index->is_visible,
+        -1,
+        sqlite_transient_destructor()
+    );
 
     rc = sqlite3_step(insert);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int update_alter_table_auto_increment(mylite_db *database,
-                                             const struct mylite_alter_table_model *model)
-{
+static int update_alter_table_auto_increment(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+) {
     sqlite3_stmt *update = NULL;
     char *sql = NULL;
     int rc = SQLITE_OK;
@@ -324,9 +485,11 @@ static int update_alter_table_auto_increment(mylite_db *database,
     if (!model->clear_auto_increment) {
         return MYLITE_OK;
     }
-    sql = sqlite3_mprintf("UPDATE %s SET auto_increment = NULL "
-                          "WHERE table_schema = ? AND table_name = ?",
-                          mylite_catalog_table_catalog_name(model->temporary));
+    sql = sqlite3_mprintf(
+        "UPDATE %s SET auto_increment = NULL "
+        "WHERE table_schema = ? AND table_name = ?",
+        mylite_catalog_table_catalog_name(model->temporary)
+    );
     if (sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -344,8 +507,7 @@ static int update_alter_table_auto_increment(mylite_db *database,
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static sqlite3_destructor_type sqlite_transient_destructor(void)
-{
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
     // SQLite's public macro intentionally uses this sentinel pointer value.
     return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

@@ -9,14 +9,19 @@
 #include <stdlib.h>
 
 static int validate_select_grouping_clause_expression(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
-    enum mylite_select_grouping_reference_policy reference_policy);
-static int set_select_only_full_group_by_error(mylite_db *database, const char *expression_text,
-                                               bool implicit_group);
+    enum mylite_select_grouping_reference_policy reference_policy
+);
 
-int mylite_select_validate_grouping(mylite_db *database, const struct mylite_select_plan *plan)
-{
+static int set_select_only_full_group_by_error(
+    mylite_db *database,
+    const char *expression_text,
+    bool implicit_group
+);
+
+int mylite_select_validate_grouping(mylite_db *database, const struct mylite_select_plan *plan) {
     bool aggregate_query = (plan->has_aggregate || plan->has_group_by || plan->has_having) != 0;
     bool implicit_group = true;
 
@@ -40,7 +45,11 @@ int mylite_select_validate_grouping(mylite_db *database, const struct mylite_sel
     }
     if (plan->having_expression != NULL) {
         int status = validate_select_grouping_clause_expression(
-            database, plan, plan->having_expression, MYLITE_SELECT_GROUPING_REFERENCE_HAVING);
+            database,
+            plan,
+            plan->having_expression,
+            MYLITE_SELECT_GROUPING_REFERENCE_HAVING
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -62,7 +71,11 @@ int mylite_select_validate_grouping(mylite_db *database, const struct mylite_sel
 
         {
             int status = validate_select_grouping_clause_expression(
-                database, plan, order_key->expression, MYLITE_SELECT_GROUPING_REFERENCE_ORDER);
+                database,
+                plan,
+                order_key->expression,
+                MYLITE_SELECT_GROUPING_REFERENCE_ORDER
+            );
 
             if (status != MYLITE_OK) {
                 return status;
@@ -72,9 +85,10 @@ int mylite_select_validate_grouping(mylite_db *database, const struct mylite_sel
     return MYLITE_OK;
 }
 
-bool mylite_select_output_contains_aggregate(const struct mylite_select_plan *plan,
-                                             size_t output_index)
-{
+bool mylite_select_output_contains_aggregate(
+    const struct mylite_select_plan *plan,
+    size_t output_index
+) {
     if (output_index >= plan->output_count) {
         return false;
     }
@@ -85,10 +99,11 @@ bool mylite_select_output_contains_aggregate(const struct mylite_select_plan *pl
 }
 
 static int validate_select_grouping_clause_expression(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
-    enum mylite_select_grouping_reference_policy reference_policy)
-{
+    enum mylite_select_grouping_reference_policy reference_policy
+) {
     char *expression_text = NULL;
     bool implicit_group = true;
     int status = MYLITE_OK;
@@ -114,9 +129,11 @@ static int validate_select_grouping_clause_expression(
     return status;
 }
 
-static int set_select_only_full_group_by_error(mylite_db *database, const char *expression_text,
-                                               bool implicit_group)
-{
+static int set_select_only_full_group_by_error(
+    mylite_db *database,
+    const char *expression_text,
+    bool implicit_group
+) {
     int status = MYLITE_OK;
 
     if (implicit_group) {
@@ -125,23 +142,32 @@ static int set_select_only_full_group_by_error(mylite_db *database, const char *
             "In aggregated query without GROUP BY, expression contains nonaggregated "
             "column '",
             expression_text == NULL ? "" : expression_text,
-            "'; this is incompatible with sql_mode=only_full_group_by");
+            "'; this is incompatible with sql_mode=only_full_group_by"
+        );
         if (status == MYLITE_NOMEM) {
             return MYLITE_NOMEM;
         }
         status = mylite_diagnostics_append_error(
-            database, MYLITE_MYSQL_ER_MIX_OF_GROUP_FUNC_AND_FIELDS, mylite_error_message(database));
+            database,
+            MYLITE_MYSQL_ER_MIX_OF_GROUP_FUNC_AND_FIELDS,
+            mylite_error_message(database)
+        );
     } else {
         status = mylite_diagnostics_set_error_message_parts(
-            database, "Expression contains nonaggregated column '",
+            database,
+            "Expression contains nonaggregated column '",
             expression_text == NULL ? "" : expression_text,
             "' which is not functionally dependent on GROUP BY; this is incompatible with "
-            "sql_mode=only_full_group_by");
+            "sql_mode=only_full_group_by"
+        );
         if (status == MYLITE_NOMEM) {
             return MYLITE_NOMEM;
         }
-        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_FIELD_WITH_GROUP,
-                                                 mylite_error_message(database));
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_WRONG_FIELD_WITH_GROUP,
+            mylite_error_message(database)
+        );
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }

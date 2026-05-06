@@ -10,29 +10,48 @@
 
 #include <stddef.h>
 
-static int insert_table_catalog_row(mylite_db *database, const char *schema_name,
-                                    const struct mylite_schema_default *schema_default,
-                                    const struct mylite_create_table_plan *plan);
-static int insert_column_catalog_rows(mylite_db *database, const char *schema_name,
-                                      const struct mylite_schema_default *schema_default,
-                                      const struct mylite_create_table_plan *plan);
-static int insert_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
-                                     const char *schema_name,
-                                     const struct mylite_schema_default *schema_default,
-                                     const struct mylite_create_table_plan *plan,
-                                     const struct mylite_create_table_column *column,
-                                     size_t column_index);
-static const char *create_table_column_key(const struct mylite_create_table_plan *plan,
-                                           const char *column_name);
-static struct mylite_create_table_column_index_status
-create_table_column_index_status(const struct mylite_create_table_plan *plan,
-                                 const char *column_name);
+static int insert_table_catalog_row(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan
+);
+
+static int insert_column_catalog_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan
+);
+
+static int insert_column_catalog_row(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_column *column,
+    size_t column_index
+);
+
+static const char *create_table_column_key(
+    const struct mylite_create_table_plan *plan,
+    const char *column_name
+);
+
+static struct mylite_create_table_column_index_status create_table_column_index_status(
+    const struct mylite_create_table_plan *plan,
+    const char *column_name
+);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_table_ddl_insert_create_table_catalog_rows(
-    mylite_db *database, const char *schema_name,
-    const struct mylite_schema_default *schema_default, const struct mylite_create_table_plan *plan)
-{
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan
+) {
     int status = insert_table_catalog_row(database, schema_name, schema_default, plan);
 
     if (status == MYLITE_OK) {
@@ -45,15 +64,18 @@ int mylite_table_ddl_insert_create_table_catalog_rows(
     return status;
 }
 
-static int insert_table_catalog_row(mylite_db *database, const char *schema_name,
-                                    const struct mylite_schema_default *schema_default,
-                                    const struct mylite_create_table_plan *plan)
-{
+static int insert_table_catalog_row(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan
+) {
     enum {
         bind_auto_increment = 4,
         bind_table_collation = 5,
         bind_table_comment = 6,
     };
+
     sqlite3_stmt *insert = NULL;
     char *sql = sqlite3_mprintf(
         "INSERT INTO %s("
@@ -63,7 +85,8 @@ static int insert_table_catalog_row(mylite_db *database, const char *schema_name
         "create_options, table_comment)"
         " VALUES('def', ?, ?, 'BASE TABLE', ?, 10, NULL, 0, NULL, NULL, NULL, NULL, NULL, "
         "?, '1970-01-01 00:00:00', NULL, NULL, ?, NULL, '', ?)",
-        mylite_catalog_table_catalog_name(plan->temporary));
+        mylite_catalog_table_catalog_name(plan->temporary)
+    );
     const char *collation =
         plan->options.collation == NULL ? schema_default->collation : plan->options.collation;
     const char *comment = plan->options.comment == NULL ? "" : plan->options.comment;
@@ -83,8 +106,11 @@ static int insert_table_catalog_row(mylite_db *database, const char *schema_name
     sqlite3_bind_text(insert, 2, plan->table_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(insert, 3, "InnoDB", -1, SQLITE_STATIC);
     if (plan->options.has_auto_increment) {
-        sqlite3_bind_int64(insert, bind_auto_increment,
-                           (sqlite3_int64)plan->options.auto_increment);
+        sqlite3_bind_int64(
+            insert,
+            bind_auto_increment,
+            (sqlite3_int64)plan->options.auto_increment
+        );
     } else {
         sqlite3_bind_null(insert, bind_auto_increment);
     }
@@ -99,10 +125,12 @@ static int insert_table_catalog_row(mylite_db *database, const char *schema_name
     return MYLITE_OK;
 }
 
-static int insert_column_catalog_rows(mylite_db *database, const char *schema_name,
-                                      const struct mylite_schema_default *schema_default,
-                                      const struct mylite_create_table_plan *plan)
-{
+static int insert_column_catalog_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan
+) {
     sqlite3_stmt *insert = NULL;
     char *sql = sqlite3_mprintf(
         "INSERT INTO %s("
@@ -113,7 +141,8 @@ static int insert_column_catalog_rows(mylite_db *database, const char *schema_na
         "generation_expression, srs_id)"
         " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
         "'select,insert,update,references', ?, '', NULL)",
-        mylite_catalog_column_catalog_name(plan->temporary));
+        mylite_catalog_column_catalog_name(plan->temporary)
+    );
     int rc = SQLITE_OK;
 
     if (sql == NULL) {
@@ -127,8 +156,15 @@ static int insert_column_catalog_rows(mylite_db *database, const char *schema_na
     }
 
     for (size_t index = 0U; index < plan->column_count; ++index) {
-        int status = insert_column_catalog_row(database, insert, schema_name, schema_default, plan,
-                                               &plan->columns[index], index);
+        int status = insert_column_catalog_row(
+            database,
+            insert,
+            schema_name,
+            schema_default,
+            plan,
+            &plan->columns[index],
+            index
+        );
         if (status != MYLITE_OK) {
             sqlite3_finalize(insert);
             return status;
@@ -139,13 +175,15 @@ static int insert_column_catalog_rows(mylite_db *database, const char *schema_na
     return MYLITE_OK;
 }
 
-static int insert_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
-                                     const char *schema_name,
-                                     const struct mylite_schema_default *schema_default,
-                                     const struct mylite_create_table_plan *plan,
-                                     const struct mylite_create_table_column *column,
-                                     size_t column_index)
-{
+static int insert_column_catalog_row(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const char *schema_name,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_plan *plan,
+    const struct mylite_create_table_column *column,
+    size_t column_index
+) {
     enum {
         bind_table_schema = 1,
         bind_table_name = 2,
@@ -171,8 +209,12 @@ static int insert_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
     const char *extra = mylite_table_ddl_create_table_column_extra(column);
     const char *is_nullable = "NO";
     const char *comment = "";
-    int status = mylite_table_ddl_describe_create_table_column(column, schema_default,
-                                                               &plan->options, &descriptor);
+    int status = mylite_table_ddl_describe_create_table_column(
+        column,
+        schema_default,
+        &plan->options,
+        &descriptor
+    );
     int rc = SQLITE_OK;
 
     if (status != MYLITE_OK) {
@@ -194,16 +236,27 @@ static int insert_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
     if (column->default_text == NULL) {
         sqlite3_bind_null(insert, bind_column_default);
     } else {
-        sqlite3_bind_text(insert, bind_column_default, column->default_text, -1,
-                          sqlite_transient_destructor());
+        sqlite3_bind_text(
+            insert,
+            bind_column_default,
+            column->default_text,
+            -1,
+            sqlite_transient_destructor()
+        );
     }
     sqlite3_bind_text(insert, bind_is_nullable, is_nullable, -1, SQLITE_STATIC);
     sqlite3_bind_text(insert, bind_data_type, descriptor.data_type, -1, SQLITE_STATIC);
     if (descriptor.is_character_string || descriptor.is_binary_string) {
-        sqlite3_bind_int64(insert, bind_character_maximum_length,
-                           (sqlite3_int64)descriptor.character_maximum_length);
-        sqlite3_bind_int64(insert, bind_character_octet_length,
-                           (sqlite3_int64)descriptor.character_octet_length);
+        sqlite3_bind_int64(
+            insert,
+            bind_character_maximum_length,
+            (sqlite3_int64)descriptor.character_maximum_length
+        );
+        sqlite3_bind_int64(
+            insert,
+            bind_character_octet_length,
+            (sqlite3_int64)descriptor.character_octet_length
+        );
     } else {
         sqlite3_bind_null(insert, bind_character_maximum_length);
         sqlite3_bind_null(insert, bind_character_octet_length);
@@ -226,17 +279,32 @@ static int insert_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
     if (descriptor.character_set_name == NULL) {
         sqlite3_bind_null(insert, bind_character_set_name);
     } else {
-        sqlite3_bind_text(insert, bind_character_set_name, descriptor.character_set_name, -1,
-                          SQLITE_STATIC);
+        sqlite3_bind_text(
+            insert,
+            bind_character_set_name,
+            descriptor.character_set_name,
+            -1,
+            SQLITE_STATIC
+        );
     }
     if (descriptor.collation_name == NULL) {
         sqlite3_bind_null(insert, bind_collation_name);
     } else {
-        sqlite3_bind_text(insert, bind_collation_name, descriptor.collation_name, -1,
-                          SQLITE_STATIC);
+        sqlite3_bind_text(
+            insert,
+            bind_collation_name,
+            descriptor.collation_name,
+            -1,
+            SQLITE_STATIC
+        );
     }
-    sqlite3_bind_text(insert, bind_column_type, descriptor.column_type, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_column_type,
+        descriptor.column_type,
+        -1,
+        sqlite_transient_destructor()
+    );
     sqlite3_bind_text(insert, bind_column_key, column_key, -1, SQLITE_STATIC);
     if (extra == NULL || extra[0] == '\0') {
         sqlite3_bind_text(insert, bind_extra, "", -1, SQLITE_STATIC);
@@ -252,9 +320,10 @@ static int insert_column_catalog_row(mylite_db *database, sqlite3_stmt *insert,
     return MYLITE_OK;
 }
 
-static const char *create_table_column_key(const struct mylite_create_table_plan *plan,
-                                           const char *column_name)
-{
+static const char *create_table_column_key(
+    const struct mylite_create_table_plan *plan,
+    const char *column_name
+) {
     struct mylite_create_table_column_index_status status =
         create_table_column_index_status(plan, column_name);
 
@@ -270,10 +339,10 @@ static const char *create_table_column_key(const struct mylite_create_table_plan
     return "";
 }
 
-static struct mylite_create_table_column_index_status
-create_table_column_index_status(const struct mylite_create_table_plan *plan,
-                                 const char *column_name)
-{
+static struct mylite_create_table_column_index_status create_table_column_index_status(
+    const struct mylite_create_table_plan *plan,
+    const char *column_name
+) {
     struct mylite_create_table_column_index_status status = {
         .indexed = false,
         .unique = false,
@@ -299,8 +368,7 @@ create_table_column_index_status(const struct mylite_create_table_plan *plan,
     return status;
 }
 
-static sqlite3_destructor_type sqlite_transient_destructor(void)
-{
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
     // SQLite's public macro intentionally uses this sentinel pointer value.
     return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

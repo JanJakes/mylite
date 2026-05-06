@@ -71,7 +71,8 @@ bool mylite_function_name_is_charset(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_collation(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_coercibility(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_charset_collation_introspection(
-    const struct mylite_sql_ast_node *name);
+    const struct mylite_sql_ast_node *name
+);
 bool mylite_function_name_has_length_result(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_bit_count(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_crc32(const struct mylite_sql_ast_node *name);

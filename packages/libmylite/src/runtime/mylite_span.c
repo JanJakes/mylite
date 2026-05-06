@@ -7,8 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool mylite_span_equal_ci(struct mylite_sql_source_span span, const char *text)
-{
+bool mylite_span_equal_ci(struct mylite_sql_source_span span, const char *text) {
     size_t text_length = text == NULL ? 0U : strlen(text);
 
     if (span.text == NULL || text == NULL || span.length != text_length) {
@@ -31,9 +30,10 @@ bool mylite_span_equal_ci(struct mylite_sql_source_span span, const char *text)
     return true;
 }
 
-bool mylite_source_span_equal_ci(struct mylite_sql_source_span left,
-                                 struct mylite_sql_source_span right)
-{
+bool mylite_source_span_equal_ci(
+    struct mylite_sql_source_span left,
+    struct mylite_sql_source_span right
+) {
     if (left.length != right.length || left.text == NULL || right.text == NULL) {
         return false;
     }
@@ -54,8 +54,7 @@ bool mylite_source_span_equal_ci(struct mylite_sql_source_span left,
     return true;
 }
 
-bool mylite_ascii_case_equal(const char *left, const char *right)
-{
+bool mylite_ascii_case_equal(const char *left, const char *right) {
     size_t index = 0U;
 
     if (left == NULL || right == NULL) {
@@ -83,8 +82,7 @@ bool mylite_ascii_case_equal(const char *left, const char *right)
     return false;
 }
 
-void mylite_uppercase_ascii_text(char *text)
-{
+void mylite_uppercase_ascii_text(char *text) {
     for (size_t index = 0U; text != NULL && text[index] != '\0'; ++index) {
         if (text[index] >= 'a' && text[index] <= 'z') {
             text[index] = (char)(text[index] - 'a' + 'A');
@@ -92,16 +90,14 @@ void mylite_uppercase_ascii_text(char *text)
     }
 }
 
-char *mylite_copy_schema_text_span(const struct mylite_sql_ast_node *node)
-{
+char *mylite_copy_schema_text_span(const struct mylite_sql_ast_node *node) {
     if (node != NULL && node->kind == MYLITE_SQL_AST_LITERAL) {
         return mylite_copy_string_literal_span(node);
     }
     return mylite_copy_identifier_span(node);
 }
 
-char *mylite_copy_identifier_span(const struct mylite_sql_ast_node *node)
-{
+char *mylite_copy_identifier_span(const struct mylite_sql_ast_node *node) {
     const char *text = node == NULL ? NULL : node->span.text;
     size_t length = node == NULL ? 0U : node->span.length;
     char *copy = NULL;
@@ -131,9 +127,11 @@ char *mylite_copy_identifier_span(const struct mylite_sql_ast_node *node)
     return copy;
 }
 
-int mylite_copy_identifier_parts(const struct mylite_sql_ast_node *identifier, char **parts,
-                                 size_t *part_count)
-{
+int mylite_copy_identifier_parts(
+    const struct mylite_sql_ast_node *identifier,
+    char **parts,
+    size_t *part_count
+) {
     const struct mylite_sql_ast_node *segments[3] = {0};
     const struct mylite_sql_ast_node *current = identifier;
     size_t segment_count = 0U;
@@ -171,8 +169,7 @@ int mylite_copy_identifier_parts(const struct mylite_sql_ast_node *identifier, c
     return MYLITE_OK;
 }
 
-char *mylite_copy_string_literal_span(const struct mylite_sql_ast_node *node)
-{
+char *mylite_copy_string_literal_span(const struct mylite_sql_ast_node *node) {
     const char *text = node == NULL ? NULL : node->span.text;
     size_t length = node == NULL ? 0U : node->span.length;
     char quote = '\0';
@@ -206,8 +203,7 @@ char *mylite_copy_string_literal_span(const struct mylite_sql_ast_node *node)
     return copy;
 }
 
-char *mylite_copy_unquoted_span_text(struct mylite_sql_source_span span)
-{
+char *mylite_copy_unquoted_span_text(struct mylite_sql_source_span span) {
     const char *text = span.text == NULL ? "" : span.text;
     size_t start = 0U;
     size_t end = span.text == NULL ? 0U : span.length;
@@ -219,8 +215,7 @@ char *mylite_copy_unquoted_span_text(struct mylite_sql_source_span span)
     return mylite_copy_span_text(text + start, end - start);
 }
 
-char *mylite_copy_nonempty_cstring(const char *text)
-{
+char *mylite_copy_nonempty_cstring(const char *text) {
     size_t length = 0U;
     char *copy = NULL;
 
@@ -240,8 +235,7 @@ char *mylite_copy_nonempty_cstring(const char *text)
     return copy;
 }
 
-char *mylite_copy_span_text(const char *text, size_t length)
-{
+char *mylite_copy_span_text(const char *text, size_t length) {
     char *copy = malloc(length + 1U);
 
     if (copy == NULL) {
@@ -255,8 +249,7 @@ char *mylite_copy_span_text(const char *text, size_t length)
     return copy;
 }
 
-bool mylite_span_contains_newline(const char *text, size_t length)
-{
+bool mylite_span_contains_newline(const char *text, size_t length) {
     for (size_t index = 0U; index < length; ++index) {
         if (text[index] == '\n' || text[index] == '\r') {
             return true;
@@ -265,16 +258,14 @@ bool mylite_span_contains_newline(const char *text, size_t length)
     return false;
 }
 
-bool mylite_text_contains_word(const char *text, const char *word)
-{
+bool mylite_text_contains_word(const char *text, const char *word) {
     if (text == NULL || word == NULL || word[0] == '\0') {
         return false;
     }
     return strstr(text, word) != NULL;
 }
 
-bool mylite_column_default_is_current_timestamp(const char *default_text)
-{
+bool mylite_column_default_is_current_timestamp(const char *default_text) {
     const char *start = default_text;
     const char *end = default_text == NULL ? NULL : default_text + strlen(default_text);
     static const char *const supported_current_timestamp_defaults[] = {
@@ -321,9 +312,10 @@ bool mylite_column_default_is_current_timestamp(const char *default_text)
     return matches;
 }
 
-const struct mylite_sql_ast_node *mylite_ast_child_at(const struct mylite_sql_ast_node *node,
-                                                      size_t index)
-{
+const struct mylite_sql_ast_node *mylite_ast_child_at(
+    const struct mylite_sql_ast_node *node,
+    size_t index
+) {
     const struct mylite_sql_ast_node *child = NULL;
 
     if (node == NULL) {
@@ -337,9 +329,10 @@ const struct mylite_sql_ast_node *mylite_ast_child_at(const struct mylite_sql_as
     return child;
 }
 
-const struct mylite_sql_ast_node *mylite_ast_find_child_kind(const struct mylite_sql_ast_node *node,
-                                                             enum mylite_sql_ast_node_kind kind)
-{
+const struct mylite_sql_ast_node *mylite_ast_find_child_kind(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_node_kind kind
+) {
     const struct mylite_sql_ast_node *child = NULL;
 
     if (node == NULL) {
@@ -354,9 +347,9 @@ const struct mylite_sql_ast_node *mylite_ast_find_child_kind(const struct mylite
     return NULL;
 }
 
-const struct mylite_sql_ast_node *
-mylite_ast_single_statement(const struct mylite_sql_ast_node *root)
-{
+const struct mylite_sql_ast_node *mylite_ast_single_statement(
+    const struct mylite_sql_ast_node *root
+) {
     if (root == NULL || root->kind != MYLITE_SQL_AST_SCRIPT || root->first_child == NULL ||
         root->first_child->next_sibling != NULL) {
         return NULL;

@@ -18,38 +18,63 @@
 #include <stddef.h>
 #include <stdlib.h>
 
-static int scan_joined_table_select_rows(mylite_stmt *stmt,
-                                         struct mylite_table_select_join_materialize_state *state,
-                                         struct mylite_table_select_row *row,
-                                         const struct mylite_select_eval_callbacks *callbacks);
-static bool joined_table_select_zero_limit_skips_scan(const mylite_stmt *stmt,
-                                                      bool aggregate_query);
-static int
-initialize_joined_table_select_buffers(mylite_stmt *stmt, size_t table_count,
-                                       struct mylite_table_select_join_materialize_state *state,
-                                       struct mylite_table_select_row *row);
+static int scan_joined_table_select_rows(
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks
+);
+
+static bool joined_table_select_zero_limit_skips_scan(
+    const mylite_stmt *stmt,
+    bool aggregate_query
+);
+
+static int initialize_joined_table_select_buffers(
+    mylite_stmt *stmt,
+    size_t table_count,
+    struct mylite_table_select_join_materialize_state *state,
+    struct mylite_table_select_row *row
+);
+
 static int advance_joined_table_select_scan(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
-    struct mylite_table_select_join_scan_state *scan, bool *out_finished,
-    const struct mylite_select_eval_callbacks *callbacks);
-static int backtrack_joined_table_select_scan(mylite_stmt *stmt,
-                                              struct mylite_table_select_join_scan_state *scan,
-                                              bool *out_finished);
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    struct mylite_table_select_join_scan_state *scan,
+    bool *out_finished,
+    const struct mylite_select_eval_callbacks *callbacks
+);
+
+static int backtrack_joined_table_select_scan(
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_scan_state *scan,
+    bool *out_finished
+);
+
 static int process_joined_table_select_scan_row(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
-    struct mylite_table_select_join_scan_state *scan, const struct mylite_select_table *table,
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    struct mylite_table_select_join_scan_state *scan,
+    const struct mylite_select_table *table,
     const struct mylite_table_select_table_rowset *rowset,
-    const struct mylite_select_eval_callbacks *callbacks);
-static void clear_joined_table_select_scan_frame(struct mylite_table_select_join_scan_state *scan,
-                                                 const struct mylite_select_table *table,
-                                                 size_t table_index);
-static void
-clear_joined_table_select_scan_copies(mylite_stmt *stmt,
-                                      const struct mylite_table_select_join_scan_state *scan);
+    const struct mylite_select_eval_callbacks *callbacks
+);
+
+static void clear_joined_table_select_scan_frame(
+    struct mylite_table_select_join_scan_state *scan,
+    const struct mylite_select_table *table,
+    size_t table_index
+);
+
+static void clear_joined_table_select_scan_copies(
+    mylite_stmt *stmt,
+    const struct mylite_table_select_join_scan_state *scan
+);
 
 int mylite_select_materialize_joined_table_result(
-    mylite_stmt *stmt, const struct mylite_select_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
     struct mylite_table_select_join_materialize_state state = {0};
     struct mylite_table_select_row row = {0};
@@ -94,12 +119,19 @@ int mylite_select_materialize_joined_table_result(
         status = mylite_select_group_append_empty_implicit(stmt, &state.groups, &state.group_count);
     }
     if (status == MYLITE_OK && aggregate_query) {
-        status = mylite_select_materialize_append_finalized_groups(stmt, state.groups,
-                                                                   state.group_count, callbacks);
+        status = mylite_select_materialize_append_finalized_groups(
+            stmt,
+            state.groups,
+            state.group_count,
+            callbacks
+        );
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
-        status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
-                                                &stmt->select_plan);
+        status = mylite_select_result_sort_rows(
+            stmt->database,
+            &stmt->select_result,
+            &stmt->select_plan
+        );
     }
     if (status == MYLITE_OK &&
         (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
@@ -116,8 +148,10 @@ int mylite_select_materialize_joined_table_result(
     return status;
 }
 
-static bool joined_table_select_zero_limit_skips_scan(const mylite_stmt *stmt, bool aggregate_query)
-{
+static bool joined_table_select_zero_limit_skips_scan(
+    const mylite_stmt *stmt,
+    bool aggregate_query
+) {
     if (stmt->select_plan.calc_found_rows || aggregate_query) {
         return false;
     }
@@ -130,11 +164,12 @@ static bool joined_table_select_zero_limit_skips_scan(const mylite_stmt *stmt, b
     return false;
 }
 
-static int
-initialize_joined_table_select_buffers(mylite_stmt *stmt, size_t table_count,
-                                       struct mylite_table_select_join_materialize_state *state,
-                                       struct mylite_table_select_row *row)
-{
+static int initialize_joined_table_select_buffers(
+    mylite_stmt *stmt,
+    size_t table_count,
+    struct mylite_table_select_join_materialize_state *state,
+    struct mylite_table_select_row *row
+) {
     state->rowsets = calloc(table_count, sizeof(*state->rowsets));
     if (state->rowsets == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -177,11 +212,12 @@ initialize_joined_table_select_buffers(mylite_stmt *stmt, size_t table_count,
     return MYLITE_OK;
 }
 
-static int scan_joined_table_select_rows(mylite_stmt *stmt,
-                                         struct mylite_table_select_join_materialize_state *state,
-                                         struct mylite_table_select_row *row,
-                                         const struct mylite_select_eval_callbacks *callbacks)
-{
+static int scan_joined_table_select_rows(
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
     struct mylite_table_select_join_scan_state scan = {
         .row = row,
@@ -217,10 +253,12 @@ static int scan_joined_table_select_rows(mylite_stmt *stmt,
 }
 
 static int advance_joined_table_select_scan(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
-    struct mylite_table_select_join_scan_state *scan, bool *out_finished,
-    const struct mylite_select_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    struct mylite_table_select_join_scan_state *scan,
+    bool *out_finished,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     const struct mylite_select_table *table =
         mylite_select_plan_table_const(&stmt->select_plan, scan->table_index);
     const struct mylite_table_select_table_rowset *rowset = &state->rowsets[scan->table_index];
@@ -235,10 +273,11 @@ static int advance_joined_table_select_scan(
     return process_joined_table_select_scan_row(stmt, state, scan, table, rowset, callbacks);
 }
 
-static int backtrack_joined_table_select_scan(mylite_stmt *stmt,
-                                              struct mylite_table_select_join_scan_state *scan,
-                                              bool *out_finished)
-{
+static int backtrack_joined_table_select_scan(
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_scan_state *scan,
+    bool *out_finished
+) {
     const struct mylite_select_table *table = NULL;
 
     scan->frames[scan->table_index].row_index = 0U;
@@ -258,14 +297,19 @@ static int backtrack_joined_table_select_scan(mylite_stmt *stmt,
 }
 
 static int process_joined_table_select_scan_row(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
-    struct mylite_table_select_join_scan_state *scan, const struct mylite_select_table *table,
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    struct mylite_table_select_join_scan_state *scan,
+    const struct mylite_select_table *table,
     const struct mylite_table_select_table_rowset *rowset,
-    const struct mylite_select_eval_callbacks *callbacks)
-{
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     bool matches = false;
     int status = mylite_select_join_row_copy_table_values(
-        scan->row, table, &rowset->rows[scan->frames[scan->table_index].row_index]);
+        scan->row,
+        table,
+        &rowset->rows[scan->frames[scan->table_index].row_index]
+    );
 
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
@@ -307,10 +351,11 @@ static int process_joined_table_select_scan_row(
     return MYLITE_OK;
 }
 
-static void clear_joined_table_select_scan_frame(struct mylite_table_select_join_scan_state *scan,
-                                                 const struct mylite_select_table *table,
-                                                 size_t table_index)
-{
+static void clear_joined_table_select_scan_frame(
+    struct mylite_table_select_join_scan_state *scan,
+    const struct mylite_select_table *table,
+    size_t table_index
+) {
     if (!scan->frames[table_index].copied) {
         return;
     }
@@ -321,10 +366,10 @@ static void clear_joined_table_select_scan_frame(struct mylite_table_select_join
     scan->frames[table_index].copied = false;
 }
 
-static void
-clear_joined_table_select_scan_copies(mylite_stmt *stmt,
-                                      const struct mylite_table_select_join_scan_state *scan)
-{
+static void clear_joined_table_select_scan_copies(
+    mylite_stmt *stmt,
+    const struct mylite_table_select_join_scan_state *scan
+) {
     for (size_t index = 0U; index < scan->table_count; ++index) {
         const struct mylite_select_table *table =
             mylite_select_plan_table_const(&stmt->select_plan, index);

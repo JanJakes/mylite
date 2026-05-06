@@ -100,8 +100,12 @@ MYLITE_API int mylite_open_memory(mylite_db **out_db);
 MYLITE_API void mylite_close(mylite_db *database);
 MYLITE_API const char *mylite_error_message(const mylite_db *database);
 
-MYLITE_API int mylite_prepare(mylite_db *database, const char *sql, size_t length,
-                              mylite_stmt **out_stmt);
+MYLITE_API int mylite_prepare(
+    mylite_db *database,
+    const char *sql,
+    size_t length,
+    mylite_stmt **out_stmt
+);
 MYLITE_API void mylite_finalize(mylite_stmt *stmt);
 MYLITE_API int mylite_step(mylite_stmt *stmt);
 MYLITE_API int64_t mylite_affected_rows(const mylite_stmt *stmt);

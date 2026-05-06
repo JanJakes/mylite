@@ -18,17 +18,20 @@
 #include "mylite_values_query.h"
 
 static int execute_parser_placeholder_statement(mylite_stmt *stmt);
+
 static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind);
 
-int mylite_statement_execute_custom(mylite_stmt *stmt)
-{
+int mylite_statement_execute_custom(mylite_stmt *stmt) {
     return mylite_statement_execute_custom_with_callbacks(
-        stmt, mylite_select_context_statement_execute_callbacks());
+        stmt,
+        mylite_select_context_statement_execute_callbacks()
+    );
 }
 
 int mylite_statement_execute_custom_with_callbacks(
-    mylite_stmt *stmt, const struct mylite_statement_execute_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    const struct mylite_statement_execute_callbacks *callbacks
+) {
     if (stmt == NULL || callbacks == NULL || callbacks->execute_scalar_select == NULL ||
         callbacks->execute_table_select == NULL || callbacks->union_callbacks == NULL ||
         callbacks->scalar_callbacks == NULL ||
@@ -56,8 +59,11 @@ int mylite_statement_execute_custom_with_callbacks(
         return mylite_select_union_execute_query(stmt, callbacks->union_callbacks);
     }
     if (stmt->kind == MYLITE_STMT_VALUES_QUERY) {
-        return mylite_values_query_execute_statement(stmt, callbacks->scalar_callbacks,
-                                                     callbacks->union_callbacks);
+        return mylite_values_query_execute_statement(
+            stmt,
+            callbacks->scalar_callbacks,
+            callbacks->union_callbacks
+        );
     }
     if (stmt->kind == MYLITE_STMT_EXECUTE_PREPARED) {
         return mylite_prepared_statement_execute_execute(stmt);
@@ -112,12 +118,19 @@ int mylite_statement_execute_custom_with_callbacks(
         break;
     case MYLITE_STMT_CREATE_TABLE:
         status = mylite_table_ddl_execute_create_table_statement(
-            stmt->database, stmt->database->selected_schema, &stmt->create_table,
-            stmt->if_not_exists);
+            stmt->database,
+            stmt->database->selected_schema,
+            &stmt->create_table,
+            stmt->if_not_exists
+        );
         break;
     case MYLITE_STMT_DROP_TABLE:
         status = mylite_table_ddl_execute_drop_table_statement(
-            stmt->database, stmt->database->selected_schema, &stmt->drop_table, stmt->if_exists);
+            stmt->database,
+            stmt->database->selected_schema,
+            &stmt->drop_table,
+            stmt->if_exists
+        );
         break;
     case MYLITE_STMT_RENAME_TABLE:
         status = mylite_table_ddl_execute_rename_table_prepared_statement(stmt);
@@ -198,8 +211,11 @@ int mylite_statement_execute_custom_with_callbacks(
     case MYLITE_STMT_UNION_QUERY:
         return mylite_select_union_execute_query(stmt, callbacks->union_callbacks);
     case MYLITE_STMT_VALUES_QUERY:
-        return mylite_values_query_execute_statement(stmt, callbacks->scalar_callbacks,
-                                                     callbacks->union_callbacks);
+        return mylite_values_query_execute_statement(
+            stmt,
+            callbacks->scalar_callbacks,
+            callbacks->union_callbacks
+        );
     case MYLITE_STMT_EXECUTE_PREPARED:
         return mylite_prepared_statement_execute_execute(stmt);
     case MYLITE_STMT_SQLITE:
@@ -210,14 +226,15 @@ int mylite_statement_execute_custom_with_callbacks(
     return status == MYLITE_OK ? MYLITE_DONE : status;
 }
 
-static int execute_parser_placeholder_statement(mylite_stmt *stmt)
-{
-    return mylite_diagnostics_append_warning(stmt->database, MYLITE_MYSQL_ER_NOT_SUPPORTED_YET,
-                                             parser_placeholder_warning_message(stmt->kind));
+static int execute_parser_placeholder_statement(mylite_stmt *stmt) {
+    return mylite_diagnostics_append_warning(
+        stmt->database,
+        MYLITE_MYSQL_ER_NOT_SUPPORTED_YET,
+        parser_placeholder_warning_message(stmt->kind)
+    );
 }
 
-static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind)
-{
+static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind) {
     switch (kind) {
     case MYLITE_STMT_CALL_PLACEHOLDER:
         return "CALL statement is accepted as a MyLite parser placeholder and is not executed";

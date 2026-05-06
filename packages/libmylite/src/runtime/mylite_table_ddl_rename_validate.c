@@ -7,29 +7,55 @@
 
 #include <string.h>
 
-static int resolve_rename_table_names(mylite_db *database, const char *selected_schema,
-                                      struct mylite_rename_table_plan *plan);
-static int validate_rename_table_target_schemas(mylite_db *database,
-                                                const struct mylite_rename_table_target *target);
-static int validate_rename_table_target(mylite_db *database,
-                                        const struct mylite_rename_table_plan *plan,
-                                        size_t target_index);
-static int simulated_rename_table_exists_before_target(mylite_db *database,
-                                                       const struct mylite_rename_table_plan *plan,
-                                                       const char *schema_name,
-                                                       const char *table_name, size_t target_index,
-                                                       bool *out_exists);
-static bool rename_table_target_source_matches(const struct mylite_rename_table_target *target,
-                                               const char *schema_name, const char *table_name);
-static bool rename_table_target_destination_matches(const struct mylite_rename_table_target *target,
-                                                    const char *schema_name,
-                                                    const char *table_name);
-static int set_rename_table_exists_error(mylite_db *database, const char *schema_name,
-                                         const char *table_name);
+static int resolve_rename_table_names(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_rename_table_plan *plan
+);
 
-int mylite_table_ddl_validate_rename_table_plan(mylite_db *database, const char *selected_schema,
-                                                struct mylite_rename_table_plan *plan)
-{
+static int validate_rename_table_target_schemas(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+);
+
+static int validate_rename_table_target(
+    mylite_db *database,
+    const struct mylite_rename_table_plan *plan,
+    size_t target_index
+);
+
+static int simulated_rename_table_exists_before_target(
+    mylite_db *database,
+    const struct mylite_rename_table_plan *plan,
+    const char *schema_name,
+    const char *table_name,
+    size_t target_index,
+    bool *out_exists
+);
+
+static bool rename_table_target_source_matches(
+    const struct mylite_rename_table_target *target,
+    const char *schema_name,
+    const char *table_name
+);
+
+static bool rename_table_target_destination_matches(
+    const struct mylite_rename_table_target *target,
+    const char *schema_name,
+    const char *table_name
+);
+
+static int set_rename_table_exists_error(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+);
+
+int mylite_table_ddl_validate_rename_table_plan(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_rename_table_plan *plan
+) {
     int status = MYLITE_OK;
 
     if (plan->target_count == 0U) {
@@ -56,9 +82,11 @@ int mylite_table_ddl_validate_rename_table_plan(mylite_db *database, const char 
     return MYLITE_OK;
 }
 
-static int resolve_rename_table_names(mylite_db *database, const char *selected_schema,
-                                      struct mylite_rename_table_plan *plan)
-{
+static int resolve_rename_table_names(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_rename_table_plan *plan
+) {
     for (size_t index = 0U; index < plan->target_count; ++index) {
         struct mylite_rename_table_target *target = &plan->targets[index];
 
@@ -85,9 +113,10 @@ static int resolve_rename_table_names(mylite_db *database, const char *selected_
     return MYLITE_OK;
 }
 
-static int validate_rename_table_target_schemas(mylite_db *database,
-                                                const struct mylite_rename_table_target *target)
-{
+static int validate_rename_table_target_schemas(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+) {
     struct mylite_schema_presence source_presence;
     struct mylite_schema_presence target_presence;
     int status =
@@ -97,13 +126,21 @@ static int validate_rename_table_target_schemas(mylite_db *database,
         return status;
     }
     if (!source_presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
-                                                         target->source_schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Unknown database '",
+            target->source_schema_name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (source_presence.is_system) {
         (void)mylite_diagnostics_set_error_message_parts(
-            database, "Access to system schema '", target->source_schema_name, "' is rejected.");
+            database,
+            "Access to system schema '",
+            target->source_schema_name,
+            "' is rejected."
+        );
         return MYLITE_EXEC_ERROR;
     }
 
@@ -112,56 +149,83 @@ static int validate_rename_table_target_schemas(mylite_db *database,
         return status;
     }
     if (!target_presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
-                                                         target->target_schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Unknown database '",
+            target->target_schema_name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (target_presence.is_system) {
         (void)mylite_diagnostics_set_error_message_parts(
-            database, "Access to system schema '", target->target_schema_name, "' is rejected.");
+            database,
+            "Access to system schema '",
+            target->target_schema_name,
+            "' is rejected."
+        );
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
 }
 
-static int validate_rename_table_target(mylite_db *database,
-                                        const struct mylite_rename_table_plan *plan,
-                                        size_t target_index)
-{
+static int validate_rename_table_target(
+    mylite_db *database,
+    const struct mylite_rename_table_plan *plan,
+    size_t target_index
+) {
     const struct mylite_rename_table_target *target = &plan->targets[target_index];
     bool source_exists = false;
     bool target_exists = false;
     int status = simulated_rename_table_exists_before_target(
-        database, plan, target->source_schema_name, target->source_table_name, target_index,
-        &source_exists);
+        database,
+        plan,
+        target->source_schema_name,
+        target->source_table_name,
+        target_index,
+        &source_exists
+    );
 
     if (status != MYLITE_OK) {
         return status;
     }
     if (!source_exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(database, target->source_schema_name,
-                                                               target->source_table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            database,
+            target->source_schema_name,
+            target->source_table_name
+        );
     }
 
-    status = simulated_rename_table_exists_before_target(database, plan, target->target_schema_name,
-                                                         target->target_table_name, target_index,
-                                                         &target_exists);
+    status = simulated_rename_table_exists_before_target(
+        database,
+        plan,
+        target->target_schema_name,
+        target->target_table_name,
+        target_index,
+        &target_exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
     if (target_exists) {
-        return set_rename_table_exists_error(database, target->target_schema_name,
-                                             target->target_table_name);
+        return set_rename_table_exists_error(
+            database,
+            target->target_schema_name,
+            target->target_table_name
+        );
     }
     return MYLITE_OK;
 }
 
-static int simulated_rename_table_exists_before_target(mylite_db *database,
-                                                       const struct mylite_rename_table_plan *plan,
-                                                       const char *schema_name,
-                                                       const char *table_name, size_t target_index,
-                                                       bool *out_exists)
-{
+static int simulated_rename_table_exists_before_target(
+    mylite_db *database,
+    const struct mylite_rename_table_plan *plan,
+    const char *schema_name,
+    const char *table_name,
+    size_t target_index,
+    bool *out_exists
+) {
     int status = mylite_catalog_table_exists(database, schema_name, table_name, out_exists);
 
     if (status != MYLITE_OK) {
@@ -180,9 +244,11 @@ static int simulated_rename_table_exists_before_target(mylite_db *database,
     return MYLITE_OK;
 }
 
-static bool rename_table_target_source_matches(const struct mylite_rename_table_target *target,
-                                               const char *schema_name, const char *table_name)
-{
+static bool rename_table_target_source_matches(
+    const struct mylite_rename_table_target *target,
+    const char *schema_name,
+    const char *table_name
+) {
     const int schema_comparison = strcmp(target->source_schema_name, schema_name);
     const int table_comparison = strcmp(target->source_table_name, table_name);
 
@@ -195,9 +261,11 @@ static bool rename_table_target_source_matches(const struct mylite_rename_table_
     return true;
 }
 
-static bool rename_table_target_destination_matches(const struct mylite_rename_table_target *target,
-                                                    const char *schema_name, const char *table_name)
-{
+static bool rename_table_target_destination_matches(
+    const struct mylite_rename_table_target *target,
+    const char *schema_name,
+    const char *table_name
+) {
     const int schema_comparison = strcmp(target->target_schema_name, schema_name);
     const int table_comparison = strcmp(target->target_table_name, table_name);
 
@@ -210,9 +278,11 @@ static bool rename_table_target_destination_matches(const struct mylite_rename_t
     return true;
 }
 
-static int set_rename_table_exists_error(mylite_db *database, const char *schema_name,
-                                         const char *table_name)
-{
+static int set_rename_table_exists_error(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+) {
     char *message = sqlite3_mprintf("Table '%q.%q' already exists", schema_name, table_name);
     int status = MYLITE_OK;
 

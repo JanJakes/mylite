@@ -11,24 +11,45 @@
 
 #include <stdlib.h>
 
-static int validate_truncate_table_plan(mylite_db *database, const char *selected_schema,
-                                        struct mylite_truncate_table_plan *plan);
-static int resolve_truncate_table_name(mylite_db *database, const char *selected_schema,
-                                       struct mylite_truncate_table_plan *plan);
-static int validate_truncate_table_target(mylite_db *database,
-                                          const struct mylite_truncate_table_plan *plan);
-static int truncate_table_transaction(mylite_db *database,
-                                      const struct mylite_truncate_table_plan *plan);
-static int delete_truncate_table_rows(mylite_db *database,
-                                      const struct mylite_truncate_table_plan *plan);
-static int reset_truncate_table_auto_increment(mylite_db *database,
-                                               const struct mylite_truncate_table_plan *plan);
+static int validate_truncate_table_plan(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_truncate_table_plan *plan
+);
+
+static int resolve_truncate_table_name(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_truncate_table_plan *plan
+);
+
+static int validate_truncate_table_target(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+);
+
+static int truncate_table_transaction(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+);
+
+static int delete_truncate_table_rows(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+);
+
+static int reset_truncate_table_auto_increment(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
-int mylite_table_ddl_execute_truncate_table_statement(mylite_db *database,
-                                                      const char *selected_schema,
-                                                      struct mylite_truncate_table_plan *plan)
-{
+int mylite_table_ddl_execute_truncate_table_statement(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_truncate_table_plan *plan
+) {
     int status = validate_truncate_table_plan(database, selected_schema, plan);
 
     if (status == MYLITE_OK) {
@@ -37,9 +58,11 @@ int mylite_table_ddl_execute_truncate_table_statement(mylite_db *database,
     return status;
 }
 
-static int validate_truncate_table_plan(mylite_db *database, const char *selected_schema,
-                                        struct mylite_truncate_table_plan *plan)
-{
+static int validate_truncate_table_plan(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_truncate_table_plan *plan
+) {
     int status = resolve_truncate_table_name(database, selected_schema, plan);
 
     if (status != MYLITE_OK) {
@@ -48,9 +71,11 @@ static int validate_truncate_table_plan(mylite_db *database, const char *selecte
     return validate_truncate_table_target(database, plan);
 }
 
-static int resolve_truncate_table_name(mylite_db *database, const char *selected_schema,
-                                       struct mylite_truncate_table_plan *plan)
-{
+static int resolve_truncate_table_name(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_truncate_table_plan *plan
+) {
     if (plan->table_name == NULL) {
         return MYLITE_UNSUPPORTED;
     }
@@ -70,9 +95,10 @@ static int resolve_truncate_table_name(mylite_db *database, const char *selected
     return MYLITE_OK;
 }
 
-static int validate_truncate_table_target(mylite_db *database,
-                                          const struct mylite_truncate_table_plan *plan)
-{
+static int validate_truncate_table_target(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+) {
     struct mylite_schema_presence presence;
     bool exists = false;
     int status = mylite_catalog_schema_exists(database, plan->schema_name, &presence);
@@ -81,13 +107,20 @@ static int validate_truncate_table_target(mylite_db *database,
         return status;
     }
     if (presence.is_system) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Access to system schema '",
-                                                         plan->schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Access to system schema '",
+            plan->schema_name,
+            "' is rejected."
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (!presence.exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(database, plan->schema_name,
-                                                               plan->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            database,
+            plan->schema_name,
+            plan->table_name
+        );
     }
 
     status = mylite_catalog_table_exists(database, plan->schema_name, plan->table_name, &exists);
@@ -95,15 +128,19 @@ static int validate_truncate_table_target(mylite_db *database,
         return status;
     }
     if (!exists) {
-        return mylite_diagnostics_set_table_doesnt_exist_error(database, plan->schema_name,
-                                                               plan->table_name);
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            database,
+            plan->schema_name,
+            plan->table_name
+        );
     }
     return MYLITE_OK;
 }
 
-static int truncate_table_transaction(mylite_db *database,
-                                      const struct mylite_truncate_table_plan *plan)
-{
+static int truncate_table_transaction(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+) {
     struct mylite_statement_atomicity atomicity = {0};
     int status = mylite_transaction_begin_statement_atomicity(database, &atomicity);
 
@@ -124,9 +161,10 @@ static int truncate_table_transaction(mylite_db *database,
     return status;
 }
 
-static int delete_truncate_table_rows(mylite_db *database,
-                                      const struct mylite_truncate_table_plan *plan)
-{
+static int delete_truncate_table_rows(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+) {
     char *physical_name = mylite_catalog_physical_table_name(plan->schema_name, plan->table_name);
     char *sql = NULL;
     int rc = SQLITE_OK;
@@ -148,9 +186,10 @@ static int delete_truncate_table_rows(mylite_db *database,
     return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int reset_truncate_table_auto_increment(mylite_db *database,
-                                               const struct mylite_truncate_table_plan *plan)
-{
+static int reset_truncate_table_auto_increment(
+    mylite_db *database,
+    const struct mylite_truncate_table_plan *plan
+) {
     sqlite3_stmt *update = NULL;
     static const char sql[] = "UPDATE __mylite_table_catalog SET auto_increment = NULL "
                               "WHERE table_schema = ? AND table_name = ?";
@@ -168,8 +207,7 @@ static int reset_truncate_table_auto_increment(mylite_db *database,
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static sqlite3_destructor_type sqlite_transient_destructor(void)
-{
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
     // SQLite's public macro intentionally uses this sentinel pointer value.
     return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

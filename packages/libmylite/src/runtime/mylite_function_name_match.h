@@ -7,10 +7,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-static inline bool mylite_function_name_matches_any(const struct mylite_sql_ast_node *name,
-                                                    const char *const *candidates,
-                                                    size_t candidate_count)
-{
+static inline bool mylite_function_name_matches_any(
+    const struct mylite_sql_ast_node *name,
+    const char *const *candidates,
+    size_t candidate_count
+) {
     if (name == NULL) {
         return false;
     }

@@ -19,25 +19,34 @@ struct mylite_show_create_column_collation {
     const char *table_collation;
 };
 
-static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt *select,
-                                           const struct mylite_show_create_table_info *info);
-static bool show_create_column_needs_implicit_default_null(const char *data_type);
-static void
-append_show_create_column_collation(sqlite3_str *create_sql,
-                                    struct mylite_show_create_column_collation collation);
+static int append_show_create_table_column(
+    sqlite3_str *create_sql,
+    sqlite3_stmt *select,
+    const struct mylite_show_create_table_info *info
+);
 
-int mylite_show_create_table_append_columns(mylite_db *database, sqlite3_str *create_sql,
-                                            const struct mylite_show_create_table_target *target,
-                                            const struct mylite_show_create_table_info *info,
-                                            bool *first_line)
-{
+static bool show_create_column_needs_implicit_default_null(const char *data_type);
+
+static void append_show_create_column_collation(
+    sqlite3_str *create_sql,
+    struct mylite_show_create_column_collation collation
+);
+
+int mylite_show_create_table_append_columns(
+    mylite_db *database,
+    sqlite3_str *create_sql,
+    const struct mylite_show_create_table_target *target,
+    const struct mylite_show_create_table_info *info,
+    bool *first_line
+) {
     sqlite3_stmt *select = NULL;
     char *sql = sqlite3_mprintf(
         "SELECT column_name, column_type, is_nullable, column_default, extra, column_comment, "
         "character_set_name, collation_name, data_type "
         "FROM %s WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position",
-        mylite_catalog_column_catalog_name(target->temporary));
+        mylite_catalog_column_catalog_name(target->temporary)
+    );
     int rc = SQLITE_OK;
 
     if (sql == NULL) {
@@ -49,8 +58,13 @@ int mylite_show_create_table_append_columns(mylite_db *database, sqlite3_str *cr
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, target->schema_name, -1,
-                      mylite_show_sqlite_transient_destructor());
+    sqlite3_bind_text(
+        select,
+        1,
+        target->schema_name,
+        -1,
+        mylite_show_sqlite_transient_destructor()
+    );
     sqlite3_bind_text(select, 2, target->table_name, -1, mylite_show_sqlite_transient_destructor());
 
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
@@ -65,9 +79,11 @@ int mylite_show_create_table_append_columns(mylite_db *database, sqlite3_str *cr
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt *select,
-                                           const struct mylite_show_create_table_info *info)
-{
+static int append_show_create_table_column(
+    sqlite3_str *create_sql,
+    sqlite3_stmt *select,
+    const struct mylite_show_create_table_info *info
+) {
     enum {
         column_name_column = 0,
         column_type_column = 1,
@@ -79,6 +95,7 @@ static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt
         collation_column = 7,
         data_type_column = 8,
     };
+
     const char *column_name = (const char *)sqlite3_column_text(select, column_name_column);
     const char *column_type = (const char *)sqlite3_column_text(select, column_type_column);
     const char *is_nullable = (const char *)sqlite3_column_text(select, is_nullable_column);
@@ -92,15 +109,19 @@ static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt
 
     mylite_show_create_append_identifier(create_sql, column_name);
     sqlite3_str_appendf(create_sql, " %s", column_type == NULL ? "" : column_type);
-    append_show_create_column_collation(create_sql, (struct mylite_show_create_column_collation){
-                                                        .character_set_name = character_set,
-                                                        .column_collation = column_collation,
-                                                        .table_collation = info->table_collation,
-                                                    });
+    append_show_create_column_collation(
+        create_sql,
+        (struct mylite_show_create_column_collation){
+            .character_set_name = character_set,
+            .column_collation = column_collation,
+            .table_collation = info->table_collation,
+        }
+    );
     if (!nullable) {
         sqlite3_str_appendall(create_sql, " NOT NULL");
-    } else if (column_default != NULL &&
-               mylite_column_default_is_current_timestamp(column_default)) {
+    } else if (
+        column_default != NULL && mylite_column_default_is_current_timestamp(column_default)
+    ) {
         sqlite3_str_appendall(create_sql, " NULL");
     }
     if (column_default != NULL) {
@@ -130,8 +151,7 @@ static int append_show_create_table_column(sqlite3_str *create_sql, sqlite3_stmt
     return sqlite3_str_errcode(create_sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
 }
 
-static bool show_create_column_needs_implicit_default_null(const char *data_type)
-{
+static bool show_create_column_needs_implicit_default_null(const char *data_type) {
     if (mylite_ascii_case_equal(data_type, "tinytext")) {
         return false;
     }
@@ -159,22 +179,27 @@ static bool show_create_column_needs_implicit_default_null(const char *data_type
     return true;
 }
 
-static void
-append_show_create_column_collation(sqlite3_str *create_sql,
-                                    struct mylite_show_create_column_collation collation)
-{
+static void append_show_create_column_collation(
+    sqlite3_str *create_sql,
+    struct mylite_show_create_column_collation collation
+) {
     if (collation.column_collation == NULL || collation.column_collation[0] == '\0') {
         return;
     }
     if (!mylite_ascii_case_equal(collation.column_collation, collation.table_collation)) {
-        sqlite3_str_appendf(create_sql, " CHARACTER SET %s COLLATE %s",
-                            collation.character_set_name == NULL ? mylite_charset_default_name()
-                                                                 : collation.character_set_name,
-                            collation.column_collation);
+        sqlite3_str_appendf(
+            create_sql,
+            " CHARACTER SET %s COLLATE %s",
+            collation.character_set_name == NULL ? mylite_charset_default_name()
+                                                 : collation.character_set_name,
+            collation.column_collation
+        );
         return;
     }
-    if (!mylite_ascii_case_equal(collation.table_collation,
-                                 mylite_charset_default_collation_name())) {
+    if (!mylite_ascii_case_equal(
+            collation.table_collation,
+            mylite_charset_default_collation_name()
+        )) {
         sqlite3_str_appendf(create_sql, " COLLATE %s", collation.column_collation);
     }
 }

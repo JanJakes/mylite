@@ -7,9 +7,9 @@
 
 static bool catalog_column_descriptor_source_is_nullable(const char *is_nullable);
 
-struct mylite_catalog_column_descriptor_source
-mylite_select_catalog_column_descriptor_source(sqlite3_stmt *select)
-{
+struct mylite_catalog_column_descriptor_source mylite_select_catalog_column_descriptor_source(
+    sqlite3_stmt *select
+) {
     enum {
         select_extra = 1,
         select_is_nullable = 2,
@@ -40,16 +40,18 @@ mylite_select_catalog_column_descriptor_source(sqlite3_stmt *select)
 
     source.nullable = catalog_column_descriptor_source_is_nullable(source.is_nullable);
     source.is_unsigned = mylite_select_catalog_text_contains_word(
-        (struct mylite_catalog_text_match){.text = source.column_type, .word = "unsigned"});
+        (struct mylite_catalog_text_match){.text = source.column_type, .word = "unsigned"}
+    );
     source.is_zerofill = mylite_select_catalog_text_contains_word(
-        (struct mylite_catalog_text_match){.text = source.column_type, .word = "zerofill"});
+        (struct mylite_catalog_text_match){.text = source.column_type, .word = "zerofill"}
+    );
     source.auto_increment = mylite_select_catalog_text_contains_word(
-        (struct mylite_catalog_text_match){.text = source.extra, .word = "auto_increment"});
+        (struct mylite_catalog_text_match){.text = source.extra, .word = "auto_increment"}
+    );
     return source;
 }
 
-bool mylite_select_catalog_text_contains_word(struct mylite_catalog_text_match match)
-{
+bool mylite_select_catalog_text_contains_word(struct mylite_catalog_text_match match) {
     size_t word_length = match.word == NULL ? 0U : strlen(match.word);
 
     if (match.text == NULL || word_length == 0U) {
@@ -69,8 +71,7 @@ bool mylite_select_catalog_text_contains_word(struct mylite_catalog_text_match m
     return false;
 }
 
-static bool catalog_column_descriptor_source_is_nullable(const char *is_nullable)
-{
+static bool catalog_column_descriptor_source_is_nullable(const char *is_nullable) {
     if (is_nullable == NULL) {
         return true;
     }

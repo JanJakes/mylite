@@ -3,22 +3,33 @@
 #include "mylite_select_subquery_outer_reference.h"
 #include "mylite_span.h"
 
-static int
-validate_in_subquery_expression(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                const struct mylite_select_plan *outer_plan,
-                                const struct mylite_select_subquery_bind_callbacks *callbacks);
-static int
-validate_row_subquery_expression(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                 const struct mylite_select_plan *outer_plan,
-                                 const struct mylite_select_subquery_bind_callbacks *callbacks);
-static int validate_quantified_subquery_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+static int validate_in_subquery_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_select_plan *outer_plan,
-    const struct mylite_select_subquery_bind_callbacks *callbacks);
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+);
+
+static int validate_row_subquery_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_plan *outer_plan,
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+);
+
+static int validate_quantified_subquery_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_plan *outer_plan,
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+);
+
 int mylite_select_subquery_bind_select_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression, bool scalar_context,
-    const struct mylite_select_subquery_bind_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool scalar_context,
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     mylite_stmt *subquery_stmt = NULL;
@@ -53,35 +64,39 @@ int mylite_select_subquery_bind_select_expression(
 }
 
 int mylite_select_subquery_bind_in_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_select_plan *outer_plan,
-    const struct mylite_select_subquery_bind_callbacks *callbacks)
-{
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+) {
     return validate_in_subquery_expression(database, expression, outer_plan, callbacks);
 }
 
 int mylite_select_subquery_bind_row_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_select_plan *outer_plan,
-    const struct mylite_select_subquery_bind_callbacks *callbacks)
-{
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+) {
     return validate_row_subquery_expression(database, expression, outer_plan, callbacks);
 }
 
 int mylite_select_subquery_bind_quantified_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_select_plan *outer_plan,
-    const struct mylite_select_subquery_bind_callbacks *callbacks)
-{
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+) {
     return validate_quantified_subquery_expression(database, expression, outer_plan, callbacks);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int
-validate_in_subquery_expression(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                const struct mylite_select_plan *outer_plan,
-                                const struct mylite_select_subquery_bind_callbacks *callbacks)
-{
+static int validate_in_subquery_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_plan *outer_plan,
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     mylite_stmt *subquery_stmt = NULL;
@@ -94,8 +109,11 @@ validate_in_subquery_expression(mylite_db *database, const struct mylite_sql_ast
     if (!mylite_select_subquery_binary_expression_is_in(expression)) {
         return MYLITE_UNSUPPORTED;
     }
-    if (mylite_select_subquery_references_outer_plan(select_statement, outer_plan,
-                                                     select_statement)) {
+    if (mylite_select_subquery_references_outer_plan(
+            select_statement,
+            outer_plan,
+            select_statement
+        )) {
         return callbacks->set_unsupported_where_error(database);
     }
 
@@ -110,8 +128,10 @@ validate_in_subquery_expression(mylite_db *database, const struct mylite_sql_ast
     status = callbacks->prepare_select_subquery(database, select_statement, &subquery_stmt);
     if (status != MYLITE_OK) {
         mylite_finalize(subquery_stmt);
-        if (mylite_select_subquery_has_unqualified_outer_column_reference(select_statement,
-                                                                          outer_plan)) {
+        if (mylite_select_subquery_has_unqualified_outer_column_reference(
+                select_statement,
+                outer_plan
+            )) {
             return callbacks->set_unsupported_where_error(database);
         }
         return status;
@@ -124,11 +144,12 @@ validate_in_subquery_expression(mylite_db *database, const struct mylite_sql_ast
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int
-validate_row_subquery_expression(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                 const struct mylite_select_plan *outer_plan,
-                                 const struct mylite_select_subquery_bind_callbacks *callbacks)
-{
+static int validate_row_subquery_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_select_plan *outer_plan,
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *left =
         mylite_sql_ast_unwrap_parenthesized_expression(mylite_ast_child_at(expression, 0U));
     const struct mylite_sql_ast_node *select_statement =
@@ -145,8 +166,11 @@ validate_row_subquery_expression(mylite_db *database, const struct mylite_sql_as
     if (!mylite_select_subquery_row_expression_is_supported(expression) || expected_width < 2U) {
         return MYLITE_UNSUPPORTED;
     }
-    if (mylite_select_subquery_references_outer_plan(select_statement, outer_plan,
-                                                     select_statement)) {
+    if (mylite_select_subquery_references_outer_plan(
+            select_statement,
+            outer_plan,
+            select_statement
+        )) {
         return callbacks->set_unsupported_where_error(database);
     }
     if (mylite_select_subquery_row_expression_is_membership(expression) &&
@@ -154,8 +178,11 @@ validate_row_subquery_expression(mylite_db *database, const struct mylite_sql_as
         return mylite_select_subquery_set_in_limit_error(database);
     }
 
-    status = mylite_select_subquery_validate_row_select_columns(database, select_statement,
-                                                                expected_width);
+    status = mylite_select_subquery_validate_row_select_columns(
+        database,
+        select_statement,
+        expected_width
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -166,15 +193,20 @@ validate_row_subquery_expression(mylite_db *database, const struct mylite_sql_as
     status = callbacks->prepare_select_subquery(database, select_statement, &subquery_stmt);
     if (status != MYLITE_OK) {
         mylite_finalize(subquery_stmt);
-        if (mylite_select_subquery_has_unqualified_outer_column_reference(select_statement,
-                                                                          outer_plan)) {
+        if (mylite_select_subquery_has_unqualified_outer_column_reference(
+                select_statement,
+                outer_plan
+            )) {
             return callbacks->set_unsupported_where_error(database);
         }
         return status;
     }
     if (subquery_stmt != NULL) {
-        status = mylite_select_subquery_validate_row_prepared_columns(database, subquery_stmt,
-                                                                      expected_width);
+        status = mylite_select_subquery_validate_row_prepared_columns(
+            database,
+            subquery_stmt,
+            expected_width
+        );
         mylite_finalize(subquery_stmt);
     }
     return status;
@@ -182,10 +214,11 @@ validate_row_subquery_expression(mylite_db *database, const struct mylite_sql_as
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static int validate_quantified_subquery_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_select_plan *outer_plan,
-    const struct mylite_select_subquery_bind_callbacks *callbacks)
-{
+    const struct mylite_select_subquery_bind_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(select_statement, 1U);
     mylite_stmt *subquery_stmt = NULL;
@@ -203,8 +236,11 @@ static int validate_quantified_subquery_expression(
     if (mylite_select_subquery_quantified_comparison_has_row_left(expression)) {
         return mylite_select_subquery_set_row_quantified_non_alias_error(database, expression);
     }
-    if (mylite_select_subquery_references_outer_plan(select_statement, outer_plan,
-                                                     select_statement)) {
+    if (mylite_select_subquery_references_outer_plan(
+            select_statement,
+            outer_plan,
+            select_statement
+        )) {
         return callbacks->set_unsupported_where_error(database);
     }
 
@@ -219,8 +255,10 @@ static int validate_quantified_subquery_expression(
     status = callbacks->prepare_select_subquery(database, select_statement, &subquery_stmt);
     if (status != MYLITE_OK) {
         mylite_finalize(subquery_stmt);
-        if (mylite_select_subquery_has_unqualified_outer_column_reference(select_statement,
-                                                                          outer_plan)) {
+        if (mylite_select_subquery_has_unqualified_outer_column_reference(
+                select_statement,
+                outer_plan
+            )) {
             return callbacks->set_unsupported_where_error(database);
         }
         return status;
@@ -232,9 +270,10 @@ static int validate_quantified_subquery_expression(
     return status;
 }
 
-int mylite_select_subquery_validate_scalar_select_list(mylite_db *database,
-                                                       const struct mylite_sql_ast_node *statement)
-{
+int mylite_select_subquery_validate_scalar_select_list(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
     const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
     size_t column_count = 0U;
 
@@ -252,9 +291,10 @@ int mylite_select_subquery_validate_scalar_select_list(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_select_subquery_validate_in_select(mylite_db *database,
-                                              const struct mylite_sql_ast_node *statement)
-{
+int mylite_select_subquery_validate_in_select(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
     const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
 
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT ||
@@ -267,9 +307,10 @@ int mylite_select_subquery_validate_in_select(mylite_db *database,
     return mylite_select_subquery_validate_scalar_select_list(database, statement);
 }
 
-int mylite_select_subquery_validate_in_prepared_columns(mylite_db *database,
-                                                        const mylite_stmt *stmt)
-{
+int mylite_select_subquery_validate_in_prepared_columns(
+    mylite_db *database,
+    const mylite_stmt *stmt
+) {
     if (stmt == NULL) {
         return MYLITE_UNSUPPORTED;
     }
@@ -279,10 +320,11 @@ int mylite_select_subquery_validate_in_prepared_columns(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_select_subquery_validate_row_select_columns(mylite_db *database,
-                                                       const struct mylite_sql_ast_node *statement,
-                                                       size_t expected_width)
-{
+int mylite_select_subquery_validate_row_select_columns(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    size_t expected_width
+) {
     const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
     size_t column_count = 0U;
     bool has_wildcard = false;
@@ -306,10 +348,11 @@ int mylite_select_subquery_validate_row_select_columns(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_select_subquery_validate_row_prepared_columns(mylite_db *database,
-                                                         const mylite_stmt *stmt,
-                                                         size_t expected_width)
-{
+int mylite_select_subquery_validate_row_prepared_columns(
+    mylite_db *database,
+    const mylite_stmt *stmt,
+    size_t expected_width
+) {
     if (stmt == NULL) {
         return MYLITE_UNSUPPORTED;
     }

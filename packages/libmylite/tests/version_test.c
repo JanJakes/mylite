@@ -3,8 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-int main(void)
-{
+int main(void) {
     const char *version = mylite_version();
 
     if (strcmp(version, MYLITE_VERSION_STRING) != 0) {

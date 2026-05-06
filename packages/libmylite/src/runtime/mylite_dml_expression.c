@@ -12,15 +12,19 @@
 
 #include <stdlib.h>
 
-static int resolve_update_default_column(void *user_data,
-                                         const struct mylite_sql_ast_node *function_call,
-                                         const struct mylite_insert_table_column **out_column,
-                                         struct mylite_insert_table *loaded_table);
-static int set_unknown_default_column_error(mylite_db *database,
-                                            const struct mylite_sql_ast_node *identifier);
+static int resolve_update_default_column(
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_insert_table_column **out_column,
+    struct mylite_insert_table *loaded_table
+);
 
-int mylite_dml_promote_expression_warnings(mylite_db *database, size_t warning_start)
-{
+static int set_unknown_default_column_error(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *identifier
+);
+
+int mylite_dml_promote_expression_warnings(mylite_db *database, size_t warning_start) {
     const struct mylite_expression_warning *warning = NULL;
     int status = MYLITE_OK;
 
@@ -33,8 +37,7 @@ int mylite_dml_promote_expression_warnings(mylite_db *database, size_t warning_s
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-int mylite_dml_set_expression_condition_error(mylite_db *database, size_t warning_start)
-{
+int mylite_dml_set_expression_condition_error(mylite_db *database, size_t warning_start) {
     if (database == NULL || warning_start >= database->warnings.count) {
         return MYLITE_OK;
     }
@@ -53,10 +56,11 @@ int mylite_dml_set_expression_condition_error(mylite_db *database, size_t warnin
     return MYLITE_OK;
 }
 
-int mylite_dml_resolve_update_expression_identifier(void *user_data,
-                                                    const struct mylite_sql_ast_node *identifier,
-                                                    struct mylite_expression_value *out_value)
-{
+int mylite_dml_resolve_update_expression_identifier(
+    void *user_data,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_update_expression_context *context = user_data;
     size_t column_index = 0U;
     int status = MYLITE_OK;
@@ -80,10 +84,12 @@ int mylite_dml_resolve_update_expression_identifier(void *user_data,
 }
 
 int mylite_dml_evaluate_session_function(
-    void *user_data, const struct mylite_sql_ast_node *function_call,
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
-{
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_update_expression_context *context = user_data;
     const struct mylite_dml_expression_callbacks *callbacks =
         context == NULL ? NULL : context->callbacks;
@@ -91,15 +97,22 @@ int mylite_dml_evaluate_session_function(
     if (callbacks == NULL || callbacks->eval_session_function == NULL) {
         return -1;
     }
-    return callbacks->eval_session_function(callbacks->user_data,
-                                            context == NULL ? NULL : context->table, function_call,
-                                            expression_context, warnings, out_value);
+    return callbacks->eval_session_function(
+        callbacks->user_data,
+        context == NULL ? NULL : context->table,
+        function_call,
+        expression_context,
+        warnings,
+        out_value
+    );
 }
 
-int mylite_dml_evaluate_subquery(void *user_data, const struct mylite_sql_ast_node *subquery,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
+int mylite_dml_evaluate_subquery(
+    void *user_data,
+    const struct mylite_sql_ast_node *subquery,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_update_expression_context *context = user_data;
     const struct mylite_dml_expression_callbacks *callbacks =
         context == NULL ? NULL : context->callbacks;
@@ -110,10 +123,11 @@ int mylite_dml_evaluate_subquery(void *user_data, const struct mylite_sql_ast_no
     return callbacks->eval_subquery(callbacks->user_data, subquery, warnings, out_value);
 }
 
-int mylite_dml_evaluate_default_function(void *user_data,
-                                         const struct mylite_sql_ast_node *function_call,
-                                         struct mylite_expression_value *out_value)
-{
+int mylite_dml_evaluate_default_function(
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_insert_table_column *column = NULL;
     struct mylite_insert_table loaded_table = {0};
     struct mylite_update_expression_context *context = user_data;
@@ -126,11 +140,12 @@ int mylite_dml_evaluate_default_function(void *user_data,
     return status;
 }
 
-static int resolve_update_default_column(void *user_data,
-                                         const struct mylite_sql_ast_node *function_call,
-                                         const struct mylite_insert_table_column **out_column,
-                                         struct mylite_insert_table *loaded_table)
-{
+static int resolve_update_default_column(
+    void *user_data,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_insert_table_column **out_column,
+    struct mylite_insert_table *loaded_table
+) {
     struct mylite_update_expression_context *context = user_data;
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     const struct mylite_sql_ast_node *identifier =
@@ -155,8 +170,12 @@ static int resolve_update_default_column(void *user_data,
 
     write_table = context->write_table;
     if (write_table == NULL) {
-        status = mylite_dml_load_write_table(context->database, context->table->schema_name,
-                                             context->table->table_name, loaded_table);
+        status = mylite_dml_load_write_table(
+            context->database,
+            context->table->schema_name,
+            context->table->table_name,
+            loaded_table
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -170,9 +189,10 @@ static int resolve_update_default_column(void *user_data,
     return MYLITE_OK;
 }
 
-static int set_unknown_default_column_error(mylite_db *database,
-                                            const struct mylite_sql_ast_node *identifier)
-{
+static int set_unknown_default_column_error(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *identifier
+) {
     char *reference = mylite_select_copy_reference_name(identifier);
     int status = MYLITE_OK;
 
@@ -181,12 +201,19 @@ static int set_unknown_default_column_error(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    status = mylite_diagnostics_set_error_message_parts(database, "Unknown column '", reference,
-                                                        "' in 'field list'");
+    status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Unknown column '",
+        reference,
+        "' in 'field list'"
+    );
     free(reference);
     if (status == MYLITE_OK) {
-        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
-                                                 mylite_error_message(database));
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_BAD_FIELD_ERROR,
+            mylite_error_message(database)
+        );
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }

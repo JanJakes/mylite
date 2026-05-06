@@ -10,19 +10,25 @@
 #include <stdint.h>
 
 static uint64_t quote_function_source_display_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *source, uint64_t max_bytes_per_character,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *source,
+    uint64_t max_bytes_per_character,
     bool *out_source_is_null,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
-static uint64_t
-quote_function_descriptor_display_length(const struct mylite_field_descriptor *descriptor,
-                                         uint64_t max_bytes_per_character);
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static uint64_t quote_function_descriptor_display_length(
+    const struct mylite_field_descriptor *descriptor,
+    uint64_t max_bytes_per_character
+);
 
 uint64_t mylite_expression_descriptor_quote_function_result_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     uint64_t max_bytes_per_character =
@@ -30,7 +36,13 @@ uint64_t mylite_expression_descriptor_quote_function_result_length(
     uint64_t quote_length = 0U;
     bool source_is_null = false;
     uint64_t source_length = quote_function_source_display_length(
-        database, plan, source, max_bytes_per_character, &source_is_null, callbacks);
+        database,
+        plan,
+        source,
+        max_bytes_per_character,
+        &source_is_null,
+        callbacks
+    );
 
     if (source_is_null) {
         return max_bytes_per_character > UINT64_MAX / 4U ? mylite_mysql_long_text_length
@@ -48,10 +60,13 @@ uint64_t mylite_expression_descriptor_quote_function_result_length(
 }
 
 static uint64_t quote_function_source_display_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *source, uint64_t max_bytes_per_character,
-    bool *out_source_is_null, const struct mylite_expression_descriptor_string_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *source,
+    uint64_t max_bytes_per_character,
+    bool *out_source_is_null,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
     struct mylite_expression_warnings warnings = {0};
     struct mylite_expression_value value = {0};
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
@@ -92,10 +107,10 @@ static uint64_t quote_function_source_display_length(
     return mylite_mysql_text_length;
 }
 
-static uint64_t
-quote_function_descriptor_display_length(const struct mylite_field_descriptor *descriptor,
-                                         uint64_t max_bytes_per_character)
-{
+static uint64_t quote_function_descriptor_display_length(
+    const struct mylite_field_descriptor *descriptor,
+    uint64_t max_bytes_per_character
+) {
     if (mylite_expression_descriptor_has_text_result(descriptor)) {
         return descriptor->length;
     }

@@ -7,10 +7,15 @@
 
 #include <stddef.h>
 
-int mylite_select_load_join_rowsets(mylite_stmt *stmt,
-                                    struct mylite_table_select_table_rowset *rowsets);
+int mylite_select_load_join_rowsets(
+    mylite_stmt *stmt,
+    struct mylite_table_select_table_rowset *rowsets
+);
 int mylite_select_copy_sqlite_row(mylite_stmt *stmt, struct mylite_table_select_row *out_row);
-int mylite_select_copy_current_sqlite_column_value(mylite_stmt *stmt, size_t column_index,
-                                                   struct mylite_expression_value *out_value);
+int mylite_select_copy_current_sqlite_column_value(
+    mylite_stmt *stmt,
+    size_t column_index,
+    struct mylite_expression_value *out_value
+);
 
 #endif

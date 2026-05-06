@@ -9,11 +9,12 @@
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_infer_collation_info(
-    mylite_db *database, const struct mylite_expression_collation_context *context,
+    mylite_db *database,
+    const struct mylite_expression_collation_context *context,
     const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_collation_callbacks *callbacks,
-    struct mylite_charset_collation_info *out_info)
-{
+    struct mylite_charset_collation_info *out_info
+) {
     const struct mylite_sql_ast_node *node =
         mylite_sql_ast_unwrap_parenthesized_expression(expression);
 
@@ -26,11 +27,21 @@ int mylite_expression_infer_collation_info(
         return mylite_expression_infer_literal_collation_info(database, node, callbacks, out_info);
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
-        return mylite_expression_infer_identifier_collation_info(database, context, node, callbacks,
-                                                                 out_info);
+        return mylite_expression_infer_identifier_collation_info(
+            database,
+            context,
+            node,
+            callbacks,
+            out_info
+        );
     case MYLITE_SQL_AST_FUNCTION_CALL:
-        return mylite_expression_infer_function_collation_info(database, context, node, callbacks,
-                                                               out_info);
+        return mylite_expression_infer_function_collation_info(
+            database,
+            context,
+            node,
+            callbacks,
+            out_info
+        );
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return mylite_expression_infer_cast_collation_info(database, node, callbacks, out_info);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
@@ -43,7 +54,13 @@ int mylite_expression_infer_collation_info(
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return mylite_expression_infer_descriptor_collation_info(
-            database, context, node, mylite_mysql_coercibility_coercible, callbacks, out_info);
+            database,
+            context,
+            node,
+            mylite_mysql_coercibility_coercible,
+            callbacks,
+            out_info
+        );
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
@@ -195,11 +212,14 @@ int mylite_expression_infer_collation_info(
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_infer_function_arguments_collation_info(
-    mylite_db *database, const struct mylite_expression_collation_context *context,
-    const struct mylite_sql_ast_node *arguments, size_t first_argument, bool numeric_as_connection,
+    mylite_db *database,
+    const struct mylite_expression_collation_context *context,
+    const struct mylite_sql_ast_node *arguments,
+    size_t first_argument,
+    bool numeric_as_connection,
     const struct mylite_expression_collation_callbacks *callbacks,
-    struct mylite_charset_collation_info *out_info)
-{
+    struct mylite_charset_collation_info *out_info
+) {
     struct mylite_charset_collation_info best =
         mylite_expression_binary_collation_info(mylite_mysql_coercibility_ignorable);
     size_t index = 0U;
@@ -207,7 +227,8 @@ int mylite_expression_infer_function_arguments_collation_info(
 
     for (const struct mylite_sql_ast_node *argument = arguments == NULL ? NULL
                                                                         : arguments->first_child;
-         argument != NULL; argument = argument->next_sibling, ++index) {
+         argument != NULL;
+         argument = argument->next_sibling, ++index) {
         struct mylite_charset_collation_info current =
             mylite_expression_binary_collation_info(mylite_mysql_coercibility_ignorable);
         int status = MYLITE_OK;
@@ -215,15 +236,22 @@ int mylite_expression_infer_function_arguments_collation_info(
         if (index < first_argument) {
             continue;
         }
-        status = mylite_expression_infer_collation_info(database, context, argument, callbacks,
-                                                        &current);
+        status = mylite_expression_infer_collation_info(
+            database,
+            context,
+            argument,
+            callbacks,
+            &current
+        );
         if (status != MYLITE_OK) {
             return status;
         }
         if (numeric_as_connection && current.coercibility == mylite_mysql_coercibility_numeric &&
             mylite_ascii_case_equal(current.character_set, mylite_mysql_binary_charset_name)) {
             current = mylite_expression_connection_collation_info(
-                database, mylite_mysql_coercibility_coercible);
+                database,
+                mylite_mysql_coercibility_coercible
+            );
         }
         if (current.coercibility == mylite_mysql_coercibility_ignorable) {
             continue;
@@ -243,8 +271,7 @@ int mylite_expression_infer_function_arguments_collation_info(
     return MYLITE_OK;
 }
 
-struct mylite_charset_collation_info mylite_expression_binary_collation_info(int coercibility)
-{
+struct mylite_charset_collation_info mylite_expression_binary_collation_info(int coercibility) {
     return (struct mylite_charset_collation_info){
         .character_set = mylite_mysql_binary_charset_name,
         .collation = mylite_mysql_binary_charset_name,
@@ -252,9 +279,10 @@ struct mylite_charset_collation_info mylite_expression_binary_collation_info(int
     };
 }
 
-struct mylite_charset_collation_info
-mylite_expression_connection_collation_info(const mylite_db *database, int coercibility)
-{
+struct mylite_charset_collation_info mylite_expression_connection_collation_info(
+    const mylite_db *database,
+    int coercibility
+) {
     const char *character_set = database == NULL || database->character_set_connection == NULL
                                     ? mylite_charset_default_name()
                                     : database->character_set_connection;
@@ -269,10 +297,10 @@ mylite_expression_connection_collation_info(const mylite_db *database, int coerc
     };
 }
 
-struct mylite_charset_collation_info
-mylite_expression_descriptor_collation_info(const struct mylite_field_descriptor *descriptor,
-                                            int text_coercibility)
-{
+struct mylite_charset_collation_info mylite_expression_descriptor_collation_info(
+    const struct mylite_field_descriptor *descriptor,
+    int text_coercibility
+) {
     const struct mylite_collation *collation = NULL;
 
     if (descriptor == NULL || descriptor->type == MYLITE_FIELD_TYPE_NULL) {
@@ -302,17 +330,22 @@ mylite_expression_descriptor_collation_info(const struct mylite_field_descriptor
 }
 
 int mylite_expression_infer_descriptor_collation_info(
-    mylite_db *database, const struct mylite_expression_collation_context *context,
-    const struct mylite_sql_ast_node *expression, int text_coercibility,
+    mylite_db *database,
+    const struct mylite_expression_collation_context *context,
+    const struct mylite_sql_ast_node *expression,
+    int text_coercibility,
     const struct mylite_expression_collation_callbacks *callbacks,
-    struct mylite_charset_collation_info *out_info)
-{
+    struct mylite_charset_collation_info *out_info
+) {
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
-    int status =
-        callbacks == NULL || callbacks->infer_expression_descriptor == NULL
-            ? MYLITE_UNSUPPORTED
-            : callbacks->infer_expression_descriptor(
-                  database, context == NULL ? NULL : context->plan, expression, &descriptor);
+    int status = callbacks == NULL || callbacks->infer_expression_descriptor == NULL
+                     ? MYLITE_UNSUPPORTED
+                     : callbacks->infer_expression_descriptor(
+                           database,
+                           context == NULL ? NULL : context->plan,
+                           expression,
+                           &descriptor
+                       );
 
     if (status != MYLITE_OK) {
         return status;
@@ -321,9 +354,9 @@ int mylite_expression_infer_descriptor_collation_info(
     return MYLITE_OK;
 }
 
-struct mylite_charset_collation_info
-mylite_expression_latin1_swedish_collation_info(int coercibility)
-{
+struct mylite_charset_collation_info mylite_expression_latin1_swedish_collation_info(
+    int coercibility
+) {
     return (struct mylite_charset_collation_info){
         .character_set = mylite_mysql_latin1_charset_name,
         .collation = mylite_mysql_latin1_swedish_ci_collation_name,
@@ -331,9 +364,9 @@ mylite_expression_latin1_swedish_collation_info(int coercibility)
     };
 }
 
-struct mylite_charset_collation_info
-mylite_expression_utf8mb3_general_collation_info(int coercibility)
-{
+struct mylite_charset_collation_info mylite_expression_utf8mb3_general_collation_info(
+    int coercibility
+) {
     return (struct mylite_charset_collation_info){
         .character_set = mylite_mysql_utf8mb3_charset_name,
         .collation = mylite_mysql_utf8mb3_general_ci_collation_name,
@@ -341,9 +374,9 @@ mylite_expression_utf8mb3_general_collation_info(int coercibility)
     };
 }
 
-struct mylite_charset_collation_info
-mylite_expression_charset_collation_info(const char *charset_name)
-{
+struct mylite_charset_collation_info mylite_expression_charset_collation_info(
+    const char *charset_name
+) {
     const struct mylite_charset *charset = mylite_charset_lookup(charset_name);
     const struct mylite_collation *collation =
         charset == NULL ? NULL : mylite_collation_lookup(charset->default_collation);
@@ -353,7 +386,8 @@ mylite_expression_charset_collation_info(const char *charset_name)
     }
     if (mylite_ascii_case_equal(charset_name, "utf8")) {
         return mylite_expression_utf8mb3_general_collation_info(
-            mylite_mysql_coercibility_coercible);
+            mylite_mysql_coercibility_coercible
+        );
     }
     if (mylite_ascii_case_equal(charset_name, mylite_mysql_ascii_charset_name)) {
         return (struct mylite_charset_collation_info){

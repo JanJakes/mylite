@@ -10,16 +10,24 @@
 
 #include <stddef.h>
 
-static int apply_create_index_to_model(mylite_db *database, struct mylite_index_ddl_plan *plan,
-                                       struct mylite_alter_table_model *model,
-                                       const struct mylite_alter_table_index **out_index);
-static int apply_drop_index_to_model(mylite_db *database, struct mylite_index_ddl_plan *plan,
-                                     struct mylite_alter_table_model *model);
+static int apply_create_index_to_model(
+    mylite_db *database,
+    struct mylite_index_ddl_plan *plan,
+    struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_index **out_index
+);
 
-int mylite_table_ddl_execute_create_index_statement(mylite_db *database,
-                                                    const char *selected_schema,
-                                                    struct mylite_index_ddl_plan *plan)
-{
+static int apply_drop_index_to_model(
+    mylite_db *database,
+    struct mylite_index_ddl_plan *plan,
+    struct mylite_alter_table_model *model
+);
+
+int mylite_table_ddl_execute_create_index_statement(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_index_ddl_plan *plan
+) {
     const struct mylite_alter_table_index *created_index = NULL;
     struct mylite_alter_table_model model = {0};
     int status = MYLITE_OK;
@@ -53,9 +61,11 @@ int mylite_table_ddl_execute_create_index_statement(mylite_db *database,
     return status;
 }
 
-int mylite_table_ddl_execute_drop_index_statement(mylite_db *database, const char *selected_schema,
-                                                  struct mylite_index_ddl_plan *plan)
-{
+int mylite_table_ddl_execute_drop_index_statement(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_index_ddl_plan *plan
+) {
     struct mylite_alter_table_model model = {0};
     int status = MYLITE_OK;
 
@@ -75,10 +85,12 @@ int mylite_table_ddl_execute_drop_index_statement(mylite_db *database, const cha
     return status;
 }
 
-static int apply_create_index_to_model(mylite_db *database, struct mylite_index_ddl_plan *plan,
-                                       struct mylite_alter_table_model *model,
-                                       const struct mylite_alter_table_index **out_index)
-{
+static int apply_create_index_to_model(
+    mylite_db *database,
+    struct mylite_index_ddl_plan *plan,
+    struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_index **out_index
+) {
     enum mylite_alter_table_action_kind kind = MYLITE_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX;
     size_t index = 0U;
 
@@ -105,9 +117,11 @@ static int apply_create_index_to_model(mylite_db *database, struct mylite_index_
     return MYLITE_OK;
 }
 
-static int apply_drop_index_to_model(mylite_db *database, struct mylite_index_ddl_plan *plan,
-                                     struct mylite_alter_table_model *model)
-{
+static int apply_drop_index_to_model(
+    mylite_db *database,
+    struct mylite_index_ddl_plan *plan,
+    struct mylite_alter_table_model *model
+) {
     const struct mylite_alter_table_action action = {
         .kind = MYLITE_ALTER_TABLE_ACTION_DROP_INDEX,
         .old_name = plan->index_name,

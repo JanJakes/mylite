@@ -26,24 +26,40 @@
 #include <string.h>
 
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
+
 static int execute_alter_table_rename_statement(mylite_stmt *stmt);
+
 static int add_alter_table_rename_target(mylite_stmt *stmt);
-static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_name,
-                                     bool *out_temporary);
+
+static int validate_alter_table_plan(
+    mylite_stmt *stmt,
+    const char **out_schema_name,
+    bool *out_temporary
+);
+
 static int resolve_alter_table_schema(mylite_stmt *stmt);
+
 static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary);
+
 static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model);
+
 static int set_alter_table_unsupported_action_error(mylite_db *database, const char *feature);
-static int
-validate_alter_table_primary_key_part_not_null(void *user_data,
-                                               const struct mylite_alter_table_model *model,
-                                               const struct mylite_create_table_key_part *part);
-static int set_alter_table_unsupported_option_error(mylite_db *database, const char *kind,
-                                                    const char *value);
+
+static int validate_alter_table_primary_key_part_not_null(
+    void *user_data,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_key_part *part
+);
+
+static int set_alter_table_unsupported_option_error(
+    mylite_db *database,
+    const char *kind,
+    const char *value
+);
+
 static int set_alter_table_invalid_null_error(mylite_db *database);
 
-int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt)
-{
+int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
     const char *schema_name = NULL;
     struct mylite_alter_table_model model = {0};
     bool temporary = false;
@@ -57,7 +73,12 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt)
     status = validate_alter_table_plan(stmt, &schema_name, &temporary);
     if (status == MYLITE_OK) {
         status = mylite_table_ddl_load_alter_table_model(
-            stmt->database, schema_name, stmt->alter_table.table_name, temporary, &model);
+            stmt->database,
+            schema_name,
+            stmt->alter_table.table_name,
+            temporary,
+            &model
+        );
     }
     if (status == MYLITE_OK) {
         status = apply_alter_table_actions(stmt, &model);
@@ -79,8 +100,7 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt)
     return status;
 }
 
-static bool alter_table_has_table_rename_action(const mylite_stmt *stmt)
-{
+static bool alter_table_has_table_rename_action(const mylite_stmt *stmt) {
     for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
         if (stmt->alter_table.actions[index].kind == MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE) {
             return true;
@@ -89,24 +109,31 @@ static bool alter_table_has_table_rename_action(const mylite_stmt *stmt)
     return false;
 }
 
-static int execute_alter_table_rename_statement(mylite_stmt *stmt)
-{
+static int execute_alter_table_rename_statement(mylite_stmt *stmt) {
     int status = MYLITE_OK;
 
     if (stmt->alter_table.unsupported_algorithm != NULL) {
         stmt->affected_rows = -1;
-        return set_alter_table_unsupported_option_error(stmt->database, "ALGORITHM",
-                                                        stmt->alter_table.unsupported_algorithm);
+        return set_alter_table_unsupported_option_error(
+            stmt->database,
+            "ALGORITHM",
+            stmt->alter_table.unsupported_algorithm
+        );
     }
     if (stmt->alter_table.unsupported_lock != NULL) {
         stmt->affected_rows = -1;
-        return set_alter_table_unsupported_option_error(stmt->database, "LOCK",
-                                                        stmt->alter_table.unsupported_lock);
+        return set_alter_table_unsupported_option_error(
+            stmt->database,
+            "LOCK",
+            stmt->alter_table.unsupported_lock
+        );
     }
     if (stmt->alter_table.action_count != 1U) {
         stmt->affected_rows = -1;
         return set_alter_table_unsupported_action_error(
-            stmt->database, "ALTER TABLE table rename with other actions");
+            stmt->database,
+            "ALTER TABLE table rename with other actions"
+        );
     }
 
     status = add_alter_table_rename_target(stmt);
@@ -120,8 +147,7 @@ static int execute_alter_table_rename_statement(mylite_stmt *stmt)
     return mylite_table_ddl_execute_rename_table_prepared_statement(stmt);
 }
 
-static int add_alter_table_rename_target(mylite_stmt *stmt)
-{
+static int add_alter_table_rename_target(mylite_stmt *stmt) {
     const struct mylite_alter_table_action *action = &stmt->alter_table.actions[0];
     struct mylite_rename_table_target target = {0};
     int status = MYLITE_OK;
@@ -149,20 +175,28 @@ static int add_alter_table_rename_target(mylite_stmt *stmt)
     return status;
 }
 
-static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_name,
-                                     bool *out_temporary)
-{
+static int validate_alter_table_plan(
+    mylite_stmt *stmt,
+    const char **out_schema_name,
+    bool *out_temporary
+) {
     int status = MYLITE_OK;
 
     *out_schema_name = NULL;
     *out_temporary = false;
     if (stmt->alter_table.unsupported_algorithm != NULL) {
-        return set_alter_table_unsupported_option_error(stmt->database, "ALGORITHM",
-                                                        stmt->alter_table.unsupported_algorithm);
+        return set_alter_table_unsupported_option_error(
+            stmt->database,
+            "ALGORITHM",
+            stmt->alter_table.unsupported_algorithm
+        );
     }
     if (stmt->alter_table.unsupported_lock != NULL) {
-        return set_alter_table_unsupported_option_error(stmt->database, "LOCK",
-                                                        stmt->alter_table.unsupported_lock);
+        return set_alter_table_unsupported_option_error(
+            stmt->database,
+            "LOCK",
+            stmt->alter_table.unsupported_lock
+        );
     }
 
     status = resolve_alter_table_schema(stmt);
@@ -178,8 +212,7 @@ static int validate_alter_table_plan(mylite_stmt *stmt, const char **out_schema_
     return MYLITE_OK;
 }
 
-static int resolve_alter_table_schema(mylite_stmt *stmt)
-{
+static int resolve_alter_table_schema(mylite_stmt *stmt) {
     if (stmt->alter_table.schema_name != NULL) {
         return MYLITE_OK;
     }
@@ -196,8 +229,7 @@ static int resolve_alter_table_schema(mylite_stmt *stmt)
     return MYLITE_OK;
 }
 
-static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary)
-{
+static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary) {
     struct mylite_schema_presence presence;
     bool exists = false;
     int status =
@@ -207,19 +239,30 @@ static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary)
         return status;
     }
     if (!presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(stmt->database, "Unknown database '",
-                                                         stmt->alter_table.schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            stmt->database,
+            "Unknown database '",
+            stmt->alter_table.schema_name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
     if (presence.is_system) {
         (void)mylite_diagnostics_set_error_message_parts(
-            stmt->database, "Access to system schema '", stmt->alter_table.schema_name,
-            "' is rejected.");
+            stmt->database,
+            "Access to system schema '",
+            stmt->alter_table.schema_name,
+            "' is rejected."
+        );
         return MYLITE_EXEC_ERROR;
     }
 
-    status = mylite_catalog_temporary_table_exists(stmt->database, stmt->alter_table.schema_name,
-                                                   stmt->alter_table.table_name, &exists);
+    status = mylite_catalog_temporary_table_exists(
+        stmt->database,
+        stmt->alter_table.schema_name,
+        stmt->alter_table.table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -228,21 +271,27 @@ static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary)
         return MYLITE_OK;
     }
 
-    status = mylite_catalog_persistent_table_exists(stmt->database, stmt->alter_table.schema_name,
-                                                    stmt->alter_table.table_name, &exists);
+    status = mylite_catalog_persistent_table_exists(
+        stmt->database,
+        stmt->alter_table.schema_name,
+        stmt->alter_table.table_name,
+        &exists
+    );
     if (status != MYLITE_OK) {
         return status;
     }
     if (!exists) {
         return mylite_diagnostics_set_table_doesnt_exist_error(
-            stmt->database, stmt->alter_table.schema_name, stmt->alter_table.table_name);
+            stmt->database,
+            stmt->alter_table.schema_name,
+            stmt->alter_table.table_name
+        );
     }
     *out_temporary = false;
     return MYLITE_OK;
 }
 
-static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model)
-{
+static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model) {
     const struct mylite_table_ddl_alter_callbacks alter_callbacks = {
         .user_data = stmt,
         .validate_primary_key_part_not_null = validate_alter_table_primary_key_part_not_null,
@@ -262,14 +311,21 @@ static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_tabl
         case MYLITE_ALTER_TABLE_ACTION_MODIFY_COLUMN:
             if (!schema_default_loaded) {
                 status = mylite_catalog_schema_default_by_name(
-                    stmt->database, stmt->alter_table.schema_name, &schema_default);
+                    stmt->database,
+                    stmt->alter_table.schema_name,
+                    &schema_default
+                );
                 if (status != MYLITE_OK) {
                     break;
                 }
                 schema_default_loaded = true;
             }
             status = mylite_table_ddl_apply_alter_table_column_action(
-                stmt->database, &schema_default, action, model);
+                stmt->database,
+                &schema_default,
+                action,
+                model
+            );
             break;
         case MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE:
             status = set_alter_table_unsupported_action_error(stmt->database, "mixed table rename");
@@ -278,30 +334,46 @@ static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_tabl
         case MYLITE_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY:
         case MYLITE_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX:
         case MYLITE_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX:
-            status = mylite_table_ddl_apply_alter_table_index_action(stmt->database, action, model,
-                                                                     &alter_callbacks);
+            status = mylite_table_ddl_apply_alter_table_index_action(
+                stmt->database,
+                action,
+                model,
+                &alter_callbacks
+            );
             break;
         case MYLITE_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX:
-            status = set_alter_table_unsupported_action_error(stmt->database,
-                                                              "FULLTEXT ALTER TABLE indexes");
+            status = set_alter_table_unsupported_action_error(
+                stmt->database,
+                "FULLTEXT ALTER TABLE indexes"
+            );
             break;
         case MYLITE_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX:
-            status = set_alter_table_unsupported_action_error(stmt->database,
-                                                              "SPATIAL ALTER TABLE indexes");
+            status = set_alter_table_unsupported_action_error(
+                stmt->database,
+                "SPATIAL ALTER TABLE indexes"
+            );
             break;
         case MYLITE_ALTER_TABLE_ACTION_DROP_INDEX:
         case MYLITE_ALTER_TABLE_ACTION_RENAME_INDEX:
         case MYLITE_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY:
-            status = mylite_table_ddl_apply_alter_table_index_action(stmt->database, action, model,
-                                                                     &alter_callbacks);
+            status = mylite_table_ddl_apply_alter_table_index_action(
+                stmt->database,
+                action,
+                model,
+                &alter_callbacks
+            );
             break;
         case MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_CHECK:
-            status = set_alter_table_unsupported_action_error(stmt->database,
-                                                              "CHECK ALTER TABLE constraints");
+            status = set_alter_table_unsupported_action_error(
+                stmt->database,
+                "CHECK ALTER TABLE constraints"
+            );
             break;
         case MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_FOREIGN_KEY:
             status = set_alter_table_unsupported_action_error(
-                stmt->database, "FOREIGN KEY ALTER TABLE constraints");
+                stmt->database,
+                "FOREIGN KEY ALTER TABLE constraints"
+            );
             break;
         }
         if (status != MYLITE_OK) {
@@ -312,18 +384,17 @@ static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_tabl
     return mylite_table_ddl_refresh_alter_table_index_metadata(stmt->database, model);
 }
 
-static int set_alter_table_unsupported_action_error(mylite_db *database, const char *feature)
-{
+static int set_alter_table_unsupported_action_error(mylite_db *database, const char *feature) {
     int status = mylite_diagnostics_set_error_message_parts(database, "Unsupported ", feature, "");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
 }
 
-static int
-validate_alter_table_primary_key_part_not_null(void *user_data,
-                                               const struct mylite_alter_table_model *model,
-                                               const struct mylite_create_table_key_part *part)
-{
+static int validate_alter_table_primary_key_part_not_null(
+    void *user_data,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_key_part *part
+) {
     mylite_stmt *stmt = user_data;
     const struct mylite_alter_table_column *column =
         mylite_table_ddl_find_alter_table_column(model, part->column_name);
@@ -353,14 +424,23 @@ validate_alter_table_primary_key_part_not_null(void *user_data,
         return MYLITE_OK;
     }
 
-    sql = sqlite3_mprintf("SELECT 1 FROM \"%w\" WHERE \"%w\" IS NULL LIMIT 1", model->physical_name,
-                          column->source_name);
+    sql = sqlite3_mprintf(
+        "SELECT 1 FROM \"%w\" WHERE \"%w\" IS NULL LIMIT 1",
+        model->physical_name,
+        column->source_name
+    );
     if (sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
-    rc = sqlite3_prepare_v3(stmt->database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
-                            NULL);
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &select,
+        NULL
+    );
     sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(stmt->database);
@@ -373,9 +453,11 @@ validate_alter_table_primary_key_part_not_null(void *user_data,
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
-static int set_alter_table_unsupported_option_error(mylite_db *database, const char *kind,
-                                                    const char *value)
-{
+static int set_alter_table_unsupported_option_error(
+    mylite_db *database,
+    const char *kind,
+    const char *value
+) {
     char *message = sqlite3_mprintf("ALTER TABLE %s option is not supported: %q", kind, value);
     int status = MYLITE_OK;
 
@@ -388,14 +470,16 @@ static int set_alter_table_unsupported_option_error(mylite_db *database, const c
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
 }
 
-static int set_alter_table_invalid_null_error(mylite_db *database)
-{
+static int set_alter_table_invalid_null_error(mylite_db *database) {
     int status = mylite_diagnostics_set_error_message(database, "Invalid use of NULL value");
 
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_INVALID_USE_OF_NULL,
-                                             mylite_error_message(database));
+    status = mylite_diagnostics_append_error(
+        database,
+        MYLITE_MYSQL_ER_INVALID_USE_OF_NULL,
+        mylite_error_message(database)
+    );
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }

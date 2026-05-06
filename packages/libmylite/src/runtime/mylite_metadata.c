@@ -9,11 +9,13 @@
 #include <string.h>
 
 static const mylite_stmt *effective_metadata_stmt(const mylite_stmt *stmt);
+
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 
-const struct mylite_result_column_metadata *mylite_result_metadata_column(const mylite_stmt *stmt,
-                                                                          int column)
-{
+const struct mylite_result_column_metadata *mylite_result_metadata_column(
+    const mylite_stmt *stmt,
+    int column
+) {
     stmt = effective_metadata_stmt(stmt);
     if (stmt == NULL || column < 0 || stmt->result_metadata.columns == NULL ||
         (size_t)column >= stmt->result_metadata.column_count) {
@@ -22,8 +24,7 @@ const struct mylite_result_column_metadata *mylite_result_metadata_column(const 
     return &stmt->result_metadata.columns[column];
 }
 
-int mylite_result_metadata_copy_text(mylite_db *database, char **out_text, const char *text)
-{
+int mylite_result_metadata_copy_text(mylite_db *database, char **out_text, const char *text) {
     *out_text = NULL;
     if (text == NULL) {
         return MYLITE_OK;
@@ -37,8 +38,7 @@ int mylite_result_metadata_copy_text(mylite_db *database, char **out_text, const
     return MYLITE_OK;
 }
 
-void mylite_result_metadata_deinit(struct mylite_result_metadata *metadata)
-{
+void mylite_result_metadata_deinit(struct mylite_result_metadata *metadata) {
     if (metadata == NULL) {
         return;
     }
@@ -50,9 +50,11 @@ void mylite_result_metadata_deinit(struct mylite_result_metadata *metadata)
     *metadata = (struct mylite_result_metadata){0};
 }
 
-size_t mylite_result_metadata_label_count(const struct mylite_result_metadata *metadata,
-                                          const char *label, size_t *out_index)
-{
+size_t mylite_result_metadata_label_count(
+    const struct mylite_result_metadata *metadata,
+    const char *label,
+    size_t *out_index
+) {
     size_t count = 0U;
 
     *out_index = metadata == NULL ? 0U : metadata->column_count;
@@ -68,8 +70,7 @@ size_t mylite_result_metadata_label_count(const struct mylite_result_metadata *m
     return count;
 }
 
-int mylite_column_count(const mylite_stmt *stmt)
-{
+int mylite_column_count(const mylite_stmt *stmt) {
     stmt = effective_metadata_stmt(stmt);
     if (stmt == NULL) {
         return 0;
@@ -89,8 +90,7 @@ int mylite_column_count(const mylite_stmt *stmt)
     return sqlite3_column_count(stmt->sqlite_stmt);
 }
 
-const char *mylite_column_name(const mylite_stmt *stmt, int column)
-{
+const char *mylite_column_name(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
@@ -110,96 +110,84 @@ const char *mylite_column_name(const mylite_stmt *stmt, int column)
     return sqlite3_column_name(stmt->sqlite_stmt, column);
 }
 
-const char *mylite_column_schema_name(const mylite_stmt *stmt, int column)
-{
+const char *mylite_column_schema_name(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? NULL : metadata->schema_name;
 }
 
-const char *mylite_column_table_name(const mylite_stmt *stmt, int column)
-{
+const char *mylite_column_table_name(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? NULL : metadata->table_name;
 }
 
-const char *mylite_column_origin_schema_name(const mylite_stmt *stmt, int column)
-{
+const char *mylite_column_origin_schema_name(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? NULL : metadata->origin_schema_name;
 }
 
-const char *mylite_column_origin_table_name(const mylite_stmt *stmt, int column)
-{
+const char *mylite_column_origin_table_name(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? NULL : metadata->origin_table_name;
 }
 
-const char *mylite_column_origin_name(const mylite_stmt *stmt, int column)
-{
+const char *mylite_column_origin_name(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? NULL : metadata->origin_column_name;
 }
 
-int mylite_column_field_type(const mylite_stmt *stmt, int column)
-{
+int mylite_column_field_type(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? MYLITE_FIELD_TYPE_INVALID : metadata->descriptor.type;
 }
 
-unsigned int mylite_column_flags(const mylite_stmt *stmt, int column)
-{
+unsigned int mylite_column_flags(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? 0U : metadata->descriptor.flags;
 }
 
-uint64_t mylite_column_declared_length(const mylite_stmt *stmt, int column)
-{
+uint64_t mylite_column_declared_length(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? 0U : metadata->descriptor.length;
 }
 
-uint64_t mylite_column_max_length(const mylite_stmt *stmt, int column)
-{
+uint64_t mylite_column_max_length(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? 0U : metadata->descriptor.max_length;
 }
 
-unsigned int mylite_column_decimals(const mylite_stmt *stmt, int column)
-{
+unsigned int mylite_column_decimals(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? 0U : metadata->descriptor.decimals;
 }
 
-unsigned int mylite_column_charset_id(const mylite_stmt *stmt, int column)
-{
+unsigned int mylite_column_charset_id(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
     return metadata == NULL ? 0U : metadata->descriptor.charset_id;
 }
 
-int mylite_column_is_nullable(const mylite_stmt *stmt, int column)
-{
+int mylite_column_is_nullable(const mylite_stmt *stmt, int column) {
     const struct mylite_result_column_metadata *metadata =
         mylite_result_metadata_column(stmt, column);
 
@@ -212,8 +200,7 @@ int mylite_column_is_nullable(const mylite_stmt *stmt, int column)
     return 0;
 }
 
-static const mylite_stmt *effective_metadata_stmt(const mylite_stmt *stmt)
-{
+static const mylite_stmt *effective_metadata_stmt(const mylite_stmt *stmt) {
     if (stmt != NULL && stmt->kind == MYLITE_STMT_EXECUTE_PREPARED &&
         stmt->prepared_execute_stmt != NULL) {
         return stmt->prepared_execute_stmt;
@@ -221,8 +208,7 @@ static const mylite_stmt *effective_metadata_stmt(const mylite_stmt *stmt)
     return stmt;
 }
 
-static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata)
-{
+static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata) {
     if (metadata == NULL) {
         return;
     }

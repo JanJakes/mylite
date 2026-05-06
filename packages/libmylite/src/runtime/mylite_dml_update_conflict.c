@@ -8,51 +8,71 @@
 
 #include <string.h>
 
-static int update_unique_index_conflicts(mylite_db *database,
-                                         const struct mylite_select_table *table,
-                                         const struct mylite_insert_table *write_table,
-                                         const struct mylite_insert_unique_index *index,
-                                         const struct mylite_update_row *candidate,
-                                         bool *out_conflicts);
-static int set_update_duplicate_entry_error(mylite_db *database, const char *table_name,
-                                            const struct mylite_insert_unique_index *index,
-                                            const struct mylite_update_row *candidate);
-static char *copy_update_duplicate_entry_value(const struct mylite_insert_unique_index *index,
-                                               const struct mylite_update_row *candidate);
+static int update_unique_index_conflicts(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_update_row *candidate,
+    bool *out_conflicts
+);
 
-int mylite_dml_validate_update_unique_indexes(mylite_db *database,
-                                              const struct mylite_select_table *table,
-                                              const struct mylite_insert_table *write_table,
-                                              const struct mylite_update_row *candidate)
-{
+static int set_update_duplicate_entry_error(
+    mylite_db *database,
+    const char *table_name,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_update_row *candidate
+);
+
+static char *copy_update_duplicate_entry_value(
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_update_row *candidate
+);
+
+int mylite_dml_validate_update_unique_indexes(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_row *candidate
+) {
     if (database == NULL || table == NULL || write_table == NULL || candidate == NULL) {
         return MYLITE_MISUSE;
     }
 
     for (size_t index = 0U; index < write_table->unique_index_count; ++index) {
         bool conflicts = false;
-        int status = update_unique_index_conflicts(database, table, write_table,
-                                                   &write_table->unique_indexes[index], candidate,
-                                                   &conflicts);
+        int status = update_unique_index_conflicts(
+            database,
+            table,
+            write_table,
+            &write_table->unique_indexes[index],
+            candidate,
+            &conflicts
+        );
 
         if (status != MYLITE_OK) {
             return status;
         }
         if (conflicts) {
-            return set_update_duplicate_entry_error(database, table->table_name,
-                                                    &write_table->unique_indexes[index], candidate);
+            return set_update_duplicate_entry_error(
+                database,
+                table->table_name,
+                &write_table->unique_indexes[index],
+                candidate
+            );
         }
     }
     return MYLITE_OK;
 }
 
-static int update_unique_index_conflicts(mylite_db *database,
-                                         const struct mylite_select_table *table,
-                                         const struct mylite_insert_table *write_table,
-                                         const struct mylite_insert_unique_index *index,
-                                         const struct mylite_update_row *candidate,
-                                         bool *out_conflicts)
-{
+static int update_unique_index_conflicts(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_update_row *candidate,
+    bool *out_conflicts
+) {
     char *sql = NULL;
     sqlite3_stmt *check = NULL;
     int rc = SQLITE_OK;
@@ -90,10 +110,12 @@ static int update_unique_index_conflicts(mylite_db *database,
     return status;
 }
 
-static int set_update_duplicate_entry_error(mylite_db *database, const char *table_name,
-                                            const struct mylite_insert_unique_index *index,
-                                            const struct mylite_update_row *candidate)
-{
+static int set_update_duplicate_entry_error(
+    mylite_db *database,
+    const char *table_name,
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_update_row *candidate
+) {
     char *entry = copy_update_duplicate_entry_value(index, candidate);
     char *message = NULL;
     int status = MYLITE_OK;
@@ -116,9 +138,10 @@ static int set_update_duplicate_entry_error(mylite_db *database, const char *tab
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static char *copy_update_duplicate_entry_value(const struct mylite_insert_unique_index *index,
-                                               const struct mylite_update_row *candidate)
-{
+static char *copy_update_duplicate_entry_value(
+    const struct mylite_insert_unique_index *index,
+    const struct mylite_update_row *candidate
+) {
     sqlite3_str *text = sqlite3_str_new(NULL);
 
     if (text == NULL) {
@@ -146,8 +169,11 @@ static char *copy_update_duplicate_entry_value(const struct mylite_insert_unique
             sqlite3_str_appendf(text, "%.15g", value->real_value);
             break;
         case MYLITE_EXPRESSION_VALUE_TEXT:
-            sqlite3_str_append(text, value->text_value == NULL ? "" : value->text_value,
-                               value->text_value == NULL ? 0 : (int)value->text_length);
+            sqlite3_str_append(
+                text,
+                value->text_value == NULL ? "" : value->text_value,
+                value->text_value == NULL ? 0 : (int)value->text_length
+            );
             break;
         }
     }

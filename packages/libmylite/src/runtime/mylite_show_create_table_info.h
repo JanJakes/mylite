@@ -17,9 +17,11 @@ struct mylite_show_create_table_info {
     char *table_comment;
 };
 
-int mylite_show_create_table_read_info(mylite_db *database,
-                                       const struct mylite_show_create_table_target *target,
-                                       struct mylite_show_create_table_info *out_info);
+int mylite_show_create_table_read_info(
+    mylite_db *database,
+    const struct mylite_show_create_table_target *target,
+    struct mylite_show_create_table_info *out_info
+);
 void mylite_show_create_table_info_deinit(struct mylite_show_create_table_info *info);
 
 #endif

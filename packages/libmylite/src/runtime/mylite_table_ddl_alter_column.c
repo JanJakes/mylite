@@ -10,34 +10,54 @@
 
 #include <stdlib.h>
 
-static int apply_alter_table_add_column(mylite_db *database,
-                                        const struct mylite_schema_default *schema_default,
-                                        const struct mylite_alter_table_action *action,
-                                        struct mylite_alter_table_model *model);
-static int apply_alter_table_drop_column(mylite_db *database,
-                                         const struct mylite_alter_table_action *action,
-                                         struct mylite_alter_table_model *model);
-static int apply_alter_table_rename_column(mylite_db *database,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model);
-static int apply_alter_table_change_column(mylite_db *database,
-                                           const struct mylite_schema_default *schema_default,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model);
-static int apply_alter_table_modify_column(mylite_db *database,
-                                           const struct mylite_schema_default *schema_default,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model);
-static int apply_alter_table_column_position(mylite_db *database,
-                                             const struct mylite_alter_table_action *action,
-                                             struct mylite_alter_table_model *model,
-                                             size_t column_index);
+static int apply_alter_table_add_column(
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+);
+
+static int apply_alter_table_drop_column(
+    mylite_db *database,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+);
+
+static int apply_alter_table_rename_column(
+    mylite_db *database,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+);
+
+static int apply_alter_table_change_column(
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+);
+
+static int apply_alter_table_modify_column(
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+);
+
+static int apply_alter_table_column_position(
+    mylite_db *database,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model,
+    size_t column_index
+);
+
 static int remove_alter_table_column(struct mylite_alter_table_model *model, size_t column_index);
 
 int mylite_table_ddl_apply_alter_table_column_action(
-    mylite_db *database, const struct mylite_schema_default *schema_default,
-    const struct mylite_alter_table_action *action, struct mylite_alter_table_model *model)
-{
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+) {
     if (database == NULL || schema_default == NULL || action == NULL || model == NULL) {
         return MYLITE_MISUSE;
     }
@@ -70,24 +90,33 @@ int mylite_table_ddl_apply_alter_table_column_action(
     return MYLITE_MISUSE;
 }
 
-static int apply_alter_table_add_column(mylite_db *database,
-                                        const struct mylite_schema_default *schema_default,
-                                        const struct mylite_alter_table_action *action,
-                                        struct mylite_alter_table_model *model)
-{
+static int apply_alter_table_add_column(
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+) {
     struct mylite_alter_table_column column = {0};
     int status = MYLITE_OK;
 
     if (mylite_table_ddl_find_alter_table_column(model, action->column.name) != NULL) {
-        return mylite_table_ddl_set_alter_table_duplicate_column_error(database,
-                                                                       action->column.name);
+        return mylite_table_ddl_set_alter_table_duplicate_column_error(
+            database,
+            action->column.name
+        );
     }
     if (mylite_table_ddl_alter_table_column_definition_has_deferred_features(&action->column)) {
         return mylite_table_ddl_set_alter_table_wrong_auto_increment_error(database);
     }
 
     status = mylite_table_ddl_init_alter_table_column_from_definition(
-        database, schema_default, &action->column, NULL, true, &column);
+        database,
+        schema_default,
+        &action->column,
+        NULL,
+        true,
+        &column
+    );
     if (status == MYLITE_OK) {
         status = mylite_table_ddl_add_alter_table_column(model, column);
     }
@@ -98,10 +127,11 @@ static int apply_alter_table_add_column(mylite_db *database,
     return apply_alter_table_column_position(database, action, model, model->column_count - 1U);
 }
 
-static int apply_alter_table_drop_column(mylite_db *database,
-                                         const struct mylite_alter_table_action *action,
-                                         struct mylite_alter_table_model *model)
-{
+static int apply_alter_table_drop_column(
+    mylite_db *database,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+) {
     size_t column_index = mylite_table_ddl_alter_table_column_index(model, action->old_name);
 
     if (column_index == model->column_count) {
@@ -144,16 +174,20 @@ static int apply_alter_table_drop_column(mylite_db *database,
     return remove_alter_table_column(model, column_index);
 }
 
-static int apply_alter_table_rename_column(mylite_db *database,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model)
-{
+static int apply_alter_table_rename_column(
+    mylite_db *database,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+) {
     size_t column_index = mylite_table_ddl_alter_table_column_index(model, action->old_name);
     char *new_name = NULL;
 
     if (column_index == model->column_count) {
-        return mylite_table_ddl_set_alter_table_unknown_column_error(database, model->table_name,
-                                                                     action->old_name);
+        return mylite_table_ddl_set_alter_table_unknown_column_error(
+            database,
+            model->table_name,
+            action->old_name
+        );
     }
     if (model->columns == NULL) {
         return MYLITE_MISUSE;
@@ -173,8 +207,10 @@ static int apply_alter_table_rename_column(mylite_db *database,
 
     for (size_t index = 0U; index < model->index_count; ++index) {
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
-            if (mylite_ascii_case_equal(model->indexes[index].parts[part].column_name,
-                                        action->old_name)) {
+            if (mylite_ascii_case_equal(
+                    model->indexes[index].parts[part].column_name,
+                    action->old_name
+                )) {
                 char *part_name = mylite_copy_nonempty_cstring(action->new_name);
 
                 if (part_name == NULL) {
@@ -190,18 +226,22 @@ static int apply_alter_table_rename_column(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int apply_alter_table_change_column(mylite_db *database,
-                                           const struct mylite_schema_default *schema_default,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model)
-{
+static int apply_alter_table_change_column(
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+) {
     size_t column_index = mylite_table_ddl_alter_table_column_index(model, action->old_name);
     const char *new_name = action->column.name;
     int status = MYLITE_OK;
 
     if (column_index == model->column_count) {
-        return mylite_table_ddl_set_alter_table_unknown_column_error(database, model->table_name,
-                                                                     action->old_name);
+        return mylite_table_ddl_set_alter_table_unknown_column_error(
+            database,
+            model->table_name,
+            action->old_name
+        );
     }
     if (model->columns == NULL) {
         return MYLITE_MISUSE;
@@ -215,8 +255,13 @@ static int apply_alter_table_change_column(mylite_db *database,
     }
 
     status = mylite_table_ddl_replace_alter_table_column_from_definition(
-        database, schema_default, &action->column, model->columns[column_index].source_name, false,
-        &model->columns[column_index]);
+        database,
+        schema_default,
+        &action->column,
+        model->columns[column_index].source_name,
+        false,
+        &model->columns[column_index]
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -224,8 +269,10 @@ static int apply_alter_table_change_column(mylite_db *database,
 
     for (size_t index = 0U; index < model->index_count; ++index) {
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
-            if (mylite_ascii_case_equal(model->indexes[index].parts[part].column_name,
-                                        action->old_name)) {
+            if (mylite_ascii_case_equal(
+                    model->indexes[index].parts[part].column_name,
+                    action->old_name
+                )) {
                 char *part_name = mylite_copy_nonempty_cstring(new_name);
 
                 if (part_name == NULL) {
@@ -241,17 +288,21 @@ static int apply_alter_table_change_column(mylite_db *database,
     return apply_alter_table_column_position(database, action, model, column_index);
 }
 
-static int apply_alter_table_modify_column(mylite_db *database,
-                                           const struct mylite_schema_default *schema_default,
-                                           const struct mylite_alter_table_action *action,
-                                           struct mylite_alter_table_model *model)
-{
+static int apply_alter_table_modify_column(
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model
+) {
     size_t column_index = mylite_table_ddl_alter_table_column_index(model, action->column.name);
     int status = MYLITE_OK;
 
     if (column_index == model->column_count) {
-        return mylite_table_ddl_set_alter_table_unknown_column_error(database, model->table_name,
-                                                                     action->column.name);
+        return mylite_table_ddl_set_alter_table_unknown_column_error(
+            database,
+            model->table_name,
+            action->column.name
+        );
     }
     if (model->columns == NULL) {
         return MYLITE_MISUSE;
@@ -261,19 +312,25 @@ static int apply_alter_table_modify_column(mylite_db *database,
     }
 
     status = mylite_table_ddl_replace_alter_table_column_from_definition(
-        database, schema_default, &action->column, model->columns[column_index].source_name, false,
-        &model->columns[column_index]);
+        database,
+        schema_default,
+        &action->column,
+        model->columns[column_index].source_name,
+        false,
+        &model->columns[column_index]
+    );
     if (status != MYLITE_OK) {
         return status;
     }
     return apply_alter_table_column_position(database, action, model, column_index);
 }
 
-static int apply_alter_table_column_position(mylite_db *database,
-                                             const struct mylite_alter_table_action *action,
-                                             struct mylite_alter_table_model *model,
-                                             size_t column_index)
-{
+static int apply_alter_table_column_position(
+    mylite_db *database,
+    const struct mylite_alter_table_action *action,
+    struct mylite_alter_table_model *model,
+    size_t column_index
+) {
     struct mylite_alter_table_column moved = {0};
     size_t target_index = 0U;
 
@@ -290,7 +347,10 @@ static int apply_alter_table_column_position(mylite_db *database,
         target_index = mylite_table_ddl_alter_table_column_index(model, action->after_column);
         if (target_index == model->column_count) {
             return mylite_table_ddl_set_alter_table_unknown_column_error(
-                database, model->table_name, action->after_column);
+                database,
+                model->table_name,
+                action->after_column
+            );
         }
     }
 
@@ -307,7 +367,10 @@ static int apply_alter_table_column_position(mylite_db *database,
         if (target_index == model->column_count) {
             model->columns[model->column_count++] = moved;
             return mylite_table_ddl_set_alter_table_unknown_column_error(
-                database, model->table_name, action->after_column);
+                database,
+                model->table_name,
+                action->after_column
+            );
         }
         ++target_index;
     }
@@ -319,8 +382,7 @@ static int apply_alter_table_column_position(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int remove_alter_table_column(struct mylite_alter_table_model *model, size_t column_index)
-{
+static int remove_alter_table_column(struct mylite_alter_table_model *model, size_t column_index) {
     if (column_index >= model->column_count) {
         return MYLITE_MISUSE;
     }

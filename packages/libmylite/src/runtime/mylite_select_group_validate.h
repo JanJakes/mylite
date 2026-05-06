@@ -9,7 +9,9 @@
 #include <stddef.h>
 
 int mylite_select_validate_grouping(mylite_db *database, const struct mylite_select_plan *plan);
-bool mylite_select_output_contains_aggregate(const struct mylite_select_plan *plan,
-                                             size_t output_index);
+bool mylite_select_output_contains_aggregate(
+    const struct mylite_select_plan *plan,
+    size_t output_index
+);
 
 #endif

@@ -84,53 +84,94 @@ struct mylite_system_variable_entry {
     enum mylite_system_variable_value_kind value_kind;
 };
 
-static int eval_system_variable_entry(mylite_db *database,
-                                      const struct mylite_system_variable_reference *reference,
-                                      const struct mylite_system_variable_entry *entry,
-                                      struct mylite_expression_value *out_value);
-static int infer_system_variable_entry(const struct mylite_system_variable_entry *entry,
-                                       struct mylite_field_descriptor *out_descriptor);
-static bool parse_system_variable_reference(const struct mylite_sql_ast_node *identifier,
-                                            struct mylite_system_variable_reference *out_reference);
-static const struct mylite_system_variable_entry *
-find_system_variable_entry(const struct mylite_system_variable_reference *reference);
-static bool
-system_variable_scope_is_allowed(const struct mylite_system_variable_reference *reference,
-                                 const struct mylite_system_variable_entry *entry);
-static int set_system_variable_scope_error(mylite_db *database,
-                                           const struct mylite_system_variable_reference *reference,
-                                           const struct mylite_system_variable_entry *entry);
-static int
-set_unknown_system_variable_error(mylite_db *database,
-                                  const struct mylite_system_variable_reference *reference);
-static enum mylite_system_variable_requested_scope
-effective_system_variable_scope(const struct mylite_system_variable_reference *reference,
-                                const struct mylite_system_variable_entry *entry);
-static int copy_system_variable_string_value(mylite_db *database, enum mylite_system_variable_id id,
-                                             enum mylite_system_variable_requested_scope scope,
-                                             struct mylite_expression_value *out_value);
-static uint64_t system_variable_unsigned_value(const mylite_db *database,
-                                               enum mylite_system_variable_id id,
-                                               enum mylite_system_variable_requested_scope scope);
-static int64_t system_variable_boolean_value(const mylite_db *database,
-                                             enum mylite_system_variable_id id,
-                                             enum mylite_system_variable_requested_scope scope);
-static const char *system_variable_string_value(mylite_db *database,
-                                                enum mylite_system_variable_id id,
-                                                enum mylite_system_variable_requested_scope scope,
-                                                struct mylite_schema_default *schema_default);
+static int eval_system_variable_entry(
+    mylite_db *database,
+    const struct mylite_system_variable_reference *reference,
+    const struct mylite_system_variable_entry *entry,
+    struct mylite_expression_value *out_value
+);
+
+static int infer_system_variable_entry(
+    const struct mylite_system_variable_entry *entry,
+    struct mylite_field_descriptor *out_descriptor
+);
+
+static bool parse_system_variable_reference(
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_system_variable_reference *out_reference
+);
+
+static const struct mylite_system_variable_entry *find_system_variable_entry(
+    const struct mylite_system_variable_reference *reference
+);
+
+static bool system_variable_scope_is_allowed(
+    const struct mylite_system_variable_reference *reference,
+    const struct mylite_system_variable_entry *entry
+);
+
+static int set_system_variable_scope_error(
+    mylite_db *database,
+    const struct mylite_system_variable_reference *reference,
+    const struct mylite_system_variable_entry *entry
+);
+
+static int set_unknown_system_variable_error(
+    mylite_db *database,
+    const struct mylite_system_variable_reference *reference
+);
+
+static enum mylite_system_variable_requested_scope effective_system_variable_scope(
+    const struct mylite_system_variable_reference *reference,
+    const struct mylite_system_variable_entry *entry
+);
+
+static int copy_system_variable_string_value(
+    mylite_db *database,
+    enum mylite_system_variable_id id,
+    enum mylite_system_variable_requested_scope scope,
+    struct mylite_expression_value *out_value
+);
+
+static uint64_t system_variable_unsigned_value(
+    const mylite_db *database,
+    enum mylite_system_variable_id id,
+    enum mylite_system_variable_requested_scope scope
+);
+
+static int64_t system_variable_boolean_value(
+    const mylite_db *database,
+    enum mylite_system_variable_id id,
+    enum mylite_system_variable_requested_scope scope
+);
+
+static const char *system_variable_string_value(
+    mylite_db *database,
+    enum mylite_system_variable_id id,
+    enum mylite_system_variable_requested_scope scope,
+    struct mylite_schema_default *schema_default
+);
+
 static struct mylite_field_descriptor system_variable_string_descriptor(void);
+
 static struct mylite_field_descriptor system_variable_unsigned_descriptor(void);
+
 static struct mylite_field_descriptor system_variable_boolean_descriptor(void);
-static int set_system_variable_text_value(const char *value,
-                                          struct mylite_expression_value *out_value);
+
+static int set_system_variable_text_value(
+    const char *value,
+    struct mylite_expression_value *out_value
+);
+
 static int set_system_variable_error(mylite_db *database, unsigned int code, char *message);
+
 static bool span_prefix_match_ci(struct mylite_sql_source_span span, const char *prefix);
+
 static bool span_equal_ci(struct mylite_sql_source_span span, const char *text);
 
 bool mylite_system_variable_identifier_is_system_variable(
-    const struct mylite_sql_ast_node *identifier)
-{
+    const struct mylite_sql_ast_node *identifier
+) {
     if (identifier == NULL || identifier->kind != MYLITE_SQL_AST_IDENTIFIER ||
         identifier->span.length < 2U || identifier->span.text == NULL) {
         return false;
@@ -144,10 +185,11 @@ bool mylite_system_variable_identifier_is_system_variable(
     return true;
 }
 
-int mylite_system_variable_eval_identifier(mylite_db *database,
-                                           const struct mylite_sql_ast_node *identifier,
-                                           struct mylite_expression_value *out_value)
-{
+int mylite_system_variable_eval_identifier(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_system_variable_reference reference = {0};
     const struct mylite_system_variable_entry *entry = NULL;
 
@@ -168,10 +210,11 @@ int mylite_system_variable_eval_identifier(mylite_db *database,
     return eval_system_variable_entry(database, &reference, entry, out_value);
 }
 
-int mylite_system_variable_infer_identifier(mylite_db *database,
-                                            const struct mylite_sql_ast_node *identifier,
-                                            struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_system_variable_infer_identifier(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_field_descriptor *out_descriptor
+) {
     struct mylite_system_variable_reference reference = {0};
     const struct mylite_system_variable_entry *entry = NULL;
 
@@ -194,11 +237,12 @@ int mylite_system_variable_infer_identifier(mylite_db *database,
     return infer_system_variable_entry(entry, out_descriptor);
 }
 
-static int eval_system_variable_entry(mylite_db *database,
-                                      const struct mylite_system_variable_reference *reference,
-                                      const struct mylite_system_variable_entry *entry,
-                                      struct mylite_expression_value *out_value)
-{
+static int eval_system_variable_entry(
+    mylite_db *database,
+    const struct mylite_system_variable_reference *reference,
+    const struct mylite_system_variable_entry *entry,
+    struct mylite_expression_value *out_value
+) {
     enum mylite_system_variable_requested_scope scope =
         effective_system_variable_scope(reference, entry);
 
@@ -221,9 +265,10 @@ static int eval_system_variable_entry(mylite_db *database,
     return MYLITE_UNSUPPORTED;
 }
 
-static int infer_system_variable_entry(const struct mylite_system_variable_entry *entry,
-                                       struct mylite_field_descriptor *out_descriptor)
-{
+static int infer_system_variable_entry(
+    const struct mylite_system_variable_entry *entry,
+    struct mylite_field_descriptor *out_descriptor
+) {
     switch (entry->value_kind) {
     case MYLITE_SYSTEM_VARIABLE_VALUE_STRING:
         *out_descriptor = system_variable_string_descriptor();
@@ -239,9 +284,10 @@ static int infer_system_variable_entry(const struct mylite_system_variable_entry
     return MYLITE_UNSUPPORTED;
 }
 
-static bool parse_system_variable_reference(const struct mylite_sql_ast_node *identifier,
-                                            struct mylite_system_variable_reference *out_reference)
-{
+static bool parse_system_variable_reference(
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_system_variable_reference *out_reference
+) {
     struct mylite_sql_source_span tail = {0};
 
     if (!mylite_system_variable_identifier_is_system_variable(identifier) ||
@@ -275,78 +321,146 @@ static bool parse_system_variable_reference(const struct mylite_sql_ast_node *id
     return true;
 }
 
-static const struct mylite_system_variable_entry *
-find_system_variable_entry(const struct mylite_system_variable_reference *reference)
-{
+static const struct mylite_system_variable_entry *find_system_variable_entry(
+    const struct mylite_system_variable_reference *reference
+) {
     static const struct mylite_system_variable_entry entries[] = {
-        {"autocommit", MYLITE_SYSTEM_VARIABLE_AUTOCOMMIT, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+        {"autocommit",
+         MYLITE_SYSTEM_VARIABLE_AUTOCOMMIT,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
          MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
-        {"character_set_client", MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"character_set_connection", MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"character_set_database", MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"character_set_filesystem", MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"character_set_results", MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"character_set_server", MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_SERVER,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"character_set_system", MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"character_sets_dir", MYLITE_SYSTEM_VARIABLE_CHARACTER_SETS_DIR,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"collation_connection", MYLITE_SYSTEM_VARIABLE_COLLATION_CONNECTION,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"collation_database", MYLITE_SYSTEM_VARIABLE_COLLATION_DATABASE,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"collation_server", MYLITE_SYSTEM_VARIABLE_COLLATION_SERVER,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"default_storage_engine", MYLITE_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"error_count", MYLITE_SYSTEM_VARIABLE_ERROR_COUNT, MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION,
+        {"character_set_client",
+         MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"character_set_connection",
+         MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"character_set_database",
+         MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"character_set_filesystem",
+         MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"character_set_results",
+         MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"character_set_server",
+         MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_SERVER,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"character_set_system",
+         MYLITE_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"character_sets_dir",
+         MYLITE_SYSTEM_VARIABLE_CHARACTER_SETS_DIR,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"collation_connection",
+         MYLITE_SYSTEM_VARIABLE_COLLATION_CONNECTION,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"collation_database",
+         MYLITE_SYSTEM_VARIABLE_COLLATION_DATABASE,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"collation_server",
+         MYLITE_SYSTEM_VARIABLE_COLLATION_SERVER,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"default_storage_engine",
+         MYLITE_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"error_count",
+         MYLITE_SYSTEM_VARIABLE_ERROR_COUNT,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION,
          MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
-        {"foreign_key_checks", MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
-        {"group_concat_max_len", MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
-        {"last_insert_id", MYLITE_SYSTEM_VARIABLE_LAST_INSERT_ID,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
-        {"lower_case_table_names", MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
-        {"max_allowed_packet", MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
-        {"max_connections", MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
-        {"max_error_count", MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
-        {"sql_mode", MYLITE_SYSTEM_VARIABLE_SQL_MODE, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
-         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"sql_notes", MYLITE_SYSTEM_VARIABLE_SQL_NOTES, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+        {"foreign_key_checks",
+         MYLITE_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
          MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
-        {"time_zone", MYLITE_SYSTEM_VARIABLE_TIME_ZONE, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
-         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"transaction_isolation", MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"transaction_read_only", MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH, MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
-        {"unique_checks", MYLITE_SYSTEM_VARIABLE_UNIQUE_CHECKS, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
-         MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
-        {"version", MYLITE_SYSTEM_VARIABLE_VERSION, MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
-         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"version_comment", MYLITE_SYSTEM_VARIABLE_VERSION_COMMENT,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"version_compile_machine", MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"version_compile_os", MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_OS,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"version_compile_zlib", MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL, MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
-        {"wait_timeout", MYLITE_SYSTEM_VARIABLE_WAIT_TIMEOUT, MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+        {"group_concat_max_len",
+         MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
          MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
-        {"warning_count", MYLITE_SYSTEM_VARIABLE_WARNING_COUNT,
-         MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION, MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"last_insert_id",
+         MYLITE_SYSTEM_VARIABLE_LAST_INSERT_ID,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"lower_case_table_names",
+         MYLITE_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"max_allowed_packet",
+         MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"max_connections",
+         MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"max_error_count",
+         MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"sql_mode",
+         MYLITE_SYSTEM_VARIABLE_SQL_MODE,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"sql_notes",
+         MYLITE_SYSTEM_VARIABLE_SQL_NOTES,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
+        {"time_zone",
+         MYLITE_SYSTEM_VARIABLE_TIME_ZONE,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"transaction_isolation",
+         MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"transaction_read_only",
+         MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
+        {"unique_checks",
+         MYLITE_SYSTEM_VARIABLE_UNIQUE_CHECKS,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
+        {"version",
+         MYLITE_SYSTEM_VARIABLE_VERSION,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"version_comment",
+         MYLITE_SYSTEM_VARIABLE_VERSION_COMMENT,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"version_compile_machine",
+         MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"version_compile_os",
+         MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_OS,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"version_compile_zlib",
+         MYLITE_SYSTEM_VARIABLE_VERSION_COMPILE_ZLIB,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
+         MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"wait_timeout",
+         MYLITE_SYSTEM_VARIABLE_WAIT_TIMEOUT,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"warning_count",
+         MYLITE_SYSTEM_VARIABLE_WARNING_COUNT,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
     };
 
     for (size_t index = 0U; index < sizeof(entries) / sizeof(entries[0]); ++index) {
@@ -355,17 +469,18 @@ find_system_variable_entry(const struct mylite_system_variable_reference *refere
                     .text = reference->name,
                     .length = reference->name_length,
                 },
-                entries[index].name)) {
+                entries[index].name
+            )) {
             return &entries[index];
         }
     }
     return NULL;
 }
 
-static bool
-system_variable_scope_is_allowed(const struct mylite_system_variable_reference *reference,
-                                 const struct mylite_system_variable_entry *entry)
-{
+static bool system_variable_scope_is_allowed(
+    const struct mylite_system_variable_reference *reference,
+    const struct mylite_system_variable_entry *entry
+) {
     if (reference->requested_scope == MYLITE_SYSTEM_VARIABLE_SCOPE_DEFAULT) {
         return true;
     }
@@ -375,10 +490,11 @@ system_variable_scope_is_allowed(const struct mylite_system_variable_reference *
     return entry->supported_scope != MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL;
 }
 
-static int set_system_variable_scope_error(mylite_db *database,
-                                           const struct mylite_system_variable_reference *reference,
-                                           const struct mylite_system_variable_entry *entry)
-{
+static int set_system_variable_scope_error(
+    mylite_db *database,
+    const struct mylite_system_variable_reference *reference,
+    const struct mylite_system_variable_entry *entry
+) {
     char *name = mylite_copy_span_text(reference->name, reference->name_length);
     char *message = NULL;
 
@@ -387,16 +503,18 @@ static int set_system_variable_scope_error(mylite_db *database,
         return MYLITE_NOMEM;
     }
     message = sqlite3_mprintf(
-        "Variable '%q' is a %s variable", name,
-        entry->supported_scope == MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL ? "GLOBAL" : "SESSION");
+        "Variable '%q' is a %s variable",
+        name,
+        entry->supported_scope == MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL ? "GLOBAL" : "SESSION"
+    );
     free(name);
     return set_system_variable_error(database, MYLITE_MYSQL_ER_INCORRECT_GLOBAL_LOCAL_VAR, message);
 }
 
-static int
-set_unknown_system_variable_error(mylite_db *database,
-                                  const struct mylite_system_variable_reference *reference)
-{
+static int set_unknown_system_variable_error(
+    mylite_db *database,
+    const struct mylite_system_variable_reference *reference
+) {
     char *name = mylite_copy_span_text(reference->name, reference->name_length);
     char *message = NULL;
 
@@ -409,10 +527,10 @@ set_unknown_system_variable_error(mylite_db *database,
     return set_system_variable_error(database, MYLITE_MYSQL_ER_UNKNOWN_SYSTEM_VARIABLE, message);
 }
 
-static enum mylite_system_variable_requested_scope
-effective_system_variable_scope(const struct mylite_system_variable_reference *reference,
-                                const struct mylite_system_variable_entry *entry)
-{
+static enum mylite_system_variable_requested_scope effective_system_variable_scope(
+    const struct mylite_system_variable_reference *reference,
+    const struct mylite_system_variable_entry *entry
+) {
     if (reference->requested_scope != MYLITE_SYSTEM_VARIABLE_SCOPE_DEFAULT) {
         return reference->requested_scope;
     }
@@ -422,10 +540,12 @@ effective_system_variable_scope(const struct mylite_system_variable_reference *r
     return MYLITE_SYSTEM_VARIABLE_SCOPE_SESSION;
 }
 
-static int copy_system_variable_string_value(mylite_db *database, enum mylite_system_variable_id id,
-                                             enum mylite_system_variable_requested_scope scope,
-                                             struct mylite_expression_value *out_value)
-{
+static int copy_system_variable_string_value(
+    mylite_db *database,
+    enum mylite_system_variable_id id,
+    enum mylite_system_variable_requested_scope scope,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_schema_default schema_default = {
         .character_set = mylite_charset_default_name(),
         .collation = mylite_charset_default_collation_name(),
@@ -446,10 +566,11 @@ static int copy_system_variable_string_value(mylite_db *database, enum mylite_sy
     return set_system_variable_text_value(value, out_value);
 }
 
-static uint64_t system_variable_unsigned_value(const mylite_db *database,
-                                               enum mylite_system_variable_id id,
-                                               enum mylite_system_variable_requested_scope scope)
-{
+static uint64_t system_variable_unsigned_value(
+    const mylite_db *database,
+    enum mylite_system_variable_id id,
+    enum mylite_system_variable_requested_scope scope
+) {
     switch (id) {
     case MYLITE_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
         return scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL
@@ -502,10 +623,11 @@ static uint64_t system_variable_unsigned_value(const mylite_db *database,
     return 0U;
 }
 
-static int64_t system_variable_boolean_value(const mylite_db *database,
-                                             enum mylite_system_variable_id id,
-                                             enum mylite_system_variable_requested_scope scope)
-{
+static int64_t system_variable_boolean_value(
+    const mylite_db *database,
+    enum mylite_system_variable_id id,
+    enum mylite_system_variable_requested_scope scope
+) {
     switch (id) {
     case MYLITE_SYSTEM_VARIABLE_AUTOCOMMIT:
     case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
@@ -568,11 +690,12 @@ static int64_t system_variable_boolean_value(const mylite_db *database,
     return 0;
 }
 
-static const char *system_variable_string_value(mylite_db *database,
-                                                enum mylite_system_variable_id id,
-                                                enum mylite_system_variable_requested_scope scope,
-                                                struct mylite_schema_default *schema_default)
-{
+static const char *system_variable_string_value(
+    mylite_db *database,
+    enum mylite_system_variable_id id,
+    enum mylite_system_variable_requested_scope scope,
+    struct mylite_schema_default *schema_default
+) {
     const bool global = scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL;
 
     switch (id) {
@@ -648,8 +771,7 @@ static const char *system_variable_string_value(mylite_db *database,
     return "";
 }
 
-static struct mylite_field_descriptor system_variable_string_descriptor(void)
-{
+static struct mylite_field_descriptor system_variable_string_descriptor(void) {
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
         .length = mylite_mysql_system_variable_string_display_length,
@@ -659,8 +781,7 @@ static struct mylite_field_descriptor system_variable_string_descriptor(void)
     };
 }
 
-static struct mylite_field_descriptor system_variable_unsigned_descriptor(void)
-{
+static struct mylite_field_descriptor system_variable_unsigned_descriptor(void) {
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_LONGLONG,
         .flags = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -670,8 +791,7 @@ static struct mylite_field_descriptor system_variable_unsigned_descriptor(void)
     };
 }
 
-static struct mylite_field_descriptor system_variable_boolean_descriptor(void)
-{
+static struct mylite_field_descriptor system_variable_boolean_descriptor(void) {
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_LONGLONG,
         .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -681,9 +801,10 @@ static struct mylite_field_descriptor system_variable_boolean_descriptor(void)
     };
 }
 
-static int set_system_variable_text_value(const char *value,
-                                          struct mylite_expression_value *out_value)
-{
+static int set_system_variable_text_value(
+    const char *value,
+    struct mylite_expression_value *out_value
+) {
     const char *safe_value = value == NULL ? "" : value;
     size_t value_length = strlen(safe_value);
     char *copy = mylite_copy_span_text(safe_value, value_length);
@@ -699,8 +820,7 @@ static int set_system_variable_text_value(const char *value,
     return MYLITE_OK;
 }
 
-static int set_system_variable_error(mylite_db *database, unsigned int code, char *message)
-{
+static int set_system_variable_error(mylite_db *database, unsigned int code, char *message) {
     int status = MYLITE_OK;
 
     if (message == NULL) {
@@ -716,8 +836,7 @@ static int set_system_variable_error(mylite_db *database, unsigned int code, cha
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static bool span_prefix_match_ci(struct mylite_sql_source_span span, const char *prefix)
-{
+static bool span_prefix_match_ci(struct mylite_sql_source_span span, const char *prefix) {
     size_t prefix_length = strlen(prefix);
 
     if (span.length < prefix_length) {
@@ -728,11 +847,11 @@ static bool span_prefix_match_ci(struct mylite_sql_source_span span, const char 
             .text = span.text,
             .length = prefix_length,
         },
-        prefix);
+        prefix
+    );
 }
 
-static bool span_equal_ci(struct mylite_sql_source_span span, const char *text)
-{
+static bool span_equal_ci(struct mylite_sql_source_span span, const char *text) {
     size_t text_length = strlen(text);
 
     if (span.text == NULL || span.length != text_length) {

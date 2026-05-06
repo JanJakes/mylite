@@ -14,31 +14,69 @@ struct dml_write_table_load_context {
     struct mylite_insert_table *table;
 };
 
-static int load_insert_columns(mylite_db *database, const char *schema_name, const char *table_name,
-                               struct mylite_insert_table *table);
-static int load_insert_column_from_catalog_row(void *context,
-                                               const struct mylite_catalog_column_row *row);
-static int add_insert_table_column(struct mylite_insert_table *table,
-                                   struct mylite_insert_table_column column);
-static int load_insert_unique_indexes(mylite_db *database, const char *schema_name,
-                                      const char *table_name, struct mylite_insert_table *table);
-static int load_insert_unique_index_part_from_catalog_row(
-    void *context, const struct mylite_catalog_unique_index_part_row *row);
-static int add_insert_unique_index_part(mylite_db *database, struct mylite_insert_table *table,
-                                        const struct mylite_catalog_unique_index_part_row *part);
-static int append_insert_unique_index_part(struct mylite_insert_unique_index *index,
-                                           const struct mylite_insert_unique_index_part *part);
-static int initialize_insert_auto_increment(mylite_db *database, struct mylite_insert_table *table,
-                                            const struct mylite_catalog_table_metadata *metadata);
-static int read_insert_auto_increment_max(mylite_db *database,
-                                          const struct mylite_insert_table *table,
-                                          uint64_t *out_next_auto_increment);
-static size_t insert_table_column_index(const struct mylite_insert_table *table,
-                                        const char *column_name);
+static int load_insert_columns(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    struct mylite_insert_table *table
+);
 
-int mylite_dml_load_write_table(mylite_db *database, const char *schema_name,
-                                const char *table_name, struct mylite_insert_table *out_table)
-{
+static int load_insert_column_from_catalog_row(
+    void *context,
+    const struct mylite_catalog_column_row *row
+);
+
+static int add_insert_table_column(
+    struct mylite_insert_table *table,
+    struct mylite_insert_table_column column
+);
+
+static int load_insert_unique_indexes(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    struct mylite_insert_table *table
+);
+
+static int load_insert_unique_index_part_from_catalog_row(
+    void *context,
+    const struct mylite_catalog_unique_index_part_row *row
+);
+
+static int add_insert_unique_index_part(
+    mylite_db *database,
+    struct mylite_insert_table *table,
+    const struct mylite_catalog_unique_index_part_row *part
+);
+
+static int append_insert_unique_index_part(
+    struct mylite_insert_unique_index *index,
+    const struct mylite_insert_unique_index_part *part
+);
+
+static int initialize_insert_auto_increment(
+    mylite_db *database,
+    struct mylite_insert_table *table,
+    const struct mylite_catalog_table_metadata *metadata
+);
+
+static int read_insert_auto_increment_max(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    uint64_t *out_next_auto_increment
+);
+
+static size_t insert_table_column_index(
+    const struct mylite_insert_table *table,
+    const char *column_name
+);
+
+int mylite_dml_load_write_table(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    struct mylite_insert_table *out_table
+) {
     struct mylite_catalog_table_metadata metadata = {0};
     int status = MYLITE_OK;
 
@@ -71,15 +109,23 @@ int mylite_dml_load_write_table(mylite_db *database, const char *schema_name,
     return status;
 }
 
-static int load_insert_columns(mylite_db *database, const char *schema_name, const char *table_name,
-                               struct mylite_insert_table *table)
-{
+static int load_insert_columns(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    struct mylite_insert_table *table
+) {
     struct dml_write_table_load_context context = {
         .database = database,
         .table = table,
     };
-    int status = mylite_catalog_load_table_columns(database, schema_name, table_name,
-                                                   load_insert_column_from_catalog_row, &context);
+    int status = mylite_catalog_load_table_columns(
+        database,
+        schema_name,
+        table_name,
+        load_insert_column_from_catalog_row,
+        &context
+    );
 
     if (status != MYLITE_OK) {
         return status;
@@ -91,9 +137,10 @@ static int load_insert_columns(mylite_db *database, const char *schema_name, con
     return MYLITE_OK;
 }
 
-static int load_insert_column_from_catalog_row(void *context,
-                                               const struct mylite_catalog_column_row *row)
-{
+static int load_insert_column_from_catalog_row(
+    void *context,
+    const struct mylite_catalog_column_row *row
+) {
     struct dml_write_table_load_context *load_context = context;
     struct mylite_insert_table_column column = {0};
     int status = MYLITE_OK;
@@ -105,10 +152,14 @@ static int load_insert_column_from_catalog_row(void *context,
     if (row->default_text != NULL) {
         column.default_text = mylite_copy_span_text(row->default_text, strlen(row->default_text));
     }
-    column.data_type = mylite_copy_span_text(row->data_type == NULL ? "" : row->data_type,
-                                             row->data_type == NULL ? 0U : strlen(row->data_type));
-    column.extra = mylite_copy_span_text(row->extra == NULL ? "" : row->extra,
-                                         row->extra == NULL ? 0U : strlen(row->extra));
+    column.data_type = mylite_copy_span_text(
+        row->data_type == NULL ? "" : row->data_type,
+        row->data_type == NULL ? 0U : strlen(row->data_type)
+    );
+    column.extra = mylite_copy_span_text(
+        row->extra == NULL ? "" : row->extra,
+        row->extra == NULL ? 0U : strlen(row->extra)
+    );
     if (column.name == NULL || (row->default_text != NULL && column.default_text == NULL) ||
         column.data_type == NULL || column.extra == NULL) {
         mylite_dml_insert_table_column_deinit(&column);
@@ -133,9 +184,10 @@ static int load_insert_column_from_catalog_row(void *context,
     return status;
 }
 
-static int add_insert_table_column(struct mylite_insert_table *table,
-                                   struct mylite_insert_table_column column)
-{
+static int add_insert_table_column(
+    struct mylite_insert_table *table,
+    struct mylite_insert_table_column column
+) {
     struct mylite_insert_table_column *columns =
         realloc(table->columns, (table->column_count + 1U) * sizeof(*table->columns));
 
@@ -148,30 +200,40 @@ static int add_insert_table_column(struct mylite_insert_table *table,
     return MYLITE_OK;
 }
 
-static int load_insert_unique_indexes(mylite_db *database, const char *schema_name,
-                                      const char *table_name, struct mylite_insert_table *table)
-{
+static int load_insert_unique_indexes(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    struct mylite_insert_table *table
+) {
     struct dml_write_table_load_context context = {
         .database = database,
         .table = table,
     };
 
-    return mylite_catalog_load_unique_index_parts(database, schema_name, table_name,
-                                                  load_insert_unique_index_part_from_catalog_row,
-                                                  &context);
+    return mylite_catalog_load_unique_index_parts(
+        database,
+        schema_name,
+        table_name,
+        load_insert_unique_index_part_from_catalog_row,
+        &context
+    );
 }
 
 static int load_insert_unique_index_part_from_catalog_row(
-    void *context, const struct mylite_catalog_unique_index_part_row *row)
-{
+    void *context,
+    const struct mylite_catalog_unique_index_part_row *row
+) {
     struct dml_write_table_load_context *load_context = context;
 
     return add_insert_unique_index_part(load_context->database, load_context->table, row);
 }
 
-static int add_insert_unique_index_part(mylite_db *database, struct mylite_insert_table *table,
-                                        const struct mylite_catalog_unique_index_part_row *part)
-{
+static int add_insert_unique_index_part(
+    mylite_db *database,
+    struct mylite_insert_table *table,
+    const struct mylite_catalog_unique_index_part_row *part
+) {
     struct mylite_insert_unique_index *index = NULL;
     size_t column_index = insert_table_column_index(table, part->column_name);
     const struct mylite_insert_unique_index_part insert_part = {
@@ -182,7 +244,11 @@ static int add_insert_unique_index_part(mylite_db *database, struct mylite_inser
 
     if (column_index == table->column_count) {
         (void)mylite_diagnostics_set_error_message_parts(
-            database, "Index references unknown column '", part->column_name, "'");
+            database,
+            "Index references unknown column '",
+            part->column_name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
 
@@ -198,8 +264,10 @@ static int add_insert_unique_index_part(mylite_db *database, struct mylite_inser
         }
     }
 
-    index = realloc(table->unique_indexes,
-                    (table->unique_index_count + 1U) * sizeof(*table->unique_indexes));
+    index = realloc(
+        table->unique_indexes,
+        (table->unique_index_count + 1U) * sizeof(*table->unique_indexes)
+    );
     if (index == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -209,8 +277,10 @@ static int add_insert_unique_index_part(mylite_db *database, struct mylite_inser
     *index = (struct mylite_insert_unique_index){
         .is_primary = mylite_ascii_case_equal(part->index_name, "PRIMARY"),
     };
-    index->name = mylite_copy_span_text(part->index_name,
-                                        part->index_name == NULL ? 0U : strlen(part->index_name));
+    index->name = mylite_copy_span_text(
+        part->index_name,
+        part->index_name == NULL ? 0U : strlen(part->index_name)
+    );
     if (index->name == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -223,9 +293,10 @@ static int add_insert_unique_index_part(mylite_db *database, struct mylite_inser
     return status;
 }
 
-static int append_insert_unique_index_part(struct mylite_insert_unique_index *index,
-                                           const struct mylite_insert_unique_index_part *part)
-{
+static int append_insert_unique_index_part(
+    struct mylite_insert_unique_index *index,
+    const struct mylite_insert_unique_index_part *part
+) {
     size_t *column_indexes =
         realloc(index->column_indexes, (index->column_count + 1U) * sizeof(*index->column_indexes));
     uint64_t *prefix_lengths = NULL;
@@ -250,9 +321,11 @@ static int append_insert_unique_index_part(struct mylite_insert_unique_index *in
     return MYLITE_OK;
 }
 
-static int initialize_insert_auto_increment(mylite_db *database, struct mylite_insert_table *table,
-                                            const struct mylite_catalog_table_metadata *metadata)
-{
+static int initialize_insert_auto_increment(
+    mylite_db *database,
+    struct mylite_insert_table *table,
+    const struct mylite_catalog_table_metadata *metadata
+) {
     uint64_t max_next_auto_increment = 1U;
     int status = MYLITE_OK;
 
@@ -274,10 +347,11 @@ static int initialize_insert_auto_increment(mylite_db *database, struct mylite_i
     return MYLITE_OK;
 }
 
-static int read_insert_auto_increment_max(mylite_db *database,
-                                          const struct mylite_insert_table *table,
-                                          uint64_t *out_next_auto_increment)
-{
+static int read_insert_auto_increment_max(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    uint64_t *out_next_auto_increment
+) {
     sqlite3_stmt *select = NULL;
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     char *select_sql = NULL;
@@ -289,17 +363,26 @@ static int read_insert_auto_increment_max(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    sqlite3_str_appendf(sql, "SELECT max(\"%w\") FROM \"%w\"",
-                        table->columns[table->auto_increment_column_index].name,
-                        table->physical_name);
+    sqlite3_str_appendf(
+        sql,
+        "SELECT max(\"%w\") FROM \"%w\"",
+        table->columns[table->auto_increment_column_index].name,
+        table->physical_name
+    );
     select_sql = sqlite3_str_finish(sql);
     if (select_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
 
-    rc = sqlite3_prepare_v3(database->sqlite, select_sql, -1, SQLITE_PREPARE_PERSISTENT, &select,
-                            NULL);
+    rc = sqlite3_prepare_v3(
+        database->sqlite,
+        select_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &select,
+        NULL
+    );
     sqlite3_free(select_sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
@@ -317,9 +400,10 @@ static int read_insert_auto_increment_max(mylite_db *database,
     return rc == SQLITE_ROW ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static size_t insert_table_column_index(const struct mylite_insert_table *table,
-                                        const char *column_name)
-{
+static size_t insert_table_column_index(
+    const struct mylite_insert_table *table,
+    const char *column_name
+) {
     for (size_t index = 0U; index < table->column_count; ++index) {
         if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
             return index;

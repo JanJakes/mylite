@@ -9,8 +9,11 @@
 
 struct mylite_show_create_table_target;
 
-int mylite_show_create_table_append_indexes(mylite_db *database, sqlite3_str *create_sql,
-                                            const struct mylite_show_create_table_target *target,
-                                            bool *first_line);
+int mylite_show_create_table_append_indexes(
+    mylite_db *database,
+    sqlite3_str *create_sql,
+    const struct mylite_show_create_table_target *target,
+    bool *first_line
+);
 
 #endif

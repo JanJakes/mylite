@@ -5,9 +5,11 @@
 #include "mylite_span.h"
 #include "sqlite3.h"
 
-size_t mylite_select_output_label_count(const struct mylite_select_plan *plan, const char *label,
-                                        size_t *out_index)
-{
+size_t mylite_select_output_label_count(
+    const struct mylite_select_plan *plan,
+    const char *label,
+    size_t *out_index
+) {
     size_t count = 0U;
 
     *out_index = plan->output_count;
@@ -23,9 +25,11 @@ size_t mylite_select_output_label_count(const struct mylite_select_plan *plan, c
     return count;
 }
 
-size_t mylite_select_output_label_span_count(const struct mylite_select_plan *plan,
-                                             struct mylite_sql_source_span label, size_t *out_index)
-{
+size_t mylite_select_output_label_span_count(
+    const struct mylite_select_plan *plan,
+    struct mylite_sql_source_span label,
+    size_t *out_index
+) {
     size_t count = 0U;
 
     *out_index = plan->output_count;
@@ -41,10 +45,11 @@ size_t mylite_select_output_label_span_count(const struct mylite_select_plan *pl
     return count;
 }
 
-const struct mylite_select_column *
-mylite_select_plan_column_const(const struct mylite_select_plan *plan, size_t column_index,
-                                const struct mylite_select_table **out_table)
-{
+const struct mylite_select_column *mylite_select_plan_column_const(
+    const struct mylite_select_plan *plan,
+    size_t column_index,
+    const struct mylite_select_table **out_table
+) {
     size_t table_count = mylite_select_plan_table_count(plan);
 
     if (out_table != NULL) {
@@ -64,10 +69,12 @@ mylite_select_plan_column_const(const struct mylite_select_plan *plan, size_t co
     return NULL;
 }
 
-int mylite_select_resolve_column_in_table(const struct mylite_select_plan *plan,
-                                          const struct mylite_select_table *table,
-                                          const char *column_name, size_t *out_index)
-{
+int mylite_select_resolve_column_in_table(
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_table *table,
+    const char *column_name,
+    size_t *out_index
+) {
     (void)plan;
     if (table == NULL || column_name == NULL || out_index == NULL) {
         return MYLITE_UNSUPPORTED;
@@ -81,11 +88,16 @@ int mylite_select_resolve_column_in_table(const struct mylite_select_plan *plan,
     return MYLITE_UNSUPPORTED;
 }
 
-int mylite_select_set_ambiguous_column_error(mylite_db *database, const char *column_name,
-                                             const char *clause_context)
-{
-    char *message = sqlite3_mprintf("Column '%q' in %s is ambiguous", column_name,
-                                    clause_context == NULL ? "field list" : clause_context);
+int mylite_select_set_ambiguous_column_error(
+    mylite_db *database,
+    const char *column_name,
+    const char *clause_context
+) {
+    char *message = sqlite3_mprintf(
+        "Column '%q' in %s is ambiguous",
+        column_name,
+        clause_context == NULL ? "field list" : clause_context
+    );
     int status = MYLITE_OK;
 
     if (message == NULL) {
@@ -100,9 +112,10 @@ int mylite_select_set_ambiguous_column_error(mylite_db *database, const char *co
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-bool mylite_select_plan_has_column_span(const struct mylite_select_plan *plan,
-                                        struct mylite_sql_source_span name)
-{
+bool mylite_select_plan_has_column_span(
+    const struct mylite_select_plan *plan,
+    struct mylite_sql_source_span name
+) {
     for (size_t index = 0U; index < mylite_select_plan_column_count(plan); ++index) {
         const struct mylite_select_column *column =
             mylite_select_plan_column_const(plan, index, NULL);
@@ -114,9 +127,10 @@ bool mylite_select_plan_has_column_span(const struct mylite_select_plan *plan,
     return false;
 }
 
-bool mylite_select_plan_has_visible_table_span(const struct mylite_select_plan *plan,
-                                               struct mylite_sql_source_span name)
-{
+bool mylite_select_plan_has_visible_table_span(
+    const struct mylite_select_plan *plan,
+    struct mylite_sql_source_span name
+) {
     for (size_t index = 0U; index < mylite_select_plan_table_count(plan); ++index) {
         const struct mylite_select_table *table = mylite_select_plan_table_const(plan, index);
         const char *visible_name = table == NULL || table->alias == NULL ? NULL : table->alias;
@@ -131,8 +145,7 @@ bool mylite_select_plan_has_visible_table_span(const struct mylite_select_plan *
     return false;
 }
 
-bool mylite_select_plan_has_outer_join(const struct mylite_select_plan *plan)
-{
+bool mylite_select_plan_has_outer_join(const struct mylite_select_plan *plan) {
     for (size_t index = 0U; plan != NULL && index < plan->join_step_count; ++index) {
         enum mylite_sql_ast_join_type join_type = plan->join_steps[index].join_type;
 
@@ -143,14 +156,14 @@ bool mylite_select_plan_has_outer_join(const struct mylite_select_plan *plan)
     return false;
 }
 
-bool mylite_select_duplicate_mode_is_distinct(enum mylite_sql_ast_select_duplicate_mode mode)
-{
+bool mylite_select_duplicate_mode_is_distinct(enum mylite_sql_ast_select_duplicate_mode mode) {
     return mode == MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT;
 }
 
-bool mylite_select_plan_requires_custom_runtime(const struct mylite_select_plan *plan,
-                                                const struct mylite_select_clause_nodes *clauses)
-{
+bool mylite_select_plan_requires_custom_runtime(
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_clause_nodes *clauses
+) {
     if (clauses != NULL &&
         (clauses->where != NULL || clauses->group_by != NULL || clauses->having != NULL ||
          clauses->order_by != NULL || clauses->limit != NULL)) {
@@ -179,8 +192,7 @@ bool mylite_select_plan_requires_custom_runtime(const struct mylite_select_plan 
     return false;
 }
 
-size_t mylite_select_plan_table_count(const struct mylite_select_plan *plan)
-{
+size_t mylite_select_plan_table_count(const struct mylite_select_plan *plan) {
     if (plan == NULL) {
         return 0U;
     }
@@ -190,9 +202,10 @@ size_t mylite_select_plan_table_count(const struct mylite_select_plan *plan)
     return plan->table.table_name == NULL ? 0U : 1U;
 }
 
-struct mylite_select_table *mylite_select_plan_table(struct mylite_select_plan *plan,
-                                                     size_t table_index)
-{
+struct mylite_select_table *mylite_select_plan_table(
+    struct mylite_select_plan *plan,
+    size_t table_index
+) {
     if (plan == NULL) {
         return NULL;
     }
@@ -202,9 +215,10 @@ struct mylite_select_table *mylite_select_plan_table(struct mylite_select_plan *
     return table_index == 0U && plan->table.table_name != NULL ? &plan->table : NULL;
 }
 
-const struct mylite_select_table *
-mylite_select_plan_table_const(const struct mylite_select_plan *plan, size_t table_index)
-{
+const struct mylite_select_table *mylite_select_plan_table_const(
+    const struct mylite_select_plan *plan,
+    size_t table_index
+) {
     if (plan == NULL) {
         return NULL;
     }
@@ -214,8 +228,7 @@ mylite_select_plan_table_const(const struct mylite_select_plan *plan, size_t tab
     return table_index == 0U && plan->table.table_name != NULL ? &plan->table : NULL;
 }
 
-size_t mylite_select_plan_column_count(const struct mylite_select_plan *plan)
-{
+size_t mylite_select_plan_column_count(const struct mylite_select_plan *plan) {
     if (plan == NULL) {
         return 0U;
     }

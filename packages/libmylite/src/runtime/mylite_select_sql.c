@@ -8,8 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
-char *mylite_select_build_physical_sql(mylite_db *database, const struct mylite_select_plan *plan)
-{
+char *mylite_select_build_physical_sql(mylite_db *database, const struct mylite_select_plan *plan) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {
@@ -31,14 +30,17 @@ char *mylite_select_build_physical_sql(mylite_db *database, const struct mylite_
         }
         sqlite3_str_appendf(sql, "\"%w\" AS \"%w\"", column->name, output->label);
     }
-    sqlite3_str_appendf(sql, " FROM \"%w\"",
-                        mylite_select_plan_table_const(plan, 0U)->physical_name);
+    sqlite3_str_appendf(
+        sql,
+        " FROM \"%w\"",
+        mylite_select_plan_table_const(plan, 0U)->physical_name
+    );
     return sqlite3_str_finish(sql);
 }
 
-char *mylite_select_build_scan_sql(mylite_db *database, const struct mylite_select_plan *plan)
-{
+char *mylite_select_build_scan_sql(mylite_db *database, const struct mylite_select_plan *plan) {
     enum { sqlite_table_alias_size = 32 };
+
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {
@@ -84,9 +86,10 @@ char *mylite_select_build_scan_sql(mylite_db *database, const struct mylite_sele
     return sqlite3_str_finish(sql);
 }
 
-char *mylite_select_build_table_scan_sql(mylite_db *database,
-                                         const struct mylite_select_table *table)
-{
+char *mylite_select_build_table_scan_sql(
+    mylite_db *database,
+    const struct mylite_select_table *table
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {
@@ -104,9 +107,10 @@ char *mylite_select_build_table_scan_sql(mylite_db *database,
     return sqlite3_str_finish(sql);
 }
 
-char *mylite_select_build_table_rowid_scan_sql(mylite_db *database,
-                                               const struct mylite_select_table *table)
-{
+char *mylite_select_build_table_rowid_scan_sql(
+    mylite_db *database,
+    const struct mylite_select_table *table
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {

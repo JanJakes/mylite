@@ -17,22 +17,33 @@
 #include <stddef.h>
 #include <stdlib.h>
 
-static int
-scan_outer_joined_table_select_rows(mylite_stmt *stmt,
-                                    struct mylite_table_select_join_materialize_state *state,
-                                    const struct mylite_select_eval_callbacks *callbacks);
+static int scan_outer_joined_table_select_rows(
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_select_eval_callbacks *callbacks
+);
+
 static int process_outer_joined_table_range_rows(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
-    const struct mylite_table_select_table_rowset *range_rowsets, size_t range_count,
-    const struct mylite_select_eval_callbacks *callbacks);
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_table_rowset *range_rowsets,
+    size_t range_count,
+    const struct mylite_select_eval_callbacks *callbacks
+);
+
 static int process_outer_joined_table_range_row(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
-    const struct mylite_table_select_table_rowset *range_rowsets, const size_t *row_indexes,
-    size_t range_count, const struct mylite_select_eval_callbacks *callbacks);
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_table_rowset *range_rowsets,
+    const size_t *row_indexes,
+    size_t range_count,
+    const struct mylite_select_eval_callbacks *callbacks
+);
 
 int mylite_select_materialize_outer_joined_table_result(
-    mylite_stmt *stmt, const struct mylite_select_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
     struct mylite_table_select_join_materialize_state state = {0};
     bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
@@ -75,12 +86,19 @@ int mylite_select_materialize_outer_joined_table_result(
         status = mylite_select_group_append_empty_implicit(stmt, &state.groups, &state.group_count);
     }
     if (status == MYLITE_OK && aggregate_query) {
-        status = mylite_select_materialize_append_finalized_groups(stmt, state.groups,
-                                                                   state.group_count, callbacks);
+        status = mylite_select_materialize_append_finalized_groups(
+            stmt,
+            state.groups,
+            state.group_count,
+            callbacks
+        );
     }
     if (status == MYLITE_OK && stmt->select_plan.order_key_count != 0U) {
-        status = mylite_select_result_sort_rows(stmt->database, &stmt->select_result,
-                                                &stmt->select_plan);
+        status = mylite_select_result_sort_rows(
+            stmt->database,
+            &stmt->select_result,
+            &stmt->select_plan
+        );
     }
     if (status == MYLITE_OK &&
         (aggregate_query || stmt->select_plan.order_key_count != 0U || distinct)) {
@@ -96,11 +114,11 @@ int mylite_select_materialize_outer_joined_table_result(
     return status;
 }
 
-static int
-scan_outer_joined_table_select_rows(mylite_stmt *stmt,
-                                    struct mylite_table_select_join_materialize_state *state,
-                                    const struct mylite_select_eval_callbacks *callbacks)
-{
+static int scan_outer_joined_table_select_rows(
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     size_t range_count = stmt->select_plan.from_range_count;
     struct mylite_table_select_table_rowset *range_rowsets = NULL;
     int status = MYLITE_OK;
@@ -118,11 +136,21 @@ scan_outer_joined_table_select_rows(mylite_stmt *stmt,
         struct mylite_select_table_range range = stmt->select_plan.from_ranges[range_index];
 
         status = mylite_select_join_range_rowset_materialize(
-            stmt, state, &range, &range_rowsets[range_index], callbacks);
+            stmt,
+            state,
+            &range,
+            &range_rowsets[range_index],
+            callbacks
+        );
     }
     if (status == MYLITE_OK) {
-        status = process_outer_joined_table_range_rows(stmt, state, range_rowsets, range_count,
-                                                       callbacks);
+        status = process_outer_joined_table_range_rows(
+            stmt,
+            state,
+            range_rowsets,
+            range_count,
+            callbacks
+        );
     }
 
     for (size_t index = 0U; index < range_count; ++index) {
@@ -133,10 +161,12 @@ scan_outer_joined_table_select_rows(mylite_stmt *stmt,
 }
 
 static int process_outer_joined_table_range_rows(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
-    const struct mylite_table_select_table_rowset *range_rowsets, size_t range_count,
-    const struct mylite_select_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_table_rowset *range_rowsets,
+    size_t range_count,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     size_t *row_indexes = NULL;
     bool finished = false;
     int status = MYLITE_OK;
@@ -154,8 +184,14 @@ static int process_outer_joined_table_range_rows(
     }
 
     while (!finished && !state->stop) {
-        status = process_outer_joined_table_range_row(stmt, state, range_rowsets, row_indexes,
-                                                      range_count, callbacks);
+        status = process_outer_joined_table_range_row(
+            stmt,
+            state,
+            range_rowsets,
+            row_indexes,
+            range_count,
+            callbacks
+        );
         if (status != MYLITE_OK) {
             break;
         }
@@ -179,10 +215,13 @@ static int process_outer_joined_table_range_rows(
 }
 
 static int process_outer_joined_table_range_row(
-    mylite_stmt *stmt, struct mylite_table_select_join_materialize_state *state,
-    const struct mylite_table_select_table_rowset *range_rowsets, const size_t *row_indexes,
-    size_t range_count, const struct mylite_select_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    struct mylite_table_select_join_materialize_state *state,
+    const struct mylite_table_select_table_rowset *range_rowsets,
+    const size_t *row_indexes,
+    size_t range_count,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     struct mylite_table_select_row row = {0};
     int status = MYLITE_OK;
 
@@ -221,8 +260,11 @@ static int process_outer_joined_table_range_row(
         struct mylite_select_table_range range = stmt->select_plan.from_ranges[range_index];
 
         status = mylite_select_join_row_copy_range_values(
-            &row, &range_rowsets[range_index].rows[row_indexes[range_index]], range,
-            &stmt->select_plan);
+            &row,
+            &range_rowsets[range_index].rows[row_indexes[range_index]],
+            range,
+            &stmt->select_plan
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_select_join_materialize_row(stmt, state, &row, callbacks);

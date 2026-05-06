@@ -5,8 +5,10 @@
 
 #include "mylite_select_types.h"
 
-int mylite_select_bind_from_clause(mylite_db *database,
-                                   const struct mylite_sql_ast_node *from_clause,
-                                   struct mylite_select_plan *plan);
+int mylite_select_bind_from_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    struct mylite_select_plan *plan
+);
 
 #endif

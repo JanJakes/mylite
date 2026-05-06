@@ -29,8 +29,10 @@ struct mylite_sql_parse_result {
     int parser_token;
 };
 
-enum mylite_sql_parse_status mylite_sql_parse(struct mylite_sql_parse_config config,
-                                              struct mylite_sql_parse_result *out_result);
+enum mylite_sql_parse_status mylite_sql_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *out_result
+);
 
 void mylite_sql_parse_result_deinit(struct mylite_sql_parse_result *result);
 

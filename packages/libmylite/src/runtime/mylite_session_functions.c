@@ -18,7 +18,9 @@ static const char mylite_embedded_identity[] = "mylite@localhost";
 static const int mylite_session_decimal_conversion_base = 10;
 static const uint32_t mylite_rand_max_value = 0x3fffffffU;
 static const uint64_t mylite_uuid_epoch_offset_100ns = UINT64_C(122192928000000000);
+
 static const uint64_t mylite_uuid_100ns_per_second = UINT64_C(10000000);
+
 static const uint64_t mylite_uuid_short_startup_mask = UINT64_C(0xffffffff);
 static const uint32_t mylite_uuid_short_counter_mask = 0x00ffffffU;
 static const unsigned int mylite_uuid_short_server_shift = 56U;
@@ -47,72 +49,125 @@ enum mylite_uuid_constants {
     MYLITE_UUID_SHORT_SERVER_ID_FALLBACK = 1,
 };
 
-static int
-evaluate_last_insert_id_function(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value);
-static int
-evaluate_advisory_lock_function(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
-                                const struct mylite_expression_eval_context *expression_context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
+static int evaluate_last_insert_id_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_advisory_lock_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int evaluate_advisory_lock_name_argument(
     const struct mylite_sql_ast_node *argument,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, mylite_db *database,
-    struct mylite_advisory_lock_name *out_name);
-static int
-evaluate_get_lock_timeout_argument(const struct mylite_sql_ast_node *argument,
-                                   const struct mylite_expression_eval_context *expression_context,
-                                   struct mylite_expression_warnings *warnings);
+    struct mylite_expression_warnings *warnings,
+    mylite_db *database,
+    struct mylite_advisory_lock_name *out_name
+);
+
+static int evaluate_get_lock_timeout_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings
+);
+
 static void set_signed_lock_value(uint64_t value, struct mylite_expression_value *out_value);
+
 static void set_unsigned_lock_value(uint64_t value, struct mylite_expression_value *out_value);
-static int evaluate_unix_timestamp_function(mylite_stmt *stmt,
-                                            struct mylite_expression_value *out_value);
-static int evaluate_rand_function(mylite_stmt *stmt,
-                                  const struct mylite_sql_ast_node *function_call,
-                                  const struct mylite_expression_eval_context *expression_context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value);
+
+static int evaluate_unix_timestamp_function(
+    mylite_stmt *stmt,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_rand_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int evaluate_uuid_function(mylite_stmt *stmt, struct mylite_expression_value *out_value);
-static int evaluate_uuid_short_function(mylite_stmt *stmt,
-                                        struct mylite_expression_value *out_value);
-static const struct mylite_sql_ast_node *
-rand_seed_argument(const struct mylite_sql_ast_node *function_call);
-static int
-evaluate_rand_dynamic_seed(const struct mylite_sql_ast_node *argument,
-                           const struct mylite_expression_eval_context *expression_context,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value);
-static void set_rand_output_value(struct mylite_rand_state *state,
-                                  struct mylite_expression_value *out_value);
-static int rand_state_for_function(mylite_stmt *stmt,
-                                   const struct mylite_sql_ast_node *function_call,
-                                   struct mylite_rand_state **out_state);
-static int initialize_rand_state(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_rand_state *state);
-static uint64_t unseeded_rand_seed(mylite_stmt *stmt,
-                                   const struct mylite_sql_ast_node *function_call);
+
+static int evaluate_uuid_short_function(
+    mylite_stmt *stmt,
+    struct mylite_expression_value *out_value
+);
+
+static const struct mylite_sql_ast_node *rand_seed_argument(
+    const struct mylite_sql_ast_node *function_call
+);
+
+static int evaluate_rand_dynamic_seed(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static void set_rand_output_value(
+    struct mylite_rand_state *state,
+    struct mylite_expression_value *out_value
+);
+
+static int rand_state_for_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    struct mylite_rand_state **out_state
+);
+
+static int initialize_rand_state(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_rand_state *state
+);
+
+static uint64_t unseeded_rand_seed(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call
+);
+
 static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed);
+
 static double next_rand_value(struct mylite_rand_state *state);
+
 static void next_uuid_bytes(mylite_db *database, unsigned char bytes[MYLITE_UUID_BINARY_LENGTH]);
+
 static void initialize_uuid_state(struct mylite_uuid_state *state);
+
 static uint64_t uuid_current_timestamp_100ns(void);
-static void format_uuid_text(const unsigned char bytes[MYLITE_UUID_BINARY_LENGTH],
-                             char text[MYLITE_UUID_TEXT_LENGTH + 1U]);
+
+static void format_uuid_text(
+    const unsigned char bytes[MYLITE_UUID_BINARY_LENGTH],
+    char text[MYLITE_UUID_TEXT_LENGTH + 1U]
+);
+
 static uint64_t next_uuid_short_value(mylite_db *database);
+
 static void initialize_uuid_short_state(struct mylite_uuid_short_state *state);
+
 static uint64_t current_unix_seconds(void);
+
 static uint64_t session_function_value_to_uint64(const struct mylite_expression_value *value);
 
 int mylite_session_evaluate_core_function(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, struct mylite_expression_value *out_value)
-{
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     mylite_db *database = stmt == NULL ? NULL : stmt->database;
     const struct mylite_sql_ast_node *name = NULL;
 
@@ -136,15 +191,23 @@ int mylite_session_evaluate_core_function(
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
             return 0;
         }
-        return mylite_session_set_text_function_value(database, database->selected_schema,
-                                                      out_value);
+        return mylite_session_set_text_function_value(
+            database,
+            database->selected_schema,
+            out_value
+        );
     }
     if (mylite_span_equal_ci(name->span, "VERSION")) {
         return mylite_session_set_text_function_value(database, mylite_version(), out_value);
     }
     if (mylite_span_equal_ci(name->span, "LAST_INSERT_ID")) {
-        return evaluate_last_insert_id_function(stmt, function_call, expression_context, warnings,
-                                                out_value);
+        return evaluate_last_insert_id_function(
+            stmt,
+            function_call,
+            expression_context,
+            warnings,
+            out_value
+        );
     }
     if (mylite_span_equal_ci(name->span, "UNIX_TIMESTAMP")) {
         return evaluate_unix_timestamp_function(stmt, out_value);
@@ -157,8 +220,13 @@ int mylite_session_evaluate_core_function(
         mylite_span_equal_ci(name->span, "IS_FREE_LOCK") ||
         mylite_span_equal_ci(name->span, "IS_USED_LOCK") ||
         mylite_span_equal_ci(name->span, "RELEASE_ALL_LOCKS")) {
-        return evaluate_advisory_lock_function(stmt, function_call, expression_context, warnings,
-                                               out_value);
+        return evaluate_advisory_lock_function(
+            stmt,
+            function_call,
+            expression_context,
+            warnings,
+            out_value
+        );
     }
     if (mylite_span_equal_ci(name->span, "UUID")) {
         return evaluate_uuid_function(stmt, out_value);
@@ -167,15 +235,19 @@ int mylite_session_evaluate_core_function(
         return evaluate_uuid_short_function(stmt, out_value);
     }
     if (mylite_span_equal_ci(name->span, "ROW_COUNT")) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = database->previous_row_count};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = database->previous_row_count
+        };
         return 0;
     }
     if (mylite_span_equal_ci(name->span, "FOUND_ROWS")) {
         if (mylite_expression_warnings_append(
-                warnings, MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
+                warnings,
+                MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
                 "FOUND_ROWS() is deprecated and will be removed in a future release. "
-                "Consider using COUNT(*) instead.") != 0) {
+                "Consider using COUNT(*) instead."
+            ) != 0) {
             return -1;
         }
         *out_value = (struct mylite_expression_value){
@@ -185,8 +257,10 @@ int mylite_session_evaluate_core_function(
         return 0;
     }
     if (mylite_span_equal_ci(name->span, "CONNECTION_ID")) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
-                                                      .uint64_value = database->connection_id};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+            .uint64_value = database->connection_id
+        };
         return 0;
     }
     if (mylite_span_equal_ci(name->span, "CURRENT_ROLE")) {
@@ -196,15 +270,20 @@ int mylite_session_evaluate_core_function(
         mylite_span_equal_ci(name->span, "SESSION_USER") ||
         mylite_span_equal_ci(name->span, "SYSTEM_USER") ||
         mylite_span_equal_ci(name->span, "CURRENT_USER")) {
-        return mylite_session_set_text_function_value(database, mylite_embedded_identity,
-                                                      out_value);
+        return mylite_session_set_text_function_value(
+            database,
+            mylite_embedded_identity,
+            out_value
+        );
     }
     return -1;
 }
 
-int mylite_session_set_text_function_value(mylite_db *database, const char *text,
-                                           struct mylite_expression_value *out_value)
-{
+int mylite_session_set_text_function_value(
+    mylite_db *database,
+    const char *text,
+    struct mylite_expression_value *out_value
+) {
     size_t length = text == NULL ? 0U : strlen(text);
 
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
@@ -217,12 +296,13 @@ int mylite_session_set_text_function_value(mylite_db *database, const char *text
     return MYLITE_OK;
 }
 
-static int
-evaluate_advisory_lock_function(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
-                                const struct mylite_expression_eval_context *expression_context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int evaluate_advisory_lock_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     mylite_db *database = stmt == NULL ? NULL : stmt->database;
     const struct mylite_sql_ast_node *name_node = mylite_ast_child_at(function_call, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
@@ -240,15 +320,23 @@ evaluate_advisory_lock_function(mylite_stmt *stmt, const struct mylite_sql_ast_n
         return MYLITE_OK;
     }
 
-    status = evaluate_advisory_lock_name_argument(lock_name_argument, expression_context, warnings,
-                                                  database, &lock_name);
+    status = evaluate_advisory_lock_name_argument(
+        lock_name_argument,
+        expression_context,
+        warnings,
+        database,
+        &lock_name
+    );
     if (status != MYLITE_OK) {
         return status;
     }
 
     if (mylite_span_equal_ci(name_node->span, "GET_LOCK")) {
-        status = evaluate_get_lock_timeout_argument(mylite_ast_child_at(arguments, 1U),
-                                                    expression_context, warnings);
+        status = evaluate_get_lock_timeout_argument(
+            mylite_ast_child_at(arguments, 1U),
+            expression_context,
+            warnings
+        );
         if (status == MYLITE_OK) {
             status = mylite_advisory_lock_get(database, &lock_name, &value);
         }
@@ -289,9 +377,10 @@ evaluate_advisory_lock_function(mylite_stmt *stmt, const struct mylite_sql_ast_n
 static int evaluate_advisory_lock_name_argument(
     const struct mylite_sql_ast_node *argument,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, mylite_db *database,
-    struct mylite_advisory_lock_name *out_name)
-{
+    struct mylite_expression_warnings *warnings,
+    mylite_db *database,
+    struct mylite_advisory_lock_name *out_name
+) {
     struct mylite_expression_value value = {0};
     int status = MYLITE_OK;
 
@@ -307,11 +396,11 @@ static int evaluate_advisory_lock_name_argument(
     return status;
 }
 
-static int
-evaluate_get_lock_timeout_argument(const struct mylite_sql_ast_node *argument,
-                                   const struct mylite_expression_eval_context *expression_context,
-                                   struct mylite_expression_warnings *warnings)
-{
+static int evaluate_get_lock_timeout_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings
+) {
     struct mylite_expression_value value = {0};
     int status = MYLITE_OK;
 
@@ -324,25 +413,27 @@ evaluate_get_lock_timeout_argument(const struct mylite_sql_ast_node *argument,
     return status;
 }
 
-static void set_signed_lock_value(uint64_t value, struct mylite_expression_value *out_value)
-{
+static void set_signed_lock_value(uint64_t value, struct mylite_expression_value *out_value) {
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_INT64,
-        .int64_value = value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value};
+        .int64_value = value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value
+    };
 }
 
-static void set_unsigned_lock_value(uint64_t value, struct mylite_expression_value *out_value)
-{
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
-                                                  .uint64_value = value};
+static void set_unsigned_lock_value(uint64_t value, struct mylite_expression_value *out_value) {
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+        .uint64_value = value
+    };
 }
 
-static int
-evaluate_last_insert_id_function(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
+static int evaluate_last_insert_id_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     const struct mylite_sql_ast_node *argument = mylite_ast_child_at(arguments, 0U);
     struct mylite_expression_value value = {0};
@@ -353,7 +444,9 @@ evaluate_last_insert_id_function(mylite_stmt *stmt, const struct mylite_sql_ast_
     }
     if (argument == NULL) {
         *out_value = (struct mylite_expression_value){
-            .kind = MYLITE_EXPRESSION_VALUE_UINT64, .uint64_value = stmt->database->last_insert_id};
+            .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+            .uint64_value = stmt->database->last_insert_id
+        };
         return 0;
     }
 
@@ -371,31 +464,37 @@ evaluate_last_insert_id_function(mylite_stmt *stmt, const struct mylite_sql_ast_
 
     stmt->database->last_insert_id = session_function_value_to_uint64(&value);
     mylite_expression_value_deinit(&value);
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
-                                                  .uint64_value = stmt->database->last_insert_id};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+        .uint64_value = stmt->database->last_insert_id
+    };
     return 0;
 }
 
-static int evaluate_unix_timestamp_function(mylite_stmt *stmt,
-                                            struct mylite_expression_value *out_value)
-{
+static int evaluate_unix_timestamp_function(
+    mylite_stmt *stmt,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_statement_timestamp *timestamp = NULL;
     int status = mylite_temporal_statement_timestamp(stmt, &timestamp);
 
     if (status != MYLITE_OK) {
         return status;
     }
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = (int64_t)timestamp->seconds};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = (int64_t)timestamp->seconds
+    };
     return MYLITE_OK;
 }
 
-static int evaluate_rand_function(mylite_stmt *stmt,
-                                  const struct mylite_sql_ast_node *function_call,
-                                  const struct mylite_expression_eval_context *expression_context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value)
-{
+static int evaluate_rand_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *argument = rand_seed_argument(function_call);
     struct mylite_rand_state *state = NULL;
     int status = MYLITE_OK;
@@ -419,20 +518,20 @@ static int evaluate_rand_function(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-static const struct mylite_sql_ast_node *
-rand_seed_argument(const struct mylite_sql_ast_node *function_call)
-{
+static const struct mylite_sql_ast_node *rand_seed_argument(
+    const struct mylite_sql_ast_node *function_call
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
 
     return mylite_ast_child_at(arguments, 0U);
 }
 
-static int
-evaluate_rand_dynamic_seed(const struct mylite_sql_ast_node *argument,
-                           const struct mylite_expression_eval_context *expression_context,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value)
-{
+static int evaluate_rand_dynamic_seed(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value seed_value = {0};
     struct mylite_rand_state state = {0};
     int status =
@@ -448,9 +547,10 @@ evaluate_rand_dynamic_seed(const struct mylite_sql_ast_node *argument,
     return MYLITE_OK;
 }
 
-static void set_rand_output_value(struct mylite_rand_state *state,
-                                  struct mylite_expression_value *out_value)
-{
+static void set_rand_output_value(
+    struct mylite_rand_state *state,
+    struct mylite_expression_value *out_value
+) {
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_REAL,
         .real_value = next_rand_value(state),
@@ -458,10 +558,11 @@ static void set_rand_output_value(struct mylite_rand_state *state,
     };
 }
 
-static int rand_state_for_function(mylite_stmt *stmt,
-                                   const struct mylite_sql_ast_node *function_call,
-                                   struct mylite_rand_state **out_state)
-{
+static int rand_state_for_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    struct mylite_rand_state **out_state
+) {
     struct mylite_rand_state *states = NULL;
     size_t next_count = 0U;
 
@@ -494,11 +595,13 @@ static int rand_state_for_function(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-static int initialize_rand_state(mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
-                                 const struct mylite_expression_eval_context *expression_context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_rand_state *state)
-{
+static int initialize_rand_state(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_rand_state *state
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     const struct mylite_sql_ast_node *argument = mylite_ast_child_at(arguments, 0U);
     struct mylite_expression_value seed_value = {0};
@@ -522,9 +625,10 @@ static int initialize_rand_state(mylite_stmt *stmt, const struct mylite_sql_ast_
     return MYLITE_OK;
 }
 
-static uint64_t unseeded_rand_seed(mylite_stmt *stmt,
-                                   const struct mylite_sql_ast_node *function_call)
-{
+static uint64_t unseeded_rand_seed(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call
+) {
     const struct mylite_statement_timestamp *timestamp = NULL;
     uint64_t seed = (uint64_t)(uintptr_t)function_call ^ (uint64_t)(uintptr_t)stmt;
 
@@ -538,8 +642,7 @@ static uint64_t unseeded_rand_seed(mylite_stmt *stmt,
     return seed;
 }
 
-static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed)
-{
+static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed) {
     uint64_t reduced = seed % (uint64_t)mylite_rand_max_value;
 
     state->seed1 = (uint32_t)(((reduced * UINT64_C(0x10001)) + UINT64_C(55555555)) %
@@ -548,8 +651,7 @@ static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed)
     state->initialized = true;
 }
 
-static double next_rand_value(struct mylite_rand_state *state)
-{
+static double next_rand_value(struct mylite_rand_state *state) {
     state->seed1 = (uint32_t)((((uint64_t)state->seed1 * 3U) + state->seed2) %
                               (uint64_t)mylite_rand_max_value);
     state->seed2 =
@@ -557,8 +659,7 @@ static double next_rand_value(struct mylite_rand_state *state)
     return (double)state->seed1 / (double)mylite_rand_max_value;
 }
 
-static int evaluate_uuid_function(mylite_stmt *stmt, struct mylite_expression_value *out_value)
-{
+static int evaluate_uuid_function(mylite_stmt *stmt, struct mylite_expression_value *out_value) {
     unsigned char bytes[MYLITE_UUID_BINARY_LENGTH] = {0};
     char text[MYLITE_UUID_TEXT_LENGTH + 1U] = {0};
 
@@ -570,9 +671,10 @@ static int evaluate_uuid_function(mylite_stmt *stmt, struct mylite_expression_va
     return mylite_session_set_text_function_value(stmt->database, text, out_value);
 }
 
-static int evaluate_uuid_short_function(mylite_stmt *stmt,
-                                        struct mylite_expression_value *out_value)
-{
+static int evaluate_uuid_short_function(
+    mylite_stmt *stmt,
+    struct mylite_expression_value *out_value
+) {
     if (stmt == NULL || stmt->database == NULL) {
         return -1;
     }
@@ -583,8 +685,7 @@ static int evaluate_uuid_short_function(mylite_stmt *stmt,
     return 0;
 }
 
-static void next_uuid_bytes(mylite_db *database, unsigned char bytes[MYLITE_UUID_BINARY_LENGTH])
-{
+static void next_uuid_bytes(mylite_db *database, unsigned char bytes[MYLITE_UUID_BINARY_LENGTH]) {
     struct mylite_uuid_state *state = &database->uuid_state;
     uint64_t timestamp = uuid_current_timestamp_100ns();
     uint32_t time_low = 0U;
@@ -624,8 +725,7 @@ static void next_uuid_bytes(mylite_db *database, unsigned char bytes[MYLITE_UUID
     memcpy(bytes + MYLITE_UUID_NODE_OFFSET, state->node, MYLITE_UUID_NODE_LENGTH);
 }
 
-static void initialize_uuid_state(struct mylite_uuid_state *state)
-{
+static void initialize_uuid_state(struct mylite_uuid_state *state) {
     unsigned char random[MYLITE_UUID_RANDOM_BYTES] = {0};
 
     sqlite3_randomness((int)sizeof(random), random);
@@ -636,8 +736,7 @@ static void initialize_uuid_state(struct mylite_uuid_state *state)
     state->initialized = true;
 }
 
-static uint64_t uuid_current_timestamp_100ns(void)
-{
+static uint64_t uuid_current_timestamp_100ns(void) {
 #ifdef TIME_UTC
     struct timespec timestamp;
 
@@ -658,9 +757,10 @@ static uint64_t uuid_current_timestamp_100ns(void)
     }
 }
 
-static void format_uuid_text(const unsigned char bytes[MYLITE_UUID_BINARY_LENGTH],
-                             char text[MYLITE_UUID_TEXT_LENGTH + 1U])
-{
+static void format_uuid_text(
+    const unsigned char bytes[MYLITE_UUID_BINARY_LENGTH],
+    char text[MYLITE_UUID_TEXT_LENGTH + 1U]
+) {
     static const char digits[] = "0123456789abcdef";
     size_t output = 0U;
 
@@ -675,8 +775,7 @@ static void format_uuid_text(const unsigned char bytes[MYLITE_UUID_BINARY_LENGTH
     text[output] = '\0';
 }
 
-static uint64_t next_uuid_short_value(mylite_db *database)
-{
+static uint64_t next_uuid_short_value(mylite_db *database) {
     struct mylite_uuid_short_state *state = &database->uuid_short_state;
     uint32_t counter = 0U;
     uint64_t startup_seconds = 0U;
@@ -702,8 +801,7 @@ static uint64_t next_uuid_short_value(mylite_db *database)
     return value;
 }
 
-static void initialize_uuid_short_state(struct mylite_uuid_short_state *state)
-{
+static void initialize_uuid_short_state(struct mylite_uuid_short_state *state) {
     unsigned char random[MYLITE_UUID_SHORT_RANDOM_BYTES] = {0};
 
     sqlite3_randomness((int)sizeof(random), random);
@@ -718,8 +816,7 @@ static void initialize_uuid_short_state(struct mylite_uuid_short_state *state)
     state->initialized = true;
 }
 
-static uint64_t current_unix_seconds(void)
-{
+static uint64_t current_unix_seconds(void) {
     time_t seconds = time(NULL);
 
     if (seconds == (time_t)-1 || seconds < (time_t)0) {
@@ -728,8 +825,7 @@ static uint64_t current_unix_seconds(void)
     return (uint64_t)seconds;
 }
 
-static uint64_t session_function_value_to_uint64(const struct mylite_expression_value *value)
-{
+static uint64_t session_function_value_to_uint64(const struct mylite_expression_value *value) {
     if (value == NULL) {
         return 0U;
     }
@@ -745,8 +841,9 @@ static uint64_t session_function_value_to_uint64(const struct mylite_expression_
     case MYLITE_EXPRESSION_VALUE_TEXT:
         return value->text_value == NULL
                    ? 0U
-                   : (uint64_t)strtoull(value->text_value, NULL,
-                                        mylite_session_decimal_conversion_base);
+                   : (
+                         uint64_t
+                     )strtoull(value->text_value, NULL, mylite_session_decimal_conversion_base);
     }
     return 0U;
 }

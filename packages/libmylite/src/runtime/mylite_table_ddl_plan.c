@@ -4,8 +4,7 @@
 
 static void create_table_options_deinit(struct mylite_create_table_options *options);
 
-void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *plan)
-{
+void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -24,8 +23,7 @@ void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *
     *plan = (struct mylite_create_table_plan){0};
 }
 
-void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan)
-{
+void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -37,8 +35,7 @@ void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan
     *plan = (struct mylite_drop_table_plan){0};
 }
 
-void mylite_table_ddl_rename_table_plan_deinit(struct mylite_rename_table_plan *plan)
-{
+void mylite_table_ddl_rename_table_plan_deinit(struct mylite_rename_table_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -50,8 +47,7 @@ void mylite_table_ddl_rename_table_plan_deinit(struct mylite_rename_table_plan *
     *plan = (struct mylite_rename_table_plan){0};
 }
 
-void mylite_table_ddl_truncate_table_plan_deinit(struct mylite_truncate_table_plan *plan)
-{
+void mylite_table_ddl_truncate_table_plan_deinit(struct mylite_truncate_table_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -61,8 +57,7 @@ void mylite_table_ddl_truncate_table_plan_deinit(struct mylite_truncate_table_pl
     *plan = (struct mylite_truncate_table_plan){0};
 }
 
-void mylite_table_ddl_alter_table_plan_deinit(struct mylite_alter_table_plan *plan)
-{
+void mylite_table_ddl_alter_table_plan_deinit(struct mylite_alter_table_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -78,8 +73,7 @@ void mylite_table_ddl_alter_table_plan_deinit(struct mylite_alter_table_plan *pl
     *plan = (struct mylite_alter_table_plan){0};
 }
 
-void mylite_table_ddl_index_ddl_plan_deinit(struct mylite_index_ddl_plan *plan)
-{
+void mylite_table_ddl_index_ddl_plan_deinit(struct mylite_index_ddl_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -91,8 +85,7 @@ void mylite_table_ddl_index_ddl_plan_deinit(struct mylite_index_ddl_plan *plan)
     *plan = (struct mylite_index_ddl_plan){0};
 }
 
-void mylite_table_ddl_drop_table_target_deinit(struct mylite_drop_table_target *target)
-{
+void mylite_table_ddl_drop_table_target_deinit(struct mylite_drop_table_target *target) {
     if (target == NULL) {
         return;
     }
@@ -102,8 +95,7 @@ void mylite_table_ddl_drop_table_target_deinit(struct mylite_drop_table_target *
     *target = (struct mylite_drop_table_target){0};
 }
 
-void mylite_table_ddl_rename_table_target_deinit(struct mylite_rename_table_target *target)
-{
+void mylite_table_ddl_rename_table_target_deinit(struct mylite_rename_table_target *target) {
     if (target == NULL) {
         return;
     }
@@ -115,8 +107,7 @@ void mylite_table_ddl_rename_table_target_deinit(struct mylite_rename_table_targ
     *target = (struct mylite_rename_table_target){0};
 }
 
-void mylite_table_ddl_alter_table_model_deinit(struct mylite_alter_table_model *model)
-{
+void mylite_table_ddl_alter_table_model_deinit(struct mylite_alter_table_model *model) {
     if (model == NULL) {
         return;
     }
@@ -136,8 +127,7 @@ void mylite_table_ddl_alter_table_model_deinit(struct mylite_alter_table_model *
     *model = (struct mylite_alter_table_model){0};
 }
 
-void mylite_table_ddl_alter_table_column_deinit(struct mylite_alter_table_column *column)
-{
+void mylite_table_ddl_alter_table_column_deinit(struct mylite_alter_table_column *column) {
     if (column == NULL) {
         return;
     }
@@ -157,8 +147,7 @@ void mylite_table_ddl_alter_table_column_deinit(struct mylite_alter_table_column
     *column = (struct mylite_alter_table_column){0};
 }
 
-void mylite_table_ddl_alter_table_index_deinit(struct mylite_alter_table_index *index)
-{
+void mylite_table_ddl_alter_table_index_deinit(struct mylite_alter_table_index *index) {
     if (index == NULL) {
         return;
     }
@@ -176,8 +165,7 @@ void mylite_table_ddl_alter_table_index_deinit(struct mylite_alter_table_index *
     *index = (struct mylite_alter_table_index){0};
 }
 
-void mylite_table_ddl_alter_table_index_part_deinit(struct mylite_alter_table_index_part *part)
-{
+void mylite_table_ddl_alter_table_index_part_deinit(struct mylite_alter_table_index_part *part) {
     if (part == NULL) {
         return;
     }
@@ -188,8 +176,7 @@ void mylite_table_ddl_alter_table_index_part_deinit(struct mylite_alter_table_in
     *part = (struct mylite_alter_table_index_part){0};
 }
 
-void mylite_table_ddl_create_table_column_deinit(struct mylite_create_table_column *column)
-{
+void mylite_table_ddl_create_table_column_deinit(struct mylite_create_table_column *column) {
     if (column == NULL) {
         return;
     }
@@ -202,8 +189,7 @@ void mylite_table_ddl_create_table_column_deinit(struct mylite_create_table_colu
     *column = (struct mylite_create_table_column){0};
 }
 
-void mylite_table_ddl_create_table_index_deinit(struct mylite_create_table_index *index)
-{
+void mylite_table_ddl_create_table_index_deinit(struct mylite_create_table_index *index) {
     if (index == NULL) {
         return;
     }
@@ -217,8 +203,7 @@ void mylite_table_ddl_create_table_index_deinit(struct mylite_create_table_index
     *index = (struct mylite_create_table_index){0};
 }
 
-void mylite_table_ddl_create_table_key_part_deinit(struct mylite_create_table_key_part *part)
-{
+void mylite_table_ddl_create_table_key_part_deinit(struct mylite_create_table_key_part *part) {
     if (part == NULL) {
         return;
     }
@@ -227,8 +212,7 @@ void mylite_table_ddl_create_table_key_part_deinit(struct mylite_create_table_ke
     *part = (struct mylite_create_table_key_part){0};
 }
 
-void mylite_table_ddl_alter_table_action_deinit(struct mylite_alter_table_action *action)
-{
+void mylite_table_ddl_alter_table_action_deinit(struct mylite_alter_table_action *action) {
     if (action == NULL) {
         return;
     }
@@ -242,8 +226,7 @@ void mylite_table_ddl_alter_table_action_deinit(struct mylite_alter_table_action
     *action = (struct mylite_alter_table_action){0};
 }
 
-static void create_table_options_deinit(struct mylite_create_table_options *options)
-{
+static void create_table_options_deinit(struct mylite_create_table_options *options) {
     if (options == NULL) {
         return;
     }

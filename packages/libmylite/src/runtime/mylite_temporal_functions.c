@@ -15,24 +15,50 @@ static const long mylite_temporal_nanoseconds_per_microsecond = 1000L;
 static const long mylite_temporal_max_microsecond = 999999L;
 
 static int ensure_statement_timestamp(mylite_stmt *stmt);
-static void capture_current_utc_timestamp(struct mylite_statement_timestamp *out_timestamp);
-static int set_current_temporal_datetime_value(mylite_stmt *stmt, unsigned int fsp,
-                                               struct mylite_expression_value *out_value);
-static int set_current_temporal_date_value(mylite_stmt *stmt,
-                                           struct mylite_expression_value *out_value);
-static int set_current_temporal_time_value(mylite_stmt *stmt, unsigned int fsp,
-                                           struct mylite_expression_value *out_value);
-static int set_current_temporal_value(mylite_stmt *stmt, const char *format, size_t base_length,
-                                      unsigned int fsp, struct mylite_expression_value *out_value);
-static bool temporal_fsp_from_literal(const struct mylite_sql_ast_node *argument,
-                                      unsigned int *out_fsp);
-static bool temporal_function_name_matches_any(const struct mylite_sql_ast_node *name,
-                                               const char *const *names, size_t name_count);
 
-int mylite_temporal_evaluate_current_function(mylite_stmt *stmt,
-                                              const struct mylite_sql_ast_node *function_call,
-                                              struct mylite_expression_value *out_value)
-{
+static void capture_current_utc_timestamp(struct mylite_statement_timestamp *out_timestamp);
+
+static int set_current_temporal_datetime_value(
+    mylite_stmt *stmt,
+    unsigned int fsp,
+    struct mylite_expression_value *out_value
+);
+
+static int set_current_temporal_date_value(
+    mylite_stmt *stmt,
+    struct mylite_expression_value *out_value
+);
+
+static int set_current_temporal_time_value(
+    mylite_stmt *stmt,
+    unsigned int fsp,
+    struct mylite_expression_value *out_value
+);
+
+static int set_current_temporal_value(
+    mylite_stmt *stmt,
+    const char *format,
+    size_t base_length,
+    unsigned int fsp,
+    struct mylite_expression_value *out_value
+);
+
+static bool temporal_fsp_from_literal(
+    const struct mylite_sql_ast_node *argument,
+    unsigned int *out_fsp
+);
+
+static bool temporal_function_name_matches_any(
+    const struct mylite_sql_ast_node *name,
+    const char *const *names,
+    size_t name_count
+);
+
+int mylite_temporal_evaluate_current_function(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(function_call, 0U);
     unsigned int fsp = 0U;
 
@@ -52,9 +78,10 @@ int mylite_temporal_evaluate_current_function(mylite_stmt *stmt,
     return -1;
 }
 
-int mylite_temporal_statement_timestamp(mylite_stmt *stmt,
-                                        const struct mylite_statement_timestamp **out_timestamp)
-{
+int mylite_temporal_statement_timestamp(
+    mylite_stmt *stmt,
+    const struct mylite_statement_timestamp **out_timestamp
+) {
     int status = 0;
 
     if (out_timestamp == NULL) {
@@ -68,9 +95,10 @@ int mylite_temporal_statement_timestamp(mylite_stmt *stmt,
     return MYLITE_OK;
 }
 
-bool mylite_temporal_current_function_fsp(const struct mylite_sql_ast_node *function_call,
-                                          unsigned int *out_fsp)
-{
+bool mylite_temporal_current_function_fsp(
+    const struct mylite_sql_ast_node *function_call,
+    unsigned int *out_fsp
+) {
     const struct mylite_sql_ast_node *arguments = NULL;
     size_t arity = 0U;
 
@@ -100,8 +128,7 @@ bool mylite_temporal_current_function_fsp(const struct mylite_sql_ast_node *func
     return false;
 }
 
-bool mylite_temporal_function_name_is_current(const struct mylite_sql_ast_node *name)
-{
+bool mylite_temporal_function_name_is_current(const struct mylite_sql_ast_node *name) {
     if (mylite_temporal_function_name_is_current_datetime(name) ||
         mylite_temporal_function_name_is_current_date(name)) {
         return true;
@@ -109,29 +136,25 @@ bool mylite_temporal_function_name_is_current(const struct mylite_sql_ast_node *
     return mylite_temporal_function_name_is_current_time(name);
 }
 
-bool mylite_temporal_function_name_is_current_datetime(const struct mylite_sql_ast_node *name)
-{
+bool mylite_temporal_function_name_is_current_datetime(const struct mylite_sql_ast_node *name) {
     static const char *const names[] = {"NOW", "LOCALTIME", "LOCALTIMESTAMP", "UTC_TIMESTAMP"};
 
     return temporal_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
-bool mylite_temporal_function_name_is_current_date(const struct mylite_sql_ast_node *name)
-{
+bool mylite_temporal_function_name_is_current_date(const struct mylite_sql_ast_node *name) {
     static const char *const names[] = {"CURDATE", "CURRENT_DATE", "UTC_DATE"};
 
     return temporal_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
-bool mylite_temporal_function_name_is_current_time(const struct mylite_sql_ast_node *name)
-{
+bool mylite_temporal_function_name_is_current_time(const struct mylite_sql_ast_node *name) {
     static const char *const names[] = {"CURTIME", "CURRENT_TIME", "UTC_TIME"};
 
     return temporal_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }
 
-static int ensure_statement_timestamp(mylite_stmt *stmt)
-{
+static int ensure_statement_timestamp(mylite_stmt *stmt) {
     if (stmt == NULL) {
         return -1;
     }
@@ -142,8 +165,7 @@ static int ensure_statement_timestamp(mylite_stmt *stmt)
     return MYLITE_OK;
 }
 
-static void capture_current_utc_timestamp(struct mylite_statement_timestamp *out_timestamp)
-{
+static void capture_current_utc_timestamp(struct mylite_statement_timestamp *out_timestamp) {
     time_t seconds = time(NULL);
     long microseconds = 0;
 
@@ -162,11 +184,18 @@ static void capture_current_utc_timestamp(struct mylite_statement_timestamp *out
     };
 }
 
-static int set_current_temporal_datetime_value(mylite_stmt *stmt, unsigned int fsp,
-                                               struct mylite_expression_value *out_value)
-{
+static int set_current_temporal_datetime_value(
+    mylite_stmt *stmt,
+    unsigned int fsp,
+    struct mylite_expression_value *out_value
+) {
     int status = set_current_temporal_value(
-        stmt, "%Y-%m-%d %H:%M:%S", (size_t)mylite_mysql_datetime_display_length, fsp, out_value);
+        stmt,
+        "%Y-%m-%d %H:%M:%S",
+        (size_t)mylite_mysql_datetime_display_length,
+        fsp,
+        out_value
+    );
 
     if (status == MYLITE_OK) {
         out_value->temporal_type = MYLITE_EXPRESSION_TEMPORAL_DATETIME;
@@ -174,11 +203,17 @@ static int set_current_temporal_datetime_value(mylite_stmt *stmt, unsigned int f
     return status;
 }
 
-static int set_current_temporal_date_value(mylite_stmt *stmt,
-                                           struct mylite_expression_value *out_value)
-{
+static int set_current_temporal_date_value(
+    mylite_stmt *stmt,
+    struct mylite_expression_value *out_value
+) {
     int status = set_current_temporal_value(
-        stmt, "%Y-%m-%d", (size_t)mylite_mysql_date_display_length, 0U, out_value);
+        stmt,
+        "%Y-%m-%d",
+        (size_t)mylite_mysql_date_display_length,
+        0U,
+        out_value
+    );
 
     if (status == MYLITE_OK) {
         out_value->temporal_type = MYLITE_EXPRESSION_TEMPORAL_DATE;
@@ -186,11 +221,18 @@ static int set_current_temporal_date_value(mylite_stmt *stmt,
     return status;
 }
 
-static int set_current_temporal_time_value(mylite_stmt *stmt, unsigned int fsp,
-                                           struct mylite_expression_value *out_value)
-{
+static int set_current_temporal_time_value(
+    mylite_stmt *stmt,
+    unsigned int fsp,
+    struct mylite_expression_value *out_value
+) {
     int status = set_current_temporal_value(
-        stmt, "%H:%M:%S", (size_t)mylite_mysql_current_time_display_length, fsp, out_value);
+        stmt,
+        "%H:%M:%S",
+        (size_t)mylite_mysql_current_time_display_length,
+        fsp,
+        out_value
+    );
 
     if (status == MYLITE_OK) {
         out_value->temporal_type = MYLITE_EXPRESSION_TEMPORAL_TIME;
@@ -198,10 +240,15 @@ static int set_current_temporal_time_value(mylite_stmt *stmt, unsigned int fsp,
     return status;
 }
 
-static int set_current_temporal_value(mylite_stmt *stmt, const char *format, size_t base_length,
-                                      unsigned int fsp, struct mylite_expression_value *out_value)
-{
+static int set_current_temporal_value(
+    mylite_stmt *stmt,
+    const char *format,
+    size_t base_length,
+    unsigned int fsp,
+    struct mylite_expression_value *out_value
+) {
     enum { microsecond_text_length = 6U };
+
     char microsecond_text[microsecond_text_length + 1U];
     struct tm tm_value;
     size_t text_length = base_length + (fsp == 0U ? 0U : 1U + fsp);
@@ -258,10 +305,12 @@ static int set_current_temporal_value(mylite_stmt *stmt, const char *format, siz
     return MYLITE_OK;
 }
 
-static bool temporal_fsp_from_literal(const struct mylite_sql_ast_node *argument,
-                                      unsigned int *out_fsp)
-{
+static bool temporal_fsp_from_literal(
+    const struct mylite_sql_ast_node *argument,
+    unsigned int *out_fsp
+) {
     enum { max_fsp = 6U, decimal_base = 10U };
+
     unsigned int value = 0U;
 
     if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL ||
@@ -283,9 +332,11 @@ static bool temporal_fsp_from_literal(const struct mylite_sql_ast_node *argument
     return true;
 }
 
-static bool temporal_function_name_matches_any(const struct mylite_sql_ast_node *name,
-                                               const char *const *names, size_t name_count)
-{
+static bool temporal_function_name_matches_any(
+    const struct mylite_sql_ast_node *name,
+    const char *const *names,
+    size_t name_count
+) {
     if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
         return false;
     }

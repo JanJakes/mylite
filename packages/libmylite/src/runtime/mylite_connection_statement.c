@@ -14,71 +14,137 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_connection_charset_statement(const struct mylite_sql_ast_node *statement,
-                                             struct mylite_connection_charset_plan *plan);
-static int
-copy_connection_system_variable_statement(mylite_db *database,
-                                          const struct mylite_sql_ast_node *statement,
-                                          struct mylite_connection_system_variable_plan *plan);
-static int execute_set_default_storage_engine_statement(
-    mylite_stmt *stmt, const struct mylite_connection_system_variable_plan *plan);
-static int
-execute_set_foreign_key_checks_statement(mylite_stmt *stmt,
-                                         const struct mylite_connection_system_variable_plan *plan);
-static int execute_set_group_concat_max_len_statement(
-    mylite_stmt *stmt, const struct mylite_connection_system_variable_plan *plan);
-static int
-execute_set_time_zone_statement(mylite_stmt *stmt,
-                                const struct mylite_connection_system_variable_plan *plan);
-static int
-execute_set_sql_mode_statement(mylite_stmt *stmt,
-                               const struct mylite_connection_system_variable_plan *plan);
-static int
-execute_set_unique_checks_statement(mylite_stmt *stmt,
-                                    const struct mylite_connection_system_variable_plan *plan);
-static int
-execute_set_wait_timeout_statement(mylite_stmt *stmt,
-                                   const struct mylite_connection_system_variable_plan *plan);
-static int
-copy_connection_group_concat_max_len_value(mylite_db *database,
-                                           const struct mylite_sql_ast_node *value,
-                                           struct mylite_connection_system_variable_plan *plan);
-static int copy_connection_boolean_system_variable_value(
-    mylite_db *database, const struct mylite_sql_ast_node *value, const char *variable_name,
-    struct mylite_connection_system_variable_plan *plan);
-static int copy_connection_unsigned_system_variable_value(
-    mylite_db *database, const struct mylite_sql_ast_node *value, const char *variable_name,
-    struct mylite_connection_system_variable_plan *plan);
-static int copy_connection_string_system_variable_value(
-    mylite_db *database, const struct mylite_sql_ast_node *value, const char *variable_name,
-    struct mylite_connection_system_variable_plan *plan);
-static int
-copy_connection_sql_mode_replace_statement(mylite_db *database,
-                                           const struct mylite_sql_ast_node *value,
-                                           struct mylite_connection_system_variable_plan *plan);
-static enum mylite_connection_system_variable set_system_variable_kind(const char *variable,
-                                                                       bool *out_global_scope);
-static bool system_variable_prefix_match(const char *variable, const char *prefix,
-                                         const char **out_name);
-static const char *set_system_variable_name(enum mylite_connection_system_variable variable);
-static int set_system_variable_global_error(mylite_db *database,
-                                            enum mylite_connection_system_variable variable);
-static int set_system_variable_type_error(mylite_db *database, const char *variable_name);
-static int set_system_variable_wrong_value_error(mylite_db *database, const char *variable_name,
-                                                 const struct mylite_sql_ast_node *value);
-static int set_group_concat_max_len_type_error(mylite_db *database);
-static int append_group_concat_max_len_truncation_warning(mylite_db *database, const char *value);
-static bool copy_signed_integer_value(const struct mylite_sql_ast_node *value, bool *out_negative,
-                                      uint64_t *out_magnitude);
-static bool parse_uint64_text(const char *text, size_t length, uint64_t *out_value);
-static int execute_set_sql_mode_replace_statement(mylite_stmt *stmt);
-static char *replace_sql_mode_text(mylite_db *database, const char *value, const char *search,
-                                   const char *replacement);
+static int copy_connection_charset_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_connection_charset_plan *plan
+);
 
-int mylite_connection_prepare_charset_statement(mylite_db *database,
-                                                const struct mylite_sql_ast_node *statement,
-                                                mylite_stmt **out_stmt)
-{
+static int copy_connection_system_variable_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_connection_system_variable_plan *plan
+);
+
+static int execute_set_default_storage_engine_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
+static int execute_set_foreign_key_checks_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
+static int execute_set_group_concat_max_len_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
+static int execute_set_time_zone_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
+static int execute_set_sql_mode_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
+static int execute_set_unique_checks_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
+static int execute_set_wait_timeout_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
+static int copy_connection_group_concat_max_len_value(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    struct mylite_connection_system_variable_plan *plan
+);
+
+static int copy_connection_boolean_system_variable_value(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    const char *variable_name,
+    struct mylite_connection_system_variable_plan *plan
+);
+
+static int copy_connection_unsigned_system_variable_value(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    const char *variable_name,
+    struct mylite_connection_system_variable_plan *plan
+);
+
+static int copy_connection_string_system_variable_value(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    const char *variable_name,
+    struct mylite_connection_system_variable_plan *plan
+);
+
+static int copy_connection_sql_mode_replace_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    struct mylite_connection_system_variable_plan *plan
+);
+
+static enum mylite_connection_system_variable set_system_variable_kind(
+    const char *variable,
+    bool *out_global_scope
+);
+
+static bool system_variable_prefix_match(
+    const char *variable,
+    const char *prefix,
+    const char **out_name
+);
+
+static const char *set_system_variable_name(enum mylite_connection_system_variable variable);
+
+static int set_system_variable_global_error(
+    mylite_db *database,
+    enum mylite_connection_system_variable variable
+);
+
+static int set_system_variable_type_error(mylite_db *database, const char *variable_name);
+
+static int set_system_variable_wrong_value_error(
+    mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value
+);
+
+static int set_group_concat_max_len_type_error(mylite_db *database);
+
+static int append_group_concat_max_len_truncation_warning(mylite_db *database, const char *value);
+
+static bool copy_signed_integer_value(
+    const struct mylite_sql_ast_node *value,
+    bool *out_negative,
+    uint64_t *out_magnitude
+);
+
+static bool parse_uint64_text(const char *text, size_t length, uint64_t *out_value);
+
+static int execute_set_sql_mode_replace_statement(mylite_stmt *stmt);
+
+static char *replace_sql_mode_text(
+    mylite_db *database,
+    const char *value,
+    const char *search,
+    const char *replacement
+);
+
+int mylite_connection_prepare_charset_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     mylite_stmt *stmt = NULL;
     enum mylite_stmt_kind kind = MYLITE_STMT_SQLITE;
     int status = MYLITE_OK;
@@ -116,10 +182,11 @@ int mylite_connection_prepare_charset_statement(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_connection_prepare_system_variable_statement(mylite_db *database,
-                                                        const struct mylite_sql_ast_node *statement,
-                                                        mylite_stmt **out_stmt)
-{
+int mylite_connection_prepare_system_variable_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     mylite_stmt *stmt = calloc(1U, sizeof(*stmt));
     int status = MYLITE_OK;
 
@@ -134,8 +201,11 @@ int mylite_connection_prepare_system_variable_statement(mylite_db *database,
         .affected_rows = 0,
     };
 
-    status = copy_connection_system_variable_statement(database, statement,
-                                                       &stmt->connection_system_variable);
+    status = copy_connection_system_variable_statement(
+        database,
+        statement,
+        &stmt->connection_system_variable
+    );
     if (status != MYLITE_OK) {
         if (status == MYLITE_NOMEM) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -148,33 +218,34 @@ int mylite_connection_prepare_system_variable_statement(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_connection_execute_set_names_statement(mylite_stmt *stmt)
-{
+int mylite_connection_execute_set_names_statement(mylite_stmt *stmt) {
     const struct mylite_connection_charset_plan *plan = &stmt->connection_charset;
 
     if (plan->use_default) {
         return mylite_connection_set_default_state(stmt->database);
     }
-    return mylite_connection_set_names_state(stmt->database,
-                                             (struct mylite_connection_names_state){
-                                                 .character_set_name = plan->character_set_name,
-                                                 .collation_name = plan->collation_name,
-                                             });
+    return mylite_connection_set_names_state(
+        stmt->database,
+        (struct mylite_connection_names_state){
+            .character_set_name = plan->character_set_name,
+            .collation_name = plan->collation_name,
+        }
+    );
 }
 
-int mylite_connection_execute_set_character_set_statement(mylite_stmt *stmt)
-{
+int mylite_connection_execute_set_character_set_statement(mylite_stmt *stmt) {
     const struct mylite_connection_charset_plan *plan = &stmt->connection_charset;
 
     if (plan->use_default) {
-        return mylite_connection_set_character_set_state(stmt->database,
-                                                         mylite_charset_default_name());
+        return mylite_connection_set_character_set_state(
+            stmt->database,
+            mylite_charset_default_name()
+        );
     }
     return mylite_connection_set_character_set_state(stmt->database, plan->character_set_name);
 }
 
-int mylite_connection_execute_set_system_variable_statement(mylite_stmt *stmt)
-{
+int mylite_connection_execute_set_system_variable_statement(mylite_stmt *stmt) {
     const struct mylite_connection_system_variable_plan *plan = &stmt->connection_system_variable;
 
     switch (plan->variable) {
@@ -201,18 +272,19 @@ int mylite_connection_execute_set_system_variable_statement(mylite_stmt *stmt)
 }
 
 static int execute_set_default_storage_engine_statement(
-    mylite_stmt *stmt, const struct mylite_connection_system_variable_plan *plan)
-{
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
     if (plan->use_default) {
         return mylite_connection_set_default_storage_engine(stmt->database);
     }
     return mylite_connection_set_storage_engine(stmt->database, plan->value);
 }
 
-static int
-execute_set_foreign_key_checks_statement(mylite_stmt *stmt,
-                                         const struct mylite_connection_system_variable_plan *plan)
-{
+static int execute_set_foreign_key_checks_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
     if (plan->use_default) {
         return mylite_connection_set_default_foreign_key_checks(stmt->database);
     }
@@ -220,8 +292,9 @@ execute_set_foreign_key_checks_statement(mylite_stmt *stmt,
 }
 
 static int execute_set_group_concat_max_len_statement(
-    mylite_stmt *stmt, const struct mylite_connection_system_variable_plan *plan)
-{
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
     int status = MYLITE_OK;
 
     if (plan->use_default) {
@@ -234,19 +307,20 @@ static int execute_set_group_concat_max_len_statement(
     return status;
 }
 
-static int
-execute_set_time_zone_statement(mylite_stmt *stmt,
-                                const struct mylite_connection_system_variable_plan *plan)
-{
+static int execute_set_time_zone_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
     if (plan->use_default) {
         return mylite_connection_set_default_time_zone(stmt->database);
     }
     return mylite_connection_set_time_zone(stmt->database, plan->value);
 }
 
-static int execute_set_sql_mode_statement(mylite_stmt *stmt,
-                                          const struct mylite_connection_system_variable_plan *plan)
-{
+static int execute_set_sql_mode_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
     if (plan->use_default) {
         return mylite_connection_set_default_sql_mode(stmt->database);
     }
@@ -256,28 +330,27 @@ static int execute_set_sql_mode_statement(mylite_stmt *stmt,
     return mylite_connection_set_sql_mode(stmt->database, plan->value);
 }
 
-static int
-execute_set_unique_checks_statement(mylite_stmt *stmt,
-                                    const struct mylite_connection_system_variable_plan *plan)
-{
+static int execute_set_unique_checks_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
     if (plan->use_default) {
         return mylite_connection_set_default_unique_checks(stmt->database);
     }
     return mylite_connection_set_unique_checks(stmt->database, plan->unsigned_value != 0U);
 }
 
-static int
-execute_set_wait_timeout_statement(mylite_stmt *stmt,
-                                   const struct mylite_connection_system_variable_plan *plan)
-{
+static int execute_set_wait_timeout_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
     if (plan->use_default) {
         return mylite_connection_set_default_wait_timeout(stmt->database);
     }
     return mylite_connection_set_wait_timeout(stmt->database, plan->unsigned_value);
 }
 
-void mylite_connection_charset_plan_deinit(struct mylite_connection_charset_plan *plan)
-{
+void mylite_connection_charset_plan_deinit(struct mylite_connection_charset_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -288,8 +361,8 @@ void mylite_connection_charset_plan_deinit(struct mylite_connection_charset_plan
 }
 
 void mylite_connection_system_variable_plan_deinit(
-    struct mylite_connection_system_variable_plan *plan)
-{
+    struct mylite_connection_system_variable_plan *plan
+) {
     if (plan == NULL) {
         return;
     }
@@ -300,9 +373,10 @@ void mylite_connection_system_variable_plan_deinit(
     *plan = (struct mylite_connection_system_variable_plan){0};
 }
 
-static int copy_connection_charset_statement(const struct mylite_sql_ast_node *statement,
-                                             struct mylite_connection_charset_plan *plan)
-{
+static int copy_connection_charset_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_connection_charset_plan *plan
+) {
     const struct mylite_sql_ast_node *character_set = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *collation = mylite_ast_child_at(statement, 1U);
 
@@ -325,11 +399,11 @@ static int copy_connection_charset_statement(const struct mylite_sql_ast_node *s
     return MYLITE_OK;
 }
 
-static int
-copy_connection_system_variable_statement(mylite_db *database,
-                                          const struct mylite_sql_ast_node *statement,
-                                          struct mylite_connection_system_variable_plan *plan)
-{
+static int copy_connection_system_variable_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_connection_system_variable_plan *plan
+) {
     const struct mylite_sql_ast_node *variable = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *value = mylite_ast_child_at(statement, 1U);
     char *variable_name = mylite_copy_schema_text_span(variable);
@@ -357,13 +431,21 @@ copy_connection_system_variable_statement(mylite_db *database,
 
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE) {
         return copy_connection_string_system_variable_value(
-            database, value, set_system_variable_name(plan->variable), plan);
+            database,
+            value,
+            set_system_variable_name(plan->variable),
+            plan
+        );
     }
 
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS ||
         plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_UNIQUE_CHECKS) {
         return copy_connection_boolean_system_variable_value(
-            database, value, set_system_variable_name(plan->variable), plan);
+            database,
+            value,
+            set_system_variable_name(plan->variable),
+            plan
+        );
     }
 
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
@@ -372,12 +454,20 @@ copy_connection_system_variable_statement(mylite_db *database,
 
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_TIME_ZONE) {
         return copy_connection_string_system_variable_value(
-            database, value, set_system_variable_name(plan->variable), plan);
+            database,
+            value,
+            set_system_variable_name(plan->variable),
+            plan
+        );
     }
 
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
         return copy_connection_unsigned_system_variable_value(
-            database, value, set_system_variable_name(plan->variable), plan);
+            database,
+            value,
+            set_system_variable_name(plan->variable),
+            plan
+        );
     }
 
     if (value != NULL && value->kind == MYLITE_SQL_AST_DEFAULT) {
@@ -397,11 +487,11 @@ copy_connection_system_variable_statement(mylite_db *database,
     return plan->value == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static int
-copy_connection_group_concat_max_len_value(mylite_db *database,
-                                           const struct mylite_sql_ast_node *value,
-                                           struct mylite_connection_system_variable_plan *plan)
-{
+static int copy_connection_group_concat_max_len_value(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    struct mylite_connection_system_variable_plan *plan
+) {
     static const uint64_t minimum_value = 4U;
     bool negative = false;
     uint64_t magnitude = 0U;
@@ -429,9 +519,11 @@ copy_connection_group_concat_max_len_value(mylite_db *database,
 }
 
 static int copy_connection_boolean_system_variable_value(
-    mylite_db *database, const struct mylite_sql_ast_node *value, const char *variable_name,
-    struct mylite_connection_system_variable_plan *plan)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    const char *variable_name,
+    struct mylite_connection_system_variable_plan *plan
+) {
     bool negative = false;
     uint64_t magnitude = 0U;
 
@@ -451,9 +543,11 @@ static int copy_connection_boolean_system_variable_value(
 }
 
 static int copy_connection_unsigned_system_variable_value(
-    mylite_db *database, const struct mylite_sql_ast_node *value, const char *variable_name,
-    struct mylite_connection_system_variable_plan *plan)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    const char *variable_name,
+    struct mylite_connection_system_variable_plan *plan
+) {
     bool negative = false;
     uint64_t magnitude = 0U;
 
@@ -470,9 +564,11 @@ static int copy_connection_unsigned_system_variable_value(
 }
 
 static int copy_connection_string_system_variable_value(
-    mylite_db *database, const struct mylite_sql_ast_node *value, const char *variable_name,
-    struct mylite_connection_system_variable_plan *plan)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    const char *variable_name,
+    struct mylite_connection_system_variable_plan *plan
+) {
     if (value != NULL && value->kind == MYLITE_SQL_AST_DEFAULT) {
         plan->use_default = true;
         return MYLITE_OK;
@@ -486,11 +582,11 @@ static int copy_connection_string_system_variable_value(
     return plan->value == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static int
-copy_connection_sql_mode_replace_statement(mylite_db *database,
-                                           const struct mylite_sql_ast_node *value,
-                                           struct mylite_connection_system_variable_plan *plan)
-{
+static int copy_connection_sql_mode_replace_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    struct mylite_connection_system_variable_plan *plan
+) {
     const struct mylite_sql_ast_node *function_name = mylite_ast_child_at(value, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(value, 1U);
     const struct mylite_sql_ast_node *variable =
@@ -534,9 +630,10 @@ copy_connection_sql_mode_replace_statement(mylite_db *database,
     return MYLITE_OK;
 }
 
-static enum mylite_connection_system_variable set_system_variable_kind(const char *variable,
-                                                                       bool *out_global_scope)
-{
+static enum mylite_connection_system_variable set_system_variable_kind(
+    const char *variable,
+    bool *out_global_scope
+) {
     const char *name = variable;
 
     if (out_global_scope != NULL) {
@@ -546,9 +643,11 @@ static enum mylite_connection_system_variable set_system_variable_kind(const cha
         if (out_global_scope != NULL) {
             *out_global_scope = true;
         }
-    } else if (system_variable_prefix_match(variable, "@@session.", &name) ||
-               system_variable_prefix_match(variable, "@@local.", &name) ||
-               system_variable_prefix_match(variable, "@@", &name)) {
+    } else if (
+        system_variable_prefix_match(variable, "@@session.", &name) ||
+        system_variable_prefix_match(variable, "@@local.", &name) ||
+        system_variable_prefix_match(variable, "@@", &name)
+    ) {
         /* Keep name advanced past the recognized session prefix. */
     }
 
@@ -576,9 +675,11 @@ static enum mylite_connection_system_variable set_system_variable_kind(const cha
     return MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE;
 }
 
-static bool system_variable_prefix_match(const char *variable, const char *prefix,
-                                         const char **out_name)
-{
+static bool system_variable_prefix_match(
+    const char *variable,
+    const char *prefix,
+    const char **out_name
+) {
     size_t prefix_length = prefix == NULL ? 0U : strlen(prefix);
 
     if (variable == NULL || prefix == NULL) {
@@ -607,8 +708,7 @@ static bool system_variable_prefix_match(const char *variable, const char *prefi
     return true;
 }
 
-static const char *set_system_variable_name(enum mylite_connection_system_variable variable)
-{
+static const char *set_system_variable_name(enum mylite_connection_system_variable variable) {
     switch (variable) {
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
         return "default_storage_engine";
@@ -630,9 +730,10 @@ static const char *set_system_variable_name(enum mylite_connection_system_variab
     return "variable";
 }
 
-static int set_system_variable_global_error(mylite_db *database,
-                                            enum mylite_connection_system_variable variable)
-{
+static int set_system_variable_global_error(
+    mylite_db *database,
+    enum mylite_connection_system_variable variable
+) {
     char *message =
         sqlite3_mprintf("SET GLOBAL %s is not supported", set_system_variable_name(variable));
 
@@ -645,8 +746,7 @@ static int set_system_variable_global_error(mylite_db *database,
     return MYLITE_UNSUPPORTED;
 }
 
-static int set_system_variable_type_error(mylite_db *database, const char *variable_name)
-{
+static int set_system_variable_type_error(mylite_db *database, const char *variable_name) {
     char *message = sqlite3_mprintf("Incorrect argument type to variable '%q'", variable_name);
     int status = MYLITE_OK;
 
@@ -663,9 +763,11 @@ static int set_system_variable_type_error(mylite_db *database, const char *varia
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int set_system_variable_wrong_value_error(mylite_db *database, const char *variable_name,
-                                                 const struct mylite_sql_ast_node *value)
-{
+static int set_system_variable_wrong_value_error(
+    mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value
+) {
     char *value_text = NULL;
     char *message = NULL;
     int status = MYLITE_OK;
@@ -678,8 +780,11 @@ static int set_system_variable_wrong_value_error(mylite_db *database, const char
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    message = sqlite3_mprintf("Variable '%q' can't be set to the value of '%q'", variable_name,
-                              value_text);
+    message = sqlite3_mprintf(
+        "Variable '%q' can't be set to the value of '%q'",
+        variable_name,
+        value_text
+    );
     free(value_text);
     if (message == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -695,8 +800,7 @@ static int set_system_variable_wrong_value_error(mylite_db *database, const char
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int set_group_concat_max_len_type_error(mylite_db *database)
-{
+static int set_group_concat_max_len_type_error(mylite_db *database) {
     static const char message[] = "Incorrect argument type to variable 'group_concat_max_len'";
     int status = mylite_diagnostics_set_error_message(database, message);
 
@@ -707,8 +811,7 @@ static int set_group_concat_max_len_type_error(mylite_db *database)
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static int append_group_concat_max_len_truncation_warning(mylite_db *database, const char *value)
-{
+static int append_group_concat_max_len_truncation_warning(mylite_db *database, const char *value) {
     char *message = NULL;
     int status = MYLITE_OK;
 
@@ -724,9 +827,11 @@ static int append_group_concat_max_len_truncation_warning(mylite_db *database, c
     return status;
 }
 
-static bool copy_signed_integer_value(const struct mylite_sql_ast_node *value, bool *out_negative,
-                                      uint64_t *out_magnitude)
-{
+static bool copy_signed_integer_value(
+    const struct mylite_sql_ast_node *value,
+    bool *out_negative,
+    uint64_t *out_magnitude
+) {
     const struct mylite_sql_ast_node *literal = value;
     bool negative = false;
 
@@ -753,9 +858,9 @@ static bool copy_signed_integer_value(const struct mylite_sql_ast_node *value, b
     return true;
 }
 
-static bool parse_uint64_text(const char *text, size_t length, uint64_t *out_value)
-{
+static bool parse_uint64_text(const char *text, size_t length, uint64_t *out_value) {
     enum { decimal_radix = 10U };
+
     uint64_t value = 0U;
 
     if (out_value == NULL) {
@@ -782,11 +887,14 @@ static bool parse_uint64_text(const char *text, size_t length, uint64_t *out_val
     return true;
 }
 
-static int execute_set_sql_mode_replace_statement(mylite_stmt *stmt)
-{
+static int execute_set_sql_mode_replace_statement(mylite_stmt *stmt) {
     const struct mylite_connection_system_variable_plan *plan = &stmt->connection_system_variable;
-    char *value = replace_sql_mode_text(stmt->database, mylite_connection_sql_mode(stmt->database),
-                                        plan->replace_search, plan->replace_replacement);
+    char *value = replace_sql_mode_text(
+        stmt->database,
+        mylite_connection_sql_mode(stmt->database),
+        plan->replace_search,
+        plan->replace_replacement
+    );
     int status = MYLITE_OK;
 
     if (value == NULL) {
@@ -797,9 +905,12 @@ static int execute_set_sql_mode_replace_statement(mylite_stmt *stmt)
     return status;
 }
 
-static char *replace_sql_mode_text(mylite_db *database, const char *value, const char *search,
-                                   const char *replacement)
-{
+static char *replace_sql_mode_text(
+    mylite_db *database,
+    const char *value,
+    const char *search,
+    const char *replacement
+) {
     size_t value_length = value == NULL ? 0U : strlen(value);
     size_t search_length = search == NULL ? 0U : strlen(search);
     size_t replacement_length = replacement == NULL ? 0U : strlen(replacement);

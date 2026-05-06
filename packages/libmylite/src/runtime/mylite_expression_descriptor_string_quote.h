@@ -11,8 +11,10 @@ struct mylite_select_plan;
 struct mylite_sql_ast_node;
 
 uint64_t mylite_expression_descriptor_quote_function_result_length(
-    mylite_db *database, const struct mylite_select_plan *plan,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_descriptor_string_callbacks *callbacks);
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
 
 #endif

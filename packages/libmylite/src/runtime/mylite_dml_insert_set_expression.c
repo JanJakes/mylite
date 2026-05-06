@@ -10,62 +10,109 @@
 #include <stdint.h>
 #include <string.h>
 
-static int evaluate_insert_set_simple_expression(mylite_db *database, const char *schema_name,
-                                                 const struct mylite_insert_values_plan *plan,
-                                                 const struct mylite_insert_table *table,
-                                                 const struct mylite_insert_value *value,
-                                                 const struct mylite_insert_bound_value *values,
-                                                 struct mylite_insert_bound_value *out_value);
-static int evaluate_insert_set_column_reference(mylite_db *database, const char *schema_name,
-                                                const struct mylite_insert_values_plan *plan,
-                                                const struct mylite_insert_table *table,
-                                                const struct mylite_insert_column_reference *ref,
-                                                const struct mylite_insert_bound_value *values,
-                                                struct mylite_insert_bound_value *out_value);
-static int evaluate_insert_set_unary_expression(mylite_db *database, const char *schema_name,
-                                                const struct mylite_insert_values_plan *plan,
-                                                const struct mylite_insert_table *table,
-                                                const struct mylite_insert_value *value,
-                                                const struct mylite_insert_bound_value *values,
-                                                struct mylite_insert_bound_value *out_value);
-static int evaluate_insert_set_binary_expression(mylite_db *database, const char *schema_name,
-                                                 const struct mylite_insert_values_plan *plan,
-                                                 const struct mylite_insert_table *table,
-                                                 const struct mylite_insert_value *value,
-                                                 const struct mylite_insert_bound_value *values,
-                                                 struct mylite_insert_bound_value *out_value);
+static int evaluate_insert_set_simple_expression(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_value *value,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_bound_value *out_value
+);
 
-int mylite_dml_evaluate_insert_set_expression(mylite_db *database, const char *schema_name,
-                                              const struct mylite_insert_values_plan *plan,
-                                              const struct mylite_insert_table *table,
-                                              const struct mylite_insert_value *value,
-                                              const struct mylite_insert_bound_value *values,
-                                              struct mylite_insert_bound_value *out_value)
-{
+static int evaluate_insert_set_column_reference(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_column_reference *ref,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int evaluate_insert_set_unary_expression(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_value *value,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int evaluate_insert_set_binary_expression(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_value *value,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_bound_value *out_value
+);
+
+int mylite_dml_evaluate_insert_set_expression(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_value *value,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_bound_value *out_value
+) {
     if (value->kind == MYLITE_INSERT_VALUE_UNARY_EXPRESSION) {
-        return evaluate_insert_set_unary_expression(database, schema_name, plan, table, value,
-                                                    values, out_value);
+        return evaluate_insert_set_unary_expression(
+            database,
+            schema_name,
+            plan,
+            table,
+            value,
+            values,
+            out_value
+        );
     }
     if (value->kind == MYLITE_INSERT_VALUE_BINARY_EXPRESSION) {
-        return evaluate_insert_set_binary_expression(database, schema_name, plan, table, value,
-                                                     values, out_value);
+        return evaluate_insert_set_binary_expression(
+            database,
+            schema_name,
+            plan,
+            table,
+            value,
+            values,
+            out_value
+        );
     }
-    return evaluate_insert_set_simple_expression(database, schema_name, plan, table, value, values,
-                                                 out_value);
+    return evaluate_insert_set_simple_expression(
+        database,
+        schema_name,
+        plan,
+        table,
+        value,
+        values,
+        out_value
+    );
 }
 
-static int evaluate_insert_set_unary_expression(mylite_db *database, const char *schema_name,
-                                                const struct mylite_insert_values_plan *plan,
-                                                const struct mylite_insert_table *table,
-                                                const struct mylite_insert_value *value,
-                                                const struct mylite_insert_bound_value *values,
-                                                struct mylite_insert_bound_value *out_value)
-{
+static int evaluate_insert_set_unary_expression(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_value *value,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_bound_value *out_value
+) {
     struct mylite_insert_bound_value operand = {0};
     double numeric_value = 0.0;
     bool is_integer = false;
-    int status = evaluate_insert_set_simple_expression(database, schema_name, plan, table,
-                                                       value->left, values, &operand);
+    int status = evaluate_insert_set_simple_expression(
+        database,
+        schema_name,
+        plan,
+        table,
+        value->left,
+        values,
+        &operand
+    );
 
     if (status != MYLITE_OK) {
         mylite_dml_insert_bound_value_deinit(&operand);
@@ -100,25 +147,41 @@ static int evaluate_insert_set_unary_expression(mylite_db *database, const char 
     return MYLITE_OK;
 }
 
-static int evaluate_insert_set_binary_expression(mylite_db *database, const char *schema_name,
-                                                 const struct mylite_insert_values_plan *plan,
-                                                 const struct mylite_insert_table *table,
-                                                 const struct mylite_insert_value *value,
-                                                 const struct mylite_insert_bound_value *values,
-                                                 struct mylite_insert_bound_value *out_value)
-{
+static int evaluate_insert_set_binary_expression(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_value *value,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_bound_value *out_value
+) {
     struct mylite_insert_bound_value left = {0};
     struct mylite_insert_bound_value right = {0};
     double left_number = 0.0;
     double right_number = 0.0;
     bool left_is_integer = false;
     bool right_is_integer = false;
-    int status = evaluate_insert_set_simple_expression(database, schema_name, plan, table,
-                                                       value->left, values, &left);
+    int status = evaluate_insert_set_simple_expression(
+        database,
+        schema_name,
+        plan,
+        table,
+        value->left,
+        values,
+        &left
+    );
 
     if (status == MYLITE_OK) {
-        status = evaluate_insert_set_simple_expression(database, schema_name, plan, table,
-                                                       value->right, values, &right);
+        status = evaluate_insert_set_simple_expression(
+            database,
+            schema_name,
+            plan,
+            table,
+            value->right,
+            values,
+            &right
+        );
     }
     if (status != MYLITE_OK) {
         mylite_dml_insert_bound_value_deinit(&left);
@@ -200,13 +263,15 @@ static int evaluate_insert_set_binary_expression(mylite_db *database, const char
     return MYLITE_OK;
 }
 
-static int evaluate_insert_set_simple_expression(mylite_db *database, const char *schema_name,
-                                                 const struct mylite_insert_values_plan *plan,
-                                                 const struct mylite_insert_table *table,
-                                                 const struct mylite_insert_value *value,
-                                                 const struct mylite_insert_bound_value *values,
-                                                 struct mylite_insert_bound_value *out_value)
-{
+static int evaluate_insert_set_simple_expression(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_value *value,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_bound_value *out_value
+) {
     int64_t integer_value = 0;
     double real_value = 0.0;
 
@@ -244,8 +309,15 @@ static int evaluate_insert_set_simple_expression(mylite_db *database, const char
     case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:
         return mylite_dml_resolve_insert_current_timestamp_bound_value(database, out_value);
     case MYLITE_INSERT_VALUE_COLUMN_REFERENCE:
-        return evaluate_insert_set_column_reference(database, schema_name, plan, table,
-                                                    &value->column_reference, values, out_value);
+        return evaluate_insert_set_column_reference(
+            database,
+            schema_name,
+            plan,
+            table,
+            &value->column_reference,
+            values,
+            out_value
+        );
     case MYLITE_INSERT_VALUE_DEFAULT:
     case MYLITE_INSERT_VALUE_UNSUPPORTED:
     case MYLITE_INSERT_VALUE_VALUES_FUNCTION:
@@ -258,19 +330,25 @@ static int evaluate_insert_set_simple_expression(mylite_db *database, const char
     return mylite_dml_insert_set_unsupported_expression_error(database);
 }
 
-static int evaluate_insert_set_column_reference(mylite_db *database, const char *schema_name,
-                                                const struct mylite_insert_values_plan *plan,
-                                                const struct mylite_insert_table *table,
-                                                const struct mylite_insert_column_reference *ref,
-                                                const struct mylite_insert_bound_value *values,
-                                                struct mylite_insert_bound_value *out_value)
-{
+static int evaluate_insert_set_column_reference(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_column_reference *ref,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_bound_value *out_value
+) {
     size_t column_index =
         mylite_dml_insert_table_column_reference_index(table, schema_name, plan->table_name, ref);
 
     if (column_index == table->column_count) {
         int status = mylite_diagnostics_set_error_message_parts(
-            database, "Unknown column '", ref->column_name, "' in 'field list'");
+            database,
+            "Unknown column '",
+            ref->column_name,
+            "' in 'field list'"
+        );
 
         return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
     }

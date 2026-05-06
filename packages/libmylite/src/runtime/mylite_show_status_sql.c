@@ -10,14 +10,26 @@
 #include <time.h>
 
 static uint64_t show_status_uptime(const mylite_db *database);
-static void append_show_status_row(sqlite3_str *sql, bool *first, const char *name,
-                                   const char *value);
-static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const char *name,
-                                           uint64_t value);
 
-int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_query *query,
-                           char **out_sql)
-{
+static void append_show_status_row(
+    sqlite3_str *sql,
+    bool *first,
+    const char *name,
+    const char *value
+);
+
+static void append_show_status_integer_row(
+    sqlite3_str *sql,
+    bool *first,
+    const char *name,
+    uint64_t value
+);
+
+int mylite_show_status_sql(
+    mylite_db *database,
+    const struct mylite_show_status_query *query,
+    char **out_sql
+) {
     static const char *const columns[] = {"Variable_name", "Value"};
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     uint64_t uptime = show_status_uptime(database);
@@ -80,11 +92,18 @@ int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_
     }
     if (query->where_expression != NULL) {
         sqlite3_str_appendall(sql, query->like_pattern == NULL ? " WHERE " : " AND ");
-        status = mylite_show_append_where_expression(database, sql, query->where_expression,
-                                                     columns, sizeof(columns) / sizeof(columns[0]));
+        status = mylite_show_append_where_expression(
+            database,
+            sql,
+            query->where_expression,
+            columns,
+            sizeof(columns) / sizeof(columns[0])
+        );
     }
-    sqlite3_str_appendall(sql,
-                          " ORDER BY Variable_name COLLATE NOCASE, Variable_name COLLATE BINARY");
+    sqlite3_str_appendall(
+        sql,
+        " ORDER BY Variable_name COLLATE NOCASE, Variable_name COLLATE BINARY"
+    );
 
     *out_sql = sqlite3_str_finish(sql);
     if (status != MYLITE_OK) {
@@ -92,15 +111,16 @@ int mylite_show_status_sql(mylite_db *database, const struct mylite_show_status_
         *out_sql = NULL;
         if (status == MYLITE_UNSUPPORTED) {
             (void)mylite_diagnostics_set_error_message(
-                database, "SHOW STATUS WHERE expression is not supported");
+                database,
+                "SHOW STATUS WHERE expression is not supported"
+            );
         }
         return status;
     }
     return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static uint64_t show_status_uptime(const mylite_db *database)
-{
+static uint64_t show_status_uptime(const mylite_db *database) {
     time_t now = time(NULL);
 
     if (database == NULL || database->status_started_at == (time_t)-1 || now == (time_t)-1 ||
@@ -110,24 +130,38 @@ static uint64_t show_status_uptime(const mylite_db *database)
     return (uint64_t)(now - database->status_started_at);
 }
 
-static void append_show_status_row(sqlite3_str *sql, bool *first, const char *name,
-                                   const char *value)
-{
+static void append_show_status_row(
+    sqlite3_str *sql,
+    bool *first,
+    const char *name,
+    const char *value
+) {
     if (!*first) {
         sqlite3_str_appendall(sql, " UNION ALL ");
     }
-    sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", %Q AS \"Value\"", name,
-                        value == NULL ? "" : value);
+    sqlite3_str_appendf(
+        sql,
+        "SELECT %Q AS \"Variable_name\", %Q AS \"Value\"",
+        name,
+        value == NULL ? "" : value
+    );
     *first = false;
 }
 
-static void append_show_status_integer_row(sqlite3_str *sql, bool *first, const char *name,
-                                           uint64_t value)
-{
+static void append_show_status_integer_row(
+    sqlite3_str *sql,
+    bool *first,
+    const char *name,
+    uint64_t value
+) {
     if (!*first) {
         sqlite3_str_appendall(sql, " UNION ALL ");
     }
-    sqlite3_str_appendf(sql, "SELECT %Q AS \"Variable_name\", '%llu' AS \"Value\"", name,
-                        (unsigned long long)value);
+    sqlite3_str_appendf(
+        sql,
+        "SELECT %Q AS \"Variable_name\", '%llu' AS \"Value\"",
+        name,
+        (unsigned long long)value
+    );
     *first = false;
 }

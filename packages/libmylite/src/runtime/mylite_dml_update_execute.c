@@ -7,40 +7,59 @@
 #include "sql/mylite_expression.h"
 #include "sqlite3.h"
 
-static int execute_update_row(mylite_db *database, sqlite3_stmt *update,
-                              const struct mylite_select_table *table,
-                              const struct mylite_insert_table *write_table,
-                              const struct mylite_update_bound_assignment *assignments,
-                              size_t assignment_count,
-                              const struct mylite_dml_expression_callbacks *callbacks,
-                              const struct mylite_update_row *stored, uint64_t *next_auto_increment,
-                              int64_t *affected_rows);
-static int write_update_candidate(mylite_db *database, sqlite3_stmt *update,
-                                  const struct mylite_insert_table *write_table,
-                                  const struct mylite_update_row *candidate,
-                                  uint64_t *next_auto_increment, int64_t *affected_rows);
-static int apply_update_assignments(mylite_db *database, const struct mylite_select_table *table,
-                                    const struct mylite_insert_table *write_table,
-                                    const struct mylite_update_bound_assignment *assignments,
-                                    size_t assignment_count,
-                                    const struct mylite_dml_expression_callbacks *callbacks,
-                                    struct mylite_update_row *candidate);
-static int evaluate_update_assignment_value(mylite_db *database,
-                                            const struct mylite_select_table *table,
-                                            const struct mylite_insert_table *write_table,
-                                            const struct mylite_update_row *candidate,
-                                            size_t target_column,
-                                            const struct mylite_sql_ast_node *expression,
-                                            const struct mylite_dml_expression_callbacks *callbacks,
-                                            struct mylite_expression_value *out_value);
+static int execute_update_row(
+    mylite_db *database,
+    sqlite3_stmt *update,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    const struct mylite_update_row *stored,
+    uint64_t *next_auto_increment,
+    int64_t *affected_rows
+);
+
+static int write_update_candidate(
+    mylite_db *database,
+    sqlite3_stmt *update,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_row *candidate,
+    uint64_t *next_auto_increment,
+    int64_t *affected_rows
+);
+
+static int apply_update_assignments(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_update_row *candidate
+);
+
+static int evaluate_update_assignment_value(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_row *candidate,
+    size_t target_column,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_expression_value *out_value
+);
 
 int mylite_dml_execute_update_rows_transaction(
-    mylite_db *database, const struct mylite_select_table *table,
+    mylite_db *database,
+    const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
-    const struct mylite_update_bound_assignment *assignments, size_t assignment_count,
+    const struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count,
     const struct mylite_dml_expression_callbacks *callbacks,
-    const struct mylite_update_rowset *rowset, int64_t *out_affected_rows)
-{
+    const struct mylite_update_rowset *rowset,
+    int64_t *out_affected_rows
+) {
     sqlite3_stmt *update = NULL;
     char *update_sql = NULL;
     struct mylite_statement_atomicity atomicity = {0};
@@ -71,8 +90,14 @@ int mylite_dml_execute_update_rows_transaction(
         return MYLITE_NOMEM;
     }
 
-    rc = sqlite3_prepare_v3(database->sqlite, update_sql, -1, SQLITE_PREPARE_PERSISTENT, &update,
-                            NULL);
+    rc = sqlite3_prepare_v3(
+        database->sqlite,
+        update_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &update,
+        NULL
+    );
     sqlite3_free(update_sql);
     if (rc != SQLITE_OK) {
         mylite_transaction_rollback_statement_atomicity(database, &atomicity);
@@ -80,9 +105,18 @@ int mylite_dml_execute_update_rows_transaction(
     }
 
     for (size_t index = 0U; index < rowset->row_count; ++index) {
-        status = execute_update_row(database, update, table, write_table, assignments,
-                                    assignment_count, callbacks, &rowset->rows[index],
-                                    &next_auto_increment, &affected_rows);
+        status = execute_update_row(
+            database,
+            update,
+            table,
+            write_table,
+            assignments,
+            assignment_count,
+            callbacks,
+            &rowset->rows[index],
+            &next_auto_increment,
+            &affected_rows
+        );
         if (status != MYLITE_OK) {
             break;
         }
@@ -92,7 +126,11 @@ int mylite_dml_execute_update_rows_transaction(
     if (status == MYLITE_OK && write_table->has_auto_increment &&
         next_auto_increment > write_table->next_auto_increment) {
         status = mylite_transaction_update_table_auto_increment(
-            database, table->schema_name, table->table_name, next_auto_increment);
+            database,
+            table->schema_name,
+            table->table_name,
+            next_auto_increment
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(database, &atomicity);
@@ -106,40 +144,59 @@ int mylite_dml_execute_update_rows_transaction(
     return status;
 }
 
-static int execute_update_row(mylite_db *database, sqlite3_stmt *update,
-                              const struct mylite_select_table *table,
-                              const struct mylite_insert_table *write_table,
-                              const struct mylite_update_bound_assignment *assignments,
-                              size_t assignment_count,
-                              const struct mylite_dml_expression_callbacks *callbacks,
-                              const struct mylite_update_row *stored, uint64_t *next_auto_increment,
-                              int64_t *affected_rows)
-{
+static int execute_update_row(
+    mylite_db *database,
+    sqlite3_stmt *update,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    const struct mylite_update_row *stored,
+    uint64_t *next_auto_increment,
+    int64_t *affected_rows
+) {
     struct mylite_update_row candidate = {0};
     int status = mylite_dml_copy_update_candidate_values(database, stored, &candidate);
 
     if (status == MYLITE_OK) {
-        status = apply_update_assignments(database, table, write_table, assignments,
-                                          assignment_count, callbacks, &candidate);
+        status = apply_update_assignments(
+            database,
+            table,
+            write_table,
+            assignments,
+            assignment_count,
+            callbacks,
+            &candidate
+        );
     }
     if (status == MYLITE_OK) {
         status =
             mylite_dml_validate_update_unique_indexes(database, table, write_table, &candidate);
     }
     if (status == MYLITE_OK && mylite_dml_update_row_changed(stored, &candidate)) {
-        status = write_update_candidate(database, update, write_table, &candidate,
-                                        next_auto_increment, affected_rows);
+        status = write_update_candidate(
+            database,
+            update,
+            write_table,
+            &candidate,
+            next_auto_increment,
+            affected_rows
+        );
     }
 
     mylite_dml_update_row_deinit(&candidate);
     return status;
 }
 
-static int write_update_candidate(mylite_db *database, sqlite3_stmt *update,
-                                  const struct mylite_insert_table *write_table,
-                                  const struct mylite_update_row *candidate,
-                                  uint64_t *next_auto_increment, int64_t *affected_rows)
-{
+static int write_update_candidate(
+    mylite_db *database,
+    sqlite3_stmt *update,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_row *candidate,
+    uint64_t *next_auto_increment,
+    int64_t *affected_rows
+) {
     int rc = SQLITE_OK;
     int status = MYLITE_OK;
 
@@ -161,17 +218,23 @@ static int write_update_candidate(mylite_db *database, sqlite3_stmt *update,
     }
 
     ++*affected_rows;
-    return mylite_dml_advance_update_auto_increment(database, write_table, candidate,
-                                                    next_auto_increment);
+    return mylite_dml_advance_update_auto_increment(
+        database,
+        write_table,
+        candidate,
+        next_auto_increment
+    );
 }
 
-static int apply_update_assignments(mylite_db *database, const struct mylite_select_table *table,
-                                    const struct mylite_insert_table *write_table,
-                                    const struct mylite_update_bound_assignment *assignments,
-                                    size_t assignment_count,
-                                    const struct mylite_dml_expression_callbacks *callbacks,
-                                    struct mylite_update_row *candidate)
-{
+static int apply_update_assignments(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_update_row *candidate
+) {
     for (size_t index = 0U; index < assignment_count; ++index) {
         size_t column_index = assignments[index].column_index;
         struct mylite_expression_value value = {0};
@@ -182,9 +245,16 @@ static int apply_update_assignments(mylite_db *database, const struct mylite_sel
             return mylite_dml_set_update_unsupported_assignment_error(database);
         }
 
-        status =
-            evaluate_update_assignment_value(database, table, write_table, candidate, column_index,
-                                             assignments[index].value, callbacks, &value);
+        status = evaluate_update_assignment_value(
+            database,
+            table,
+            write_table,
+            candidate,
+            column_index,
+            assignments[index].value,
+            callbacks,
+            &value
+        );
 
         if (status != MYLITE_OK) {
             mylite_expression_value_deinit(&value);
@@ -198,15 +268,16 @@ static int apply_update_assignments(mylite_db *database, const struct mylite_sel
     return MYLITE_OK;
 }
 
-static int evaluate_update_assignment_value(mylite_db *database,
-                                            const struct mylite_select_table *table,
-                                            const struct mylite_insert_table *write_table,
-                                            const struct mylite_update_row *candidate,
-                                            size_t target_column,
-                                            const struct mylite_sql_ast_node *expression,
-                                            const struct mylite_dml_expression_callbacks *callbacks,
-                                            struct mylite_expression_value *out_value)
-{
+static int evaluate_update_assignment_value(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
+    const struct mylite_update_row *candidate,
+    size_t target_column,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_dml_expression_callbacks *callbacks,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_insert_table_column *column = &write_table->columns[target_column];
     struct mylite_update_expression_context user_context = {
         .database = database,
@@ -228,8 +299,12 @@ static int evaluate_update_assignment_value(mylite_db *database,
         status = mylite_dml_resolve_update_default_value(database, column, out_value);
     } else {
         size_t warning_start = database->warnings.count;
-        int eval_status = mylite_expression_eval_with_context(expression, &context,
-                                                              &database->warnings, out_value);
+        int eval_status = mylite_expression_eval_with_context(
+            expression,
+            &context,
+            &database->warnings,
+            out_value
+        );
 
         if (eval_status == 0) {
             status = MYLITE_OK;

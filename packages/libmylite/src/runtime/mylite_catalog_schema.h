@@ -3,7 +3,11 @@
 
 #include <mylite/mylite.h>
 
-int mylite_catalog_seed_system_schema(mylite_db *database, const char *name,
-                                      const char *character_set, const char *collation);
+int mylite_catalog_seed_system_schema(
+    mylite_db *database,
+    const char *name,
+    const char *character_set,
+    const char *collation
+);
 
 #endif

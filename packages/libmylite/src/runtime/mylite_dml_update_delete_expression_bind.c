@@ -15,16 +15,21 @@
 #include <stdlib.h>
 
 static int bind_mutation_function_call(
-    mylite_db *database, const struct mylite_select_table *table,
-    const struct mylite_sql_ast_node *expression, const char *clause_context,
-    const struct mylite_dml_mutation_expression_bind_diagnostics *diagnostics);
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression,
+    const char *clause_context,
+    const struct mylite_dml_mutation_expression_bind_diagnostics *diagnostics
+);
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_dml_bind_mutation_expression(
-    mylite_db *database, const struct mylite_select_table *table,
-    const struct mylite_sql_ast_node *expression, const char *clause_context,
-    const struct mylite_dml_mutation_expression_bind_diagnostics *diagnostics)
-{
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression,
+    const char *clause_context,
+    const struct mylite_dml_mutation_expression_bind_diagnostics *diagnostics
+) {
     if (database == NULL || table == NULL || diagnostics == NULL ||
         diagnostics->set_unknown_column_error == NULL ||
         diagnostics->set_unsupported_clause_error == NULL ||
@@ -76,8 +81,13 @@ int mylite_dml_bind_mutation_expression(
     case MYLITE_SQL_AST_CASE_WHEN:
         for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
              child = child->next_sibling) {
-            int status = mylite_dml_bind_mutation_expression(database, table, child, clause_context,
-                                                             diagnostics);
+            int status = mylite_dml_bind_mutation_expression(
+                database,
+                table,
+                child,
+                clause_context,
+                diagnostics
+            );
 
             if (status != MYLITE_OK) {
                 return status;
@@ -86,7 +96,11 @@ int mylite_dml_bind_mutation_expression(
         return MYLITE_OK;
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
         return mylite_select_subquery_bind_select_expression(
-            database, expression, true, &mylite_select_context_subquery_bind_callbacks);
+            database,
+            expression,
+            true,
+            &mylite_select_context_subquery_bind_callbacks
+        );
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
@@ -144,11 +158,21 @@ int mylite_dml_bind_mutation_expression(
             return status;
         }
         return mylite_dml_bind_mutation_expression(
-            database, table, mylite_ast_child_at(expression, 0U), clause_context, diagnostics);
+            database,
+            table,
+            mylite_ast_child_at(expression, 0U),
+            clause_context,
+            diagnostics
+        );
     }
     case MYLITE_SQL_AST_FUNCTION_CALL:
-        return bind_mutation_function_call(database, table, expression, clause_context,
-                                           diagnostics);
+        return bind_mutation_function_call(
+            database,
+            table,
+            expression,
+            clause_context,
+            diagnostics
+        );
     case MYLITE_SQL_AST_AGGREGATE_CALL:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_DEFAULT:
@@ -251,10 +275,12 @@ int mylite_dml_bind_mutation_expression(
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static int bind_mutation_function_call(
-    mylite_db *database, const struct mylite_select_table *table,
-    const struct mylite_sql_ast_node *expression, const char *clause_context,
-    const struct mylite_dml_mutation_expression_bind_diagnostics *diagnostics)
-{
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression,
+    const char *clause_context,
+    const struct mylite_dml_mutation_expression_bind_diagnostics *diagnostics
+) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     int status = MYLITE_OK;
 
@@ -267,9 +293,15 @@ static int bind_mutation_function_call(
     }
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
-         child != NULL; child = child->next_sibling) {
-        status = mylite_dml_bind_mutation_expression(database, table, child, clause_context,
-                                                     diagnostics);
+         child != NULL;
+         child = child->next_sibling) {
+        status = mylite_dml_bind_mutation_expression(
+            database,
+            table,
+            child,
+            clause_context,
+            diagnostics
+        );
 
         if (status != MYLITE_OK) {
             return status;

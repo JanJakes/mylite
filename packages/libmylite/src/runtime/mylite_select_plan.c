@@ -2,8 +2,7 @@
 
 #include <stdlib.h>
 
-void mylite_select_plan_deinit(struct mylite_select_plan *plan)
-{
+void mylite_select_plan_deinit(struct mylite_select_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -41,8 +40,7 @@ void mylite_select_plan_deinit(struct mylite_select_plan *plan)
     *plan = (struct mylite_select_plan){0};
 }
 
-void mylite_select_table_deinit(struct mylite_select_table *table)
-{
+void mylite_select_table_deinit(struct mylite_select_table *table) {
     if (table == NULL) {
         return;
     }
@@ -62,8 +60,7 @@ void mylite_select_table_deinit(struct mylite_select_table *table)
     *table = (struct mylite_select_table){0};
 }
 
-void mylite_select_column_deinit(struct mylite_select_column *column)
-{
+void mylite_select_column_deinit(struct mylite_select_column *column) {
     if (column == NULL) {
         return;
     }
@@ -72,8 +69,7 @@ void mylite_select_column_deinit(struct mylite_select_column *column)
     *column = (struct mylite_select_column){0};
 }
 
-void mylite_select_output_column_deinit(struct mylite_select_output_column *column)
-{
+void mylite_select_output_column_deinit(struct mylite_select_output_column *column) {
     if (column == NULL) {
         return;
     }
@@ -82,8 +78,7 @@ void mylite_select_output_column_deinit(struct mylite_select_output_column *colu
     *column = (struct mylite_select_output_column){0};
 }
 
-void mylite_select_aggregate_binding_deinit(struct mylite_select_aggregate_binding *binding)
-{
+void mylite_select_aggregate_binding_deinit(struct mylite_select_aggregate_binding *binding) {
     if (binding == NULL) {
         return;
     }
@@ -92,8 +87,7 @@ void mylite_select_aggregate_binding_deinit(struct mylite_select_aggregate_bindi
     *binding = (struct mylite_select_aggregate_binding){0};
 }
 
-void mylite_select_column_sequence_deinit(struct mylite_select_column_sequence *sequence)
-{
+void mylite_select_column_sequence_deinit(struct mylite_select_column_sequence *sequence) {
     if (sequence == NULL) {
         return;
     }
@@ -101,9 +95,10 @@ void mylite_select_column_sequence_deinit(struct mylite_select_column_sequence *
     *sequence = (struct mylite_select_column_sequence){0};
 }
 
-int mylite_select_plan_add_output_column(struct mylite_select_plan *plan,
-                                         const struct mylite_select_output_column *output)
-{
+int mylite_select_plan_add_output_column(
+    struct mylite_select_plan *plan,
+    const struct mylite_select_output_column *output
+) {
     struct mylite_select_output_column *outputs =
         realloc(plan->outputs, (plan->output_count + 1U) * sizeof(*plan->outputs));
 
@@ -116,9 +111,10 @@ int mylite_select_plan_add_output_column(struct mylite_select_plan *plan,
     return MYLITE_OK;
 }
 
-int mylite_select_plan_add_order_key(struct mylite_select_plan *plan,
-                                     const struct mylite_select_order_key *order_key)
-{
+int mylite_select_plan_add_order_key(
+    struct mylite_select_plan *plan,
+    const struct mylite_select_order_key *order_key
+) {
     struct mylite_select_order_key *order_keys =
         realloc(plan->order_keys, (plan->order_key_count + 1U) * sizeof(*plan->order_keys));
 
@@ -131,9 +127,10 @@ int mylite_select_plan_add_order_key(struct mylite_select_plan *plan,
     return MYLITE_OK;
 }
 
-int mylite_select_plan_add_group_key(struct mylite_select_plan *plan,
-                                     const struct mylite_select_group_key *group_key)
-{
+int mylite_select_plan_add_group_key(
+    struct mylite_select_plan *plan,
+    const struct mylite_select_group_key *group_key
+) {
     struct mylite_select_group_key *group_keys =
         realloc(plan->group_keys, (plan->group_key_count + 1U) * sizeof(*plan->group_keys));
 
@@ -146,12 +143,14 @@ int mylite_select_plan_add_group_key(struct mylite_select_plan *plan,
     return MYLITE_OK;
 }
 
-int mylite_select_plan_add_aggregate_binding(struct mylite_select_plan *plan,
-                                             const struct mylite_select_aggregate_binding *binding)
-{
-    struct mylite_select_aggregate_binding *bindings =
-        realloc(plan->aggregate_bindings,
-                (plan->aggregate_binding_count + 1U) * sizeof(*plan->aggregate_bindings));
+int mylite_select_plan_add_aggregate_binding(
+    struct mylite_select_plan *plan,
+    const struct mylite_select_aggregate_binding *binding
+) {
+    struct mylite_select_aggregate_binding *bindings = realloc(
+        plan->aggregate_bindings,
+        (plan->aggregate_binding_count + 1U) * sizeof(*plan->aggregate_bindings)
+    );
 
     if (bindings == NULL) {
         return MYLITE_NOMEM;
@@ -162,8 +161,7 @@ int mylite_select_plan_add_aggregate_binding(struct mylite_select_plan *plan,
     return MYLITE_OK;
 }
 
-void mylite_select_plan_clear_aggregate_bindings(struct mylite_select_plan *plan)
-{
+void mylite_select_plan_clear_aggregate_bindings(struct mylite_select_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -177,9 +175,10 @@ void mylite_select_plan_clear_aggregate_bindings(struct mylite_select_plan *plan
     plan->has_aggregate = false;
 }
 
-void mylite_select_plan_mark_output_order_reference(struct mylite_select_plan *plan,
-                                                    size_t output_index)
-{
+void mylite_select_plan_mark_output_order_reference(
+    struct mylite_select_plan *plan,
+    size_t output_index
+) {
     if (plan != NULL && output_index < plan->output_count) {
         plan->outputs[output_index].referenced_by_order = true;
     }

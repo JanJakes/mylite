@@ -5,32 +5,52 @@
 #include <string.h>
 
 static uint32_t rotate_left32(uint32_t value, unsigned int count);
+
 static void md5_process_block(uint32_t state[4], const unsigned char block[64]);
+
 static void md5_write_digest(const uint32_t state[4], unsigned char digest[16]);
+
 static uint32_t load_le32(const unsigned char *bytes);
+
 static void store_le64(unsigned char *bytes, uint64_t value);
 
 static void sha1_process_block(uint32_t state[5], const unsigned char block[64]);
+
 static void sha1_write_digest(const uint32_t state[5], unsigned char digest[20]);
+
 static uint32_t load_be32(const unsigned char *bytes);
+
 static void store_be64(unsigned char *bytes, uint64_t value);
 
 static void sha256_process_block(uint32_t state[8], const unsigned char block[64]);
-static void sha256_digest(const unsigned char *data, size_t length, const uint32_t initial[8],
-                          unsigned char digest[32]);
+
+static void sha256_digest(
+    const unsigned char *data,
+    size_t length,
+    const uint32_t initial[8],
+    unsigned char digest[32]
+);
+
 static uint32_t rotate_right32(uint32_t value, unsigned int count);
+
 static void store_be32(unsigned char *bytes, uint32_t value);
 
 static void sha512_process_block(uint64_t state[8], const unsigned char block[128]);
-static void sha512_digest(const unsigned char *data, size_t length, const uint64_t initial[8],
-                          unsigned char digest[64]);
+
+static void sha512_digest(
+    const unsigned char *data,
+    size_t length,
+    const uint64_t initial[8],
+    unsigned char digest[64]
+);
+
 static uint64_t load_be64(const unsigned char *bytes);
+
 static uint64_t rotate_right64(uint64_t value, unsigned int count);
 
 static void write_lower_hex(const unsigned char *bytes, size_t length, char *out_hex);
 
-void mylite_digest_md5_hex(const unsigned char *data, size_t length, char *out_hex)
-{
+void mylite_digest_md5_hex(const unsigned char *data, size_t length, char *out_hex) {
     uint32_t state[4] = {
         UINT32_C(0x67452301),
         UINT32_C(0xefcdab89),
@@ -64,11 +84,13 @@ void mylite_digest_md5_hex(const unsigned char *data, size_t length, char *out_h
     write_lower_hex(digest, sizeof(digest), out_hex);
 }
 
-void mylite_digest_sha1_hex(const unsigned char *data, size_t length, char *out_hex)
-{
+void mylite_digest_sha1_hex(const unsigned char *data, size_t length, char *out_hex) {
     uint32_t state[5] = {
-        UINT32_C(0x67452301), UINT32_C(0xefcdab89), UINT32_C(0x98badcfe),
-        UINT32_C(0x10325476), UINT32_C(0xc3d2e1f0),
+        UINT32_C(0x67452301),
+        UINT32_C(0xefcdab89),
+        UINT32_C(0x98badcfe),
+        UINT32_C(0x10325476),
+        UINT32_C(0xc3d2e1f0),
     };
     unsigned char block[64] = {0};
     uint64_t bit_length = (uint64_t)length * CHAR_BIT;
@@ -97,26 +119,52 @@ void mylite_digest_sha1_hex(const unsigned char *data, size_t length, char *out_
     write_lower_hex(digest, sizeof(digest), out_hex);
 }
 
-bool mylite_digest_sha2_hex(const unsigned char *data, size_t length, unsigned int bits,
-                            char *out_hex, size_t *out_length)
-{
+bool mylite_digest_sha2_hex(
+    const unsigned char *data,
+    size_t length,
+    unsigned int bits,
+    char *out_hex,
+    size_t *out_length
+) {
     static const uint32_t sha224_initial[8] = {
-        UINT32_C(0xc1059ed8), UINT32_C(0x367cd507), UINT32_C(0x3070dd17), UINT32_C(0xf70e5939),
-        UINT32_C(0xffc00b31), UINT32_C(0x68581511), UINT32_C(0x64f98fa7), UINT32_C(0xbefa4fa4),
+        UINT32_C(0xc1059ed8),
+        UINT32_C(0x367cd507),
+        UINT32_C(0x3070dd17),
+        UINT32_C(0xf70e5939),
+        UINT32_C(0xffc00b31),
+        UINT32_C(0x68581511),
+        UINT32_C(0x64f98fa7),
+        UINT32_C(0xbefa4fa4),
     };
     static const uint32_t sha256_initial[8] = {
-        UINT32_C(0x6a09e667), UINT32_C(0xbb67ae85), UINT32_C(0x3c6ef372), UINT32_C(0xa54ff53a),
-        UINT32_C(0x510e527f), UINT32_C(0x9b05688c), UINT32_C(0x1f83d9ab), UINT32_C(0x5be0cd19),
+        UINT32_C(0x6a09e667),
+        UINT32_C(0xbb67ae85),
+        UINT32_C(0x3c6ef372),
+        UINT32_C(0xa54ff53a),
+        UINT32_C(0x510e527f),
+        UINT32_C(0x9b05688c),
+        UINT32_C(0x1f83d9ab),
+        UINT32_C(0x5be0cd19),
     };
     static const uint64_t sha384_initial[8] = {
-        UINT64_C(0xcbbb9d5dc1059ed8), UINT64_C(0x629a292a367cd507), UINT64_C(0x9159015a3070dd17),
-        UINT64_C(0x152fecd8f70e5939), UINT64_C(0x67332667ffc00b31), UINT64_C(0x8eb44a8768581511),
-        UINT64_C(0xdb0c2e0d64f98fa7), UINT64_C(0x47b5481dbefa4fa4),
+        UINT64_C(0xcbbb9d5dc1059ed8),
+        UINT64_C(0x629a292a367cd507),
+        UINT64_C(0x9159015a3070dd17),
+        UINT64_C(0x152fecd8f70e5939),
+        UINT64_C(0x67332667ffc00b31),
+        UINT64_C(0x8eb44a8768581511),
+        UINT64_C(0xdb0c2e0d64f98fa7),
+        UINT64_C(0x47b5481dbefa4fa4),
     };
     static const uint64_t sha512_initial[8] = {
-        UINT64_C(0x6a09e667f3bcc908), UINT64_C(0xbb67ae8584caa73b), UINT64_C(0x3c6ef372fe94f82b),
-        UINT64_C(0xa54ff53a5f1d36f1), UINT64_C(0x510e527fade682d1), UINT64_C(0x9b05688c2b3e6c1f),
-        UINT64_C(0x1f83d9abfb41bd6b), UINT64_C(0x5be0cd19137e2179),
+        UINT64_C(0x6a09e667f3bcc908),
+        UINT64_C(0xbb67ae8584caa73b),
+        UINT64_C(0x3c6ef372fe94f82b),
+        UINT64_C(0xa54ff53a5f1d36f1),
+        UINT64_C(0x510e527fade682d1),
+        UINT64_C(0x9b05688c2b3e6c1f),
+        UINT64_C(0x1f83d9abfb41bd6b),
+        UINT64_C(0x5be0cd19137e2179),
     };
     unsigned char digest64[64] = {0};
     unsigned char digest32[32] = {0};
@@ -151,13 +199,11 @@ bool mylite_digest_sha2_hex(const unsigned char *data, size_t length, unsigned i
     }
 }
 
-static uint32_t rotate_left32(uint32_t value, unsigned int count)
-{
+static uint32_t rotate_left32(uint32_t value, unsigned int count) {
     return (value << count) | (value >> (32U - count));
 }
 
-static void md5_process_block(uint32_t state[4], const unsigned char block[64])
-{
+static void md5_process_block(uint32_t state[4], const unsigned char block[64]) {
     static const uint32_t k[64] = {
         UINT32_C(0xd76aa478), UINT32_C(0xe8c7b756), UINT32_C(0x242070db), UINT32_C(0xc1bdceee),
         UINT32_C(0xf57c0faf), UINT32_C(0x4787c62a), UINT32_C(0xa8304613), UINT32_C(0xfd469501),
@@ -221,8 +267,7 @@ static void md5_process_block(uint32_t state[4], const unsigned char block[64])
     state[3] += d;
 }
 
-static void md5_write_digest(const uint32_t state[4], unsigned char digest[16])
-{
+static void md5_write_digest(const uint32_t state[4], unsigned char digest[16]) {
     for (size_t index = 0U; index < 4U; ++index) {
         digest[index * 4U] = (unsigned char)(state[index] & 0xffU);
         digest[index * 4U + 1U] = (unsigned char)((state[index] >> 8U) & 0xffU);
@@ -231,21 +276,18 @@ static void md5_write_digest(const uint32_t state[4], unsigned char digest[16])
     }
 }
 
-static uint32_t load_le32(const unsigned char *bytes)
-{
+static uint32_t load_le32(const unsigned char *bytes) {
     return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8U) | ((uint32_t)bytes[2] << 16U) |
            ((uint32_t)bytes[3] << 24U);
 }
 
-static void store_le64(unsigned char *bytes, uint64_t value)
-{
+static void store_le64(unsigned char *bytes, uint64_t value) {
     for (size_t index = 0U; index < 8U; ++index) {
         bytes[index] = (unsigned char)((value >> (index * 8U)) & UINT64_C(0xff));
     }
 }
 
-static void sha1_process_block(uint32_t state[5], const unsigned char block[64])
-{
+static void sha1_process_block(uint32_t state[5], const unsigned char block[64]) {
     uint32_t schedule[80] = {0};
     uint32_t a = state[0];
     uint32_t b = state[1];
@@ -257,9 +299,11 @@ static void sha1_process_block(uint32_t state[5], const unsigned char block[64])
         schedule[index] = load_be32(block + index * 4U);
     }
     for (size_t index = 16U; index < 80U; ++index) {
-        schedule[index] = rotate_left32(schedule[index - 3U] ^ schedule[index - 8U] ^
-                                            schedule[index - 14U] ^ schedule[index - 16U],
-                                        1U);
+        schedule[index] = rotate_left32(
+            schedule[index - 3U] ^ schedule[index - 8U] ^ schedule[index - 14U] ^
+                schedule[index - 16U],
+            1U
+        );
     }
     for (size_t index = 0U; index < 80U; ++index) {
         uint32_t f = 0U;
@@ -294,21 +338,18 @@ static void sha1_process_block(uint32_t state[5], const unsigned char block[64])
     state[4] += e;
 }
 
-static void sha1_write_digest(const uint32_t state[5], unsigned char digest[20])
-{
+static void sha1_write_digest(const uint32_t state[5], unsigned char digest[20]) {
     for (size_t index = 0U; index < 5U; ++index) {
         store_be32(digest + index * 4U, state[index]);
     }
 }
 
-static uint32_t load_be32(const unsigned char *bytes)
-{
+static uint32_t load_be32(const unsigned char *bytes) {
     return ((uint32_t)bytes[0] << 24U) | ((uint32_t)bytes[1] << 16U) | ((uint32_t)bytes[2] << 8U) |
            (uint32_t)bytes[3];
 }
 
-static void store_be64(unsigned char *bytes, uint64_t value)
-{
+static void store_be64(unsigned char *bytes, uint64_t value) {
     for (size_t index = 0U; index < 8U; ++index) {
         unsigned int shift = (unsigned int)((7U - index) * 8U);
 
@@ -316,8 +357,7 @@ static void store_be64(unsigned char *bytes, uint64_t value)
     }
 }
 
-static void sha256_process_block(uint32_t state[8], const unsigned char block[64])
-{
+static void sha256_process_block(uint32_t state[8], const unsigned char block[64]) {
     static const uint32_t k[64] = {
         UINT32_C(0x428a2f98), UINT32_C(0x71374491), UINT32_C(0xb5c0fbcf), UINT32_C(0xe9b5dba5),
         UINT32_C(0x3956c25b), UINT32_C(0x59f111f1), UINT32_C(0x923f82a4), UINT32_C(0xab1c5ed5),
@@ -385,9 +425,12 @@ static void sha256_process_block(uint32_t state[8], const unsigned char block[64
     state[7] += h;
 }
 
-static void sha256_digest(const unsigned char *data, size_t length, const uint32_t initial[8],
-                          unsigned char digest[32])
-{
+static void sha256_digest(
+    const unsigned char *data,
+    size_t length,
+    const uint32_t initial[8],
+    unsigned char digest[32]
+) {
     uint32_t state[8] = {0};
     unsigned char block[64] = {0};
     uint64_t bit_length = (uint64_t)length * CHAR_BIT;
@@ -416,21 +459,18 @@ static void sha256_digest(const unsigned char *data, size_t length, const uint32
     }
 }
 
-static uint32_t rotate_right32(uint32_t value, unsigned int count)
-{
+static uint32_t rotate_right32(uint32_t value, unsigned int count) {
     return (value >> count) | (value << (32U - count));
 }
 
-static void store_be32(unsigned char *bytes, uint32_t value)
-{
+static void store_be32(unsigned char *bytes, uint32_t value) {
     bytes[0] = (unsigned char)((value >> 24U) & 0xffU);
     bytes[1] = (unsigned char)((value >> 16U) & 0xffU);
     bytes[2] = (unsigned char)((value >> 8U) & 0xffU);
     bytes[3] = (unsigned char)(value & 0xffU);
 }
 
-static void sha512_process_block(uint64_t state[8], const unsigned char block[128])
-{
+static void sha512_process_block(uint64_t state[8], const unsigned char block[128]) {
     static const uint64_t k[80] = {
         UINT64_C(0x428a2f98d728ae22), UINT64_C(0x7137449123ef65cd), UINT64_C(0xb5c0fbcfec4d3b2f),
         UINT64_C(0xe9b5dba58189dbbc), UINT64_C(0x3956c25bf348b538), UINT64_C(0x59f111f1b605d019),
@@ -509,9 +549,12 @@ static void sha512_process_block(uint64_t state[8], const unsigned char block[12
     state[7] += h;
 }
 
-static void sha512_digest(const unsigned char *data, size_t length, const uint64_t initial[8],
-                          unsigned char digest[64])
-{
+static void sha512_digest(
+    const unsigned char *data,
+    size_t length,
+    const uint64_t initial[8],
+    unsigned char digest[64]
+) {
     uint64_t state[8] = {0};
     unsigned char block[128] = {0};
     uint64_t bit_length = (uint64_t)length * CHAR_BIT;
@@ -541,20 +584,17 @@ static void sha512_digest(const unsigned char *data, size_t length, const uint64
     }
 }
 
-static uint64_t load_be64(const unsigned char *bytes)
-{
+static uint64_t load_be64(const unsigned char *bytes) {
     return ((uint64_t)bytes[0] << 56U) | ((uint64_t)bytes[1] << 48U) | ((uint64_t)bytes[2] << 40U) |
            ((uint64_t)bytes[3] << 32U) | ((uint64_t)bytes[4] << 24U) | ((uint64_t)bytes[5] << 16U) |
            ((uint64_t)bytes[6] << 8U) | (uint64_t)bytes[7];
 }
 
-static uint64_t rotate_right64(uint64_t value, unsigned int count)
-{
+static uint64_t rotate_right64(uint64_t value, unsigned int count) {
     return (value >> count) | (value << (64U - count));
 }
 
-static void write_lower_hex(const unsigned char *bytes, size_t length, char *out_hex)
-{
+static void write_lower_hex(const unsigned char *bytes, size_t length, char *out_hex) {
     static const char hex[] = "0123456789abcdef";
 
     for (size_t index = 0U; index < length; ++index) {

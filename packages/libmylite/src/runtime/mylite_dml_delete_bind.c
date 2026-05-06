@@ -17,17 +17,28 @@ static const struct mylite_dml_mutation_expression_bind_diagnostics
         .set_unsupported_expression_error = set_delete_unsupported_expression_error,
 };
 
-static int reject_deferred_delete_clauses(mylite_db *database,
-                                          const struct mylite_delete_plan *plan);
-static int bind_delete_where_clause(mylite_db *database, const struct mylite_delete_plan *plan,
-                                    const struct mylite_select_table *table);
-static int bind_delete_order_expression(mylite_db *database,
-                                        const struct mylite_select_table *table,
-                                        const struct mylite_sql_ast_node *expression);
+static int reject_deferred_delete_clauses(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan
+);
 
-int mylite_dml_bind_delete_subset(mylite_db *database, const struct mylite_delete_plan *plan,
-                                  const struct mylite_select_table *table)
-{
+static int bind_delete_where_clause(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan,
+    const struct mylite_select_table *table
+);
+
+static int bind_delete_order_expression(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression
+);
+
+int mylite_dml_bind_delete_subset(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan,
+    const struct mylite_select_table *table
+) {
     int status = MYLITE_OK;
 
     if (database == NULL || plan == NULL || table == NULL) {
@@ -41,8 +52,7 @@ int mylite_dml_bind_delete_subset(mylite_db *database, const struct mylite_delet
     return status;
 }
 
-int mylite_dml_resolve_delete_target(mylite_db *database, struct mylite_select_table *table)
-{
+int mylite_dml_resolve_delete_target(mylite_db *database, struct mylite_select_table *table) {
     int status = MYLITE_OK;
 
     if (database == NULL || table == NULL) {
@@ -52,18 +62,23 @@ int mylite_dml_resolve_delete_target(mylite_db *database, struct mylite_select_t
     status = mylite_select_resolve_table_target(database, table);
     if (status == MYLITE_UNSUPPORTED && table->schema_name != NULL &&
         mylite_select_schema_name_is_system(table->schema_name)) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Access to system schema '",
-                                                         table->schema_name, "' is rejected.");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Access to system schema '",
+            table->schema_name,
+            "' is rejected."
+        );
         return MYLITE_EXEC_ERROR;
     }
     return status;
 }
 
-int mylite_dml_bind_delete_order_by_clause(mylite_db *database,
-                                           const struct mylite_delete_plan *plan,
-                                           const struct mylite_select_table *table,
-                                           struct mylite_update_order_plan *order_plan)
-{
+int mylite_dml_bind_delete_order_by_clause(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan,
+    const struct mylite_select_table *table,
+    struct mylite_update_order_plan *order_plan
+) {
     const struct mylite_sql_ast_node *items = NULL;
 
     if (database == NULL || plan == NULL || table == NULL || order_plan == NULL) {
@@ -111,9 +126,10 @@ int mylite_dml_bind_delete_order_by_clause(mylite_db *database,
                : MYLITE_OK;
 }
 
-static int reject_deferred_delete_clauses(mylite_db *database,
-                                          const struct mylite_delete_plan *plan)
-{
+static int reject_deferred_delete_clauses(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan
+) {
     const struct mylite_sql_ast_node *limit = plan->limit_clause;
 
     if (limit == NULL) {
@@ -128,9 +144,11 @@ static int reject_deferred_delete_clauses(mylite_db *database,
     return MYLITE_OK;
 }
 
-static int bind_delete_where_clause(mylite_db *database, const struct mylite_delete_plan *plan,
-                                    const struct mylite_select_table *table)
-{
+static int bind_delete_where_clause(
+    mylite_db *database,
+    const struct mylite_delete_plan *plan,
+    const struct mylite_select_table *table
+) {
     const struct mylite_sql_ast_node *predicate = mylite_ast_child_at(plan->where_clause, 0U);
 
     if (plan->where_clause == NULL) {
@@ -139,20 +157,33 @@ static int bind_delete_where_clause(mylite_db *database, const struct mylite_del
     if (plan->where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE || predicate == NULL) {
         return mylite_dml_set_delete_unsupported_clause_error(database);
     }
-    return mylite_dml_bind_mutation_expression(database, table, predicate, "where clause",
-                                               &delete_expression_bind_diagnostics);
+    return mylite_dml_bind_mutation_expression(
+        database,
+        table,
+        predicate,
+        "where clause",
+        &delete_expression_bind_diagnostics
+    );
 }
 
-static int bind_delete_order_expression(mylite_db *database,
-                                        const struct mylite_select_table *table,
-                                        const struct mylite_sql_ast_node *expression)
-{
-    return mylite_dml_bind_mutation_expression(database, table, expression, "order clause",
-                                               &delete_expression_bind_diagnostics);
+static int bind_delete_order_expression(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression
+) {
+    return mylite_dml_bind_mutation_expression(
+        database,
+        table,
+        expression,
+        "order clause",
+        &delete_expression_bind_diagnostics
+    );
 }
 
-static int set_delete_unsupported_expression_error(mylite_db *database, const char *clause_context)
-{
+static int set_delete_unsupported_expression_error(
+    mylite_db *database,
+    const char *clause_context
+) {
     (void)clause_context;
     return mylite_dml_set_delete_unsupported_clause_error(database);
 }

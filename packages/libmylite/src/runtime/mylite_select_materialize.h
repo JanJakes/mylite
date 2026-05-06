@@ -5,7 +5,9 @@
 
 #include "mylite_select_eval.h"
 
-int mylite_select_materialize_table_result(mylite_stmt *stmt,
-                                           const struct mylite_select_eval_callbacks *callbacks);
+int mylite_select_materialize_table_result(
+    mylite_stmt *stmt,
+    const struct mylite_select_eval_callbacks *callbacks
+);
 
 #endif

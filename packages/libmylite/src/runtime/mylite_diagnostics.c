@@ -7,15 +7,21 @@
 #include <string.h>
 
 static bool database_has_error_condition(const mylite_db *database);
+
 static bool promote_current_error_message_condition(mylite_db *database);
-static int append_database_condition(mylite_db *database,
-                                     enum mylite_expression_warning_level level, unsigned int code,
-                                     const char *message);
+
+static int append_database_condition(
+    mylite_db *database,
+    enum mylite_expression_warning_level level,
+    unsigned int code,
+    const char *message
+);
+
 static unsigned int current_error_condition_code(mylite_db *database, unsigned int fallback_code);
+
 static char *copy_message_text(const char *text, size_t length);
 
-const char *mylite_status_name(int status)
-{
+const char *mylite_status_name(int status) {
     switch (status) {
     case MYLITE_OK:
         return "ok";
@@ -40,8 +46,7 @@ const char *mylite_status_name(int status)
     }
 }
 
-const char *mylite_error_message(const mylite_db *database)
-{
+const char *mylite_error_message(const mylite_db *database) {
     if (database == NULL || database->error_message == NULL) {
         return "";
     }
@@ -49,29 +54,25 @@ const char *mylite_error_message(const mylite_db *database)
     return database->error_message;
 }
 
-int mylite_warning_count(const mylite_db *database)
-{
+int mylite_warning_count(const mylite_db *database) {
     return database == NULL ? 0 : (int)database->warnings.count;
 }
 
-unsigned int mylite_warning_code(const mylite_db *database, int warning)
-{
+unsigned int mylite_warning_code(const mylite_db *database, int warning) {
     if (database == NULL || warning < 0 || (size_t)warning >= database->warnings.count) {
         return 0U;
     }
     return database->warnings.items[warning].code;
 }
 
-const char *mylite_warning_message(const mylite_db *database, int warning)
-{
+const char *mylite_warning_message(const mylite_db *database, int warning) {
     if (database == NULL || warning < 0 || (size_t)warning >= database->warnings.count) {
         return NULL;
     }
     return database->warnings.items[warning].message;
 }
 
-void mylite_diagnostics_clear_warnings(mylite_db *database)
-{
+void mylite_diagnostics_clear_warnings(mylite_db *database) {
     if (database == NULL) {
         return;
     }
@@ -79,8 +80,7 @@ void mylite_diagnostics_clear_warnings(mylite_db *database)
     mylite_expression_warnings_deinit(&database->warnings);
 }
 
-int mylite_diagnostics_set_error_message(mylite_db *database, const char *message)
-{
+int mylite_diagnostics_set_error_message(mylite_db *database, const char *message) {
     size_t length = message == NULL ? 0U : strlen(message);
     char *copy = malloc(length + 1U);
 
@@ -99,9 +99,12 @@ int mylite_diagnostics_set_error_message(mylite_db *database, const char *messag
     return MYLITE_OK;
 }
 
-int mylite_diagnostics_set_error_message_parts(mylite_db *database, const char *prefix,
-                                               const char *value, const char *suffix)
-{
+int mylite_diagnostics_set_error_message_parts(
+    mylite_db *database,
+    const char *prefix,
+    const char *value,
+    const char *suffix
+) {
     size_t prefix_length = prefix == NULL ? 0U : strlen(prefix);
     size_t value_length = value == NULL ? 0U : strlen(value);
     size_t suffix_length = suffix == NULL ? 0U : strlen(suffix);
@@ -134,25 +137,25 @@ int mylite_diagnostics_set_error_message_parts(mylite_db *database, const char *
     return status;
 }
 
-int mylite_diagnostics_set_unknown_charset_error(mylite_db *database, const char *name)
-{
+int mylite_diagnostics_set_unknown_charset_error(mylite_db *database, const char *name) {
     int status =
         mylite_diagnostics_set_error_message_parts(database, "Unknown character set: '", name, "'");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-int mylite_diagnostics_set_unknown_collation_error(mylite_db *database, const char *name)
-{
+int mylite_diagnostics_set_unknown_collation_error(mylite_db *database, const char *name) {
     int status =
         mylite_diagnostics_set_error_message_parts(database, "Unknown collation: '", name, "'");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-int mylite_diagnostics_set_table_doesnt_exist_error(mylite_db *database, const char *schema_name,
-                                                    const char *table_name)
-{
+int mylite_diagnostics_set_table_doesnt_exist_error(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+) {
     char *message = sqlite3_mprintf("Table '%q.%q' doesn't exist", schema_name, table_name);
     int status = MYLITE_OK;
 
@@ -169,15 +172,20 @@ int mylite_diagnostics_set_table_doesnt_exist_error(mylite_db *database, const c
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-int mylite_diagnostics_set_collation_charset_error(mylite_db *database, const char *collation,
-                                                   const char *character_set)
-{
+int mylite_diagnostics_set_collation_charset_error(
+    mylite_db *database,
+    const char *collation,
+    const char *character_set
+) {
     char *prefix = NULL;
     int status = MYLITE_EXEC_ERROR;
 
-    if (mylite_diagnostics_set_error_message_parts(database, "COLLATION '", collation,
-                                                   "' is not valid for CHARACTER SET '") ==
-        MYLITE_NOMEM) {
+    if (mylite_diagnostics_set_error_message_parts(
+            database,
+            "COLLATION '",
+            collation,
+            "' is not valid for CHARACTER SET '"
+        ) == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
 
@@ -188,26 +196,32 @@ int mylite_diagnostics_set_collation_charset_error(mylite_db *database, const ch
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-int mylite_diagnostics_append_warning(mylite_db *database, unsigned int code, const char *message)
-{
-    return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_WARNING, code,
-                                     message);
+int mylite_diagnostics_append_warning(mylite_db *database, unsigned int code, const char *message) {
+    return append_database_condition(
+        database,
+        MYLITE_EXPRESSION_WARNING_LEVEL_WARNING,
+        code,
+        message
+    );
 }
 
-int mylite_diagnostics_append_note(mylite_db *database, unsigned int code, const char *message)
-{
+int mylite_diagnostics_append_note(mylite_db *database, unsigned int code, const char *message) {
     return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_NOTE, code, message);
 }
 
-int mylite_diagnostics_append_error(mylite_db *database, unsigned int code, const char *message)
-{
-    return append_database_condition(database, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, code,
-                                     message);
+int mylite_diagnostics_append_error(mylite_db *database, unsigned int code, const char *message) {
+    return append_database_condition(
+        database,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        code,
+        message
+    );
 }
 
-int mylite_diagnostics_ensure_current_error_condition(mylite_db *database,
-                                                      unsigned int fallback_code)
-{
+int mylite_diagnostics_ensure_current_error_condition(
+    mylite_db *database,
+    unsigned int fallback_code
+) {
     if (database_has_error_condition(database)) {
         if (database != NULL && database->error_message == NULL) {
             for (size_t index = 0U; index < database->warnings.count; ++index) {
@@ -227,8 +241,7 @@ int mylite_diagnostics_ensure_current_error_condition(mylite_db *database,
     return mylite_diagnostics_append_current_error_condition(database, fallback_code);
 }
 
-int mylite_diagnostics_append_current_error_condition(mylite_db *database, unsigned int code)
-{
+int mylite_diagnostics_append_current_error_condition(mylite_db *database, unsigned int code) {
     const char *message = mylite_error_message(database);
 
     if (message == NULL || message[0] == '\0') {
@@ -239,8 +252,7 @@ int mylite_diagnostics_append_current_error_condition(mylite_db *database, unsig
     return mylite_diagnostics_append_error(database, code, message);
 }
 
-void mylite_diagnostics_clear_error_message(mylite_db *database)
-{
+void mylite_diagnostics_clear_error_message(mylite_db *database) {
     if (database == NULL) {
         return;
     }
@@ -249,8 +261,7 @@ void mylite_diagnostics_clear_error_message(mylite_db *database)
     database->error_message = NULL;
 }
 
-static bool database_has_error_condition(const mylite_db *database)
-{
+static bool database_has_error_condition(const mylite_db *database) {
     if (database == NULL) {
         return false;
     }
@@ -262,8 +273,7 @@ static bool database_has_error_condition(const mylite_db *database)
     return false;
 }
 
-static bool promote_current_error_message_condition(mylite_db *database)
-{
+static bool promote_current_error_message_condition(mylite_db *database) {
     const char *message = mylite_error_message(database);
 
     if (database == NULL || message == NULL || message[0] == '\0') {
@@ -281,10 +291,12 @@ static bool promote_current_error_message_condition(mylite_db *database)
     return false;
 }
 
-static int append_database_condition(mylite_db *database,
-                                     enum mylite_expression_warning_level level, unsigned int code,
-                                     const char *message)
-{
+static int append_database_condition(
+    mylite_db *database,
+    enum mylite_expression_warning_level level,
+    unsigned int code,
+    const char *message
+) {
     struct mylite_expression_warning *items = NULL;
     char *copy = NULL;
 
@@ -298,8 +310,10 @@ static int append_database_condition(mylite_db *database,
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    items = realloc(database->warnings.items,
-                    (database->warnings.count + 1U) * sizeof(*database->warnings.items));
+    items = realloc(
+        database->warnings.items,
+        (database->warnings.count + 1U) * sizeof(*database->warnings.items)
+    );
     if (items == NULL) {
         free(copy);
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -312,8 +326,7 @@ static int append_database_condition(mylite_db *database,
     return MYLITE_OK;
 }
 
-static unsigned int current_error_condition_code(mylite_db *database, unsigned int fallback_code)
-{
+static unsigned int current_error_condition_code(mylite_db *database, unsigned int fallback_code) {
     const char *message = mylite_error_message(database);
 
     if (message != NULL && strcmp(message, "No database selected") == 0) {
@@ -322,8 +335,7 @@ static unsigned int current_error_condition_code(mylite_db *database, unsigned i
     return fallback_code;
 }
 
-static char *copy_message_text(const char *text, size_t length)
-{
+static char *copy_message_text(const char *text, size_t length) {
     char *copy = malloc(length + 1U);
 
     if (copy == NULL) {

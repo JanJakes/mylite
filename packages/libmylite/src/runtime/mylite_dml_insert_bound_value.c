@@ -8,9 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-int mylite_dml_copy_insert_sqlite_column_value(sqlite3_stmt *scan, int column,
-                                               struct mylite_insert_bound_value *out_value)
-{
+int mylite_dml_copy_insert_sqlite_column_value(
+    sqlite3_stmt *scan,
+    int column,
+    struct mylite_insert_bound_value *out_value
+) {
     int sqlite_type = SQLITE_NULL;
 
     if (scan == NULL || out_value == NULL) {
@@ -50,9 +52,10 @@ int mylite_dml_copy_insert_sqlite_column_value(sqlite3_stmt *scan, int column,
     return -1;
 }
 
-int mylite_dml_copy_insert_bound_value(const struct mylite_insert_bound_value *value,
-                                       struct mylite_insert_bound_value *out_value)
-{
+int mylite_dml_copy_insert_bound_value(
+    const struct mylite_insert_bound_value *value,
+    struct mylite_insert_bound_value *out_value
+) {
     if (value == NULL || out_value == NULL) {
         return MYLITE_MISUSE;
     }
@@ -68,11 +71,12 @@ int mylite_dml_copy_insert_bound_value(const struct mylite_insert_bound_value *v
     return MYLITE_OK;
 }
 
-int mylite_dml_copy_insert_bound_values(mylite_db *database,
-                                        const struct mylite_insert_bound_value *values,
-                                        size_t value_count,
-                                        struct mylite_insert_bound_value **out_values)
-{
+int mylite_dml_copy_insert_bound_values(
+    mylite_db *database,
+    const struct mylite_insert_bound_value *values,
+    size_t value_count,
+    struct mylite_insert_bound_value **out_values
+) {
     struct mylite_insert_bound_value *copy = NULL;
 
     if (database == NULL || out_values == NULL || (values == NULL && value_count != 0U)) {
@@ -105,9 +109,11 @@ int mylite_dml_copy_insert_bound_values(mylite_db *database,
     return MYLITE_OK;
 }
 
-bool mylite_dml_insert_bound_value_is_numeric(const struct mylite_insert_bound_value *value,
-                                              double *out_value, bool *out_is_integer)
-{
+bool mylite_dml_insert_bound_value_is_numeric(
+    const struct mylite_insert_bound_value *value,
+    double *out_value,
+    bool *out_is_integer
+) {
     int64_t integer_value = 0;
 
     if (out_value == NULL || out_is_integer == NULL) {
@@ -141,9 +147,9 @@ bool mylite_dml_insert_bound_value_is_numeric(const struct mylite_insert_bound_v
     return false;
 }
 
-bool mylite_dml_parse_insert_integer_text(const char *text, int64_t *out_value)
-{
+bool mylite_dml_parse_insert_integer_text(const char *text, int64_t *out_value) {
     enum { decimal_base = 10 };
+
     char *end = NULL;
     long long value = 0;
 
@@ -165,8 +171,7 @@ bool mylite_dml_parse_insert_integer_text(const char *text, int64_t *out_value)
     return true;
 }
 
-bool mylite_dml_parse_insert_real_text(const char *text, double *out_value)
-{
+bool mylite_dml_parse_insert_real_text(const char *text, double *out_value) {
     char *end = NULL;
     double value = 0.0;
 

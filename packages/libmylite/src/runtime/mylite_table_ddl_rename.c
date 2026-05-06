@@ -9,24 +9,44 @@
 #include <mylite/mylite.h>
 
 #include <stdlib.h>
-static int rename_table_transaction(mylite_db *database,
-                                    const struct mylite_rename_table_plan *plan);
-static int rename_table_target(mylite_db *database,
-                               const struct mylite_rename_table_target *target);
-static int rename_physical_table(mylite_db *database,
-                                 const struct mylite_rename_table_target *target);
-static int rewrite_rename_table_catalog(mylite_db *database,
-                                        const struct mylite_rename_table_target *target);
-static int rewrite_rename_table_catalog_row(mylite_db *database, const char *sql,
-                                            const struct mylite_rename_table_target *target);
-static int rewrite_rename_table_index_catalog(mylite_db *database,
-                                              const struct mylite_rename_table_target *target);
+static int rename_table_transaction(
+    mylite_db *database,
+    const struct mylite_rename_table_plan *plan
+);
+
+static int rename_table_target(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+);
+
+static int rename_physical_table(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+);
+
+static int rewrite_rename_table_catalog(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+);
+
+static int rewrite_rename_table_catalog_row(
+    mylite_db *database,
+    const char *sql,
+    const struct mylite_rename_table_target *target
+);
+
+static int rewrite_rename_table_index_catalog(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
-int mylite_table_ddl_execute_rename_table_statement(mylite_db *database,
-                                                    const char *selected_schema,
-                                                    struct mylite_rename_table_plan *plan)
-{
+int mylite_table_ddl_execute_rename_table_statement(
+    mylite_db *database,
+    const char *selected_schema,
+    struct mylite_rename_table_plan *plan
+) {
     int status = mylite_table_ddl_validate_rename_table_plan(database, selected_schema, plan);
 
     if (status == MYLITE_OK) {
@@ -35,9 +55,10 @@ int mylite_table_ddl_execute_rename_table_statement(mylite_db *database,
     return status;
 }
 
-static int rename_table_transaction(mylite_db *database,
-                                    const struct mylite_rename_table_plan *plan)
-{
+static int rename_table_transaction(
+    mylite_db *database,
+    const struct mylite_rename_table_plan *plan
+) {
     struct mylite_statement_atomicity atomicity = {0};
     int status = mylite_transaction_begin_statement_atomicity(database, &atomicity);
 
@@ -55,8 +76,10 @@ static int rename_table_transaction(mylite_db *database,
     return status;
 }
 
-static int rename_table_target(mylite_db *database, const struct mylite_rename_table_target *target)
-{
+static int rename_table_target(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+) {
     int status = rename_physical_table(database, target);
 
     if (status == MYLITE_OK) {
@@ -65,9 +88,10 @@ static int rename_table_target(mylite_db *database, const struct mylite_rename_t
     return status;
 }
 
-static int rename_physical_table(mylite_db *database,
-                                 const struct mylite_rename_table_target *target)
-{
+static int rename_physical_table(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+) {
     char *source_physical_name =
         mylite_catalog_physical_table_name(target->source_schema_name, target->source_table_name);
     char *target_physical_name =
@@ -82,8 +106,11 @@ static int rename_physical_table(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    sql = sqlite3_mprintf("ALTER TABLE \"%w\" RENAME TO \"%w\"", source_physical_name,
-                          target_physical_name);
+    sql = sqlite3_mprintf(
+        "ALTER TABLE \"%w\" RENAME TO \"%w\"",
+        source_physical_name,
+        target_physical_name
+    );
     free(source_physical_name);
     free(target_physical_name);
     if (sql == NULL) {
@@ -96,9 +123,10 @@ static int rename_physical_table(mylite_db *database,
     return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int rewrite_rename_table_catalog(mylite_db *database,
-                                        const struct mylite_rename_table_target *target)
-{
+static int rewrite_rename_table_catalog(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+) {
     static const char update_tables[] =
         "UPDATE __mylite_table_catalog SET table_schema = ?, table_name = ? "
         "WHERE table_schema = ? AND table_name = ?";
@@ -116,9 +144,11 @@ static int rewrite_rename_table_catalog(mylite_db *database,
     return status;
 }
 
-static int rewrite_rename_table_catalog_row(mylite_db *database, const char *sql,
-                                            const struct mylite_rename_table_target *target)
-{
+static int rewrite_rename_table_catalog_row(
+    mylite_db *database,
+    const char *sql,
+    const struct mylite_rename_table_target *target
+) {
     sqlite3_stmt *update = NULL;
     int rc =
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);
@@ -136,9 +166,10 @@ static int rewrite_rename_table_catalog_row(mylite_db *database, const char *sql
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static int rewrite_rename_table_index_catalog(mylite_db *database,
-                                              const struct mylite_rename_table_target *target)
-{
+static int rewrite_rename_table_index_catalog(
+    mylite_db *database,
+    const struct mylite_rename_table_target *target
+) {
     enum {
         bind_target_schema = 1,
         bind_target_table = 2,
@@ -146,6 +177,7 @@ static int rewrite_rename_table_index_catalog(mylite_db *database,
         bind_source_schema = 4,
         bind_source_table = 5,
     };
+
     sqlite3_stmt *update = NULL;
     static const char sql[] = "UPDATE __mylite_index_catalog "
                               "SET table_schema = ?, table_name = ?, index_schema = ? "
@@ -157,23 +189,47 @@ static int rewrite_rename_table_index_catalog(mylite_db *database,
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    sqlite3_bind_text(update, bind_target_schema, target->target_schema_name, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(update, bind_target_table, target->target_table_name, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(update, bind_target_index_schema, target->target_schema_name, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(update, bind_source_schema, target->source_schema_name, -1,
-                      sqlite_transient_destructor());
-    sqlite3_bind_text(update, bind_source_table, target->source_table_name, -1,
-                      sqlite_transient_destructor());
+    sqlite3_bind_text(
+        update,
+        bind_target_schema,
+        target->target_schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        update,
+        bind_target_table,
+        target->target_table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        update,
+        bind_target_index_schema,
+        target->target_schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        update,
+        bind_source_schema,
+        target->source_schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        update,
+        bind_source_table,
+        target->source_table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static sqlite3_destructor_type sqlite_transient_destructor(void)
-{
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
     // SQLite's public macro intentionally uses this sentinel pointer value.
     return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

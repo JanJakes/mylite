@@ -7,15 +7,17 @@
 
 #include <stdlib.h>
 
-bool mylite_table_ddl_alter_table_index_name_exists(const struct mylite_alter_table_model *model,
-                                                    const char *name)
-{
+bool mylite_table_ddl_alter_table_index_name_exists(
+    const struct mylite_alter_table_model *model,
+    const char *name
+) {
     return mylite_table_ddl_alter_table_index_index(model, name) < model->index_count;
 }
 
-size_t mylite_table_ddl_alter_table_index_index(const struct mylite_alter_table_model *model,
-                                                const char *name)
-{
+size_t mylite_table_ddl_alter_table_index_index(
+    const struct mylite_alter_table_model *model,
+    const char *name
+) {
     for (size_t index = 0U; index < model->index_count; ++index) {
         if (mylite_ascii_case_equal(model->indexes[index].name, name)) {
             return index;
@@ -24,10 +26,11 @@ size_t mylite_table_ddl_alter_table_index_index(const struct mylite_alter_table_
     return model->index_count;
 }
 
-int mylite_table_ddl_insert_alter_table_index(struct mylite_alter_table_model *model,
-                                              struct mylite_alter_table_index table_index,
-                                              size_t position)
-{
+int mylite_table_ddl_insert_alter_table_index(
+    struct mylite_alter_table_model *model,
+    struct mylite_alter_table_index table_index,
+    size_t position
+) {
     struct mylite_alter_table_index *indexes = NULL;
 
     if (position > model->index_count) {
@@ -47,8 +50,10 @@ int mylite_table_ddl_insert_alter_table_index(struct mylite_alter_table_model *m
     return MYLITE_OK;
 }
 
-int mylite_table_ddl_remove_alter_table_index(struct mylite_alter_table_model *model, size_t index)
-{
+int mylite_table_ddl_remove_alter_table_index(
+    struct mylite_alter_table_model *model,
+    size_t index
+) {
     if (index >= model->index_count) {
         return MYLITE_MISUSE;
     }

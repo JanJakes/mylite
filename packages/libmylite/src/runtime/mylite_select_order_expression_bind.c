@@ -12,23 +12,39 @@
 #include "sql/mylite_ast.h"
 #include "sql/mylite_expression.h"
 
-static int bind_order_row_constructor(mylite_db *database, const struct mylite_sql_ast_node *row,
-                                      struct mylite_select_plan *plan,
-                                      const struct mylite_select_order_bind_callbacks *callbacks);
-static int bind_order_binary_expression(mylite_db *database,
-                                        const struct mylite_sql_ast_node *expression,
-                                        struct mylite_select_plan *plan,
-                                        const struct mylite_select_order_bind_callbacks *callbacks);
-static int bind_order_identifier_expression(mylite_db *database,
-                                            const struct mylite_sql_ast_node *expression,
-                                            struct mylite_select_plan *plan);
-static int
-bind_order_in_subquery_expression(mylite_db *database, const struct mylite_sql_ast_node *expression,
-                                  struct mylite_select_plan *plan,
-                                  const struct mylite_select_order_bind_callbacks *callbacks);
+static int bind_order_row_constructor(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *row,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_order_bind_callbacks *callbacks
+);
+
+static int bind_order_binary_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_order_bind_callbacks *callbacks
+);
+
+static int bind_order_identifier_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan
+);
+
+static int bind_order_in_subquery_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_order_bind_callbacks *callbacks
+);
+
 static int bind_order_quantified_subquery_expression(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
-    struct mylite_select_plan *plan, const struct mylite_select_order_bind_callbacks *callbacks);
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_order_bind_callbacks *callbacks
+);
 
 int mylite_select_bind_order_expression( // NOLINT(misc-no-recursion)
     mylite_db *database, const struct mylite_sql_ast_node *expression,
@@ -66,8 +82,11 @@ int mylite_select_bind_order_expression( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_SUBQUERY_EXPRESSION:
     case MYLITE_SQL_AST_EXISTS_EXPRESSION:
         return mylite_select_subquery_bind_select_expression(
-            database, expression, expression->kind == MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
-            callbacks->subquery_callbacks);
+            database,
+            expression,
+            expression->kind == MYLITE_SQL_AST_SUBQUERY_EXPRESSION,
+            callbacks->subquery_callbacks
+        );
     case MYLITE_SQL_AST_QUANTIFIED_COMPARISON:
         return bind_order_quantified_subquery_expression(database, expression, plan, callbacks);
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
@@ -124,8 +143,12 @@ int mylite_select_bind_order_expression( // NOLINT(misc-no-recursion)
         if (status != MYLITE_OK) {
             return status;
         }
-        return mylite_select_bind_order_expression(database, mylite_ast_child_at(expression, 0U),
-                                                   plan, callbacks);
+        return mylite_select_bind_order_expression(
+            database,
+            mylite_ast_child_at(expression, 0U),
+            plan,
+            callbacks
+        );
     }
     case MYLITE_SQL_AST_FUNCTION_CALL: {
         const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
@@ -142,7 +165,8 @@ int mylite_select_bind_order_expression( // NOLINT(misc-no-recursion)
         }
         for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                          : arguments->first_child;
-             child != NULL; child = child->next_sibling) {
+             child != NULL;
+             child = child->next_sibling) {
             int status = mylite_select_bind_order_expression(database, child, plan, callbacks);
 
             if (status != MYLITE_OK) {
@@ -153,7 +177,12 @@ int mylite_select_bind_order_expression( // NOLINT(misc-no-recursion)
     }
     case MYLITE_SQL_AST_AGGREGATE_CALL:
         return mylite_select_bind_aggregate_aware_expression(
-            database, expression, plan, "order clause", callbacks->aggregate_callbacks);
+            database,
+            expression,
+            plan,
+            "order clause",
+            callbacks->aggregate_callbacks
+        );
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -253,10 +282,11 @@ int mylite_select_bind_order_expression( // NOLINT(misc-no-recursion)
     return callbacks->set_unsupported_order_error(database);
 }
 
-static int bind_order_identifier_expression(mylite_db *database,
-                                            const struct mylite_sql_ast_node *expression,
-                                            struct mylite_select_plan *plan)
-{
+static int bind_order_identifier_expression(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_select_plan *plan
+) {
     enum mylite_select_order_key_kind kind = MYLITE_SELECT_ORDER_KEY_EXPRESSION;
     size_t index = 0U;
     int status = MYLITE_OK;
@@ -309,8 +339,12 @@ static int bind_order_binary_expression( // NOLINT(misc-no-recursion)
         if (status != MYLITE_OK) {
             return status;
         }
-        return mylite_select_subquery_bind_row_expression(database, expression, plan,
-                                                          callbacks->subquery_callbacks);
+        return mylite_select_subquery_bind_row_expression(
+            database,
+            expression,
+            plan,
+            callbacks->subquery_callbacks
+        );
     }
     if (mylite_select_subquery_binary_expression_is_in(expression)) {
         return bind_order_in_subquery_expression(database, expression, plan, callbacks);
@@ -340,8 +374,12 @@ static int bind_order_in_subquery_expression( // NOLINT(misc-no-recursion)
     if (status != MYLITE_OK) {
         return status;
     }
-    return mylite_select_subquery_bind_in_expression(database, expression, plan,
-                                                     callbacks->subquery_callbacks);
+    return mylite_select_subquery_bind_in_expression(
+        database,
+        expression,
+        plan,
+        callbacks->subquery_callbacks
+    );
 }
 
 static int bind_order_quantified_subquery_expression( // NOLINT(misc-no-recursion)
@@ -358,8 +396,12 @@ static int bind_order_quantified_subquery_expression( // NOLINT(misc-no-recursio
         if (status != MYLITE_OK) {
             return status;
         }
-        return mylite_select_subquery_bind_row_expression(database, expression, plan,
-                                                          callbacks->subquery_callbacks);
+        return mylite_select_subquery_bind_row_expression(
+            database,
+            expression,
+            plan,
+            callbacks->subquery_callbacks
+        );
     }
     if (unwrapped_left == NULL) {
         return callbacks->set_unsupported_order_error(database);
@@ -371,6 +413,10 @@ static int bind_order_quantified_subquery_expression( // NOLINT(misc-no-recursio
     if (status != MYLITE_OK) {
         return status;
     }
-    return mylite_select_subquery_bind_quantified_expression(database, expression, plan,
-                                                             callbacks->subquery_callbacks);
+    return mylite_select_subquery_bind_quantified_expression(
+        database,
+        expression,
+        plan,
+        callbacks->subquery_callbacks
+    );
 }

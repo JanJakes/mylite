@@ -11,25 +11,39 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_show_tables_schema_name(mylite_db *database,
-                                        const struct mylite_sql_ast_node *statement,
-                                        char **out_schema_name);
+static int copy_show_tables_schema_name(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    char **out_schema_name
+);
+
 static int validate_show_tables_schema(mylite_db *database, const char *schema_name);
+
 static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *statement);
-static const struct mylite_sql_ast_node *
-show_tables_filter(const struct mylite_sql_ast_node *statement);
-static const struct mylite_sql_ast_node *
-show_tables_where_expression(const struct mylite_sql_ast_node *statement);
+
+static const struct mylite_sql_ast_node *show_tables_filter(
+    const struct mylite_sql_ast_node *statement
+);
+
+static const struct mylite_sql_ast_node *show_tables_where_expression(
+    const struct mylite_sql_ast_node *statement
+);
+
 static char *copy_show_tables_display_pattern(const char *like_pattern, bool uppercase_pattern);
+
 static char *show_tables_column_name(const char *schema_name, const char *like_pattern);
+
 static char *show_tables_glob_pattern(const char *like_pattern);
+
 static int normalize_show_tables_schema_name(char **schema_name);
+
 static void append_show_tables_glob_literal(sqlite3_str *glob, char character);
 
-int mylite_show_prepare_tables_statement(mylite_db *database,
-                                         const struct mylite_sql_ast_node *statement,
-                                         mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_tables_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     char *schema_name = NULL;
     char *like_pattern = NULL;
     char *display_pattern = NULL;
@@ -51,7 +65,9 @@ int mylite_show_prepare_tables_statement(mylite_db *database,
     }
     if (status == MYLITE_OK && like_pattern != NULL) {
         display_pattern = copy_show_tables_display_pattern(
-            like_pattern, mylite_ascii_case_equal(schema_name, "information_schema"));
+            like_pattern,
+            mylite_ascii_case_equal(schema_name, "information_schema")
+        );
         if (display_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -69,16 +85,17 @@ int mylite_show_prepare_tables_statement(mylite_db *database,
         }
     }
     if (status == MYLITE_OK) {
-        status =
-            mylite_show_tables_sql(database,
-                                   &(const struct mylite_show_tables_query){
-                                       .schema_name = schema_name,
-                                       .column_name = column_name,
-                                       .glob_pattern = glob_pattern,
-                                       .where_expression = show_tables_where_expression(statement),
-                                       .full = statement->show_tables_full,
-                                   },
-                                   &sqlite_sql);
+        status = mylite_show_tables_sql(
+            database,
+            &(const struct mylite_show_tables_query){
+                .schema_name = schema_name,
+                .column_name = column_name,
+                .glob_pattern = glob_pattern,
+                .where_expression = show_tables_where_expression(statement),
+                .full = statement->show_tables_full,
+            },
+            &sqlite_sql
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -96,10 +113,11 @@ int mylite_show_prepare_tables_statement(mylite_db *database,
     return status;
 }
 
-int mylite_show_prepare_table_status_statement(mylite_db *database,
-                                               const struct mylite_sql_ast_node *statement,
-                                               mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_table_status_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     char *schema_name = NULL;
     char *like_pattern = NULL;
     char *display_pattern = NULL;
@@ -120,7 +138,9 @@ int mylite_show_prepare_table_status_statement(mylite_db *database,
     }
     if (status == MYLITE_OK && like_pattern != NULL) {
         display_pattern = copy_show_tables_display_pattern(
-            like_pattern, mylite_ascii_case_equal(schema_name, "information_schema"));
+            like_pattern,
+            mylite_ascii_case_equal(schema_name, "information_schema")
+        );
         if (display_pattern == NULL) {
             status = MYLITE_NOMEM;
         }
@@ -139,7 +159,8 @@ int mylite_show_prepare_table_status_statement(mylite_db *database,
                 .glob_pattern = glob_pattern,
                 .where_expression = show_tables_where_expression(statement),
             },
-            &sqlite_sql);
+            &sqlite_sql
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
@@ -156,10 +177,11 @@ int mylite_show_prepare_table_status_statement(mylite_db *database,
     return status;
 }
 
-static int copy_show_tables_schema_name(mylite_db *database,
-                                        const struct mylite_sql_ast_node *statement,
-                                        char **out_schema_name)
-{
+static int copy_show_tables_schema_name(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    char **out_schema_name
+) {
     const struct mylite_sql_ast_node *schema_name = mylite_ast_child_at(statement, 0U);
 
     *out_schema_name = NULL;
@@ -182,8 +204,7 @@ static int copy_show_tables_schema_name(mylite_db *database,
     return normalize_show_tables_schema_name(out_schema_name);
 }
 
-static int validate_show_tables_schema(mylite_db *database, const char *schema_name)
-{
+static int validate_show_tables_schema(mylite_db *database, const char *schema_name) {
     struct mylite_schema_presence presence;
     int status = mylite_catalog_schema_exists(database, schema_name, &presence);
 
@@ -191,15 +212,18 @@ static int validate_show_tables_schema(mylite_db *database, const char *schema_n
         return status;
     }
     if (!presence.exists) {
-        (void)mylite_diagnostics_set_error_message_parts(database, "Unknown database '",
-                                                         schema_name, "'");
+        (void)mylite_diagnostics_set_error_message_parts(
+            database,
+            "Unknown database '",
+            schema_name,
+            "'"
+        );
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
 }
 
-static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *statement)
-{
+static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *literal = show_tables_filter(statement);
 
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
@@ -208,9 +232,9 @@ static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *sta
     return mylite_show_copy_like_pattern_span(literal);
 }
 
-static const struct mylite_sql_ast_node *
-show_tables_filter(const struct mylite_sql_ast_node *statement)
-{
+static const struct mylite_sql_ast_node *show_tables_filter(
+    const struct mylite_sql_ast_node *statement
+) {
     const struct mylite_sql_ast_node *first = mylite_ast_child_at(statement, 0U);
 
     if (first == NULL || first->kind != MYLITE_SQL_AST_IDENTIFIER) {
@@ -219,9 +243,9 @@ show_tables_filter(const struct mylite_sql_ast_node *statement)
     return mylite_ast_child_at(statement, 1U);
 }
 
-static const struct mylite_sql_ast_node *
-show_tables_where_expression(const struct mylite_sql_ast_node *statement)
-{
+static const struct mylite_sql_ast_node *show_tables_where_expression(
+    const struct mylite_sql_ast_node *statement
+) {
     const struct mylite_sql_ast_node *filter = show_tables_filter(statement);
 
     if (filter == NULL || filter->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
@@ -230,8 +254,7 @@ show_tables_where_expression(const struct mylite_sql_ast_node *statement)
     return mylite_ast_child_at(filter, 0U);
 }
 
-static char *copy_show_tables_display_pattern(const char *like_pattern, bool uppercase_pattern)
-{
+static char *copy_show_tables_display_pattern(const char *like_pattern, bool uppercase_pattern) {
     char *display_pattern = mylite_copy_span_text(like_pattern, strlen(like_pattern));
 
     if (display_pattern == NULL) {
@@ -243,16 +266,14 @@ static char *copy_show_tables_display_pattern(const char *like_pattern, bool upp
     return display_pattern;
 }
 
-static char *show_tables_column_name(const char *schema_name, const char *like_pattern)
-{
+static char *show_tables_column_name(const char *schema_name, const char *like_pattern) {
     if (like_pattern == NULL) {
         return sqlite3_mprintf("Tables_in_%s", schema_name);
     }
     return sqlite3_mprintf("Tables_in_%s (%s)", schema_name, like_pattern);
 }
 
-static char *show_tables_glob_pattern(const char *like_pattern)
-{
+static char *show_tables_glob_pattern(const char *like_pattern) {
     sqlite3_str *glob = sqlite3_str_new(NULL);
 
     if (glob == NULL) {
@@ -275,8 +296,7 @@ static char *show_tables_glob_pattern(const char *like_pattern)
     return sqlite3_str_finish(glob);
 }
 
-static int normalize_show_tables_schema_name(char **schema_name)
-{
+static int normalize_show_tables_schema_name(char **schema_name) {
     char *normalized = NULL;
 
     if (schema_name == NULL || *schema_name == NULL ||
@@ -295,8 +315,7 @@ static int normalize_show_tables_schema_name(char **schema_name)
     return MYLITE_OK;
 }
 
-static void append_show_tables_glob_literal(sqlite3_str *glob, char character)
-{
+static void append_show_tables_glob_literal(sqlite3_str *glob, char character) {
     char literal[1] = {character};
 
     switch (character) {

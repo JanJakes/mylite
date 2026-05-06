@@ -12,34 +12,56 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-static struct mylite_field_descriptor
-cast_signed_descriptor(const struct mylite_field_descriptor *source);
-static struct mylite_field_descriptor
-cast_unsigned_descriptor(const struct mylite_field_descriptor *source);
-static struct mylite_field_descriptor
-cast_decimal_descriptor(const struct mylite_sql_ast_node *target,
-                        const struct mylite_field_descriptor *source);
-static struct mylite_field_descriptor
-cast_character_descriptor(mylite_db *database, const struct mylite_sql_ast_node *target,
-                          const struct mylite_expression_value *value,
-                          const struct mylite_field_descriptor *source);
+static struct mylite_field_descriptor cast_signed_descriptor(
+    const struct mylite_field_descriptor *source
+);
+
+static struct mylite_field_descriptor cast_unsigned_descriptor(
+    const struct mylite_field_descriptor *source
+);
+
+static struct mylite_field_descriptor cast_decimal_descriptor(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_field_descriptor *source
+);
+
+static struct mylite_field_descriptor cast_character_descriptor(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    const struct mylite_field_descriptor *source
+);
+
 static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target);
+
 static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target);
-static uint64_t cast_character_length(mylite_db *database, const struct mylite_sql_ast_node *target,
-                                      const struct mylite_expression_value *value,
-                                      const struct mylite_field_descriptor *source);
-static unsigned int cast_target_charset_id(mylite_db *database,
-                                           const struct mylite_sql_ast_node *target);
-static int cast_target_charset_max_length(mylite_db *database,
-                                          const struct mylite_sql_ast_node *target);
+
+static uint64_t cast_character_length(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    const struct mylite_field_descriptor *source
+);
+
+static unsigned int cast_target_charset_id(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target
+);
+
+static int cast_target_charset_max_length(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target
+);
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_descriptor_infer_cast_expression(
-    mylite_db *database, const struct mylite_select_plan *plan,
-    const struct mylite_sql_ast_node *expression, const struct mylite_expression_value *value,
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
     struct mylite_field_descriptor *out_descriptor,
-    const struct mylite_expression_descriptor_cast_callbacks *callbacks)
-{
+    const struct mylite_expression_descriptor_cast_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *target = mylite_ast_child_at(expression, 1U);
     struct mylite_field_descriptor source_descriptor = mylite_expression_descriptor_defaults();
@@ -110,9 +132,9 @@ int mylite_expression_descriptor_infer_cast_expression(
     return MYLITE_OK;
 }
 
-static struct mylite_field_descriptor
-cast_signed_descriptor(const struct mylite_field_descriptor *source)
-{
+static struct mylite_field_descriptor cast_signed_descriptor(
+    const struct mylite_field_descriptor *source
+) {
     struct mylite_field_descriptor descriptor = {
         .type = MYLITE_FIELD_TYPE_LONGLONG,
         .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
@@ -125,19 +147,19 @@ cast_signed_descriptor(const struct mylite_field_descriptor *source)
     return descriptor;
 }
 
-static struct mylite_field_descriptor
-cast_unsigned_descriptor(const struct mylite_field_descriptor *source)
-{
+static struct mylite_field_descriptor cast_unsigned_descriptor(
+    const struct mylite_field_descriptor *source
+) {
     struct mylite_field_descriptor descriptor = cast_signed_descriptor(source);
 
     descriptor.flags |= MYLITE_FIELD_FLAG_UNSIGNED;
     return descriptor;
 }
 
-static struct mylite_field_descriptor
-cast_decimal_descriptor(const struct mylite_sql_ast_node *target,
-                        const struct mylite_field_descriptor *source)
-{
+static struct mylite_field_descriptor cast_decimal_descriptor(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_field_descriptor *source
+) {
     unsigned int precision = cast_decimal_precision(target);
     unsigned int scale = cast_decimal_scale(target);
     struct mylite_field_descriptor descriptor = {
@@ -153,11 +175,12 @@ cast_decimal_descriptor(const struct mylite_sql_ast_node *target,
     return descriptor;
 }
 
-static struct mylite_field_descriptor
-cast_character_descriptor(mylite_db *database, const struct mylite_sql_ast_node *target,
-                          const struct mylite_expression_value *value,
-                          const struct mylite_field_descriptor *source)
-{
+static struct mylite_field_descriptor cast_character_descriptor(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    const struct mylite_field_descriptor *source
+) {
     unsigned int charset_id = cast_target_charset_id(database, target);
     struct mylite_field_descriptor descriptor = {
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
@@ -175,26 +198,26 @@ cast_character_descriptor(mylite_db *database, const struct mylite_sql_ast_node 
     return descriptor;
 }
 
-static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target)
-{
+static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target) {
     if (target != NULL && target->has_column_precision) {
         return (unsigned int)target->column_precision;
     }
     return mylite_mysql_cast_default_decimal_precision;
 }
 
-static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target)
-{
+static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target) {
     if (target != NULL && target->has_column_scale) {
         return (unsigned int)target->column_scale;
     }
     return 0U;
 }
 
-static uint64_t cast_character_length(mylite_db *database, const struct mylite_sql_ast_node *target,
-                                      const struct mylite_expression_value *value,
-                                      const struct mylite_field_descriptor *source)
-{
+static uint64_t cast_character_length(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    const struct mylite_field_descriptor *source
+) {
     int max_length = cast_target_charset_max_length(database, target);
 
     if (target != NULL && target->has_column_length) {
@@ -210,9 +233,10 @@ static uint64_t cast_character_length(mylite_db *database, const struct mylite_s
     return 0U;
 }
 
-static unsigned int cast_target_charset_id(mylite_db *database,
-                                           const struct mylite_sql_ast_node *target)
-{
+static unsigned int cast_target_charset_id(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target
+) {
     char *name = NULL;
     const struct mylite_charset *charset = NULL;
     const struct mylite_collation *collation = NULL;
@@ -237,9 +261,10 @@ static unsigned int cast_target_charset_id(mylite_db *database,
                              : (unsigned int)collation->id;
 }
 
-static int cast_target_charset_max_length(mylite_db *database,
-                                          const struct mylite_sql_ast_node *target)
-{
+static int cast_target_charset_max_length(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target
+) {
     char *name = NULL;
     const struct mylite_charset *charset = NULL;
 

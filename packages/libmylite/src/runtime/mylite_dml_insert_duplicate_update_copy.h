@@ -4,6 +4,8 @@
 #include "mylite_dml_types.h"
 
 int mylite_dml_copy_insert_duplicate_update_clause(
-    const struct mylite_sql_ast_node *clause, struct mylite_insert_duplicate_update_plan *plan);
+    const struct mylite_sql_ast_node *clause,
+    struct mylite_insert_duplicate_update_plan *plan
+);
 
 #endif

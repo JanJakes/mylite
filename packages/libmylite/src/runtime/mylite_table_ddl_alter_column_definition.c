@@ -9,16 +9,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int alter_table_column_descriptor(mylite_db *database,
-                                         const struct mylite_schema_default *schema_default,
-                                         const struct mylite_create_table_column *definition,
-                                         struct mylite_column_type_descriptor *out_descriptor);
+static int alter_table_column_descriptor(
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_column *definition,
+    struct mylite_column_type_descriptor *out_descriptor
+);
 
 int mylite_table_ddl_replace_alter_table_column_from_definition(
-    mylite_db *database, const struct mylite_schema_default *schema_default,
-    const struct mylite_create_table_column *definition, const char *source_name, bool added,
-    struct mylite_alter_table_column *target)
-{
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_column *definition,
+    const char *source_name,
+    bool added,
+    struct mylite_alter_table_column *target
+) {
     char *source_copy = source_name == NULL ? NULL : mylite_copy_nonempty_cstring(source_name);
     struct mylite_alter_table_column replacement = {0};
     int status = MYLITE_OK;
@@ -28,7 +33,13 @@ int mylite_table_ddl_replace_alter_table_column_from_definition(
         return MYLITE_NOMEM;
     }
     status = mylite_table_ddl_init_alter_table_column_from_definition(
-        database, schema_default, definition, source_copy, added, &replacement);
+        database,
+        schema_default,
+        definition,
+        source_copy,
+        added,
+        &replacement
+    );
     free(source_copy);
     if (status != MYLITE_OK) {
         return status;
@@ -40,10 +51,13 @@ int mylite_table_ddl_replace_alter_table_column_from_definition(
 }
 
 int mylite_table_ddl_init_alter_table_column_from_definition(
-    mylite_db *database, const struct mylite_schema_default *schema_default,
-    const struct mylite_create_table_column *definition, const char *source_name, bool added,
-    struct mylite_alter_table_column *out_column)
-{
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_column *definition,
+    const char *source_name,
+    bool added,
+    struct mylite_alter_table_column *out_column
+) {
     struct mylite_column_type_descriptor descriptor;
     const char *extra = mylite_table_ddl_create_table_column_extra(definition);
     const char *nullable_text = "NO";
@@ -71,9 +85,10 @@ int mylite_table_ddl_init_alter_table_column_from_definition(
     out_column->column_key = mylite_copy_span_text("", 0U);
     out_column->extra =
         mylite_copy_span_text(extra == NULL ? "" : extra, extra == NULL ? 0U : strlen(extra));
-    out_column->column_comment =
-        mylite_copy_span_text(definition->comment == NULL ? "" : definition->comment,
-                              definition->comment == NULL ? 0U : strlen(definition->comment));
+    out_column->column_comment = mylite_copy_span_text(
+        definition->comment == NULL ? "" : definition->comment,
+        definition->comment == NULL ? 0U : strlen(definition->comment)
+    );
     out_column->generation_expression = mylite_copy_span_text("", 0U);
     if (out_column->name == NULL || (source_name != NULL && out_column->source_name == NULL) ||
         (definition->default_text != NULL && out_column->column_default == NULL) ||
@@ -129,8 +144,8 @@ int mylite_table_ddl_init_alter_table_column_from_definition(
 }
 
 bool mylite_table_ddl_alter_table_column_definition_has_deferred_features(
-    const struct mylite_create_table_column *column)
-{
+    const struct mylite_create_table_column *column
+) {
     if (column == NULL) {
         return true;
     }
@@ -144,23 +159,30 @@ bool mylite_table_ddl_alter_table_column_definition_has_deferred_features(
     return false;
 }
 
-static int alter_table_column_descriptor(mylite_db *database,
-                                         const struct mylite_schema_default *schema_default,
-                                         const struct mylite_create_table_column *definition,
-                                         struct mylite_column_type_descriptor *out_descriptor)
-{
+static int alter_table_column_descriptor(
+    mylite_db *database,
+    const struct mylite_schema_default *schema_default,
+    const struct mylite_create_table_column *definition,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     struct mylite_create_table_options options = {0};
 
     if (definition == NULL || schema_default == NULL) {
         return MYLITE_MISUSE;
     }
     if (schema_default->character_set == NULL || schema_default->collation == NULL) {
-        (void)mylite_diagnostics_set_error_message(database,
-                                                   "Unsupported charset/collation registry entry");
+        (void)mylite_diagnostics_set_error_message(
+            database,
+            "Unsupported charset/collation registry entry"
+        );
         return MYLITE_EXEC_ERROR;
     }
     options.character_set = (char *)schema_default->character_set;
     options.collation = (char *)schema_default->collation;
-    return mylite_table_ddl_describe_create_table_column(definition, schema_default, &options,
-                                                         out_descriptor);
+    return mylite_table_ddl_describe_create_table_column(
+        definition,
+        schema_default,
+        &options,
+        out_descriptor
+    );
 }

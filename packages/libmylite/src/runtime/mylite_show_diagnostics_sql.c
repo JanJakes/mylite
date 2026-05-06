@@ -7,14 +7,19 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-static bool diagnostic_condition_matches(const struct mylite_expression_warning *condition,
-                                         enum mylite_sql_ast_show_diagnostics_kind kind);
-static const char *
-diagnostic_condition_level_name(const struct mylite_expression_warning *condition);
+static bool diagnostic_condition_matches(
+    const struct mylite_expression_warning *condition,
+    enum mylite_sql_ast_show_diagnostics_kind kind
+);
 
-char *mylite_show_diagnostics_sql(mylite_db *database,
-                                  const struct mylite_show_diagnostics_query *query)
-{
+static const char *diagnostic_condition_level_name(
+    const struct mylite_expression_warning *condition
+);
+
+char *mylite_show_diagnostics_sql(
+    mylite_db *database,
+    const struct mylite_show_diagnostics_query *query
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     uint64_t matched = 0U;
     uint64_t emitted = 0U;
@@ -39,24 +44,32 @@ char *mylite_show_diagnostics_sql(mylite_db *database,
         if (!first) {
             sqlite3_str_appendall(sql, " UNION ALL ");
         }
-        sqlite3_str_appendf(sql, "SELECT %Q AS \"Level\", %u AS \"Code\", %Q AS \"Message\"",
-                            diagnostic_condition_level_name(condition), condition->code,
-                            condition->message == NULL ? "" : condition->message);
+        sqlite3_str_appendf(
+            sql,
+            "SELECT %Q AS \"Level\", %u AS \"Code\", %Q AS \"Message\"",
+            diagnostic_condition_level_name(condition),
+            condition->code,
+            condition->message == NULL ? "" : condition->message
+        );
         first = false;
         ++emitted;
     }
 
     if (first) {
-        sqlite3_str_appendall(sql, "SELECT CAST(NULL AS TEXT) AS \"Level\", "
-                                   "CAST(NULL AS INTEGER) AS \"Code\", "
-                                   "CAST(NULL AS TEXT) AS \"Message\" WHERE 0");
+        sqlite3_str_appendall(
+            sql,
+            "SELECT CAST(NULL AS TEXT) AS \"Level\", "
+            "CAST(NULL AS INTEGER) AS \"Code\", "
+            "CAST(NULL AS TEXT) AS \"Message\" WHERE 0"
+        );
     }
     return sqlite3_str_finish(sql);
 }
 
-char *mylite_show_diagnostics_count_sql(mylite_db *database,
-                                        enum mylite_sql_ast_show_diagnostics_kind kind)
-{
+char *mylite_show_diagnostics_count_sql(
+    mylite_db *database,
+    enum mylite_sql_ast_show_diagnostics_kind kind
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     uint64_t count = 0U;
     const char *column_name = kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_ERRORS
@@ -77,18 +90,19 @@ char *mylite_show_diagnostics_count_sql(mylite_db *database,
     return sqlite3_str_finish(sql);
 }
 
-static bool diagnostic_condition_matches(const struct mylite_expression_warning *condition,
-                                         enum mylite_sql_ast_show_diagnostics_kind kind)
-{
+static bool diagnostic_condition_matches(
+    const struct mylite_expression_warning *condition,
+    enum mylite_sql_ast_show_diagnostics_kind kind
+) {
     if (kind == MYLITE_SQL_AST_SHOW_DIAGNOSTICS_WARNINGS) {
         return true;
     }
     return condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR;
 }
 
-static const char *
-diagnostic_condition_level_name(const struct mylite_expression_warning *condition)
-{
+static const char *diagnostic_condition_level_name(
+    const struct mylite_expression_warning *condition
+) {
     if (condition->level == MYLITE_EXPRESSION_WARNING_LEVEL_ERROR) {
         return "Error";
     }

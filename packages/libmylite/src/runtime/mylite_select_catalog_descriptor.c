@@ -7,13 +7,18 @@
 
 #include <stdbool.h>
 
-static void apply_catalog_column_flags(const struct mylite_catalog_column_descriptor_source *source,
-                                       struct mylite_field_descriptor *descriptor);
+static void apply_catalog_column_flags(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+);
+
 static struct mylite_field_descriptor catalog_field_descriptor_defaults(void);
 
-int mylite_select_catalog_load_column_descriptor(mylite_db *database, sqlite3_stmt *select,
-                                                 struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_select_catalog_load_column_descriptor(
+    mylite_db *database,
+    sqlite3_stmt *select,
+    struct mylite_field_descriptor *out_descriptor
+) {
     struct mylite_catalog_column_descriptor_source source =
         mylite_select_catalog_column_descriptor_source(select);
     struct mylite_field_descriptor descriptor = catalog_field_descriptor_defaults();
@@ -31,9 +36,10 @@ int mylite_select_catalog_load_column_descriptor(mylite_db *database, sqlite3_st
     return MYLITE_OK;
 }
 
-static void apply_catalog_column_flags(const struct mylite_catalog_column_descriptor_source *source,
-                                       struct mylite_field_descriptor *descriptor)
-{
+static void apply_catalog_column_flags(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+) {
     bool no_default = false;
 
     if (sqlite3_column_type(source->select, source->column_default_index) == SQLITE_NULL) {
@@ -68,8 +74,7 @@ static void apply_catalog_column_flags(const struct mylite_catalog_column_descri
     }
 }
 
-static struct mylite_field_descriptor catalog_field_descriptor_defaults(void)
-{
+static struct mylite_field_descriptor catalog_field_descriptor_defaults(void) {
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_NULL,
         .charset_id = mylite_mysql_binary_charset_id,

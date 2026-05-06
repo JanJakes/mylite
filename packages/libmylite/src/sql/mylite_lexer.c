@@ -30,72 +30,161 @@ struct mylite_binary_literal_options {
 static const unsigned char mysql_comment_space_max = 0x20U;
 static const unsigned char mysql_non_ascii_min = 0x80U;
 
-static bool scan_comment(struct mylite_sql_lexer *lexer, unsigned int flags,
-                         struct mylite_sql_token *out_token);
-static bool scan_word(struct mylite_sql_lexer *lexer, unsigned int flags,
-                      struct mylite_sql_token *out_token);
-static bool scan_digit_leading_token(struct mylite_sql_lexer *lexer, unsigned int flags,
-                                     struct mylite_sql_token *out_token);
-static bool scan_dot_or_number(struct mylite_sql_lexer *lexer, unsigned int flags,
-                               struct mylite_sql_token *out_token);
-static bool scan_variable(struct mylite_sql_lexer *lexer, unsigned int flags,
-                          struct mylite_sql_token *out_token);
-static bool scan_operator_or_punctuation(struct mylite_sql_lexer *lexer, unsigned int flags,
-                                         struct mylite_sql_token *out_token);
-static bool scan_quoted_string(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
-                               struct mylite_quoted_string_options options,
-                               struct mylite_sql_token *out_token);
-static bool scan_quoted_identifier(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
-                                   char quote, struct mylite_sql_token *out_token);
-static bool scan_quoted_hex_or_bit_literal(struct mylite_sql_lexer *lexer,
-                                           struct mylite_token_start start,
-                                           struct mylite_binary_literal_options options,
-                                           struct mylite_sql_token *out_token);
-static bool scan_prefixed_hex_or_bit_literal(struct mylite_sql_lexer *lexer,
-                                             struct mylite_token_start start,
-                                             struct mylite_binary_literal_options options,
-                                             struct mylite_sql_token *out_token);
-static bool scan_digit_leading_identifier(struct mylite_sql_lexer *lexer, unsigned int flags,
-                                          struct mylite_sql_token *out_token);
-static bool scan_unquoted_identifier(struct mylite_sql_lexer *lexer, unsigned int flags,
-                                     struct mylite_sql_token *out_token);
-static bool scan_system_variable(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
-                                 struct mylite_sql_token *out_token);
+static bool scan_comment(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_word(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_digit_leading_token(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_dot_or_number(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_variable(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_operator_or_punctuation(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_quoted_string(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_quoted_string_options options,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_quoted_identifier(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    char quote,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_quoted_hex_or_bit_literal(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_binary_literal_options options,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_prefixed_hex_or_bit_literal(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_binary_literal_options options,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_digit_leading_identifier(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_unquoted_identifier(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+);
+
+static bool scan_system_variable(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_sql_token *out_token
+);
+
 static bool scan_quoted_system_variable_component(struct mylite_sql_lexer *lexer);
-static bool scan_quoted_variable(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
-                                 char quote, struct mylite_sql_token *out_token);
-static struct mylite_token_start make_token_start(const struct mylite_sql_lexer *lexer,
-                                                  unsigned int flags);
-static void set_token(const struct mylite_sql_lexer *lexer, struct mylite_sql_token *out_token,
-                      enum mylite_sql_token_kind kind, struct mylite_token_start start);
-static void set_error_token(const struct mylite_sql_lexer *lexer,
-                            struct mylite_sql_token *out_token, enum mylite_sql_lexer_error error,
-                            struct mylite_token_start start);
+
+static bool scan_quoted_variable(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    char quote,
+    struct mylite_sql_token *out_token
+);
+
+static struct mylite_token_start make_token_start(
+    const struct mylite_sql_lexer *lexer,
+    unsigned int flags
+);
+
+static void set_token(
+    const struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_token,
+    enum mylite_sql_token_kind kind,
+    struct mylite_token_start start
+);
+
+static void set_error_token(
+    const struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_token,
+    enum mylite_sql_lexer_error error,
+    struct mylite_token_start start
+);
+
 static bool consume_whitespace(struct mylite_sql_lexer *lexer);
+
 static void advance_one(struct mylite_sql_lexer *lexer);
+
 static unsigned char peek_at(const struct mylite_sql_lexer *lexer, size_t lookahead);
+
 static bool has_at(const struct mylite_sql_lexer *lexer, size_t lookahead);
+
 static bool starts_with(const struct mylite_sql_lexer *lexer, const char *text);
+
 static bool starts_comment(const struct mylite_sql_lexer *lexer);
+
 static bool is_mysql_comment_space(unsigned char byte);
+
 static bool is_space(unsigned char byte);
+
 static bool is_digit(unsigned char byte);
+
 static bool is_hex_digit(unsigned char byte);
+
 static bool is_bit_digit(unsigned char byte);
+
 static bool is_identifier_start(unsigned char byte);
+
 static bool is_identifier_part(unsigned char byte);
+
 static bool is_user_variable_part(unsigned char byte);
+
 static bool is_punctuation(unsigned char byte);
+
 static bool is_exponent_marker(unsigned char byte);
+
 static bool is_sign(unsigned char byte);
+
 static bool is_binary_literal_digit(unsigned char byte, bool hex);
+
 static enum mylite_sql_lexer_error binary_literal_error(bool hex);
+
 static size_t skip_digits(const char *input, size_t length, size_t cursor);
+
 static bool scan_exponent_span(const char *input, size_t length, size_t *cursor);
+
 static char ascii_upper(unsigned char byte);
 
-void mylite_sql_lexer_init(struct mylite_sql_lexer *lexer, struct mylite_sql_lexer_config config)
-{
+void mylite_sql_lexer_init(struct mylite_sql_lexer *lexer, struct mylite_sql_lexer_config config) {
     if (lexer == NULL) {
         return;
     }
@@ -108,8 +197,7 @@ void mylite_sql_lexer_init(struct mylite_sql_lexer *lexer, struct mylite_sql_lex
     lexer->modes = config.modes;
 }
 
-int mylite_sql_lexer_next(struct mylite_sql_lexer *lexer, struct mylite_sql_token *out_token)
-{
+int mylite_sql_lexer_next(struct mylite_sql_lexer *lexer, struct mylite_sql_token *out_token) {
     unsigned int flags = 0U;
     unsigned char byte = 0U;
 
@@ -142,13 +230,15 @@ int mylite_sql_lexer_next(struct mylite_sql_lexer *lexer, struct mylite_sql_toke
             (void)scan_quoted_identifier(lexer, make_token_start(lexer, flags), '"', out_token);
         } else {
             (void)scan_quoted_string(
-                lexer, make_token_start(lexer, flags),
+                lexer,
+                make_token_start(lexer, flags),
                 (struct mylite_quoted_string_options){
                     .kind = MYLITE_SQL_TOKEN_STRING,
                     .quote = (char)byte,
                     .allow_backslash = (lexer->modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) == 0U,
                 },
-                out_token);
+                out_token
+            );
         }
         return 0;
     }
@@ -940,15 +1030,14 @@ static const struct mylite_keyword_entry mylite_keyword_catalog[] = {
     {"YEAR_MONTH", MYLITE_SQL_KEYWORD_RESERVED},
     {"ZEROFILL", MYLITE_SQL_KEYWORD_RESERVED},
     {"ZONE", 0U},
-    {"_FILENAME", MYLITE_SQL_KEYWORD_RESERVED}};
+    {"_FILENAME", MYLITE_SQL_KEYWORD_RESERVED}
+};
 
-size_t mylite_sql_keyword_catalog_count(void)
-{
+size_t mylite_sql_keyword_catalog_count(void) {
     return sizeof(mylite_keyword_catalog) / sizeof(mylite_keyword_catalog[0]);
 }
 
-bool mylite_sql_keyword_catalog_at(size_t index, const char **out_word, unsigned int *out_flags)
-{
+bool mylite_sql_keyword_catalog_at(size_t index, const char **out_word, unsigned int *out_flags) {
     if (out_word != NULL) {
         *out_word = NULL;
     }
@@ -964,9 +1053,9 @@ bool mylite_sql_keyword_catalog_at(size_t index, const char **out_word, unsigned
     return true;
 }
 
-bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *out_flags)
-{
+bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *out_flags) {
     enum { keyword_buffer_size = 129 };
+
     char folded[keyword_buffer_size];
     size_t low = 0U;
     size_t high = 0U;
@@ -1008,8 +1097,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
     return false;
 }
 
-const char *mylite_sql_token_kind_name(enum mylite_sql_token_kind kind)
-{
+const char *mylite_sql_token_kind_name(enum mylite_sql_token_kind kind) {
     switch (kind) {
     case MYLITE_SQL_TOKEN_EOF:
         return "eof";
@@ -1056,8 +1144,7 @@ const char *mylite_sql_token_kind_name(enum mylite_sql_token_kind kind)
     return "unknown";
 }
 
-const char *mylite_sql_operator_kind_name(enum mylite_sql_operator_kind kind)
-{
+const char *mylite_sql_operator_kind_name(enum mylite_sql_operator_kind kind) {
     switch (kind) {
     case MYLITE_SQL_OPERATOR_NONE:
         return "none";
@@ -1114,8 +1201,7 @@ const char *mylite_sql_operator_kind_name(enum mylite_sql_operator_kind kind)
     return "unknown";
 }
 
-const char *mylite_sql_lexer_error_name(enum mylite_sql_lexer_error error)
-{
+const char *mylite_sql_lexer_error_name(enum mylite_sql_lexer_error error) {
     switch (error) {
     case MYLITE_SQL_LEXER_ERROR_NONE:
         return "none";
@@ -1138,9 +1224,11 @@ const char *mylite_sql_lexer_error_name(enum mylite_sql_lexer_error error)
     return "unknown";
 }
 
-static bool scan_comment(struct mylite_sql_lexer *lexer, unsigned int flags,
-                         struct mylite_sql_token *out_token)
-{
+static bool scan_comment(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+) {
     struct mylite_token_start start = make_token_start(lexer, flags);
     enum mylite_sql_token_kind kind = MYLITE_SQL_TOKEN_COMMENT;
 
@@ -1181,9 +1269,11 @@ static bool scan_comment(struct mylite_sql_lexer *lexer, unsigned int flags,
     return true;
 }
 
-static bool scan_word(struct mylite_sql_lexer *lexer, unsigned int flags,
-                      struct mylite_sql_token *out_token)
-{
+static bool scan_word(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+) {
     unsigned char byte = peek_at(lexer, 0U);
     unsigned char next = peek_at(lexer, 1U);
     struct mylite_token_start start = make_token_start(lexer, flags);
@@ -1191,44 +1281,54 @@ static bool scan_word(struct mylite_sql_lexer *lexer, unsigned int flags,
     if ((byte == 'N' || byte == 'n') && next == '\'') {
         advance_one(lexer);
         (void)scan_quoted_string(
-            lexer, start,
+            lexer,
+            start,
             (struct mylite_quoted_string_options){
                 .kind = MYLITE_SQL_TOKEN_NATIONAL_STRING,
                 .quote = '\'',
                 .allow_backslash = (lexer->modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) == 0U,
             },
-            out_token);
+            out_token
+        );
         return true;
     }
 
     if ((byte == 'X' || byte == 'x') && next == '\'') {
         advance_one(lexer);
-        (void)scan_quoted_hex_or_bit_literal(lexer, start,
-                                             (struct mylite_binary_literal_options){
-                                                 .kind = MYLITE_SQL_TOKEN_HEX_LITERAL,
-                                                 .hex = true,
-                                             },
-                                             out_token);
+        (void)scan_quoted_hex_or_bit_literal(
+            lexer,
+            start,
+            (struct mylite_binary_literal_options){
+                .kind = MYLITE_SQL_TOKEN_HEX_LITERAL,
+                .hex = true,
+            },
+            out_token
+        );
         return true;
     }
 
     if ((byte == 'B' || byte == 'b') && next == '\'') {
         advance_one(lexer);
-        (void)scan_quoted_hex_or_bit_literal(lexer, start,
-                                             (struct mylite_binary_literal_options){
-                                                 .kind = MYLITE_SQL_TOKEN_BIT_LITERAL,
-                                                 .hex = false,
-                                             },
-                                             out_token);
+        (void)scan_quoted_hex_or_bit_literal(
+            lexer,
+            start,
+            (struct mylite_binary_literal_options){
+                .kind = MYLITE_SQL_TOKEN_BIT_LITERAL,
+                .hex = false,
+            },
+            out_token
+        );
         return true;
     }
 
     return scan_unquoted_identifier(lexer, flags, out_token);
 }
 
-static bool scan_digit_leading_token(struct mylite_sql_lexer *lexer, unsigned int flags,
-                                     struct mylite_sql_token *out_token)
-{
+static bool scan_digit_leading_token(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+) {
     struct mylite_token_start start = make_token_start(lexer, flags);
     size_t cursor = lexer->offset;
     bool saw_dot = false;
@@ -1236,21 +1336,27 @@ static bool scan_digit_leading_token(struct mylite_sql_lexer *lexer, unsigned in
     enum mylite_sql_token_kind kind = MYLITE_SQL_TOKEN_INTEGER;
 
     if (starts_with(lexer, "0x") && is_hex_digit(peek_at(lexer, 2U))) {
-        return scan_prefixed_hex_or_bit_literal(lexer, start,
-                                                (struct mylite_binary_literal_options){
-                                                    .kind = MYLITE_SQL_TOKEN_HEX_LITERAL,
-                                                    .hex = true,
-                                                },
-                                                out_token);
+        return scan_prefixed_hex_or_bit_literal(
+            lexer,
+            start,
+            (struct mylite_binary_literal_options){
+                .kind = MYLITE_SQL_TOKEN_HEX_LITERAL,
+                .hex = true,
+            },
+            out_token
+        );
     }
 
     if (starts_with(lexer, "0b") && is_bit_digit(peek_at(lexer, 2U))) {
-        return scan_prefixed_hex_or_bit_literal(lexer, start,
-                                                (struct mylite_binary_literal_options){
-                                                    .kind = MYLITE_SQL_TOKEN_BIT_LITERAL,
-                                                    .hex = false,
-                                                },
-                                                out_token);
+        return scan_prefixed_hex_or_bit_literal(
+            lexer,
+            start,
+            (struct mylite_binary_literal_options){
+                .kind = MYLITE_SQL_TOKEN_BIT_LITERAL,
+                .hex = false,
+            },
+            out_token
+        );
     }
 
     cursor = skip_digits(lexer->input, lexer->length, cursor);
@@ -1293,9 +1399,11 @@ static bool scan_digit_leading_token(struct mylite_sql_lexer *lexer, unsigned in
     return true;
 }
 
-static bool scan_dot_or_number(struct mylite_sql_lexer *lexer, unsigned int flags,
-                               struct mylite_sql_token *out_token)
-{
+static bool scan_dot_or_number(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+) {
     struct mylite_token_start start = make_token_start(lexer, flags);
     bool saw_exponent = false;
     enum mylite_sql_token_kind kind = MYLITE_SQL_TOKEN_DECIMAL;
@@ -1337,9 +1445,11 @@ static bool scan_dot_or_number(struct mylite_sql_lexer *lexer, unsigned int flag
     return true;
 }
 
-static bool scan_variable(struct mylite_sql_lexer *lexer, unsigned int flags,
-                          struct mylite_sql_token *out_token)
-{
+static bool scan_variable(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+) {
     struct mylite_token_start start = make_token_start(lexer, flags);
 
     assert(peek_at(lexer, 0U) == '@');
@@ -1366,9 +1476,11 @@ static bool scan_variable(struct mylite_sql_lexer *lexer, unsigned int flags,
     return true;
 }
 
-static bool scan_system_variable(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
-                                 struct mylite_sql_token *out_token)
-{
+static bool scan_system_variable(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_sql_token *out_token
+) {
     unsigned char byte = peek_at(lexer, 0U);
 
     if (!is_identifier_part(byte) && byte != '.' && byte != '`') {
@@ -1396,8 +1508,7 @@ static bool scan_system_variable(struct mylite_sql_lexer *lexer, struct mylite_t
     return true;
 }
 
-static bool scan_quoted_system_variable_component(struct mylite_sql_lexer *lexer)
-{
+static bool scan_quoted_system_variable_component(struct mylite_sql_lexer *lexer) {
     assert(peek_at(lexer, 0U) == '`');
 
     advance_one(lexer);
@@ -1416,9 +1527,11 @@ static bool scan_quoted_system_variable_component(struct mylite_sql_lexer *lexer
     return false;
 }
 
-static bool scan_operator_or_punctuation(struct mylite_sql_lexer *lexer, unsigned int flags,
-                                         struct mylite_sql_token *out_token)
-{
+static bool scan_operator_or_punctuation(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+) {
     struct operator_candidate {
         const char *text;
         enum mylite_sql_operator_kind kind;
@@ -1473,10 +1586,12 @@ static bool scan_operator_or_punctuation(struct mylite_sql_lexer *lexer, unsigne
     return false;
 }
 
-static bool scan_quoted_string(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
-                               struct mylite_quoted_string_options options,
-                               struct mylite_sql_token *out_token)
-{
+static bool scan_quoted_string(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_quoted_string_options options,
+    struct mylite_sql_token *out_token
+) {
     assert(peek_at(lexer, 0U) == (unsigned char)options.quote);
 
     advance_one(lexer);
@@ -1503,9 +1618,12 @@ static bool scan_quoted_string(struct mylite_sql_lexer *lexer, struct mylite_tok
     return true;
 }
 
-static bool scan_quoted_identifier(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
-                                   char quote, struct mylite_sql_token *out_token)
-{
+static bool scan_quoted_identifier(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    char quote,
+    struct mylite_sql_token *out_token
+) {
     assert(peek_at(lexer, 0U) == (unsigned char)quote);
 
     advance_one(lexer);
@@ -1527,11 +1645,12 @@ static bool scan_quoted_identifier(struct mylite_sql_lexer *lexer, struct mylite
     return true;
 }
 
-static bool scan_quoted_hex_or_bit_literal(struct mylite_sql_lexer *lexer,
-                                           struct mylite_token_start start,
-                                           struct mylite_binary_literal_options options,
-                                           struct mylite_sql_token *out_token)
-{
+static bool scan_quoted_hex_or_bit_literal(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_binary_literal_options options,
+    struct mylite_sql_token *out_token
+) {
     size_t digits = 0U;
     bool valid = true;
 
@@ -1560,11 +1679,12 @@ static bool scan_quoted_hex_or_bit_literal(struct mylite_sql_lexer *lexer,
     return true;
 }
 
-static bool scan_prefixed_hex_or_bit_literal(struct mylite_sql_lexer *lexer,
-                                             struct mylite_token_start start,
-                                             struct mylite_binary_literal_options options,
-                                             struct mylite_sql_token *out_token)
-{
+static bool scan_prefixed_hex_or_bit_literal(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_binary_literal_options options,
+    struct mylite_sql_token *out_token
+) {
     size_t cursor = lexer->offset + 2U;
 
     while (cursor < lexer->length &&
@@ -1584,9 +1704,11 @@ static bool scan_prefixed_hex_or_bit_literal(struct mylite_sql_lexer *lexer,
     return true;
 }
 
-static bool scan_digit_leading_identifier(struct mylite_sql_lexer *lexer, unsigned int flags,
-                                          struct mylite_sql_token *out_token)
-{
+static bool scan_digit_leading_identifier(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+) {
     struct mylite_token_start start = make_token_start(lexer, flags);
 
     while (is_identifier_part(peek_at(lexer, 0U))) {
@@ -1597,9 +1719,11 @@ static bool scan_digit_leading_identifier(struct mylite_sql_lexer *lexer, unsign
     return true;
 }
 
-static bool scan_unquoted_identifier(struct mylite_sql_lexer *lexer, unsigned int flags,
-                                     struct mylite_sql_token *out_token)
-{
+static bool scan_unquoted_identifier(
+    struct mylite_sql_lexer *lexer,
+    unsigned int flags,
+    struct mylite_sql_token *out_token
+) {
     struct mylite_token_start start = make_token_start(lexer, flags);
     unsigned int keyword_flags = 0U;
     enum mylite_sql_token_kind kind = MYLITE_SQL_TOKEN_IDENTIFIER;
@@ -1608,8 +1732,11 @@ static bool scan_unquoted_identifier(struct mylite_sql_lexer *lexer, unsigned in
         advance_one(lexer);
     }
 
-    if (mylite_sql_keyword_lookup(&lexer->input[start.offset], lexer->offset - start.offset,
-                                  &keyword_flags)) {
+    if (mylite_sql_keyword_lookup(
+            &lexer->input[start.offset],
+            lexer->offset - start.offset,
+            &keyword_flags
+        )) {
         kind = MYLITE_SQL_TOKEN_KEYWORD;
     }
 
@@ -1618,9 +1745,12 @@ static bool scan_unquoted_identifier(struct mylite_sql_lexer *lexer, unsigned in
     return true;
 }
 
-static bool scan_quoted_variable(struct mylite_sql_lexer *lexer, struct mylite_token_start start,
-                                 char quote, struct mylite_sql_token *out_token)
-{
+static bool scan_quoted_variable(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    char quote,
+    struct mylite_sql_token *out_token
+) {
     bool allow_backslash = false;
 
     if (quote != '`' && (lexer->modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) == 0U) {
@@ -1653,9 +1783,10 @@ static bool scan_quoted_variable(struct mylite_sql_lexer *lexer, struct mylite_t
     return true;
 }
 
-static struct mylite_token_start make_token_start(const struct mylite_sql_lexer *lexer,
-                                                  unsigned int flags)
-{
+static struct mylite_token_start make_token_start(
+    const struct mylite_sql_lexer *lexer,
+    unsigned int flags
+) {
     return (struct mylite_token_start){
         .offset = lexer->offset,
         .line = lexer->line,
@@ -1664,9 +1795,12 @@ static struct mylite_token_start make_token_start(const struct mylite_sql_lexer 
     };
 }
 
-static void set_token(const struct mylite_sql_lexer *lexer, struct mylite_sql_token *out_token,
-                      enum mylite_sql_token_kind kind, struct mylite_token_start start)
-{
+static void set_token(
+    const struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_token,
+    enum mylite_sql_token_kind kind,
+    struct mylite_token_start start
+) {
     out_token->kind = kind;
     out_token->operator_kind = MYLITE_SQL_OPERATOR_NONE;
     out_token->error = MYLITE_SQL_LEXER_ERROR_NONE;
@@ -1679,16 +1813,17 @@ static void set_token(const struct mylite_sql_lexer *lexer, struct mylite_sql_to
     out_token->keyword_flags = 0U;
 }
 
-static void set_error_token(const struct mylite_sql_lexer *lexer,
-                            struct mylite_sql_token *out_token, enum mylite_sql_lexer_error error,
-                            struct mylite_token_start start)
-{
+static void set_error_token(
+    const struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_token,
+    enum mylite_sql_lexer_error error,
+    struct mylite_token_start start
+) {
     set_token(lexer, out_token, MYLITE_SQL_TOKEN_ERROR, start);
     out_token->error = error;
 }
 
-static bool consume_whitespace(struct mylite_sql_lexer *lexer)
-{
+static bool consume_whitespace(struct mylite_sql_lexer *lexer) {
     bool consumed = false;
 
     while (is_space(peek_at(lexer, 0U))) {
@@ -1699,8 +1834,7 @@ static bool consume_whitespace(struct mylite_sql_lexer *lexer)
     return consumed;
 }
 
-static void advance_one(struct mylite_sql_lexer *lexer)
-{
+static void advance_one(struct mylite_sql_lexer *lexer) {
     unsigned char byte = 0U;
 
     if (lexer->offset >= lexer->length) {
@@ -1722,8 +1856,7 @@ static void advance_one(struct mylite_sql_lexer *lexer)
     ++lexer->offset;
 }
 
-static unsigned char peek_at(const struct mylite_sql_lexer *lexer, size_t lookahead)
-{
+static unsigned char peek_at(const struct mylite_sql_lexer *lexer, size_t lookahead) {
     size_t index = 0U;
     if (lexer->input == NULL || lexer->offset >= lexer->length ||
         lookahead >= lexer->length - lexer->offset) {
@@ -1733,8 +1866,7 @@ static unsigned char peek_at(const struct mylite_sql_lexer *lexer, size_t lookah
     return (unsigned char)lexer->input[index];
 }
 
-static bool has_at(const struct mylite_sql_lexer *lexer, size_t lookahead)
-{
+static bool has_at(const struct mylite_sql_lexer *lexer, size_t lookahead) {
     if (lexer->input != NULL && lexer->offset < lexer->length &&
         lookahead < lexer->length - lexer->offset) {
         return true;
@@ -1742,8 +1874,7 @@ static bool has_at(const struct mylite_sql_lexer *lexer, size_t lookahead)
     return false;
 }
 
-static bool starts_with(const struct mylite_sql_lexer *lexer, const char *text)
-{
+static bool starts_with(const struct mylite_sql_lexer *lexer, const char *text) {
     size_t length = strlen(text);
     if (lexer->input == NULL || lexer->offset > lexer->length ||
         length > lexer->length - lexer->offset) {
@@ -1752,8 +1883,7 @@ static bool starts_with(const struct mylite_sql_lexer *lexer, const char *text)
     return memcmp(&lexer->input[lexer->offset], text, length) == 0;
 }
 
-static bool starts_comment(const struct mylite_sql_lexer *lexer)
-{
+static bool starts_comment(const struct mylite_sql_lexer *lexer) {
     unsigned char first = peek_at(lexer, 0U);
     unsigned char second = peek_at(lexer, 1U);
     unsigned char third = peek_at(lexer, 2U);
@@ -1770,16 +1900,14 @@ static bool starts_comment(const struct mylite_sql_lexer *lexer)
     return false;
 }
 
-static bool is_mysql_comment_space(unsigned char byte)
-{
+static bool is_mysql_comment_space(unsigned char byte) {
     if (byte <= mysql_comment_space_max) {
         return true;
     }
     return false;
 }
 
-static bool is_space(unsigned char byte)
-{
+static bool is_space(unsigned char byte) {
     if (byte == ' ' || byte == '\t' || byte == '\n' || byte == '\r' || byte == '\f' ||
         byte == '\v') {
         return true;
@@ -1787,32 +1915,28 @@ static bool is_space(unsigned char byte)
     return false;
 }
 
-static bool is_digit(unsigned char byte)
-{
+static bool is_digit(unsigned char byte) {
     if (byte >= '0' && byte <= '9') {
         return true;
     }
     return false;
 }
 
-static bool is_hex_digit(unsigned char byte)
-{
+static bool is_hex_digit(unsigned char byte) {
     if (is_digit(byte) || (byte >= 'A' && byte <= 'F') || (byte >= 'a' && byte <= 'f')) {
         return true;
     }
     return false;
 }
 
-static bool is_bit_digit(unsigned char byte)
-{
+static bool is_bit_digit(unsigned char byte) {
     if (byte == '0' || byte == '1') {
         return true;
     }
     return false;
 }
 
-static bool is_identifier_start(unsigned char byte)
-{
+static bool is_identifier_start(unsigned char byte) {
     if ((byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') || byte == '_' ||
         byte == '$' || byte >= mysql_non_ascii_min) {
         return true;
@@ -1820,16 +1944,14 @@ static bool is_identifier_start(unsigned char byte)
     return false;
 }
 
-static bool is_identifier_part(unsigned char byte)
-{
+static bool is_identifier_part(unsigned char byte) {
     if (is_identifier_start(byte) || is_digit(byte)) {
         return true;
     }
     return false;
 }
 
-static bool is_user_variable_part(unsigned char byte)
-{
+static bool is_user_variable_part(unsigned char byte) {
     if (is_digit(byte) || (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') ||
         byte == '.' || byte == '_' || byte == '$') {
         return true;
@@ -1837,8 +1959,7 @@ static bool is_user_variable_part(unsigned char byte)
     return false;
 }
 
-static bool is_punctuation(unsigned char byte)
-{
+static bool is_punctuation(unsigned char byte) {
     if (byte == '(' || byte == ')' || byte == ',' || byte == ';' || byte == '.' || byte == '{' ||
         byte == '}' || byte == '[' || byte == ']' || byte == ':') {
         return true;
@@ -1846,48 +1967,42 @@ static bool is_punctuation(unsigned char byte)
     return false;
 }
 
-static bool is_exponent_marker(unsigned char byte)
-{
+static bool is_exponent_marker(unsigned char byte) {
     if (byte == 'e' || byte == 'E') {
         return true;
     }
     return false;
 }
 
-static bool is_sign(unsigned char byte)
-{
+static bool is_sign(unsigned char byte) {
     if (byte == '+' || byte == '-') {
         return true;
     }
     return false;
 }
 
-static bool is_binary_literal_digit(unsigned char byte, bool hex)
-{
+static bool is_binary_literal_digit(unsigned char byte, bool hex) {
     if (hex) {
         return is_hex_digit(byte);
     }
     return is_bit_digit(byte);
 }
 
-static enum mylite_sql_lexer_error binary_literal_error(bool hex)
-{
+static enum mylite_sql_lexer_error binary_literal_error(bool hex) {
     if (hex) {
         return MYLITE_SQL_LEXER_ERROR_INVALID_HEX_LITERAL;
     }
     return MYLITE_SQL_LEXER_ERROR_INVALID_BIT_LITERAL;
 }
 
-static size_t skip_digits(const char *input, size_t length, size_t cursor)
-{
+static size_t skip_digits(const char *input, size_t length, size_t cursor) {
     while (cursor < length && is_digit((unsigned char)input[cursor])) {
         ++cursor;
     }
     return cursor;
 }
 
-static bool scan_exponent_span(const char *input, size_t length, size_t *cursor)
-{
+static bool scan_exponent_span(const char *input, size_t length, size_t *cursor) {
     size_t exponent = *cursor + 1U;
 
     if (*cursor >= length || !is_exponent_marker((unsigned char)input[*cursor])) {
@@ -1906,8 +2021,7 @@ static bool scan_exponent_span(const char *input, size_t length, size_t *cursor)
     return true;
 }
 
-static char ascii_upper(unsigned char byte)
-{
+static char ascii_upper(unsigned char byte) {
     if (byte >= 'a' && byte <= 'z') {
         return (char)(byte - ('a' - 'A'));
     }

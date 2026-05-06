@@ -165,6 +165,7 @@ static const double mylite_angle_straight_degrees = 180.0;
 static const uint64_t mylite_expression_int64_min_magnitude = (uint64_t)INT64_MAX + UINT64_C(1);
 static const uint64_t mylite_expression_ipv4_u32_max = UINT32_MAX;
 static const uint32_t mylite_expression_crc32_initial = UINT32_C(0xFFFFFFFF);
+
 static const uint32_t mylite_expression_crc32_polynomial = UINT32_C(0xEDB88320);
 static const double mylite_expression_round_half = 0.5;
 static const long double mylite_expression_long_double_one = 1.0L;
@@ -739,1490 +740,3141 @@ struct trigonometric_input {
     double input;
 };
 
-static int eval_node(const struct mylite_sql_ast_node *node,
-                     const struct mylite_expression_eval_context *context,
-                     struct mylite_expression_warnings *warnings,
-                     struct mylite_expression_value *out_value);
-static int eval_unary(const struct mylite_sql_ast_node *node,
-                      const struct mylite_expression_eval_context *context,
-                      struct mylite_expression_warnings *warnings,
-                      struct mylite_expression_value *out_value);
-static int eval_binary(const struct mylite_sql_ast_node *node,
-                       const struct mylite_expression_eval_context *context,
-                       struct mylite_expression_warnings *warnings,
-                       struct mylite_expression_value *out_value);
-static int eval_logical_and(const struct mylite_sql_ast_node *node,
-                            const struct mylite_expression_eval_context *context,
-                            struct mylite_expression_warnings *warnings,
-                            struct mylite_expression_value *out_value);
-static int eval_logical_or(const struct mylite_sql_ast_node *node,
-                           const struct mylite_expression_eval_context *context,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value);
-static int validate_boolean_shortcut_operand(const struct mylite_sql_ast_node *node,
-                                             const struct mylite_expression_eval_context *context,
-                                             struct mylite_expression_warnings *warnings);
-static int
-validate_like_escape_before_shortcut(const struct mylite_sql_ast_node *node,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings);
-static bool expression_is_constant_boolean(const struct mylite_sql_ast_node *node,
-                                           bool expected_value);
-static int eval_ternary(const struct mylite_sql_ast_node *node,
-                        const struct mylite_expression_eval_context *context,
-                        struct mylite_expression_warnings *warnings,
-                        struct mylite_expression_value *out_value);
-static int eval_case_expression(const struct mylite_sql_ast_node *node,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int eval_simple_case_expression(const struct mylite_sql_ast_node *node,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value);
-static int eval_searched_case_expression(const struct mylite_sql_ast_node *node,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct mylite_expression_value *out_value);
-static int eval_case_default(const struct mylite_sql_ast_node *expression,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value);
-static int eval_cast_expression(const struct mylite_sql_ast_node *node,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int eval_binary_prefix_cast(const struct mylite_expression_value *value,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int eval_signed_cast(const struct mylite_expression_value *value,
-                            struct mylite_expression_warnings *warnings,
-                            struct mylite_expression_value *out_value);
-static int eval_unsigned_cast(const struct mylite_expression_value *value,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_decimal_cast(const struct mylite_sql_ast_node *target,
-                             const struct mylite_expression_value *value,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value);
-static int eval_char_cast(const struct mylite_sql_ast_node *target,
-                          const struct mylite_expression_value *value,
-                          struct mylite_expression_warnings *warnings,
-                          struct mylite_expression_value *out_value);
-static int eval_binary_cast(const struct mylite_expression_value *value,
-                            struct mylite_expression_value *out_value);
-static int eval_function_call(const struct mylite_sql_ast_node *node,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_unix_timestamp_function(const struct mylite_sql_ast_node *node,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value);
-static int set_unix_timestamp_value(const struct temporal_date_value *date,
-                                    struct mylite_expression_value *out_value);
-static int eval_date_format_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int date_format_text_value(const struct temporal_date_value *date, const char *format,
-                                  size_t format_length, struct mylite_expression_value *out_value);
-static int eval_str_to_date_function(const struct mylite_sql_ast_node *node,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int str_to_date_text_value(const char *text, size_t text_length, const char *format,
-                                  size_t format_length, bool dynamic_format,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value);
+static int eval_node(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_unary(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_binary(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_logical_and(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_logical_or(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int validate_boolean_shortcut_operand(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings
+);
+
+static int validate_like_escape_before_shortcut(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings
+);
+
+static bool expression_is_constant_boolean(
+    const struct mylite_sql_ast_node *node,
+    bool expected_value
+);
+
+static int eval_ternary(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_case_expression(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_simple_case_expression(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_searched_case_expression(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_case_default(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_cast_expression(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_binary_prefix_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_signed_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_unsigned_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_decimal_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_char_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_binary_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_function_call(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_unix_timestamp_function(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int set_unix_timestamp_value(
+    const struct temporal_date_value *date,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_date_format_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int date_format_text_value(
+    const struct temporal_date_value *date,
+    const char *format,
+    size_t format_length,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_str_to_date_function(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int str_to_date_text_value(
+    const char *text,
+    size_t text_length,
+    const char *format,
+    size_t format_length,
+    bool dynamic_format,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static bool str_to_date_format_argument_is_literal(const struct mylite_sql_ast_node *argument);
-static bool parse_str_to_date_text(const char *text, size_t text_length, const char *format,
-                                   size_t format_length, struct str_to_date_parts *out_parts);
-static bool parse_str_to_date_token(const char *text, size_t text_length, size_t *offset,
-                                    char token, struct str_to_date_parts *parts);
-static bool parse_str_to_date_time_sequence(const char *text, size_t text_length, size_t *offset,
-                                            bool hour_is_12_hour, struct str_to_date_parts *parts);
-static bool parse_str_to_date_number(const char *text, size_t text_length, size_t *offset,
-                                     size_t minimum_digits, size_t maximum_digits,
-                                     struct str_to_date_numeric_token *out_token);
-static bool parse_str_to_date_fraction(const char *text, size_t text_length, size_t *offset,
-                                       struct str_to_date_parts *parts);
-static bool parse_str_to_date_month_name(const char *text, size_t text_length, size_t *offset,
-                                         bool abbreviated, int *out_month);
-static bool parse_str_to_date_weekday_name(const char *text, size_t text_length, size_t *offset,
-                                           bool abbreviated);
-static bool match_str_to_date_literal(const char *text, size_t text_length, size_t *offset,
-                                      char literal);
-static bool match_str_to_date_name(const char *text, size_t text_length, size_t *offset,
-                                   const char *name);
-static bool match_str_to_date_meridiem(const char *text, size_t text_length, size_t *offset,
-                                       bool *out_pm);
-static bool match_str_to_date_ordinal_suffix(const char *text, size_t text_length, size_t *offset,
-                                             int day);
+
+static bool parse_str_to_date_text(
+    const char *text,
+    size_t text_length,
+    const char *format,
+    size_t format_length,
+    struct str_to_date_parts *out_parts
+);
+
+static bool parse_str_to_date_token(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    char token,
+    struct str_to_date_parts *parts
+);
+
+static bool parse_str_to_date_time_sequence(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    bool hour_is_12_hour,
+    struct str_to_date_parts *parts
+);
+
+static bool parse_str_to_date_number(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    size_t minimum_digits,
+    size_t maximum_digits,
+    struct str_to_date_numeric_token *out_token
+);
+
+static bool parse_str_to_date_fraction(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    struct str_to_date_parts *parts
+);
+
+static bool parse_str_to_date_month_name(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    bool abbreviated,
+    int *out_month
+);
+
+static bool parse_str_to_date_weekday_name(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    bool abbreviated
+);
+
+static bool match_str_to_date_literal(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    char literal
+);
+
+static bool match_str_to_date_name(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    const char *name
+);
+
+static bool match_str_to_date_meridiem(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    bool *out_pm
+);
+
+static bool match_str_to_date_ordinal_suffix(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    int day
+);
+
 static int str_to_date_normalized_year(int year, size_t digit_count);
+
 static bool finalize_str_to_date_parts(struct str_to_date_parts *parts);
+
 static bool apply_str_to_date_dynamic_format_result(struct str_to_date_parts *parts);
+
 static bool apply_str_to_date_day_of_year(struct str_to_date_parts *parts);
+
 static bool apply_str_to_date_time(struct str_to_date_parts *parts);
+
 static bool str_to_date_complete_date_is_valid(const struct temporal_date_value *date);
-static int set_str_to_date_result_value(const struct str_to_date_parts *parts,
-                                        struct mylite_expression_value *out_value);
-static int append_str_to_date_incorrect_warning(struct mylite_expression_warnings *warnings,
-                                                const char *text, size_t text_length);
-static int append_str_to_date_truncated_warning(struct mylite_expression_warnings *warnings,
-                                                enum str_to_date_result_kind kind, const char *text,
-                                                size_t text_length);
-static int eval_time_format_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int time_format_text_value(const struct temporal_time_value *time, const char *format,
-                                  size_t format_length, struct mylite_expression_value *out_value);
-static int eval_from_unixtime_function(const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value);
-static int from_unixtime_value_from_expression(const struct mylite_expression_value *value,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct from_unixtime_value *out_timestamp,
-                                               bool *out_valid);
-static bool from_unixtime_microseconds_from_value(const struct mylite_expression_value *value,
-                                                  double fallback, int64_t *out_microseconds);
+
+static int set_str_to_date_result_value(
+    const struct str_to_date_parts *parts,
+    struct mylite_expression_value *out_value
+);
+
+static int append_str_to_date_incorrect_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+);
+
+static int append_str_to_date_truncated_warning(
+    struct mylite_expression_warnings *warnings,
+    enum str_to_date_result_kind kind,
+    const char *text,
+    size_t text_length
+);
+
+static int eval_time_format_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int time_format_text_value(
+    const struct temporal_time_value *time,
+    const char *format,
+    size_t format_length,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_from_unixtime_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int from_unixtime_value_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct from_unixtime_value *out_timestamp,
+    bool *out_valid
+);
+
+static bool from_unixtime_microseconds_from_value(
+    const struct mylite_expression_value *value,
+    double fallback,
+    int64_t *out_microseconds
+);
+
 static bool from_unixtime_microseconds_from_text(const char *text, int64_t *out_microseconds);
-static bool from_unixtime_microseconds_from_double(long double timestamp,
-                                                   int64_t *out_microseconds);
+
+static bool from_unixtime_microseconds_from_double(
+    long double timestamp,
+    int64_t *out_microseconds
+);
+
 static unsigned int from_unixtime_fraction_digits(const struct mylite_expression_value *value);
+
 static unsigned int from_unixtime_text_fraction_digits(const char *text);
+
 static bool from_unixtime_text_uses_exponent(const char *text);
-static bool from_unixtime_date_from_value(const struct from_unixtime_value *timestamp,
-                                          struct temporal_date_value *out_date);
-static int append_date_format_token(char **result, size_t *length,
-                                    const struct temporal_date_value *date, char token);
-static int append_time_format_token(char **result, size_t *length,
-                                    const struct temporal_time_value *time, char token);
+
+static bool from_unixtime_date_from_value(
+    const struct from_unixtime_value *timestamp,
+    struct temporal_date_value *out_date
+);
+
+static int append_date_format_token(
+    char **result,
+    size_t *length,
+    const struct temporal_date_value *date,
+    char token
+);
+
+static int append_time_format_token(
+    char **result,
+    size_t *length,
+    const struct temporal_time_value *time,
+    char token
+);
+
 static int append_formatted_date_part(char **result, size_t *length, const char *format, int value);
+
 static int append_date_format_day_ordinal(char **result, size_t *length, int day);
+
 static const char *date_format_day_ordinal_suffix(int day);
-static int append_date_format_time_12(char **result, size_t *length,
-                                      const struct temporal_date_value *date);
-static int append_date_format_time_24(char **result, size_t *length,
-                                      const struct temporal_date_value *date);
-static int append_time_format_hour_24(char **result, size_t *length,
-                                      const struct temporal_time_value *time, bool padded);
-static int append_time_format_time_12(char **result, size_t *length,
-                                      const struct temporal_time_value *time);
-static int append_time_format_time_24(char **result, size_t *length,
-                                      const struct temporal_time_value *time);
-static int append_date_format_week_year(char **result, size_t *length,
-                                        const struct temporal_date_value *date, bool monday_first,
-                                        bool year);
+
+static int append_date_format_time_12(
+    char **result,
+    size_t *length,
+    const struct temporal_date_value *date
+);
+
+static int append_date_format_time_24(
+    char **result,
+    size_t *length,
+    const struct temporal_date_value *date
+);
+
+static int append_time_format_hour_24(
+    char **result,
+    size_t *length,
+    const struct temporal_time_value *time,
+    bool padded
+);
+
+static int append_time_format_time_12(
+    char **result,
+    size_t *length,
+    const struct temporal_time_value *time
+);
+
+static int append_time_format_time_24(
+    char **result,
+    size_t *length,
+    const struct temporal_time_value *time
+);
+
+static int append_date_format_week_year(
+    char **result,
+    size_t *length,
+    const struct temporal_date_value *date,
+    bool monday_first,
+    bool year
+);
+
 static int date_format_hour_12(int hour);
+
 static int time_format_hour_12(int hour);
+
 static const char *time_format_meridiem(int hour);
+
 static int date_format_day_of_year(const struct temporal_date_value *date);
+
 static int date_format_weekday_sunday(const struct temporal_date_value *date);
+
 static int date_format_weekday_monday(const struct temporal_date_value *date);
+
 static int date_format_week_zero(const struct temporal_date_value *date, bool monday_first);
+
 static int date_format_week_monday_zero(const struct temporal_date_value *date);
-static struct temporal_week_year date_format_week_year(const struct temporal_date_value *date,
-                                                       bool monday_first);
-static struct temporal_week_year
-date_format_sunday_week_year(const struct temporal_date_value *date);
-static int eval_week_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_week_null_date_mode_warnings(const struct mylite_sql_ast_node *mode_argument,
-                                             const struct mylite_expression_eval_context *context,
-                                             struct mylite_expression_warnings *warnings);
-static int week_mode_from_argument(const struct mylite_sql_ast_node *mode_argument,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   unsigned int *out_mode);
-static int week_mode_from_value(const struct mylite_expression_value *value,
-                                struct mylite_expression_warnings *warnings,
-                                unsigned int *out_mode);
+
+static struct temporal_week_year date_format_week_year(
+    const struct temporal_date_value *date,
+    bool monday_first
+);
+
+static struct temporal_week_year date_format_sunday_week_year(
+    const struct temporal_date_value *date
+);
+
+static int eval_week_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_week_null_date_mode_warnings(
+    const struct mylite_sql_ast_node *mode_argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings
+);
+
+static int week_mode_from_argument(
+    const struct mylite_sql_ast_node *mode_argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    unsigned int *out_mode
+);
+
+static int week_mode_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    unsigned int *out_mode
+);
+
 static int week_number(const struct temporal_date_value *date, unsigned int mode);
+
 static int64_t week_year_start_day(int year, unsigned int mode);
+
 static int week_relative_weekday(const struct temporal_date_value *date, unsigned int mode);
+
 static bool week_mode_uses_first_weekday(unsigned int mode);
+
 static bool week_mode_is_monday_first(unsigned int mode);
+
 static bool week_mode_has_one_based_range(unsigned int mode);
-static int eval_date_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_datediff_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value);
-static int eval_last_day_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value);
-static int append_last_day_zero_month_warning(struct mylite_expression_warnings *warnings,
-                                              const struct temporal_date_source *source,
-                                              const struct temporal_date_value *date);
-static int eval_to_days_function(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value);
-static int eval_to_seconds_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value);
-static int eval_from_days_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int from_days_number_from_value(const struct mylite_expression_value *value,
-                                       struct mylite_expression_warnings *warnings,
-                                       int64_t *out_number);
+
+static int eval_date_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_datediff_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_last_day_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int append_last_day_zero_month_warning(
+    struct mylite_expression_warnings *warnings,
+    const struct temporal_date_source *source,
+    const struct temporal_date_value *date
+);
+
+static int eval_to_days_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_to_seconds_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_from_days_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int from_days_number_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_number
+);
+
 static int append_from_days_overflow_warning(struct mylite_expression_warnings *warnings);
-static int eval_time_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_time_to_sec_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int eval_sec_to_time_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int eval_timediff_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value);
-static int eval_addsubtime_function(enum mylite_scalar_function_id function_id,
-                                    const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value);
-static int eval_timestamp_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int timestamp_base_from_expression(const struct mylite_expression_value *value,
-                                          const struct mylite_expression_eval_context *context,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct temporal_date_value *out_date, bool *out_valid);
-static int timestamp_base_from_typed_time(const struct mylite_expression_value *value,
-                                          const struct mylite_expression_eval_context *context,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct temporal_date_value *out_date, bool *out_valid);
-static int timestamp_current_date_from_context(const struct mylite_expression_eval_context *context,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct temporal_date_value *out_date,
-                                               bool *out_valid);
-static int timestamp_interval_from_expression(const struct mylite_expression_value *value,
-                                              struct mylite_expression_warnings *warnings,
-                                              struct temporal_time_value *out_time,
-                                              bool *out_valid);
-static int addsubtime_interval_from_expression(const struct mylite_expression_value *value,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct temporal_time_value *out_time,
-                                               bool *out_valid);
+
+static int eval_time_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_time_to_sec_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_sec_to_time_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_timediff_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_addsubtime_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_timestamp_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int timestamp_base_from_expression(
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+);
+
+static int timestamp_base_from_typed_time(
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+);
+
+static int timestamp_current_date_from_context(
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+);
+
+static int timestamp_interval_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+);
+
+static int addsubtime_interval_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+);
+
 static bool addsubtime_untyped_datetime_interval(const struct mylite_expression_value *value);
-static bool timestamp_add_time(struct temporal_date_value *date,
-                               const struct temporal_time_value *time, bool *out_upper_overflow);
+
+static bool timestamp_add_time(
+    struct temporal_date_value *date,
+    const struct temporal_time_value *time,
+    bool *out_upper_overflow
+);
+
 static int append_timestamp_add_overflow_warning(struct mylite_expression_warnings *warnings);
-static int timediff_operand_from_expression(const struct mylite_expression_value *value,
-                                            struct mylite_expression_warnings *warnings,
-                                            struct timediff_operand *out_operand, bool *out_valid);
-static bool timediff_untyped_datetime_operand(const struct mylite_expression_value *value,
-                                              struct mylite_expression_warnings *warnings,
-                                              struct timediff_operand *out_operand);
+
+static int timediff_operand_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct timediff_operand *out_operand,
+    bool *out_valid
+);
+
+static bool timediff_untyped_datetime_operand(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct timediff_operand *out_operand
+);
+
 static int64_t timediff_time_microseconds(const struct temporal_time_value *time);
+
 static int64_t timediff_datetime_microseconds(const struct temporal_date_value *date);
-static int timediff_result_from_microseconds(int64_t microseconds, unsigned int fraction_digits,
-                                             struct mylite_expression_warnings *warnings,
-                                             struct mylite_expression_value *out_value);
-static int addsubtime_datetime_result(struct temporal_date_value date,
-                                      const struct temporal_time_value *interval,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value);
-static int addsubtime_time_result(const struct temporal_time_value *time,
-                                  const struct temporal_time_value *interval,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value);
-static struct temporal_time_value
-addsubtime_effective_interval(enum mylite_scalar_function_id function_id,
-                              const struct temporal_time_value *interval);
-static int append_timediff_range_warning(struct mylite_expression_warnings *warnings,
-                                         int64_t microseconds, unsigned int fraction_digits);
-static size_t timediff_format_microseconds(char *buffer, size_t buffer_size, int64_t microseconds,
-                                           unsigned int fraction_digits);
-static int sec_to_time_value_from_expression(const struct mylite_expression_value *value,
-                                             struct mylite_expression_warnings *warnings,
-                                             struct temporal_time_value *out_time);
-static bool sec_to_time_microseconds_from_value(const struct mylite_expression_value *value,
-                                                double fallback, int64_t *out_microseconds);
+
+static int timediff_result_from_microseconds(
+    int64_t microseconds,
+    unsigned int fraction_digits,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int addsubtime_datetime_result(
+    struct temporal_date_value date,
+    const struct temporal_time_value *interval,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int addsubtime_time_result(
+    const struct temporal_time_value *time,
+    const struct temporal_time_value *interval,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static struct temporal_time_value addsubtime_effective_interval(
+    enum mylite_scalar_function_id function_id,
+    const struct temporal_time_value *interval
+);
+
+static int append_timediff_range_warning(
+    struct mylite_expression_warnings *warnings,
+    int64_t microseconds,
+    unsigned int fraction_digits
+);
+
+static size_t timediff_format_microseconds(
+    char *buffer,
+    size_t buffer_size,
+    int64_t microseconds,
+    unsigned int fraction_digits
+);
+
+static int sec_to_time_value_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time
+);
+
+static bool sec_to_time_microseconds_from_value(
+    const struct mylite_expression_value *value,
+    double fallback,
+    int64_t *out_microseconds
+);
+
 static bool sec_to_time_microseconds_from_text(const char *text, int64_t *out_microseconds);
+
 static bool sec_to_time_microseconds_from_double(long double value, int64_t *out_microseconds);
+
 static uint64_t sec_to_time_max_microseconds(void);
-static unsigned int
-sec_to_time_fraction_digits_from_value(const struct mylite_expression_value *value);
-static int append_sec_to_time_range_warning(struct mylite_expression_warnings *warnings,
-                                            const struct mylite_expression_value *value,
-                                            double fallback);
-static size_t sec_to_time_warning_text(const struct mylite_expression_value *value, double fallback,
-                                       char *buffer, size_t buffer_size);
+
+static unsigned int sec_to_time_fraction_digits_from_value(
+    const struct mylite_expression_value *value
+);
+
+static int append_sec_to_time_range_warning(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_expression_value *value,
+    double fallback
+);
+
+static size_t sec_to_time_warning_text(
+    const struct mylite_expression_value *value,
+    double fallback,
+    char *buffer,
+    size_t buffer_size
+);
+
 static size_t sec_to_time_numeric_prefix_length(const char *text);
-static int time_value_from_expression(const struct mylite_expression_value *value,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct temporal_time_value *out_time, bool *out_valid);
-static int time_value_from_temporal_text(const struct mylite_expression_value *value,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct temporal_time_value *out_time, bool *out_valid);
-static int time_value_from_untyped_value(const struct mylite_expression_value *value,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct temporal_time_value *out_time, bool *out_valid);
-static int time_value_from_approximate_real(const struct mylite_expression_value *value,
-                                            struct mylite_expression_warnings *warnings,
-                                            struct temporal_time_value *out_time, bool *out_valid);
+
+static int time_value_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+);
+
+static int time_value_from_temporal_text(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+);
+
+static int time_value_from_untyped_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+);
+
+static int time_value_from_approximate_real(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+);
+
 static bool real_text_is_approximate(const struct mylite_expression_value *value);
+
 static int format_time_approximate_real_text(double value, char *buffer, size_t buffer_size);
-static int time_value_from_untyped_text(const char *text, size_t length, bool numeric,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct temporal_time_value *out_time, bool *out_valid);
-static int time_value_from_untyped_text_with_warning(const char *text, size_t length, bool numeric,
-                                                     const char *warning_text,
-                                                     size_t warning_length,
-                                                     struct mylite_expression_warnings *warnings,
-                                                     struct temporal_time_value *out_time,
-                                                     bool *out_valid);
-static int append_temporal_time_warning(struct mylite_expression_warnings *warnings,
-                                        const char *text, size_t text_length);
-static int eval_timestampdiff_function(const struct mylite_sql_ast_node *node,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value);
-static bool timestampdiff_value(enum mylite_sql_ast_interval_unit unit,
-                                const struct temporal_date_value *start,
-                                const struct temporal_date_value *end, int64_t *out_value);
-static int64_t timestampdiff_months(const struct temporal_date_value *start,
-                                    const struct temporal_date_value *end);
-static int timestampdiff_compare_day_time(const struct temporal_date_value *left,
-                                          const struct temporal_date_value *right);
-static int64_t timestampdiff_seconds(const struct temporal_date_value *start,
-                                     const struct temporal_date_value *end);
-static int temporal_time_compare(const struct temporal_date_value *left,
-                                 const struct temporal_date_value *right);
-static int eval_temporal_part_function(enum mylite_scalar_function_id function_id,
-                                       const struct mylite_sql_ast_node *node,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value);
-static int eval_temporal_microsecond_part(const struct mylite_expression_value *argument,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct mylite_expression_value *out_value);
-static bool temporal_part_from_function(enum mylite_scalar_function_id function_id,
-                                        enum mylite_sql_ast_interval_unit unit,
-                                        enum temporal_part_kind *out_part);
+
+static int time_value_from_untyped_text(
+    const char *text,
+    size_t length,
+    bool numeric,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+);
+
+static int time_value_from_untyped_text_with_warning(
+    const char *text,
+    size_t length,
+    bool numeric,
+    const char *warning_text,
+    size_t warning_length,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+);
+
+static int append_temporal_time_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+);
+
+static int eval_timestampdiff_function(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static bool timestampdiff_value(
+    enum mylite_sql_ast_interval_unit unit,
+    const struct temporal_date_value *start,
+    const struct temporal_date_value *end,
+    int64_t *out_value
+);
+
+static int64_t timestampdiff_months(
+    const struct temporal_date_value *start,
+    const struct temporal_date_value *end
+);
+
+static int timestampdiff_compare_day_time(
+    const struct temporal_date_value *left,
+    const struct temporal_date_value *right
+);
+
+static int64_t timestampdiff_seconds(
+    const struct temporal_date_value *start,
+    const struct temporal_date_value *end
+);
+
+static int temporal_time_compare(
+    const struct temporal_date_value *left,
+    const struct temporal_date_value *right
+);
+
+static int eval_temporal_part_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_temporal_microsecond_part(
+    const struct mylite_expression_value *argument,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static bool temporal_part_from_function(
+    enum mylite_scalar_function_id function_id,
+    enum mylite_sql_ast_interval_unit unit,
+    enum temporal_part_kind *out_part
+);
+
 static bool temporal_part_requires_complete_date(enum temporal_part_kind part);
-static int temporal_part_value(const struct temporal_date_value *date,
-                               enum temporal_part_kind part);
-static int eval_date_arithmetic_function(enum mylite_scalar_function_id function_id,
-                                         const struct mylite_sql_ast_node *node,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct mylite_expression_value *out_value);
-static bool apply_date_interval_arithmetic(enum mylite_scalar_function_id function_id,
-                                           enum mylite_sql_ast_interval_unit unit,
-                                           struct temporal_date_value *date, int64_t amount,
-                                           bool *out_datetime_result);
+
+static int temporal_part_value(
+    const struct temporal_date_value *date,
+    enum temporal_part_kind part
+);
+
+static int eval_date_arithmetic_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static bool apply_date_interval_arithmetic(
+    enum mylite_scalar_function_id function_id,
+    enum mylite_sql_ast_interval_unit unit,
+    struct temporal_date_value *date,
+    int64_t amount,
+    bool *out_datetime_result
+);
+
 static bool multiply_interval_amount(int64_t amount, int64_t factor, int64_t *out_value);
+
 static bool add_temporal_months(struct temporal_date_value *date, int64_t months);
+
 static bool add_temporal_days(struct temporal_date_value *date, int64_t days);
+
 static bool add_temporal_seconds(struct temporal_date_value *date, int64_t seconds);
+
 static bool temporal_date_from_day_number(int64_t day_number, struct temporal_date_value *out_date);
+
 static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit);
-static int set_temporal_datetime_text_value(const struct temporal_date_value *date,
-                                            struct mylite_expression_value *out_value);
-static int set_temporal_time_text_value(const struct temporal_time_value *time,
-                                        struct mylite_expression_value *out_value);
-static int temporal_date_from_value(const struct mylite_expression_value *value,
-                                    bool warn_approximate_fraction,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct temporal_date_value *out_date, bool *out_valid);
-static int temporal_date_from_value_with_mode(const struct mylite_expression_value *value,
-                                              bool warn_approximate_fraction,
-                                              bool allow_incomplete_date,
-                                              struct mylite_expression_warnings *warnings,
-                                              struct temporal_date_value *out_date,
-                                              bool *out_valid);
-static int temporal_date_source_from_value(const struct mylite_expression_value *value,
-                                           struct temporal_date_source *out_source);
+
+static int set_temporal_datetime_text_value(
+    const struct temporal_date_value *date,
+    struct mylite_expression_value *out_value
+);
+
+static int set_temporal_time_text_value(
+    const struct temporal_time_value *time,
+    struct mylite_expression_value *out_value
+);
+
+static int temporal_date_from_value(
+    const struct mylite_expression_value *value,
+    bool warn_approximate_fraction,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+);
+
+static int temporal_date_from_value_with_mode(
+    const struct mylite_expression_value *value,
+    bool warn_approximate_fraction,
+    bool allow_incomplete_date,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+);
+
+static int temporal_date_source_from_value(
+    const struct mylite_expression_value *value,
+    struct temporal_date_source *out_source
+);
+
 static bool temporal_date_source_has_fraction(const struct temporal_date_source *source);
-static bool parse_temporal_date_source(const struct temporal_date_source *source,
-                                       bool warn_approximate_fraction, bool allow_incomplete_date,
-                                       struct temporal_date_value *out_date);
-static bool parse_temporal_delimited_date(const char *text, size_t length,
-                                          bool allow_incomplete_date,
-                                          struct temporal_date_value *out_date);
-static bool parse_temporal_compact_date(const char *text, size_t length, bool numeric,
-                                        bool allow_incomplete_date,
-                                        struct temporal_date_value *out_date);
+
+static bool parse_temporal_date_source(
+    const struct temporal_date_source *source,
+    bool warn_approximate_fraction,
+    bool allow_incomplete_date,
+    struct temporal_date_value *out_date
+);
+
+static bool parse_temporal_delimited_date(
+    const char *text,
+    size_t length,
+    bool allow_incomplete_date,
+    struct temporal_date_value *out_date
+);
+
+static bool parse_temporal_compact_date(
+    const char *text,
+    size_t length,
+    bool numeric,
+    bool allow_incomplete_date,
+    struct temporal_date_value *out_date
+);
+
 static bool temporal_text_is_digits(const char *text, size_t length);
-static bool prepare_temporal_compact_digits(const char *text, size_t length, bool numeric,
-                                            char *padded, const char **out_digits,
-                                            size_t *out_digit_length);
+
+static bool prepare_temporal_compact_digits(
+    const char *text,
+    size_t length,
+    bool numeric,
+    char *padded,
+    const char **out_digits,
+    size_t *out_digit_length
+);
+
 static bool temporal_numeric_compact_digit_length(size_t length, size_t *out_digit_length);
+
 static bool temporal_compact_digit_length(size_t length, bool numeric, size_t *out_digit_length);
+
 static size_t temporal_compact_year_digit_count(size_t digit_length);
+
 static bool temporal_compact_datetime_has_time(size_t digit_length);
-static bool parse_temporal_compact_time(const char *digits, size_t offset,
-                                        struct temporal_date_value *out_date);
-static bool parse_temporal_time_suffix(const char *text, size_t length, size_t offset,
-                                       struct temporal_date_value *date);
-static bool parse_temporal_fixed_digits(const char *text, struct temporal_digit_range range,
-                                        int *out_value);
-static bool parse_temporal_unsigned_part(const char *text, size_t length, size_t *offset,
-                                         struct temporal_digit_width width, int *out_value);
-static bool parse_temporal_fraction(const char *text, size_t length, size_t *offset,
-                                    int *out_microsecond, unsigned int *out_digits);
+
+static bool parse_temporal_compact_time(
+    const char *digits,
+    size_t offset,
+    struct temporal_date_value *out_date
+);
+
+static bool parse_temporal_time_suffix(
+    const char *text,
+    size_t length,
+    size_t offset,
+    struct temporal_date_value *date
+);
+
+static bool parse_temporal_fixed_digits(
+    const char *text,
+    struct temporal_digit_range range,
+    int *out_value
+);
+
+static bool parse_temporal_unsigned_part(
+    const char *text,
+    size_t length,
+    size_t *offset,
+    struct temporal_digit_width width,
+    int *out_value
+);
+
+static bool parse_temporal_fraction(
+    const char *text,
+    size_t length,
+    size_t *offset,
+    int *out_microsecond,
+    unsigned int *out_digits
+);
+
 static bool temporal_date_parts_are_valid(int year, int month, int day);
-static bool temporal_date_parts_are_valid_for_mode(int year, int month, int day,
-                                                   bool allow_incomplete_date);
+
+static bool temporal_date_parts_are_valid_for_mode(
+    int year,
+    int month,
+    int day,
+    bool allow_incomplete_date
+);
+
 static bool temporal_date_parts_are_all_zero(int year, int month, int day);
+
 static bool temporal_time_parts_are_valid(int hour, int minute, int second);
-static struct temporal_time_parse_result parse_temporal_time_text(const char *text, size_t length,
-                                                                  bool numeric);
-static bool parse_temporal_colon_time(const char *text, size_t length, size_t offset, bool negative,
-                                      struct temporal_time_parse_result *result);
-static bool parse_temporal_digit_time(const char *text, size_t length, size_t offset, bool negative,
-                                      bool numeric, struct temporal_time_parse_result *result);
-static bool parse_temporal_digit_time_tail(const char *text, size_t length, size_t *offset,
-                                           struct temporal_time_value *time,
-                                           struct temporal_time_parse_result *result);
-static bool parse_temporal_compact_digit_time(const char *text, size_t digit_start,
-                                              size_t digit_length,
-                                              struct temporal_time_value *time);
-static bool parse_temporal_long_digit_time(const char *text, size_t digit_start,
-                                           size_t digit_length, struct temporal_time_value *time);
-static bool parse_temporal_compact_datetime_time_value(const char *text, size_t length,
-                                                       struct temporal_time_value *out_time);
-static bool parse_temporal_time_fraction_part(const char *text, size_t length, size_t *offset,
-                                              struct temporal_time_value *time);
+
+static struct temporal_time_parse_result parse_temporal_time_text(
+    const char *text,
+    size_t length,
+    bool numeric
+);
+
+static bool parse_temporal_colon_time(
+    const char *text,
+    size_t length,
+    size_t offset,
+    bool negative,
+    struct temporal_time_parse_result *result
+);
+
+static bool parse_temporal_digit_time(
+    const char *text,
+    size_t length,
+    size_t offset,
+    bool negative,
+    bool numeric,
+    struct temporal_time_parse_result *result
+);
+
+static bool parse_temporal_digit_time_tail(
+    const char *text,
+    size_t length,
+    size_t *offset,
+    struct temporal_time_value *time,
+    struct temporal_time_parse_result *result
+);
+
+static bool parse_temporal_compact_digit_time(
+    const char *text,
+    size_t digit_start,
+    size_t digit_length,
+    struct temporal_time_value *time
+);
+
+static bool parse_temporal_long_digit_time(
+    const char *text,
+    size_t digit_start,
+    size_t digit_length,
+    struct temporal_time_value *time
+);
+
+static bool parse_temporal_compact_datetime_time_value(
+    const char *text,
+    size_t length,
+    struct temporal_time_value *out_time
+);
+
+static bool parse_temporal_time_fraction_part(
+    const char *text,
+    size_t length,
+    size_t *offset,
+    struct temporal_time_value *time
+);
+
 static void normalize_temporal_time_range(struct temporal_time_parse_result *result);
+
 static bool temporal_time_is_out_of_range(const struct temporal_time_value *time);
+
 static void clip_temporal_time(struct temporal_time_value *time);
+
 static bool temporal_time_add_second(struct temporal_time_value *time);
+
 static bool temporal_year_is_leap(int year);
+
 static int temporal_month_day_limit(int year, int month);
+
 static int temporal_normalized_year(struct temporal_year_parts parts);
+
 static int64_t temporal_day_number(const struct temporal_date_value *date);
+
 static int64_t temporal_days_before_year(int year);
+
 static int temporal_days_before_month(int year, int month);
-static int set_temporal_date_text_value(const struct temporal_date_value *date,
-                                        struct mylite_expression_value *out_value);
-static int append_temporal_date_warning(struct mylite_expression_warnings *warnings,
-                                        enum temporal_date_warning_kind warning_kind,
-                                        const char *text, size_t text_length);
-static int eval_concat_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int eval_concat_ws_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int eval_unary_string_function(enum mylite_scalar_function_id function_id,
-                                      const struct mylite_sql_ast_node *arguments,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value);
-static int eval_leftmost_code_function(enum mylite_scalar_function_id function_id,
-                                       const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value);
-static int eval_left_right_function(enum mylite_scalar_function_id function_id,
-                                    const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value);
-static int eval_substring_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static struct substring_range
-substring_range_from_arguments(const struct mylite_expression_value *values,
-                               struct substring_context context);
-static int eval_substring_index_function(const struct mylite_sql_ast_node *arguments,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct mylite_expression_value *out_value);
-static int substring_index_count_from_value(const struct mylite_expression_value *value,
-                                            struct mylite_expression_warnings *warnings,
-                                            uint64_t *out_requested, bool *out_negative);
-static int substring_index_count_from_text(const char *text,
-                                           struct mylite_expression_warnings *warnings,
-                                           uint64_t *out_requested, bool *out_negative);
-static int substring_index_text_value(struct substring_index_input input,
-                                      struct mylite_expression_value *out_value);
-static int substring_index_positive_value(struct substring_index_input input, uint64_t requested,
-                                          struct mylite_expression_value *out_value);
-static int substring_index_negative_value(struct substring_index_input input, uint64_t requested,
-                                          struct mylite_expression_value *out_value);
+
+static int set_temporal_date_text_value(
+    const struct temporal_date_value *date,
+    struct mylite_expression_value *out_value
+);
+
+static int append_temporal_date_warning(
+    struct mylite_expression_warnings *warnings,
+    enum temporal_date_warning_kind warning_kind,
+    const char *text,
+    size_t text_length
+);
+
+static int eval_concat_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_concat_ws_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_unary_string_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_leftmost_code_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_left_right_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_substring_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static struct substring_range substring_range_from_arguments(
+    const struct mylite_expression_value *values,
+    struct substring_context context
+);
+
+static int eval_substring_index_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int substring_index_count_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_requested,
+    bool *out_negative
+);
+
+static int substring_index_count_from_text(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_requested,
+    bool *out_negative
+);
+
+static int substring_index_text_value(
+    struct substring_index_input input,
+    struct mylite_expression_value *out_value
+);
+
+static int substring_index_positive_value(
+    struct substring_index_input input,
+    uint64_t requested,
+    struct mylite_expression_value *out_value
+);
+
+static int substring_index_negative_value(
+    struct substring_index_input input,
+    uint64_t requested,
+    struct mylite_expression_value *out_value
+);
+
 static size_t count_substring_index_delimiters(struct substring_index_input input);
-static bool find_next_substring_index_delimiter(struct substring_index_input input,
-                                                size_t start_offset, size_t *out_offset);
-static int eval_trim_function(enum mylite_scalar_function_id function_id,
-                              const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_trim_operands(enum mylite_sql_ast_trim_direction direction,
-                              const struct mylite_sql_ast_node *source_node,
-                              const struct mylite_sql_ast_node *remove_node,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int trim_text_value(const char *text, const char *remove,
-                           enum mylite_sql_ast_trim_direction direction,
-                           struct mylite_expression_value *out_value);
+
+static bool find_next_substring_index_delimiter(
+    struct substring_index_input input,
+    size_t start_offset,
+    size_t *out_offset
+);
+
+static int eval_trim_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_trim_operands(
+    enum mylite_sql_ast_trim_direction direction,
+    const struct mylite_sql_ast_node *source_node,
+    const struct mylite_sql_ast_node *remove_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int trim_text_value(
+    const char *text,
+    const char *remove,
+    enum mylite_sql_ast_trim_direction direction,
+    struct mylite_expression_value *out_value
+);
+
 static size_t trim_leading_offset(struct trim_match match);
-static size_t trim_trailing_length(const char *text, size_t text_length, const char *remove,
-                                   size_t remove_length);
-static int eval_replace_function(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value);
-static int eval_insert_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int eval_insert_operands(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct insert_operands *operands, struct insert_range *out_range,
-                                bool *out_null_result);
-static int eval_insert_nonnull_argument(const struct mylite_sql_ast_node *argument,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value,
-                                        bool *out_null_result);
+
+static size_t trim_trailing_length(
+    const char *text,
+    size_t text_length,
+    const char *remove,
+    size_t remove_length
+);
+
+static int eval_replace_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_insert_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_insert_operands(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct insert_operands *operands,
+    struct insert_range *out_range,
+    bool *out_null_result
+);
+
+static int eval_insert_nonnull_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    bool *out_null_result
+);
+
 static void insert_operands_deinit(struct insert_operands *operands);
-static int insert_text_value(struct insert_text_input input,
-                             struct mylite_expression_value *out_value);
-static int eval_quote_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value);
+
+static int insert_text_value(
+    struct insert_text_input input,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_quote_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int quote_text_value(const char *text, struct mylite_expression_value *out_value);
-static int eval_repeat_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int repeat_text_value(const char *text, int64_t count,
-                             struct mylite_expression_value *out_value);
-static int eval_space_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value);
+
+static int eval_repeat_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int repeat_text_value(
+    const char *text,
+    int64_t count,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_space_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int space_text_value(int64_t count, struct mylite_expression_value *out_value);
-static int eval_reverse_function(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value);
+
+static int eval_reverse_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int reverse_text_value(const char *text, struct mylite_expression_value *out_value);
-static int eval_pad_function(enum mylite_scalar_function_id function_id,
-                             const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value);
-static int pad_text_value(enum mylite_scalar_function_id function_id, const char *text,
-                          int64_t target_length, const char *pad,
-                          struct mylite_expression_value *out_value);
-static int append_padding_chars(char **result, size_t *result_length, const char *pad,
-                                int64_t pad_chars, int64_t needed_chars);
-static int eval_locate_function(enum mylite_scalar_function_id function_id,
-                                const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int eval_locate_arguments(enum mylite_scalar_function_id function_id,
-                                 const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value values[3],
-                                 const struct mylite_sql_ast_node **out_start_node);
-static bool locate_arguments_are_null(const struct mylite_expression_value values[3],
-                                      const struct mylite_sql_ast_node *start_node);
-static int set_locate_function_result(struct locate_texts texts, int64_t start,
-                                      struct mylite_expression_value *out_value);
-static int eval_elt_function(const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value);
-static int eval_field_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value);
-static int eval_field_candidates(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *candidates,
-                                 size_t candidate_count);
-static int field_match_position(struct field_match_input input, enum field_comparison_mode mode,
-                                struct mylite_expression_warnings *warnings, int64_t *out_position);
+
+static int eval_pad_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int pad_text_value(
+    enum mylite_scalar_function_id function_id,
+    const char *text,
+    int64_t target_length,
+    const char *pad,
+    struct mylite_expression_value *out_value
+);
+
+static int append_padding_chars(
+    char **result,
+    size_t *result_length,
+    const char *pad,
+    int64_t pad_chars,
+    int64_t needed_chars
+);
+
+static int eval_locate_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_locate_arguments(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value values[3],
+    const struct mylite_sql_ast_node **out_start_node
+);
+
+static bool locate_arguments_are_null(
+    const struct mylite_expression_value values[3],
+    const struct mylite_sql_ast_node *start_node
+);
+
+static int set_locate_function_result(
+    struct locate_texts texts,
+    int64_t start,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_elt_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_field_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_field_candidates(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *candidates,
+    size_t candidate_count
+);
+
+static int field_match_position(
+    struct field_match_input input,
+    enum field_comparison_mode mode,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_position
+);
+
 static enum field_comparison_mode field_comparison_mode_from_values(struct field_match_input input);
+
 static int field_string_match_position(struct field_match_input input, int64_t *out_position);
-static int field_numeric_match_position(struct field_match_input input,
-                                        struct mylite_expression_warnings *warnings,
-                                        int64_t *out_position);
-static int eval_find_in_set_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
+
+static int field_numeric_match_position(
+    struct field_match_input input,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_position
+);
+
+static int eval_find_in_set_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int64_t find_in_set_position(struct find_in_set_input input);
-static int eval_make_set_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value);
-static int make_set_bits_from_value(const struct mylite_expression_value *value,
-                                    struct mylite_expression_warnings *warnings,
-                                    uint64_t *out_bits);
-static int make_set_bits_from_string(const char *text, struct mylite_expression_warnings *warnings,
-                                     uint64_t *out_bits);
+
+static int eval_make_set_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int make_set_bits_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+);
+
+static int make_set_bits_from_string(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+);
+
 static bool make_set_member_is_selected(uint64_t bits, size_t index);
-static int eval_char_function(const struct mylite_sql_ast_node *function_call,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int char_argument_value(const struct mylite_expression_value *value,
-                               const struct mylite_sql_ast_node *argument,
-                               struct mylite_expression_warnings *warnings, uint32_t *out_value);
-static int char_integer_literal_overflow_value(const struct mylite_sql_ast_node *argument,
-                                               struct mylite_expression_warnings *warnings,
-                                               uint32_t *out_value, bool *out_handled);
-static int char_text_value(const char *text, size_t text_length,
-                           struct mylite_expression_warnings *warnings, uint32_t *out_value);
+
+static int eval_char_function(
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int char_argument_value(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_value
+);
+
+static int char_integer_literal_overflow_value(
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_value,
+    bool *out_handled
+);
+
+static int char_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_value
+);
+
 static struct char_integer_parse parse_char_integer_text(const char *text, size_t text_length);
-static int append_char_integer_warning(struct mylite_expression_warnings *warnings,
-                                       const char *type_name, const char *text, size_t text_length);
+
+static int append_char_integer_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *type_name,
+    const char *text,
+    size_t text_length
+);
+
 static int append_char_bytes(char **result, size_t *result_length, uint32_t value);
-static int set_char_result(enum char_function_charset charset, const char *charset_name,
-                           const char *text, size_t text_length,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value);
-static bool char_text_is_valid_for_charset(enum char_function_charset charset, const char *text,
-                                           size_t text_length);
+
+static int set_char_result(
+    enum char_function_charset charset,
+    const char *charset_name,
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static bool char_text_is_valid_for_charset(
+    enum char_function_charset charset,
+    const char *text,
+    size_t text_length
+);
+
 static bool char_text_is_ascii(const char *text, size_t text_length);
+
 static bool char_text_is_utf8(const char *text, size_t text_length, bool allow_four_byte);
-static bool utf8_sequence_from_first(unsigned char first, bool allow_four_byte,
-                                     struct utf8_sequence *out_sequence);
+
+static bool utf8_sequence_from_first(
+    unsigned char first,
+    bool allow_four_byte,
+    struct utf8_sequence *out_sequence
+);
+
 static bool utf8_continuation_byte(unsigned char character);
-static int append_invalid_char_string_warning(struct mylite_expression_warnings *warnings,
-                                              struct char_invalid_string_warning warning);
+
+static int append_invalid_char_string_warning(
+    struct mylite_expression_warnings *warnings,
+    struct char_invalid_string_warning warning
+);
+
 static char *copy_charset_node_name(const struct mylite_sql_ast_node *node);
+
 static char *copy_unquoted_identifier_text(struct mylite_sql_source_span span);
+
 static enum char_function_charset char_function_charset_from_name(const char *name);
+
 static bool char_charset_name_is(const char *text, size_t text_length, const char *expected);
-static int eval_hex_function(const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value);
-static int hex_numeric_value(const struct mylite_expression_value *value,
-                             const struct mylite_sql_ast_node *argument,
-                             struct mylite_expression_warnings *warnings, uint64_t *out_number);
+
+static int eval_hex_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int hex_numeric_value(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_number
+);
+
 static int64_t hex_real_to_signed_integer(double value, const struct mylite_sql_ast_node *argument);
+
 static bool numeric_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument);
+
 static int64_t cast_real_to_signed_integer_half_even(double value);
+
 static int set_hex_uint64_value(uint64_t number, struct mylite_expression_value *out_value);
-static int set_hex_bytes_value(const char *text, size_t text_length,
-                               struct mylite_expression_value *out_value);
-static int eval_unhex_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value);
-static int unhex_argument_to_text(const struct mylite_expression_value *value,
-                                  const struct mylite_sql_ast_node *argument, char **out_text,
-                                  size_t *out_length);
+
+static int set_hex_bytes_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_unhex_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int unhex_argument_to_text(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+);
+
 static bool unhex_argument_uses_exact_decimal_text(const struct mylite_sql_ast_node *argument);
-static int unhex_text_value(const char *text, size_t text_length,
-                            struct mylite_expression_warnings *warnings,
-                            struct mylite_expression_value *out_value);
-static int append_unhex_warning(struct mylite_expression_warnings *warnings, const char *text,
-                                size_t text_length);
+
+static int unhex_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int append_unhex_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+);
+
 static int hex_digit_value(unsigned char character);
-static int eval_to_base64_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int base64_argument_to_text(const struct mylite_expression_value *value,
-                                   const struct mylite_sql_ast_node *argument, char **out_text,
-                                   size_t *out_length);
-static int to_base64_text_value(const char *text, size_t text_length,
-                                struct mylite_expression_value *out_value);
+
+static int eval_to_base64_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int base64_argument_to_text(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+);
+
+static int to_base64_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+);
+
 static size_t base64_encoded_length(size_t text_length);
-static int eval_from_base64_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int from_base64_text_value(const char *text, size_t text_length,
-                                  struct mylite_expression_value *out_value);
+
+static int eval_from_base64_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int from_base64_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+);
+
 static char *copy_base64_clean_text(const char *text, size_t text_length, size_t *out_length);
-static bool base64_decode_group(const unsigned char *source, bool is_last_group, char *result,
-                                size_t *output);
+
+static bool base64_decode_group(
+    const unsigned char *source,
+    bool is_last_group,
+    char *result,
+    size_t *output
+);
+
 static int base64_digit_value(unsigned char character);
+
 static bool base64_ignored_whitespace(unsigned char character);
-static int eval_base_conversion_function(enum mylite_scalar_function_id function_id,
-                                         const struct mylite_sql_ast_node *arguments,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct mylite_expression_value *out_value);
-static int eval_bit_count_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int bit_count_value_bits(const struct mylite_expression_value *value,
-                                struct mylite_expression_warnings *warnings, uint64_t *out_bits);
-static int bit_count_string_bits(const char *text, struct mylite_expression_warnings *warnings,
-                                 uint64_t *out_bits);
+
+static int eval_base_conversion_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_bit_count_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int bit_count_value_bits(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+);
+
+static int bit_count_string_bits(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+);
+
 static unsigned int uint64_bit_count(uint64_t value);
-static int eval_bit_length_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value);
-static int eval_crc32_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value);
-static int eval_hash_function(enum mylite_scalar_function_id function_id,
-                              const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_sha2_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int checksum_argument_to_text(const struct mylite_expression_value *value,
-                                     const struct mylite_sql_ast_node *argument, char **out_text,
-                                     size_t *out_length);
+
+static int eval_bit_length_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_crc32_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_hash_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_sha2_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int checksum_argument_to_text(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+);
+
 static void normalize_checksum_exact_decimal_text(char *text, size_t *length);
+
 static int checksum_real_to_text(double value, char **out_text, size_t *out_length);
+
 static void remove_positive_exponent_marker(char *text, size_t *length);
+
 static uint32_t crc32_bytes(const char *text, size_t text_length);
-static int sha2_hash_length_from_value(const struct mylite_expression_value *value,
-                                       struct mylite_expression_warnings *warnings,
-                                       unsigned int *out_bits);
+
+static int sha2_hash_length_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    unsigned int *out_bits
+);
+
 static bool sha2_hash_length_is_supported(unsigned int bits);
+
 static int append_sha2_wrong_parameters_warning(struct mylite_expression_warnings *warnings);
-static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int eval_inet_ntoa_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int inet_aton_input_to_text(const struct mylite_expression_value *value, char **out_text,
-                                   size_t *out_length, bool *out_was_text);
+
+static int eval_inet_aton_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_inet_ntoa_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int inet_aton_input_to_text(
+    const struct mylite_expression_value *value,
+    char **out_text,
+    size_t *out_length,
+    bool *out_was_text
+);
+
 static bool parse_inet_aton_text(const char *text, size_t text_length, uint64_t *out_address);
-static bool parse_inet_aton_parts(const char *text, size_t text_length,
-                                  struct inet_aton_parse *out_parse);
+
+static bool parse_inet_aton_parts(
+    const char *text,
+    size_t text_length,
+    struct inet_aton_parse *out_parse
+);
+
 static bool inet_aton_part_limit(size_t part_count, size_t part_index, uint64_t *out_limit);
-static int append_inet_aton_warning(struct mylite_expression_warnings *warnings, const char *text,
-                                    size_t text_length, bool was_text);
-static int inet_ntoa_value_to_address(const struct mylite_expression_value *value,
-                                      const struct mylite_sql_ast_node *argument,
-                                      struct mylite_expression_warnings *warnings,
-                                      uint32_t *out_address);
-static int inet_ntoa_text_to_address(const char *text, struct mylite_expression_warnings *warnings,
-                                     uint32_t *out_address);
-static int append_inet_ntoa_range_warning(struct mylite_expression_warnings *warnings,
-                                          const struct mylite_expression_value *value,
-                                          const struct mylite_sql_ast_node *argument);
-static int append_inet_ntoa_negative_magnitude_warning(struct mylite_expression_warnings *warnings,
-                                                       uint64_t magnitude);
-static int
-append_inet_ntoa_negative_integer_span_warning(struct mylite_expression_warnings *warnings,
-                                               const char *text, bool *out_handled);
-static int append_inet_ntoa_range_text_warning(struct mylite_expression_warnings *warnings,
-                                               const char *text);
+
+static int append_inet_aton_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length,
+    bool was_text
+);
+
+static int inet_ntoa_value_to_address(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_address
+);
+
+static int inet_ntoa_text_to_address(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_address
+);
+
+static int append_inet_ntoa_range_warning(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument
+);
+
+static int append_inet_ntoa_negative_magnitude_warning(
+    struct mylite_expression_warnings *warnings,
+    uint64_t magnitude
+);
+
+static int append_inet_ntoa_negative_integer_span_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    bool *out_handled
+);
+
+static int append_inet_ntoa_range_text_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text
+);
+
 static int set_inet_ntoa_result(uint32_t address, struct mylite_expression_value *out_value);
-static int eval_is_uuid_function(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value);
-static int eval_uuid_to_bin_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int eval_bin_to_uuid_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int eval_uuid_first_argument(const struct mylite_sql_ast_node *argument,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value, char **out_text,
-                                    size_t *out_length);
-static int eval_uuid_swap_flag(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings, bool *out_swap);
-static bool parse_uuid_text(const char *text, size_t text_length,
-                            unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]);
-static bool parse_uuid_unbraced_text(const char *text, size_t text_length,
-                                     unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]);
+
+static int eval_is_uuid_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_uuid_to_bin_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_bin_to_uuid_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_uuid_first_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    char **out_text,
+    size_t *out_length
+);
+
+static int eval_uuid_swap_flag(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    bool *out_swap
+);
+
+static bool parse_uuid_text(
+    const char *text,
+    size_t text_length,
+    unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]
+);
+
+static bool parse_uuid_unbraced_text(
+    const char *text,
+    size_t text_length,
+    unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]
+);
+
 static bool uuid_canonical_dash_position(size_t index);
+
 static void swap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]);
+
 static void unswap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]);
-static int set_uuid_binary_value(const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
-                                 struct mylite_expression_value *out_value);
-static int set_uuid_text_value(const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
-                               struct mylite_expression_value *out_value);
-static int append_uuid_incorrect_string_error(struct mylite_expression_warnings *warnings,
-                                              const char *function_name, const char *text,
-                                              size_t text_length);
-static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value);
-static int eval_conv_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_conv_conversion(const struct mylite_expression_value *number, int64_t from_base,
-                                const struct mylite_sql_ast_node *number_argument, int64_t to_base,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
+
+static int set_uuid_binary_value(
+    const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
+    struct mylite_expression_value *out_value
+);
+
+static int set_uuid_text_value(
+    const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
+    struct mylite_expression_value *out_value
+);
+
+static int append_uuid_incorrect_string_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    const char *text,
+    size_t text_length
+);
+
+static int eval_bin_oct_function(
+    const struct mylite_sql_ast_node *argument,
+    uint64_t to_base,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_conv_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_conv_conversion(
+    const struct mylite_expression_value *number,
+    int64_t from_base,
+    const struct mylite_sql_ast_node *number_argument,
+    int64_t to_base,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static bool base_conversion_abs_base(int64_t base, uint64_t *out_abs_base);
-static int base_argument_to_signed_integer(const struct mylite_expression_value *value,
-                                           const struct mylite_sql_ast_node *argument,
-                                           struct mylite_expression_warnings *warnings,
-                                           int64_t *out_base);
+
+static int base_argument_to_signed_integer(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_base
+);
+
 static bool base_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument);
-static int base_conversion_input_to_text(const struct mylite_expression_value *value,
-                                         const struct mylite_sql_ast_node *argument,
-                                         char **out_text, size_t *out_length);
+
+static int base_conversion_input_to_text(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+);
+
 static int base_conversion_real_to_text(double value, char **out_text, size_t *out_length);
-static int base_conversion_exact_numeric_literal_to_text(const struct mylite_sql_ast_node *argument,
-                                                         char **out_text, size_t *out_length,
-                                                         bool *out_matched);
-static int copy_base_conversion_literal_text(char sign, const struct mylite_sql_ast_node *literal,
-                                             char **out_text, size_t *out_length);
-static int parse_base_conversion_input(const char *text, size_t text_length, uint64_t from_base,
-                                       bool signed_input,
-                                       struct mylite_expression_warnings *warnings,
-                                       uint64_t *out_bits);
-static struct base_conversion_parse
-parse_base_conversion_digits(struct base_conversion_parse_input input);
-static int append_base_conversion_warning(struct mylite_expression_warnings *warnings,
-                                          const char *text, size_t text_length);
+
+static int base_conversion_exact_numeric_literal_to_text(
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length,
+    bool *out_matched
+);
+
+static int copy_base_conversion_literal_text(
+    char sign,
+    const struct mylite_sql_ast_node *literal,
+    char **out_text,
+    size_t *out_length
+);
+
+static int parse_base_conversion_input(
+    const char *text,
+    size_t text_length,
+    uint64_t from_base,
+    bool signed_input,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+);
+
+static struct base_conversion_parse parse_base_conversion_digits(
+    struct base_conversion_parse_input input
+);
+
+static int append_base_conversion_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+);
+
 static int base_digit_value(unsigned char character);
-static int set_base_conversion_value(struct base_conversion_format_input input,
-                                     struct mylite_expression_value *out_value);
-static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value);
-static int eval_power_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value);
-static int eval_exp_function(const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value);
-static int eval_log_function(enum mylite_scalar_function_id function_id,
-                             const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value);
-static int eval_unary_log_function(enum mylite_scalar_function_id function_id,
-                                   const struct mylite_sql_ast_node *argument,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int eval_binary_log_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value);
-static int eval_sqrt_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_trigonometric_function(enum mylite_scalar_function_id function_id,
-                                       const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value);
-static int trigonometric_function_result(struct trigonometric_input input,
-                                         struct mylite_expression_warnings *warnings,
-                                         double *out_result);
-static bool trigonometric_result_is_out_of_range(enum mylite_scalar_function_id function_id,
-                                                 double result);
-static int eval_inverse_trigonometric_function(enum mylite_scalar_function_id function_id,
-                                               const struct mylite_sql_ast_node *arguments,
-                                               const struct mylite_expression_eval_context *context,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct mylite_expression_value *out_value);
-static int eval_atan_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_atan_argument(const struct mylite_sql_ast_node *argument_node,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *argument,
-                              struct numeric_value *number, bool *out_null_result);
+
+static int set_base_conversion_value(
+    struct base_conversion_format_input input,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_mod_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_power_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_exp_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_log_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_unary_log_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_binary_log_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_sqrt_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_trigonometric_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int trigonometric_function_result(
+    struct trigonometric_input input,
+    struct mylite_expression_warnings *warnings,
+    double *out_result
+);
+
+static bool trigonometric_result_is_out_of_range(
+    enum mylite_scalar_function_id function_id,
+    double result
+);
+
+static int eval_inverse_trigonometric_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_atan_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_atan_argument(
+    const struct mylite_sql_ast_node *argument_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *argument,
+    struct numeric_value *number,
+    bool *out_null_result
+);
+
 static double atan_function_result(struct atan_input input, size_t arity);
-static int eval_inverse_trigonometric_argument(const struct mylite_sql_ast_node *argument_node,
-                                               const struct mylite_expression_eval_context *context,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct mylite_expression_value *argument,
-                                               struct numeric_value *number, bool *out_null_result);
-static int inverse_trigonometric_function_result(struct inverse_trigonometric_input input,
-                                                 double *out_result);
+
+static int eval_inverse_trigonometric_argument(
+    const struct mylite_sql_ast_node *argument_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *argument,
+    struct numeric_value *number,
+    bool *out_null_result
+);
+
+static int inverse_trigonometric_function_result(
+    struct inverse_trigonometric_input input,
+    double *out_result
+);
+
 static bool inverse_trigonometric_input_is_out_of_domain(double value);
+
 static bool inverse_trigonometric_result_is_null(double result);
-static int eval_angle_conversion_function(enum mylite_scalar_function_id function_id,
-                                          const struct mylite_sql_ast_node *arguments,
-                                          const struct mylite_expression_eval_context *context,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct mylite_expression_value *out_value);
-static int eval_angle_conversion_argument(const struct mylite_sql_ast_node *argument_node,
-                                          const struct mylite_expression_eval_context *context,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct mylite_expression_value *argument,
-                                          struct numeric_value *number, bool *out_null_result);
+
+static int eval_angle_conversion_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_angle_conversion_argument(
+    const struct mylite_sql_ast_node *argument_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *argument,
+    struct numeric_value *number,
+    bool *out_null_result
+);
+
 static int angle_conversion_result(struct angle_conversion_input conversion, double *out_result);
+
 static bool angle_conversion_result_is_out_of_range(double result);
+
 static const char *angle_conversion_function_name(enum mylite_scalar_function_id function_id);
-static bool trigonometric_pi_expression_value(const struct mylite_sql_ast_node *node,
-                                              double *out_value);
-static bool trigonometric_pi_expression_value_impl(const struct mylite_sql_ast_node *node,
-                                                   double *out_value, bool *out_contains_pi);
-static bool trigonometric_pi_literal_value(const struct mylite_sql_ast_node *node,
-                                           double *out_value);
+
+static bool trigonometric_pi_expression_value(
+    const struct mylite_sql_ast_node *node,
+    double *out_value
+);
+
+static bool trigonometric_pi_expression_value_impl(
+    const struct mylite_sql_ast_node *node,
+    double *out_value,
+    bool *out_contains_pi
+);
+
+static bool trigonometric_pi_literal_value(
+    const struct mylite_sql_ast_node *node,
+    double *out_value
+);
+
 static bool trigonometric_expression_is_pi_call(const struct mylite_sql_ast_node *node);
-static int eval_round_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value);
-static int eval_format_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int format_locale_from_argument(const struct mylite_sql_ast_node *locale_argument,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       const struct format_locale **out_locale);
+
+static int eval_round_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_format_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int format_locale_from_argument(
+    const struct mylite_sql_ast_node *locale_argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    const struct format_locale **out_locale
+);
+
 static bool format_locale_argument_is_literal(const struct mylite_sql_ast_node *locale_argument);
-static int format_input_from_value(const struct mylite_sql_ast_node *argument,
-                                   const struct mylite_expression_value *value,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct format_numeric_input *out_input);
-static int format_scale_from_value(const struct mylite_expression_value *value,
-                                   struct mylite_expression_warnings *warnings, int *out_scale);
-static int format_rounded_text_from_input(const struct format_numeric_input *input, int scale,
-                                          char **out_text, size_t *out_length);
-static int format_round_exact_decimal_text(struct format_exact_round_input input, char **out_text,
-                                           size_t *out_length);
-static int format_round_approximate_text(struct format_approximate_round_input input,
-                                         char **out_text, size_t *out_length);
-static int format_apply_locale(const char *rounded_text, size_t rounded_length,
-                               const struct format_locale *locale,
-                               struct mylite_expression_value *out_value);
-static int format_append_grouped_integer(char **result, size_t *result_length, const char *integer,
-                                         size_t integer_length, const struct format_locale *locale);
-static int format_append_western_grouped_integer(char **result, size_t *result_length,
-                                                 const char *integer, size_t integer_length,
-                                                 const char *separator, size_t separator_length);
-static int format_append_indian_grouped_integer(char **result, size_t *result_length,
-                                                const char *integer, size_t integer_length,
-                                                const char *separator, size_t separator_length);
+
+static int format_input_from_value(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct format_numeric_input *out_input
+);
+
+static int format_scale_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int *out_scale
+);
+
+static int format_rounded_text_from_input(
+    const struct format_numeric_input *input,
+    int scale,
+    char **out_text,
+    size_t *out_length
+);
+
+static int format_round_exact_decimal_text(
+    struct format_exact_round_input input,
+    char **out_text,
+    size_t *out_length
+);
+
+static int format_round_approximate_text(
+    struct format_approximate_round_input input,
+    char **out_text,
+    size_t *out_length
+);
+
+static int format_apply_locale(
+    const char *rounded_text,
+    size_t rounded_length,
+    const struct format_locale *locale,
+    struct mylite_expression_value *out_value
+);
+
+static int format_append_grouped_integer(
+    char **result,
+    size_t *result_length,
+    const char *integer,
+    size_t integer_length,
+    const struct format_locale *locale
+);
+
+static int format_append_western_grouped_integer(
+    char **result,
+    size_t *result_length,
+    const char *integer,
+    size_t integer_length,
+    const char *separator,
+    size_t separator_length
+);
+
+static int format_append_indian_grouped_integer(
+    char **result,
+    size_t *result_length,
+    const char *integer,
+    size_t integer_length,
+    const char *separator,
+    size_t separator_length
+);
+
 static const struct format_locale *format_locale_by_name(const char *name, size_t name_length);
+
 static const struct format_locale *format_default_locale(void);
-static int append_format_unknown_locale_warning(struct mylite_expression_warnings *warnings,
-                                                const char *locale, size_t locale_length);
+
+static int append_format_unknown_locale_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *locale,
+    size_t locale_length
+);
+
 static void format_numeric_input_deinit(struct format_numeric_input *input);
-static int eval_truncate_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value);
-static int eval_round_scale(const struct mylite_sql_ast_node *arguments,
-                            const struct mylite_expression_eval_context *context,
-                            struct mylite_expression_warnings *warnings, int *out_scale);
-static int round_scale_from_value(const struct mylite_expression_value *value,
-                                  struct mylite_expression_warnings *warnings, int *out_scale);
-static int round_exact_argument_value(const struct mylite_sql_ast_node *argument,
-                                      const struct mylite_expression_value *value, int scale,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value, bool *out_handled);
-static int round_exact_argument_text(const struct mylite_sql_ast_node *argument,
-                                     const struct mylite_expression_value *value,
-                                     struct round_exact_argument_text *out_text);
-static int round_check_integer_result_bound(struct round_exact_argument_text input,
-                                            struct mylite_expression_warnings *warnings,
-                                            struct mylite_expression_value *out_value);
-static int round_exact_decimal_text(const char *text, size_t text_length,
-                                    struct mylite_expression_value *out_value, int scale);
-static int round_exact_decimal_positive_scale(const struct decimal_text_parts *parts, int scale,
-                                              struct mylite_expression_value *out_value);
-static int round_exact_decimal_negative_scale(const struct decimal_text_parts *parts, int scale,
-                                              struct mylite_expression_value *out_value);
-static int round_append_signed_decimal_result(const struct decimal_text_parts *parts,
-                                              const char *digits, size_t digits_length,
-                                              size_t fraction_length,
-                                              struct mylite_expression_value *out_value);
-static int round_approximate_value(const struct mylite_expression_value *value, int scale,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
+
+static int eval_truncate_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_round_scale(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    int *out_scale
+);
+
+static int round_scale_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int *out_scale
+);
+
+static int round_exact_argument_value(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_value *value,
+    int scale,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    bool *out_handled
+);
+
+static int round_exact_argument_text(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_value *value,
+    struct round_exact_argument_text *out_text
+);
+
+static int round_check_integer_result_bound(
+    struct round_exact_argument_text input,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int round_exact_decimal_text(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value,
+    int scale
+);
+
+static int round_exact_decimal_positive_scale(
+    const struct decimal_text_parts *parts,
+    int scale,
+    struct mylite_expression_value *out_value
+);
+
+static int round_exact_decimal_negative_scale(
+    const struct decimal_text_parts *parts,
+    int scale,
+    struct mylite_expression_value *out_value
+);
+
+static int round_append_signed_decimal_result(
+    const struct decimal_text_parts *parts,
+    const char *digits,
+    size_t digits_length,
+    size_t fraction_length,
+    struct mylite_expression_value *out_value
+);
+
+static int round_approximate_value(
+    const struct mylite_expression_value *value,
+    int scale,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static double round_half_even_double(double value);
-static int set_round_approximate_text(long double value, struct mylite_expression_value *out_value,
-                                      int scale);
-static int truncate_exact_decimal_text(const char *text, size_t text_length,
-                                       struct mylite_expression_value *out_value, int scale);
-static int truncate_exact_decimal_positive_scale(const struct decimal_text_parts *parts, int scale,
-                                                 struct mylite_expression_value *out_value);
-static int truncate_exact_decimal_negative_scale(const struct decimal_text_parts *parts, int scale,
-                                                 struct mylite_expression_value *out_value);
-static int truncate_approximate_numeric(const struct numeric_value *number, int scale,
-                                        struct mylite_expression_value *out_value);
-static int set_truncate_approximate_text(long double value,
-                                         struct mylite_expression_value *out_value, int scale);
-static bool round_argument_exact_literal_text(const struct mylite_sql_ast_node *argument,
-                                              char **out_text, size_t *out_length,
-                                              bool *out_integer_literal);
+
+static int set_round_approximate_text(
+    long double value,
+    struct mylite_expression_value *out_value,
+    int scale
+);
+
+static int truncate_exact_decimal_text(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value,
+    int scale
+);
+
+static int truncate_exact_decimal_positive_scale(
+    const struct decimal_text_parts *parts,
+    int scale,
+    struct mylite_expression_value *out_value
+);
+
+static int truncate_exact_decimal_negative_scale(
+    const struct decimal_text_parts *parts,
+    int scale,
+    struct mylite_expression_value *out_value
+);
+
+static int truncate_approximate_numeric(
+    const struct numeric_value *number,
+    int scale,
+    struct mylite_expression_value *out_value
+);
+
+static int set_truncate_approximate_text(
+    long double value,
+    struct mylite_expression_value *out_value,
+    int scale
+);
+
+static bool round_argument_exact_literal_text(
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length,
+    bool *out_integer_literal
+);
+
 static bool parse_decimal_text_parts(char *text, struct decimal_text_parts *out_parts);
+
 static void trim_leading_decimal_zeros(const char **digits, size_t *length);
+
 static bool decimal_digits_all_zero(const char *digits, size_t length);
+
 static bool decimal_text_exceeds_bound(const char *text, const char *bound);
+
 static int increment_decimal_digits(char **digits, size_t *length);
-static int append_round_out_of_range_error(struct mylite_expression_warnings *warnings,
-                                           bool unsigned_value);
-static int eval_numeric_unary_function(enum mylite_scalar_function_id function_id,
-                                       const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value);
-static void eval_abs_function(const struct numeric_value *number,
-                              struct mylite_expression_value *out_value);
-static int eval_if_function(const struct mylite_sql_ast_node *arguments,
-                            const struct mylite_expression_eval_context *context,
-                            struct mylite_expression_warnings *warnings,
-                            struct mylite_expression_value *out_value);
-static int eval_ifnull_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int eval_nullif_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int eval_coalesce_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value);
-static int eval_greatest_least_function(enum mylite_scalar_function_id function_id,
-                                        const struct mylite_sql_ast_node *arguments,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value);
-static int eval_greatest_least_arguments(const struct mylite_sql_ast_node *arguments,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct greatest_least_argument *values,
-                                         struct greatest_least_eval_state *out_state);
-static int set_greatest_least_result(enum mylite_scalar_function_id function_id,
-                                     struct greatest_least_argument *values, size_t value_count,
-                                     bool string_domain,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int set_greatest_least_string_result(enum mylite_scalar_function_id function_id,
-                                            struct greatest_least_argument *values,
-                                            size_t value_count,
-                                            struct mylite_expression_value *out_value);
-static int set_greatest_least_numeric_result(enum mylite_scalar_function_id function_id,
-                                             struct greatest_least_argument *values,
-                                             size_t value_count,
-                                             struct mylite_expression_warnings *warnings,
-                                             struct mylite_expression_value *out_value);
+
+static int append_round_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    bool unsigned_value
+);
+
+static int eval_numeric_unary_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static void eval_abs_function(
+    const struct numeric_value *number,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_if_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_ifnull_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_nullif_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_coalesce_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_greatest_least_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_greatest_least_arguments(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct greatest_least_argument *values,
+    struct greatest_least_eval_state *out_state
+);
+
+static int set_greatest_least_result(
+    enum mylite_scalar_function_id function_id,
+    struct greatest_least_argument *values,
+    size_t value_count,
+    bool string_domain,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int set_greatest_least_string_result(
+    enum mylite_scalar_function_id function_id,
+    struct greatest_least_argument *values,
+    size_t value_count,
+    struct mylite_expression_value *out_value
+);
+
+static int set_greatest_least_numeric_result(
+    enum mylite_scalar_function_id function_id,
+    struct greatest_least_argument *values,
+    size_t value_count,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int greatest_least_argument_to_text(struct greatest_least_argument *argument);
-static int greatest_least_argument_prepare_compare_text(struct greatest_least_argument *argument,
-                                                        size_t length);
-static int compare_greatest_least_text(const struct greatest_least_argument *left,
-                                       const struct greatest_least_argument *right);
-static int compare_greatest_least_numeric_values(const struct mylite_expression_value *left,
-                                                 const struct mylite_expression_value *right,
-                                                 struct mylite_expression_warnings *warnings,
-                                                 int *out_compare);
-static bool greatest_least_candidate_replaces_selected(enum mylite_scalar_function_id function_id,
-                                                       int selected_vs_candidate);
-static void greatest_least_arguments_deinit(struct greatest_least_argument *values,
-                                            size_t value_count);
-static int eval_isnull_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value);
-static int eval_literal(const struct mylite_sql_ast_node *node,
-                        struct mylite_expression_value *out_value);
-static int eval_hex_literal(const struct mylite_sql_ast_node *node,
-                            struct mylite_expression_value *out_value);
-static int eval_bit_literal(const struct mylite_sql_ast_node *node,
-                            struct mylite_expression_value *out_value);
-static bool hex_literal_digits(const struct mylite_sql_ast_node *node, const char **out_digits,
-                               size_t *out_length);
-static bool bit_literal_digits(const struct mylite_sql_ast_node *node, const char **out_digits,
-                               size_t *out_length);
-static int eval_is_expression(enum mylite_sql_ast_operator operator_kind,
-                              const struct mylite_sql_ast_node *operand,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int eval_between(enum mylite_sql_ast_operator operator_kind,
-                        const struct mylite_sql_ast_node *node,
-                        const struct mylite_expression_eval_context *context,
-                        struct mylite_expression_warnings *warnings,
-                        struct mylite_expression_value *out_value);
-static int eval_between_bound_truth(const struct mylite_expression_value *value,
-                                    const struct mylite_expression_value *bound, bool lower_bound,
-                                    struct mylite_expression_warnings *warnings, int *out_truth);
-static void set_between_result(enum mylite_sql_ast_operator operator_kind,
-                               struct between_truth truth,
-                               struct mylite_expression_value *out_value);
-static int eval_like(enum mylite_sql_ast_operator operator_kind,
-                     const struct mylite_sql_ast_node *node,
-                     const struct mylite_expression_eval_context *context,
-                     struct mylite_expression_warnings *warnings,
-                     struct mylite_expression_value *out_value);
-static int eval_regexp(enum mylite_sql_ast_operator operator_kind,
-                       const struct mylite_sql_ast_node *node,
-                       const struct mylite_expression_eval_context *context,
-                       struct mylite_expression_warnings *warnings,
-                       struct mylite_expression_value *out_value);
-static int eval_regexp_like_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int eval_regexp_instr_function(const struct mylite_sql_ast_node *arguments,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value);
-static int eval_regexp_substr_function(const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value);
-static int eval_regexp_replace_function(const struct mylite_sql_ast_node *arguments,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value);
-static int eval_json_valid_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value);
-static int eval_json_type_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int eval_json_quote_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value);
-static int eval_json_unquote_function(const struct mylite_sql_ast_node *arguments,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value);
-static int eval_json_array_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value);
-static int eval_json_object_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int eval_json_extract_function(const struct mylite_sql_ast_node *arguments,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value);
-static int eval_json_contains_path_function(const struct mylite_sql_ast_node *arguments,
-                                            const struct mylite_expression_eval_context *context,
-                                            struct mylite_expression_warnings *warnings,
-                                            struct mylite_expression_value *out_value);
-static int eval_json_keys_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value);
-static int eval_json_length_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static int eval_json_extract_operator(enum mylite_sql_ast_operator operator_kind,
-                                      const struct mylite_sql_ast_node *node,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value);
-static int eval_json_extract_values(const struct mylite_expression_value *document,
-                                    const struct mylite_expression_value *path,
-                                    const char *function_name,
-                                    struct mylite_expression_warnings *warnings, char **out_json,
-                                    size_t *out_json_length, bool *out_found);
+
+static int greatest_least_argument_prepare_compare_text(
+    struct greatest_least_argument *argument,
+    size_t length
+);
+
+static int compare_greatest_least_text(
+    const struct greatest_least_argument *left,
+    const struct greatest_least_argument *right
+);
+
+static int compare_greatest_least_numeric_values(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_compare
+);
+
+static bool greatest_least_candidate_replaces_selected(
+    enum mylite_scalar_function_id function_id,
+    int selected_vs_candidate
+);
+
+static void greatest_least_arguments_deinit(
+    struct greatest_least_argument *values,
+    size_t value_count
+);
+
+static int eval_isnull_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_literal(
+    const struct mylite_sql_ast_node *node,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_hex_literal(
+    const struct mylite_sql_ast_node *node,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_bit_literal(
+    const struct mylite_sql_ast_node *node,
+    struct mylite_expression_value *out_value
+);
+
+static bool hex_literal_digits(
+    const struct mylite_sql_ast_node *node,
+    const char **out_digits,
+    size_t *out_length
+);
+
+static bool bit_literal_digits(
+    const struct mylite_sql_ast_node *node,
+    const char **out_digits,
+    size_t *out_length
+);
+
+static int eval_is_expression(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *operand,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_between(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_between_bound_truth(
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_value *bound,
+    bool lower_bound,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+);
+
+static void set_between_result(
+    enum mylite_sql_ast_operator operator_kind,
+    struct between_truth truth,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_like(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_regexp(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_regexp_like_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_regexp_instr_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_regexp_substr_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_regexp_replace_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_valid_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_type_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_quote_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_unquote_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_array_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_object_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_extract_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_contains_path_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_keys_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_length_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_extract_operator(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_json_extract_values(
+    const struct mylite_expression_value *document,
+    const struct mylite_expression_value *path,
+    const char *function_name,
+    struct mylite_expression_warnings *warnings,
+    char **out_json,
+    size_t *out_json_length,
+    bool *out_found
+);
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-static int eval_json_path_arguments(const struct mylite_sql_ast_node *arguments,
-                                    size_t first_argument_index, size_t argument_count,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct json_path_argument_list *out_paths,
-                                    bool *out_null_result);
+static int eval_json_path_arguments(
+    const struct mylite_sql_ast_node *arguments,
+    size_t first_argument_index,
+    size_t argument_count,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct json_path_argument_list *out_paths,
+    bool *out_null_result
+);
 // NOLINTEND(bugprone-easily-swappable-parameters)
-static int append_json_path_call_error(struct mylite_expression_warnings *warnings,
-                                       const char *function_name, int json_status,
-                                       const struct mylite_json_error *error,
-                                       bool allow_wildcard_error);
-static int eval_json_contains_path_mode(const struct mylite_expression_value *mode,
-                                        struct mylite_expression_warnings *warnings,
-                                        bool *out_require_all);
-static int eval_optional_json_path_argument(const struct mylite_sql_ast_node *arguments,
-                                            const struct mylite_expression_eval_context *context,
-                                            struct mylite_expression_warnings *warnings,
-                                            bool has_path, char **out_path_text,
-                                            size_t *out_path_length, bool *out_null_result);
+static int append_json_path_call_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    int json_status,
+    const struct mylite_json_error *error,
+    bool allow_wildcard_error
+);
+
+static int eval_json_contains_path_mode(
+    const struct mylite_expression_value *mode,
+    struct mylite_expression_warnings *warnings,
+    bool *out_require_all
+);
+
+static int eval_optional_json_path_argument(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    bool has_path,
+    char **out_path_text,
+    size_t *out_path_length,
+    bool *out_null_result
+);
+
 static void json_path_argument_list_deinit(struct json_path_argument_list *paths);
-static int eval_json_object_members(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct json_object_member **out_members,
-                                    size_t *out_member_count);
-static int eval_json_object_member(const struct mylite_sql_ast_node *key_node,
-                                   const struct mylite_sql_ast_node *value_node,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct json_object_member **members, size_t *member_count);
-static int json_object_to_text(struct json_object_member *members, size_t member_count,
-                               char **out_json, size_t *out_json_length);
-static int append_json_object_member(char **json, size_t *json_length,
-                                     const struct json_object_member *member);
-static int json_append_argument(char **json, size_t *json_length,
-                                const struct mylite_sql_ast_node *argument,
-                                const struct mylite_expression_value *value);
-static int json_argument_to_text(const struct mylite_expression_value *value, char **out_text,
-                                 size_t *out_length);
+
+static int eval_json_object_members(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct json_object_member **out_members,
+    size_t *out_member_count
+);
+
+static int eval_json_object_member(
+    const struct mylite_sql_ast_node *key_node,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct json_object_member **members,
+    size_t *member_count
+);
+
+static int json_object_to_text(
+    struct json_object_member *members,
+    size_t member_count,
+    char **out_json,
+    size_t *out_json_length
+);
+
+static int append_json_object_member(
+    char **json,
+    size_t *json_length,
+    const struct json_object_member *member
+);
+
+static int json_append_argument(
+    char **json,
+    size_t *json_length,
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_value *value
+);
+
+static int json_argument_to_text(
+    const struct mylite_expression_value *value,
+    char **out_text,
+    size_t *out_length
+);
+
 static bool json_argument_is_true_literal(const struct mylite_sql_ast_node *argument);
+
 static bool json_argument_is_false_literal(const struct mylite_sql_ast_node *argument);
+
 static bool json_argument_is_json_creation(const struct mylite_sql_ast_node *argument);
-static int json_object_append_member(struct json_object_member **members, size_t *count, char *key,
-                                     size_t key_length, char *value, size_t value_length);
+
+static int json_object_append_member(
+    struct json_object_member **members,
+    size_t *count,
+    char *key,
+    size_t key_length,
+    char *value,
+    size_t value_length
+);
+
 static int json_object_member_compare(const void *left, const void *right);
+
 static void json_object_members_deinit(struct json_object_member *members, size_t count);
-static int append_json_invalid_text_error(struct mylite_expression_warnings *warnings,
-                                          const char *function_name,
-                                          const struct mylite_json_error *error);
-static int append_json_incorrect_type_error(struct mylite_expression_warnings *warnings,
-                                            const char *function_name);
-static int append_json_invalid_data_error(struct mylite_expression_warnings *warnings,
-                                          const char *function_name);
-static int append_json_invalid_path_error(struct mylite_expression_warnings *warnings,
-                                          const struct mylite_json_error *error);
+
+static int append_json_invalid_text_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    const struct mylite_json_error *error
+);
+
+static int append_json_incorrect_type_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+);
+
+static int append_json_invalid_data_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+);
+
+static int append_json_invalid_path_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_json_error *error
+);
+
 static int append_json_path_wildcard_error(struct mylite_expression_warnings *warnings);
+
 static int append_json_one_or_all_error(struct mylite_expression_warnings *warnings);
+
 static int append_json_null_key_error(struct mylite_expression_warnings *warnings);
-static int eval_regexp_match_type(const struct mylite_expression_value *match_type,
-                                  struct mylite_expression_warnings *warnings,
-                                  const char *function_name, struct mylite_regexp_options *options);
-static int eval_regexp_match_type_argument(const struct mylite_sql_ast_node *match_type_node,
-                                           const struct mylite_expression_eval_context *context,
-                                           struct mylite_expression_warnings *warnings,
-                                           const char *function_name,
-                                           struct mylite_regexp_options *options,
-                                           bool *out_null_result);
-static int eval_regexp_integer_argument(const struct mylite_sql_ast_node *argument,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        int64_t *out_integer, bool *out_null_result);
-static int eval_regexp_text_argument(const struct mylite_sql_ast_node *argument,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings, char **out_text,
-                                     size_t *out_length, bool *out_null_result);
-static int find_regexp_match(const char *value_text, size_t value_length, const char *pattern_text,
-                             size_t pattern_length, size_t start_offset, size_t occurrence,
-                             struct mylite_regexp_options options,
-                             struct mylite_expression_warnings *warnings, bool *out_found,
-                             struct mylite_regexp_match *out_match);
-static int set_regexp_replace_result(const char *value_text, size_t value_length,
-                                     const char *pattern_text, size_t pattern_length,
-                                     const char *replacement_text, size_t replacement_length,
-                                     size_t start_offset, int64_t occurrence,
-                                     struct mylite_regexp_options options,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value);
-static bool regexp_position_out_of_bounds(int64_t position, size_t value_length,
-                                          bool allow_position_after_end);
+
+static int eval_regexp_match_type(
+    const struct mylite_expression_value *match_type,
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    struct mylite_regexp_options *options
+);
+
+static int eval_regexp_match_type_argument(
+    const struct mylite_sql_ast_node *match_type_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    struct mylite_regexp_options *options,
+    bool *out_null_result
+);
+
+static int eval_regexp_integer_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_integer,
+    bool *out_null_result
+);
+
+static int eval_regexp_text_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    char **out_text,
+    size_t *out_length,
+    bool *out_null_result
+);
+
+static int find_regexp_match(
+    const char *value_text,
+    size_t value_length,
+    const char *pattern_text,
+    size_t pattern_length,
+    size_t start_offset,
+    size_t occurrence,
+    struct mylite_regexp_options options,
+    struct mylite_expression_warnings *warnings,
+    bool *out_found,
+    struct mylite_regexp_match *out_match
+);
+
+static int set_regexp_replace_result(
+    const char *value_text,
+    size_t value_length,
+    const char *pattern_text,
+    size_t pattern_length,
+    const char *replacement_text,
+    size_t replacement_length,
+    size_t start_offset,
+    int64_t occurrence,
+    struct mylite_regexp_options options,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static bool regexp_position_out_of_bounds(
+    int64_t position,
+    size_t value_length,
+    bool allow_position_after_end
+);
+
 static size_t regexp_occurrence_to_size(int64_t occurrence);
+
 static int append_regexp_index_error(struct mylite_expression_warnings *warnings);
-static int append_regexp_native_parameter_error(struct mylite_expression_warnings *warnings,
-                                                const char *function_name);
+
+static int append_regexp_native_parameter_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+);
+
 static int append_regexp_instr_return_option_error(struct mylite_expression_warnings *warnings);
-static int append_regexp_pattern_error(struct mylite_expression_warnings *warnings,
-                                       const struct mylite_regexp_error *error);
-static int append_regexp_match_type_error(struct mylite_expression_warnings *warnings,
-                                          const char *function_name);
-static int eval_in(enum mylite_sql_ast_operator operator_kind,
-                   const struct mylite_sql_ast_node *node,
-                   const struct mylite_expression_eval_context *context,
-                   struct mylite_expression_warnings *warnings,
-                   struct mylite_expression_value *out_value);
+
+static int append_regexp_pattern_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_regexp_error *error
+);
+
+static int append_regexp_match_type_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+);
+
+static int eval_in(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static bool binary_expression_is_row_subquery(const struct mylite_sql_ast_node *node);
+
 static bool binary_expression_is_row_scalar_subquery(const struct mylite_sql_ast_node *node);
-static bool
-row_subquery_comparison_operator_is_supported(enum mylite_sql_ast_operator operator_kind);
+
+static bool row_subquery_comparison_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+);
+
 static bool quantified_comparison_has_row_left(const struct mylite_sql_ast_node *node);
-static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value);
-static int eval_numeric_unary(enum mylite_sql_ast_operator operator_kind,
-                              const struct mylite_expression_value *operand,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value);
-static int set_unary_real_value(enum mylite_sql_ast_operator operator_kind,
-                                const struct mylite_expression_value *operand, double real_value,
-                                struct mylite_expression_value *out_value);
-static char *copy_unary_real_text(enum mylite_sql_ast_operator operator_kind, const char *text,
-                                  size_t text_length, size_t *out_length);
+
+static int eval_quantified_comparison(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_numeric_unary(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *operand,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int set_unary_real_value(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *operand,
+    double real_value,
+    struct mylite_expression_value *out_value
+);
+
+static char *copy_unary_real_text(
+    enum mylite_sql_ast_operator operator_kind,
+    const char *text,
+    size_t text_length,
+    size_t *out_length
+);
+
 static char *copy_negated_real_text(const char *text, size_t text_length, size_t *out_length);
-static char *copy_prefixed_text(char prefix, const char *text, size_t text_length,
-                                size_t *out_length);
-static int eval_arithmetic(enum mylite_sql_ast_operator operator_kind,
-                           const struct mylite_expression_value *left,
-                           const struct mylite_expression_value *right,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value);
-static int eval_bitwise(enum mylite_sql_ast_operator operator_kind,
-                        const struct mylite_expression_value *left,
-                        const struct mylite_expression_value *right,
-                        struct mylite_expression_warnings *warnings,
-                        struct mylite_expression_value *out_value);
-static int eval_comparison(enum mylite_sql_ast_operator operator_kind,
-                           const struct mylite_expression_value *left,
-                           const struct mylite_expression_value *right,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value);
-static int eval_logical(enum mylite_sql_ast_operator operator_kind,
-                        const struct mylite_expression_value *left,
-                        const struct mylite_expression_value *right,
-                        struct mylite_expression_warnings *warnings,
-                        struct mylite_expression_value *out_value);
-static int truth_value(const struct mylite_expression_value *value,
-                       struct mylite_expression_warnings *warnings, int *out_truth);
-static int compare_values(const struct mylite_expression_value *left,
-                          const struct mylite_expression_value *right,
-                          struct mylite_expression_warnings *warnings, int *out_compare);
-static int value_to_numeric(const struct mylite_expression_value *value,
-                            struct mylite_expression_warnings *warnings,
-                            struct numeric_value *out_numeric);
-static int text_value_to_numeric(const struct mylite_expression_value *value,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct numeric_value *out_numeric);
-static int text_value_to_numeric_without_warnings(const struct mylite_expression_value *value,
-                                                  struct numeric_value *out_numeric);
+
+static char *copy_prefixed_text(
+    char prefix,
+    const char *text,
+    size_t text_length,
+    size_t *out_length
+);
+
+static int eval_arithmetic(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_bitwise(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_comparison(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_logical(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int truth_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+);
+
+static int compare_values(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_compare
+);
+
+static int value_to_numeric(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct numeric_value *out_numeric
+);
+
+static int text_value_to_numeric(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct numeric_value *out_numeric
+);
+
+static int text_value_to_numeric_without_warnings(
+    const struct mylite_expression_value *value,
+    struct numeric_value *out_numeric
+);
+
 static bool numeric_text_prefix_is_integer(const char *start, const char *end);
+
 static bool numeric_text_has_digit(const char *start);
+
 static bool numeric_text_is_hex_like(const char *start);
-static int parse_numeric_text_double(struct numeric_text_parse_input input,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct numeric_value *out_numeric);
+
+static int parse_numeric_text_double(
+    struct numeric_text_parse_input input,
+    struct mylite_expression_warnings *warnings,
+    struct numeric_value *out_numeric
+);
+
 static void clamp_numeric_text_range(struct numeric_value *numeric);
+
 static int64_t numeric_real_to_truncated_int64(double value);
-static int append_numeric_text_without_digits_warning(struct mylite_expression_warnings *warnings,
-                                                      struct numeric_text_input input);
-static int cast_value_to_signed_integer(const struct mylite_expression_value *value,
-                                        struct mylite_expression_warnings *warnings,
-                                        int64_t *out_integer);
-static int cast_value_to_unsigned_integer(const struct mylite_expression_value *value,
-                                          struct mylite_expression_warnings *warnings,
-                                          uint64_t *out_integer);
-static int cast_string_to_signed_integer(const char *text,
-                                         struct mylite_expression_warnings *warnings,
-                                         int64_t *out_integer);
-static int cast_string_to_unsigned_integer(const char *text,
-                                           struct mylite_expression_warnings *warnings,
-                                           uint64_t *out_integer);
+
+static int append_numeric_text_without_digits_warning(
+    struct mylite_expression_warnings *warnings,
+    struct numeric_text_input input
+);
+
+static int cast_value_to_signed_integer(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_integer
+);
+
+static int cast_value_to_unsigned_integer(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_integer
+);
+
+static int cast_string_to_signed_integer(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_integer
+);
+
+static int cast_string_to_unsigned_integer(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_integer
+);
+
 static struct cast_integer_parse parse_cast_integer_text(const char *text);
+
 static int64_t signed_integer_from_uint64(uint64_t value);
+
 static uint64_t unsigned_complement_from_magnitude(uint64_t magnitude);
-static int cast_value_to_decimal_double(const struct mylite_expression_value *value,
-                                        struct mylite_expression_warnings *warnings,
-                                        double *out_number);
-static int cast_string_to_decimal_double(const char *text,
-                                         struct mylite_expression_warnings *warnings,
-                                         double *out_number);
+
+static int cast_value_to_decimal_double(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    double *out_number
+);
+
+static int cast_string_to_decimal_double(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    double *out_number
+);
+
 static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text);
+
 static int cast_real_to_string(double value, char **out_text);
+
 static int64_t cast_real_to_signed_integer(double value);
+
 static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target);
+
 static double absolute_real_value(double value);
+
 static int64_t floor_real_value(double value);
+
 static int64_t ceil_real_value(double value);
+
 static int value_to_string(const struct mylite_expression_value *value, char **out_text);
-static int value_to_string_with_length(const struct mylite_expression_value *value, char **out_text,
-                                       size_t *out_length);
+
+static int value_to_string_with_length(
+    const struct mylite_expression_value *value,
+    char **out_text,
+    size_t *out_length
+);
+
 static int format_compact_real_text(double value, char *buffer, size_t buffer_size);
+
 static bool compact_real_text_round_trips(double value, const char *text);
+
 static void normalize_real_exponent_text(char *text);
-static int set_text_value(const char *text, size_t length,
-                          struct mylite_expression_value *out_value);
+
+static int set_text_value(
+    const char *text,
+    size_t length,
+    struct mylite_expression_value *out_value
+);
+
 static int append_text(char **text, size_t *length, const char *addition, size_t addition_length);
+
 static bool ascii_text_equal_ci(struct text_compare_input input);
+
 static int utf8_char_count(const char *text, int64_t *out_count);
+
 static size_t utf8_offset_for_chars(const char *text, int64_t char_count);
+
 static size_t utf8_first_character_length(const char *text);
+
 static int64_t find_text_match_position(struct locate_search search);
-static int append_warning(struct mylite_expression_warnings *warnings, unsigned int code,
-                          const char *message);
+
+static int append_warning(
+    struct mylite_expression_warnings *warnings,
+    unsigned int code,
+    const char *message
+);
+
 static int append_binary_expr_deprecated_warning(struct mylite_expression_warnings *warnings);
+
 static int append_truncation_warning(struct mylite_expression_warnings *warnings, const char *text);
-static int append_cast_truncation_warning(struct mylite_expression_warnings *warnings,
-                                          const char *type_name, const char *text);
+
+static int append_cast_truncation_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *type_name,
+    const char *text
+);
+
 static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings);
+
 static int append_exp_out_of_range_error(struct mylite_expression_warnings *warnings);
+
 static int append_cot_out_of_range_error(struct mylite_expression_warnings *warnings);
-static int append_angle_conversion_out_of_range_error(struct mylite_expression_warnings *warnings,
-                                                      const char *function_name);
+
+static int append_angle_conversion_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+);
+
 static int append_invalid_logarithm_warning(struct mylite_expression_warnings *warnings);
-static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
-                                          uint64_t length, const char *text);
+
+static int append_char_truncation_warning(
+    struct mylite_expression_warnings *warnings,
+    uint64_t length,
+    const char *text
+);
+
 static int append_signed_complement_warning(struct mylite_expression_warnings *warnings);
+
 static int append_unsigned_complement_warning(struct mylite_expression_warnings *warnings);
+
 static char *copy_span_text(const char *text, size_t length);
+
 static char *decode_string_literal(const struct mylite_sql_ast_node *node);
+
 static bool decode_string_escape(char escaped, char *out_character);
-static const struct mylite_sql_ast_node *
-unwrap_parenthesized_node(const struct mylite_sql_ast_node *node);
+
+static const struct mylite_sql_ast_node *unwrap_parenthesized_node(
+    const struct mylite_sql_ast_node *node
+);
+
 static bool expression_is_binary_string_modifier(const struct mylite_sql_ast_node *node);
-static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,
-                                                  size_t index);
+
+static const struct mylite_sql_ast_node *child_at(
+    const struct mylite_sql_ast_node *node,
+    size_t index
+);
+
 static size_t child_count(const struct mylite_sql_ast_node *node);
-static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *expression,
-                                             bool require_cacheable);
-static bool
-expression_is_supported_no_table_identifier(const struct mylite_sql_ast_node *expression,
-                                            bool require_cacheable);
+
+static bool expression_is_supported_no_table(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+);
+
+static bool expression_is_supported_no_table_identifier(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+);
+
 static bool expression_is_session_variable_identifier(const struct mylite_sql_ast_node *expression);
+
 static enum mylite_scalar_function_id scalar_function_id(const struct mylite_sql_ast_node *node);
-static enum mylite_scalar_function_id
-scalar_function_id_from_span(struct mylite_sql_source_span span);
-static bool
-current_temporal_function_has_supported_arguments(const struct mylite_sql_ast_node *expression,
-                                                  bool allow_fsp);
+
+static enum mylite_scalar_function_id scalar_function_id_from_span(
+    struct mylite_sql_source_span span
+);
+
+static bool current_temporal_function_has_supported_arguments(
+    const struct mylite_sql_ast_node *expression,
+    bool allow_fsp
+);
+
 static bool scalar_function_depends_on_session(enum mylite_scalar_function_id function_id);
+
 static bool ascii_span_equals(struct mylite_sql_source_span span, const char *text);
+
 static bool is_null(const struct mylite_expression_value *value);
+
 static bool is_numeric_kind(enum mylite_expression_value_kind kind);
+
 static bool like_match(const char *value, const char *pattern, char escape, bool case_sensitive);
-static bool like_match_here(const char *value, const char *pattern, char escape,
-                            bool case_sensitive);
+
+static bool like_match_here(
+    const char *value,
+    const char *pattern,
+    char escape,
+    bool case_sensitive
+);
+
 static bool like_char_equal(char value, char pattern, bool case_sensitive);
+
 static int ascii_case_fold(int character);
 
-void mylite_expression_value_deinit(struct mylite_expression_value *value)
-{
+void mylite_expression_value_deinit(struct mylite_expression_value *value) {
     if (value == NULL) {
         return;
     }
@@ -2231,8 +3883,7 @@ void mylite_expression_value_deinit(struct mylite_expression_value *value)
     *value = (struct mylite_expression_value){0};
 }
 
-void mylite_expression_warnings_deinit(struct mylite_expression_warnings *warnings)
-{
+void mylite_expression_warnings_deinit(struct mylite_expression_warnings *warnings) {
     if (warnings == NULL) {
         return;
     }
@@ -2244,17 +3895,25 @@ void mylite_expression_warnings_deinit(struct mylite_expression_warnings *warnin
     *warnings = (struct mylite_expression_warnings){0};
 }
 
-int mylite_expression_warnings_append(struct mylite_expression_warnings *warnings,
-                                      unsigned int code, const char *message)
-{
+int mylite_expression_warnings_append(
+    struct mylite_expression_warnings *warnings,
+    unsigned int code,
+    const char *message
+) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_WARNING, code, message);
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_WARNING,
+        code,
+        message
+    );
 }
 
-int mylite_expression_warnings_append_condition(struct mylite_expression_warnings *warnings,
-                                                enum mylite_expression_warning_level level,
-                                                unsigned int code, const char *message)
-{
+int mylite_expression_warnings_append_condition(
+    struct mylite_expression_warnings *warnings,
+    enum mylite_expression_warning_level level,
+    unsigned int code,
+    const char *message
+) {
     struct mylite_expression_warning *items = NULL;
     char *copy = NULL;
 
@@ -2276,18 +3935,20 @@ int mylite_expression_warnings_append_condition(struct mylite_expression_warning
     return 0;
 }
 
-int mylite_expression_eval(const struct mylite_sql_ast_node *expression,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value)
-{
+int mylite_expression_eval(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     return mylite_expression_eval_with_context(expression, NULL, warnings, out_value);
 }
 
-int mylite_expression_eval_with_context(const struct mylite_sql_ast_node *expression,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value)
-{
+int mylite_expression_eval_with_context(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     if (out_value == NULL) {
         return -1;
     }
@@ -2296,9 +3957,10 @@ int mylite_expression_eval_with_context(const struct mylite_sql_ast_node *expres
     return eval_node(expression, context, warnings, out_value);
 }
 
-int mylite_expression_value_copy(const struct mylite_expression_value *value,
-                                 struct mylite_expression_value *out_value)
-{
+int mylite_expression_value_copy(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_value *out_value
+) {
     *out_value = *value;
     out_value->text_value = NULL;
     if (value->text_value != NULL) {
@@ -2310,16 +3972,17 @@ int mylite_expression_value_copy(const struct mylite_expression_value *value,
     return 0;
 }
 
-char *mylite_expression_value_to_text(const struct mylite_expression_value *value)
-{
+char *mylite_expression_value_to_text(const struct mylite_expression_value *value) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
 
     if (value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
         return NULL;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return copy_span_text(value->text_value,
-                              value->text_value == NULL ? 0U : value->text_length);
+        return copy_span_text(
+            value->text_value,
+            value->text_value == NULL ? 0U : value->text_length
+        );
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
         int length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);
@@ -2342,8 +4005,7 @@ char *mylite_expression_value_to_text(const struct mylite_expression_value *valu
                                                            : copy_span_text(buffer, (size_t)length);
 }
 
-int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *value)
-{
+int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *value) {
     if (value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
         return 0;
     }
@@ -2361,38 +4023,41 @@ int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *v
                : strtoll(value->text_value, NULL, MYLITE_EXPRESSION_DECIMAL_BASE);
 }
 
-int mylite_expression_value_compare(const struct mylite_expression_value *left,
-                                    const struct mylite_expression_value *right,
-                                    struct mylite_expression_warnings *warnings, int *out_compare)
-{
+int mylite_expression_value_compare(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_compare
+) {
     if (out_compare == NULL) {
         return -1;
     }
     return compare_values(left, right, warnings, out_compare);
 }
 
-int mylite_expression_value_truth(const struct mylite_expression_value *value,
-                                  struct mylite_expression_warnings *warnings, int *out_truth)
-{
+int mylite_expression_value_truth(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+) {
     if (out_truth == NULL) {
         return -1;
     }
     return truth_value(value, warnings, out_truth);
 }
 
-bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *expression)
-{
+bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *expression) {
     return expression_is_supported_no_table(expression, false);
 }
 
-bool mylite_expression_is_cacheable_no_table(const struct mylite_sql_ast_node *expression)
-{
+bool mylite_expression_is_cacheable_no_table(const struct mylite_sql_ast_node *expression) {
     return expression_is_supported_no_table(expression, true);
 }
 
-static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *expression,
-                                             bool require_cacheable)
-{
+static bool expression_is_supported_no_table(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+) {
     if (expression == NULL) {
         return false;
     }
@@ -2445,7 +4110,8 @@ static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *e
         }
         for (const struct mylite_sql_ast_node *child =
                  child_at(expression, 1U) == NULL ? NULL : child_at(expression, 1U)->first_child;
-             child != NULL; child = child->next_sibling) {
+             child != NULL;
+             child = child->next_sibling) {
             if (!expression_is_supported_no_table(child, require_cacheable)) {
                 return false;
             }
@@ -2461,18 +4127,19 @@ static bool expression_is_supported_no_table(const struct mylite_sql_ast_node *e
     }
 }
 
-static bool
-expression_is_supported_no_table_identifier(const struct mylite_sql_ast_node *expression,
-                                            bool require_cacheable)
-{
+static bool expression_is_supported_no_table_identifier(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+) {
     if (require_cacheable) {
         return false;
     }
     return expression_is_session_variable_identifier(expression);
 }
 
-static bool expression_is_session_variable_identifier(const struct mylite_sql_ast_node *expression)
-{
+static bool expression_is_session_variable_identifier(
+    const struct mylite_sql_ast_node *expression
+) {
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER ||
         expression->span.length < 2U || expression->span.text == NULL) {
         return false;
@@ -2480,8 +4147,7 @@ static bool expression_is_session_variable_identifier(const struct mylite_sql_as
     return expression->span.text[0] == '@';
 }
 
-bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_node *expression)
-{
+bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_node *expression) {
     const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
     enum mylite_scalar_function_id function_id = scalar_function_id(expression);
     size_t arity = child_count(arguments);
@@ -2695,10 +4361,10 @@ bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_no
     return false;
 }
 
-static bool
-current_temporal_function_has_supported_arguments(const struct mylite_sql_ast_node *expression,
-                                                  bool allow_fsp)
-{
+static bool current_temporal_function_has_supported_arguments(
+    const struct mylite_sql_ast_node *expression,
+    bool allow_fsp
+) {
     const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
     const struct mylite_sql_ast_node *argument = NULL;
     unsigned int value = 0U;
@@ -2729,11 +4395,12 @@ current_temporal_function_has_supported_arguments(const struct mylite_sql_ast_no
     return argument->span.length > 0U;
 }
 
-static int eval_node(const struct mylite_sql_ast_node *node,
-                     const struct mylite_expression_eval_context *context,
-                     struct mylite_expression_warnings *warnings,
-                     struct mylite_expression_value *out_value)
-{
+static int eval_node(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     if (node == NULL) {
         return -1;
     }
@@ -2785,18 +4452,24 @@ static int eval_node(const struct mylite_sql_ast_node *node,
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return context == NULL || context->eval_session_function == NULL
                    ? -1
-                   : context->eval_session_function(context->user_data, node, context, warnings,
-                                                    out_value);
+                   : context->eval_session_function(
+                         context->user_data,
+                         node,
+                         context,
+                         warnings,
+                         out_value
+                     );
     default:
         return -1;
     }
 }
 
-static int eval_unary(const struct mylite_sql_ast_node *node,
-                      const struct mylite_expression_eval_context *context,
-                      struct mylite_expression_warnings *warnings,
-                      struct mylite_expression_value *out_value)
-{
+static int eval_unary(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value operand = {0};
     int status = 0;
 
@@ -2809,8 +4482,13 @@ static int eval_unary(const struct mylite_sql_ast_node *node,
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
     case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
-        return eval_is_expression(node->operator_kind, child_at(node, 0U), context, warnings,
-                                  out_value);
+        return eval_is_expression(
+            node->operator_kind,
+            child_at(node, 0U),
+            context,
+            warnings,
+            out_value
+        );
     default:
         break;
     }
@@ -2829,20 +4507,25 @@ static int eval_unary(const struct mylite_sql_ast_node *node,
     return status;
 }
 
-static int eval_binary(const struct mylite_sql_ast_node *node,
-                       const struct mylite_expression_eval_context *context,
-                       struct mylite_expression_warnings *warnings,
-                       struct mylite_expression_value *out_value)
-{
+static int eval_binary(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value left = {0};
     struct mylite_expression_value right = {0};
     int status = 0;
 
     if (binary_expression_is_row_subquery(node)) {
-        return context == NULL || context->eval_row_subquery == NULL
-                   ? -1
-                   : context->eval_row_subquery(context->user_data, node, context, warnings,
-                                                out_value);
+        return context == NULL || context->eval_row_subquery == NULL ? -1
+                                                                     : context->eval_row_subquery(
+                                                                           context->user_data,
+                                                                           node,
+                                                                           context,
+                                                                           warnings,
+                                                                           out_value
+                                                                       );
     }
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_IN ||
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_IN) {
@@ -2916,11 +4599,12 @@ cleanup:
     return status;
 }
 
-static int eval_logical_and(const struct mylite_sql_ast_node *node,
-                            const struct mylite_expression_eval_context *context,
-                            struct mylite_expression_warnings *warnings,
-                            struct mylite_expression_value *out_value)
-{
+static int eval_logical_and(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value left = {0};
     struct mylite_expression_value right = {0};
     int left_truth = -1;
@@ -2933,8 +4617,10 @@ static int eval_logical_and(const struct mylite_sql_ast_node *node,
         if (status != 0) {
             return status;
         }
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 0
+        };
         return 0;
     }
 
@@ -2948,8 +4634,10 @@ static int eval_logical_and(const struct mylite_sql_ast_node *node,
             status = validate_boolean_shortcut_operand(child_at(node, 1U), context, warnings);
         }
         if (status == 0) {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = 0};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = 0
+            };
         }
         return status;
     }
@@ -2960,13 +4648,17 @@ static int eval_logical_and(const struct mylite_sql_ast_node *node,
     }
     if (status == 0) {
         if (right_truth == 0) {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = 0};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = 0
+            };
         } else if (left_truth < 0 || right_truth < 0) {
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         } else {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = 1};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = 1
+            };
         }
     }
 
@@ -2975,11 +4667,12 @@ static int eval_logical_and(const struct mylite_sql_ast_node *node,
     return status;
 }
 
-static int eval_logical_or(const struct mylite_sql_ast_node *node,
-                           const struct mylite_expression_eval_context *context,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value)
-{
+static int eval_logical_or(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value left = {0};
     struct mylite_expression_value right = {0};
     int left_truth = -1;
@@ -2992,8 +4685,10 @@ static int eval_logical_or(const struct mylite_sql_ast_node *node,
         if (status != 0) {
             return status;
         }
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 1};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 1
+        };
         return 0;
     }
 
@@ -3007,8 +4702,10 @@ static int eval_logical_or(const struct mylite_sql_ast_node *node,
             status = validate_boolean_shortcut_operand(child_at(node, 1U), context, warnings);
         }
         if (status == 0) {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = 1};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = 1
+            };
         }
         return status;
     }
@@ -3019,13 +4716,17 @@ static int eval_logical_or(const struct mylite_sql_ast_node *node,
     }
     if (status == 0) {
         if (right_truth == 1) {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = 1};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = 1
+            };
         } else if (left_truth < 0 || right_truth < 0) {
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         } else {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = 0};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = 0
+            };
         }
     }
 
@@ -3034,10 +4735,11 @@ static int eval_logical_or(const struct mylite_sql_ast_node *node,
     return status;
 }
 
-static int validate_boolean_shortcut_operand(const struct mylite_sql_ast_node *node,
-                                             const struct mylite_expression_eval_context *context,
-                                             struct mylite_expression_warnings *warnings)
-{
+static int validate_boolean_shortcut_operand(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings
+) {
     int status = 0;
 
     if (node == NULL) {
@@ -3069,11 +4771,11 @@ static int validate_boolean_shortcut_operand(const struct mylite_sql_ast_node *n
     return 0;
 }
 
-static int
-validate_like_escape_before_shortcut(const struct mylite_sql_ast_node *node,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings)
-{
+static int validate_like_escape_before_shortcut(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings
+) {
     const struct mylite_sql_ast_node *escape = child_at(node, 2U);
     struct mylite_expression_value escape_value = {0};
     char *escape_text = NULL;
@@ -3090,8 +4792,11 @@ validate_like_escape_before_shortcut(const struct mylite_sql_ast_node *node,
 
     status = value_to_string(&escape_value, &escape_text);
     if (status == 0 && strlen(escape_text) != 1U) {
-        status = append_warning(warnings, MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS,
-                                "Incorrect arguments to ESCAPE");
+        status = append_warning(
+            warnings,
+            MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS,
+            "Incorrect arguments to ESCAPE"
+        );
         if (status == 0) {
             status = -1;
         }
@@ -3102,9 +4807,10 @@ validate_like_escape_before_shortcut(const struct mylite_sql_ast_node *node,
     return status;
 }
 
-static bool expression_is_constant_boolean(const struct mylite_sql_ast_node *node,
-                                           bool expected_value)
-{
+static bool expression_is_constant_boolean(
+    const struct mylite_sql_ast_node *node,
+    bool expected_value
+) {
     while (node != NULL && node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         node = child_at(node, 0U);
     }
@@ -3137,11 +4843,12 @@ static bool expression_is_constant_boolean(const struct mylite_sql_ast_node *nod
     return false;
 }
 
-static int eval_ternary(const struct mylite_sql_ast_node *node,
-                        const struct mylite_expression_eval_context *context,
-                        struct mylite_expression_warnings *warnings,
-                        struct mylite_expression_value *out_value)
-{
+static int eval_ternary(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_BETWEEN ||
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN) {
         return eval_between(node->operator_kind, node, context, warnings, out_value);
@@ -3153,22 +4860,24 @@ static int eval_ternary(const struct mylite_sql_ast_node *node,
     return -1;
 }
 
-static int eval_case_expression(const struct mylite_sql_ast_node *node,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_case_expression(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     if (node->case_expression_simple) {
         return eval_simple_case_expression(node, context, warnings, out_value);
     }
     return eval_searched_case_expression(node, context, warnings, out_value);
 }
 
-static int eval_simple_case_expression(const struct mylite_sql_ast_node *node,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value)
-{
+static int eval_simple_case_expression(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *base_expression = child_at(node, 0U);
     const struct mylite_sql_ast_node *when_list = child_at(node, 1U);
     const struct mylite_sql_ast_node *else_expression = child_at(node, 2U);
@@ -3211,11 +4920,12 @@ static int eval_simple_case_expression(const struct mylite_sql_ast_node *node,
     return eval_case_default(else_expression, context, warnings, out_value);
 }
 
-static int eval_searched_case_expression(const struct mylite_sql_ast_node *node,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct mylite_expression_value *out_value)
-{
+static int eval_searched_case_expression(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *when_list = child_at(node, 0U);
     const struct mylite_sql_ast_node *else_expression = child_at(node, 1U);
 
@@ -3246,11 +4956,12 @@ static int eval_searched_case_expression(const struct mylite_sql_ast_node *node,
     return eval_case_default(else_expression, context, warnings, out_value);
 }
 
-static int eval_case_default(const struct mylite_sql_ast_node *expression,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value)
-{
+static int eval_case_default(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     if (expression == NULL) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         return 0;
@@ -3258,11 +4969,12 @@ static int eval_case_default(const struct mylite_sql_ast_node *expression,
     return eval_node(expression, context, warnings, out_value);
 }
 
-static int eval_cast_expression(const struct mylite_sql_ast_node *node,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_cast_expression(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *source = child_at(node, 0U);
     const struct mylite_sql_ast_node *target = child_at(node, 1U);
     struct mylite_expression_value value = {0};
@@ -3330,10 +5042,11 @@ static int eval_cast_expression(const struct mylite_sql_ast_node *node,
     return status;
 }
 
-static int eval_binary_prefix_cast(const struct mylite_expression_value *value,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_binary_prefix_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     int status = append_binary_expr_deprecated_warning(warnings);
 
     if (status != 0) {
@@ -3346,41 +5059,48 @@ static int eval_binary_prefix_cast(const struct mylite_expression_value *value,
     return eval_binary_cast(value, out_value);
 }
 
-static int eval_signed_cast(const struct mylite_expression_value *value,
-                            struct mylite_expression_warnings *warnings,
-                            struct mylite_expression_value *out_value)
-{
+static int eval_signed_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     int64_t integer = 0;
     int status = cast_value_to_signed_integer(value, warnings, &integer);
 
     if (status != 0) {
         return status;
     }
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = integer};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = integer
+    };
     return 0;
 }
 
-static int eval_unsigned_cast(const struct mylite_expression_value *value,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_unsigned_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     uint64_t integer = 0;
     int status = cast_value_to_unsigned_integer(value, warnings, &integer);
 
     if (status != 0) {
         return status;
     }
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
-                                                  .uint64_value = integer};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+        .uint64_value = integer
+    };
     return 0;
 }
 
-static int eval_decimal_cast(const struct mylite_sql_ast_node *target,
-                             const struct mylite_expression_value *value,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value)
-{
+static int eval_decimal_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     char buffer[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
     unsigned int scale = cast_decimal_scale(target);
     double number = 0.0;
@@ -3397,11 +5117,12 @@ static int eval_decimal_cast(const struct mylite_sql_ast_node *target,
     return set_text_value(buffer, (size_t)length, out_value);
 }
 
-static int eval_char_cast(const struct mylite_sql_ast_node *target,
-                          const struct mylite_expression_value *value,
-                          struct mylite_expression_warnings *warnings,
-                          struct mylite_expression_value *out_value)
-{
+static int eval_char_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     char *text = NULL;
     int status = cast_value_to_string(value, &text);
 
@@ -3428,9 +5149,10 @@ static int eval_char_cast(const struct mylite_sql_ast_node *target,
     return status;
 }
 
-static int eval_binary_cast(const struct mylite_expression_value *value,
-                            struct mylite_expression_value *out_value)
-{
+static int eval_binary_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_value *out_value
+) {
     char *text = NULL;
     int status = cast_value_to_string(value, &text);
 
@@ -3441,11 +5163,12 @@ static int eval_binary_cast(const struct mylite_expression_value *value,
     return status;
 }
 
-static int eval_function_call(const struct mylite_sql_ast_node *node,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_function_call(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
     enum mylite_scalar_function_id function_id = scalar_function_id(node);
 
@@ -3560,8 +5283,13 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_ASIN:
     case MYLITE_SCALAR_FUNCTION_ATAN:
     case MYLITE_SCALAR_FUNCTION_ATAN2:
-        return eval_inverse_trigonometric_function(function_id, arguments, context, warnings,
-                                                   out_value);
+        return eval_inverse_trigonometric_function(
+            function_id,
+            arguments,
+            context,
+            warnings,
+            out_value
+        );
     case MYLITE_SCALAR_FUNCTION_DEGREES:
     case MYLITE_SCALAR_FUNCTION_RADIANS:
         return eval_angle_conversion_function(function_id, arguments, context, warnings, out_value);
@@ -3711,19 +5439,25 @@ static int eval_function_call(const struct mylite_sql_ast_node *node,
     case MYLITE_SCALAR_FUNCTION_RELEASE_ALL_LOCKS:
         return context == NULL || context->eval_session_function == NULL
                    ? -1
-                   : context->eval_session_function(context->user_data, node, context, warnings,
-                                                    out_value);
+                   : context->eval_session_function(
+                         context->user_data,
+                         node,
+                         context,
+                         warnings,
+                         out_value
+                     );
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
         break;
     }
     return -1;
 }
 
-static int eval_json_valid_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value)
-{
+static int eval_json_valid_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
 
@@ -3748,11 +5482,12 @@ cleanup:
     return status;
 }
 
-static int eval_json_type_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_json_type_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct mylite_json_error error = {0};
     enum mylite_json_type type = MYLITE_JSON_TYPE_INVALID;
@@ -3784,11 +5519,12 @@ cleanup:
     return status;
 }
 
-static int eval_json_quote_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value)
-{
+static int eval_json_quote_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     char *quoted = NULL;
     size_t quoted_length = 0U;
@@ -3806,8 +5542,12 @@ static int eval_json_quote_function(const struct mylite_sql_ast_node *arguments,
         status = status == 0 ? MYLITE_EXEC_ERROR : status;
         goto cleanup;
     }
-    status = mylite_json_quote_string(argument.text_value, argument.text_length, &quoted,
-                                      &quoted_length);
+    status = mylite_json_quote_string(
+        argument.text_value,
+        argument.text_length,
+        &quoted,
+        &quoted_length
+    );
     if (status == 0) {
         status = set_text_value(quoted, quoted_length, out_value);
     }
@@ -3818,11 +5558,12 @@ cleanup:
     return status;
 }
 
-static int eval_json_unquote_function(const struct mylite_sql_ast_node *arguments,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value)
-{
+static int eval_json_unquote_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct mylite_json_error error = {0};
     char *unquoted = NULL;
@@ -3841,8 +5582,13 @@ static int eval_json_unquote_function(const struct mylite_sql_ast_node *argument
         status = status == 0 ? MYLITE_EXEC_ERROR : status;
         goto cleanup;
     }
-    status = mylite_json_unquote_string(argument.text_value, argument.text_length, &unquoted,
-                                        &unquoted_length, &error);
+    status = mylite_json_unquote_string(
+        argument.text_value,
+        argument.text_length,
+        &unquoted,
+        &unquoted_length,
+        &error
+    );
     if (status == 1) {
         status = append_json_invalid_text_error(warnings, "json_unquote", &error);
         status = status == 0 ? MYLITE_EXEC_ERROR : status;
@@ -3858,11 +5604,12 @@ cleanup:
     return status;
 }
 
-static int eval_json_array_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value)
-{
+static int eval_json_array_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     char *json = NULL;
     size_t json_length = 0U;
     bool first = true;
@@ -3873,7 +5620,8 @@ static int eval_json_array_function(const struct mylite_sql_ast_node *arguments,
     }
     for (const struct mylite_sql_ast_node *argument = arguments == NULL ? NULL
                                                                         : arguments->first_child;
-         argument != NULL; argument = argument->next_sibling) {
+         argument != NULL;
+         argument = argument->next_sibling) {
         struct mylite_expression_value value = {0};
 
         status = eval_node(argument, context, warnings, &value);
@@ -3903,11 +5651,12 @@ static int eval_json_array_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int eval_json_object_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_json_object_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct json_object_member *members = NULL;
     size_t member_count = 0U;
     char *json = NULL;
@@ -3926,11 +5675,12 @@ static int eval_json_object_function(const struct mylite_sql_ast_node *arguments
     return status;
 }
 
-static int eval_json_extract_function(const struct mylite_sql_ast_node *arguments,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value)
-{
+static int eval_json_extract_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value document = {0};
     struct json_path_argument_list paths = {0};
     size_t argument_count = child_count(arguments);
@@ -3956,8 +5706,15 @@ static int eval_json_extract_function(const struct mylite_sql_ast_node *argument
         status = status == 0 ? MYLITE_EXEC_ERROR : status;
         goto cleanup;
     }
-    status = eval_json_path_arguments(arguments, 1U, argument_count - 1U, context, warnings, &paths,
-                                      &null_result);
+    status = eval_json_path_arguments(
+        arguments,
+        1U,
+        argument_count - 1U,
+        context,
+        warnings,
+        &paths,
+        &null_result
+    );
     if (status != 0) {
         goto cleanup;
     }
@@ -3968,9 +5725,17 @@ static int eval_json_extract_function(const struct mylite_sql_ast_node *argument
     {
         struct mylite_json_error error = {0};
 
-        status = mylite_json_extract(document.text_value, document.text_length,
-                                     (const char *const *)paths.paths, paths.path_lengths,
-                                     paths.count, &json, &json_length, &found, &error);
+        status = mylite_json_extract(
+            document.text_value,
+            document.text_length,
+            (const char *const *)paths.paths,
+            paths.path_lengths,
+            paths.count,
+            &json,
+            &json_length,
+            &found,
+            &error
+        );
         if (status != MYLITE_JSON_STATUS_OK) {
             status = append_json_path_call_error(warnings, "json_extract", status, &error, false);
             goto cleanup;
@@ -3988,11 +5753,12 @@ cleanup:
     return status;
 }
 
-static int eval_json_contains_path_function(const struct mylite_sql_ast_node *arguments,
-                                            const struct mylite_expression_eval_context *context,
-                                            struct mylite_expression_warnings *warnings,
-                                            struct mylite_expression_value *out_value)
-{
+static int eval_json_contains_path_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value document = {0};
     struct mylite_expression_value mode = {0};
     struct json_path_argument_list paths = {0};
@@ -4025,8 +5791,15 @@ static int eval_json_contains_path_function(const struct mylite_sql_ast_node *ar
     if (status != 0) {
         goto cleanup;
     }
-    status = eval_json_path_arguments(arguments, 2U, argument_count - 2U, context, warnings, &paths,
-                                      &null_result);
+    status = eval_json_path_arguments(
+        arguments,
+        2U,
+        argument_count - 2U,
+        context,
+        warnings,
+        &paths,
+        &null_result
+    );
     if (status != 0) {
         goto cleanup;
     }
@@ -4037,17 +5810,26 @@ static int eval_json_contains_path_function(const struct mylite_sql_ast_node *ar
     {
         struct mylite_json_error error = {0};
 
-        status = mylite_json_contains_path(document.text_value, document.text_length,
-                                           (const char *const *)paths.paths, paths.path_lengths,
-                                           paths.count, require_all, &contains, &error);
+        status = mylite_json_contains_path(
+            document.text_value,
+            document.text_length,
+            (const char *const *)paths.paths,
+            paths.path_lengths,
+            paths.count,
+            require_all,
+            &contains,
+            &error
+        );
         if (status != MYLITE_JSON_STATUS_OK) {
             status =
                 append_json_path_call_error(warnings, "json_contains_path", status, &error, false);
             goto cleanup;
         }
     }
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = contains ? 1 : 0};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = contains ? 1 : 0
+    };
 
 cleanup:
     json_path_argument_list_deinit(&paths);
@@ -4056,11 +5838,12 @@ cleanup:
     return status;
 }
 
-static int eval_json_keys_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_json_keys_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value document = {0};
     char *path_text = NULL;
     size_t path_length = 0U;
@@ -4083,8 +5866,15 @@ static int eval_json_keys_function(const struct mylite_sql_ast_node *arguments,
         status = status == 0 ? MYLITE_EXEC_ERROR : status;
         goto cleanup;
     }
-    status = eval_optional_json_path_argument(arguments, context, warnings, has_path, &path_text,
-                                              &path_length, &path_null);
+    status = eval_optional_json_path_argument(
+        arguments,
+        context,
+        warnings,
+        has_path,
+        &path_text,
+        &path_length,
+        &path_null
+    );
     if (status != 0) {
         goto cleanup;
     }
@@ -4095,8 +5885,17 @@ static int eval_json_keys_function(const struct mylite_sql_ast_node *arguments,
     {
         struct mylite_json_error error = {0};
 
-        status = mylite_json_keys(document.text_value, document.text_length, path_text, path_length,
-                                  has_path, &json, &json_length, &found, &error);
+        status = mylite_json_keys(
+            document.text_value,
+            document.text_length,
+            path_text,
+            path_length,
+            has_path,
+            &json,
+            &json_length,
+            &found,
+            &error
+        );
         if (status != MYLITE_JSON_STATUS_OK) {
             status = append_json_path_call_error(warnings, "json_keys", status, &error, true);
             goto cleanup;
@@ -4114,11 +5913,12 @@ cleanup:
     return status;
 }
 
-static int eval_json_length_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_json_length_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value document = {0};
     char *path_text = NULL;
     size_t path_length = 0U;
@@ -4140,8 +5940,15 @@ static int eval_json_length_function(const struct mylite_sql_ast_node *arguments
         status = status == 0 ? MYLITE_EXEC_ERROR : status;
         goto cleanup;
     }
-    status = eval_optional_json_path_argument(arguments, context, warnings, has_path, &path_text,
-                                              &path_length, &path_null);
+    status = eval_optional_json_path_argument(
+        arguments,
+        context,
+        warnings,
+        has_path,
+        &path_text,
+        &path_length,
+        &path_null
+    );
     if (status != 0) {
         goto cleanup;
     }
@@ -4152,8 +5959,16 @@ static int eval_json_length_function(const struct mylite_sql_ast_node *arguments
     {
         struct mylite_json_error error = {0};
 
-        status = mylite_json_length(document.text_value, document.text_length, path_text,
-                                    path_length, has_path, &length, &found, &error);
+        status = mylite_json_length(
+            document.text_value,
+            document.text_length,
+            path_text,
+            path_length,
+            has_path,
+            &length,
+            &found,
+            &error
+        );
         if (status != MYLITE_JSON_STATUS_OK) {
             status = append_json_path_call_error(warnings, "json_length", status, &error, false);
             goto cleanup;
@@ -4162,8 +5977,10 @@ static int eval_json_length_function(const struct mylite_sql_ast_node *arguments
     if (!found) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
     } else {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
-                                                      .uint64_value = length};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+            .uint64_value = length
+        };
     }
 
 cleanup:
@@ -4172,12 +5989,13 @@ cleanup:
     return status;
 }
 
-static int eval_json_extract_operator(enum mylite_sql_ast_operator operator_kind,
-                                      const struct mylite_sql_ast_node *node,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value)
-{
+static int eval_json_extract_operator(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value document = {0};
     struct mylite_expression_value path = {0};
     char *json = NULL;
@@ -4191,8 +6009,15 @@ static int eval_json_extract_operator(enum mylite_sql_ast_operator operator_kind
     if (status != 0) {
         goto cleanup;
     }
-    status = eval_json_extract_values(&document, &path, "json_extract", warnings, &json,
-                                      &json_length, &found);
+    status = eval_json_extract_values(
+        &document,
+        &path,
+        "json_extract",
+        warnings,
+        &json,
+        &json_length,
+        &found
+    );
     if (status != 0) {
         goto cleanup;
     }
@@ -4227,12 +6052,15 @@ cleanup:
     return status;
 }
 
-static int eval_json_extract_values(const struct mylite_expression_value *document,
-                                    const struct mylite_expression_value *path,
-                                    const char *function_name,
-                                    struct mylite_expression_warnings *warnings, char **out_json,
-                                    size_t *out_json_length, bool *out_found)
-{
+static int eval_json_extract_values(
+    const struct mylite_expression_value *document,
+    const struct mylite_expression_value *path,
+    const char *function_name,
+    struct mylite_expression_warnings *warnings,
+    char **out_json,
+    size_t *out_json_length,
+    bool *out_found
+) {
     char *path_text = NULL;
     size_t path_length = 0U;
     int status = 0;
@@ -4254,9 +6082,17 @@ static int eval_json_extract_values(const struct mylite_expression_value *docume
         size_t path_lengths[] = {path_length};
         struct mylite_json_error error = {0};
 
-        status =
-            mylite_json_extract(document->text_value, document->text_length, paths, path_lengths,
-                                1U, out_json, out_json_length, out_found, &error);
+        status = mylite_json_extract(
+            document->text_value,
+            document->text_length,
+            paths,
+            path_lengths,
+            1U,
+            out_json,
+            out_json_length,
+            out_found,
+            &error
+        );
         free(path_text);
         if (status == MYLITE_JSON_STATUS_INVALID_DOCUMENT) {
             status = append_json_invalid_text_error(warnings, function_name, &error);
@@ -4271,12 +6107,15 @@ static int eval_json_extract_values(const struct mylite_expression_value *docume
 }
 
 // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-static int eval_json_path_arguments(const struct mylite_sql_ast_node *arguments,
-                                    size_t first_argument_index, size_t argument_count,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct json_path_argument_list *out_paths,
-                                    bool *out_null_result)
+static int eval_json_path_arguments(
+    const struct mylite_sql_ast_node *arguments,
+    size_t first_argument_index,
+    size_t argument_count,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct json_path_argument_list *out_paths,
+    bool *out_null_result
+)
 // NOLINTEND(bugprone-easily-swappable-parameters)
 {
     out_paths->count = argument_count;
@@ -4313,19 +6152,22 @@ static int eval_json_path_arguments(const struct mylite_sql_ast_node *arguments,
     return 0;
 }
 
-static int append_json_path_call_error(struct mylite_expression_warnings *warnings,
-                                       const char *function_name, int json_status,
-                                       const struct mylite_json_error *error,
-                                       bool allow_wildcard_error)
-{
+static int append_json_path_call_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    int json_status,
+    const struct mylite_json_error *error,
+    bool allow_wildcard_error
+) {
     int status = 0;
 
     if (json_status == MYLITE_JSON_STATUS_INVALID_DOCUMENT) {
         status = append_json_invalid_text_error(warnings, function_name, error);
     } else if (json_status == MYLITE_JSON_STATUS_INVALID_PATH) {
         status = append_json_invalid_path_error(warnings, error);
-    } else if (json_status == MYLITE_JSON_STATUS_PATH_WILDCARD_NOT_ALLOWED &&
-               allow_wildcard_error) {
+    } else if (
+        json_status == MYLITE_JSON_STATUS_PATH_WILDCARD_NOT_ALLOWED && allow_wildcard_error
+    ) {
         status = append_json_path_wildcard_error(warnings);
     } else {
         return -1;
@@ -4333,10 +6175,11 @@ static int append_json_path_call_error(struct mylite_expression_warnings *warnin
     return status == 0 ? MYLITE_EXEC_ERROR : status;
 }
 
-static int eval_json_contains_path_mode(const struct mylite_expression_value *mode,
-                                        struct mylite_expression_warnings *warnings,
-                                        bool *out_require_all)
-{
+static int eval_json_contains_path_mode(
+    const struct mylite_expression_value *mode,
+    struct mylite_expression_warnings *warnings,
+    bool *out_require_all
+) {
     char *mode_text = NULL;
     size_t mode_length = 0U;
     int status = json_argument_to_text(mode, &mode_text, &mode_length);
@@ -4345,14 +6188,16 @@ static int eval_json_contains_path_mode(const struct mylite_expression_value *mo
         return status;
     }
     if (mode_length == 3U &&
-        ascii_text_equal_ci((struct text_compare_input){
-            .left = mode_text, .left_length = mode_length, .right = "one", .right_length = 3U})) {
+        ascii_text_equal_ci((
+            struct text_compare_input
+        ){.left = mode_text, .left_length = mode_length, .right = "one", .right_length = 3U})) {
         *out_require_all = false;
-    } else if (mode_length == 3U &&
-               ascii_text_equal_ci((struct text_compare_input){.left = mode_text,
-                                                               .left_length = mode_length,
-                                                               .right = "all",
-                                                               .right_length = 3U})) {
+    } else if (
+        mode_length == 3U &&
+        ascii_text_equal_ci((
+            struct text_compare_input
+        ){.left = mode_text, .left_length = mode_length, .right = "all", .right_length = 3U})
+    ) {
         *out_require_all = true;
     } else {
         status = append_json_one_or_all_error(warnings);
@@ -4362,12 +6207,15 @@ static int eval_json_contains_path_mode(const struct mylite_expression_value *mo
     return status;
 }
 
-static int eval_optional_json_path_argument(const struct mylite_sql_ast_node *arguments,
-                                            const struct mylite_expression_eval_context *context,
-                                            struct mylite_expression_warnings *warnings,
-                                            bool has_path, char **out_path_text,
-                                            size_t *out_path_length, bool *out_null_result)
-{
+static int eval_optional_json_path_argument(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    bool has_path,
+    char **out_path_text,
+    size_t *out_path_length,
+    bool *out_null_result
+) {
     struct mylite_expression_value path = {0};
     int status = 0;
 
@@ -4385,8 +6233,7 @@ static int eval_optional_json_path_argument(const struct mylite_sql_ast_node *ar
     return status;
 }
 
-static void json_path_argument_list_deinit(struct json_path_argument_list *paths)
-{
+static void json_path_argument_list_deinit(struct json_path_argument_list *paths) {
     if (paths->paths != NULL) {
         for (size_t index = 0U; index < paths->count; ++index) {
             free(paths->paths[index]);
@@ -4397,19 +6244,22 @@ static void json_path_argument_list_deinit(struct json_path_argument_list *paths
     *paths = (struct json_path_argument_list){0};
 }
 
-static int eval_json_object_members(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct json_object_member **out_members,
-                                    size_t *out_member_count)
-{
+static int eval_json_object_members(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct json_object_member **out_members,
+    size_t *out_member_count
+) {
     int status = 0;
 
     if (child_count(arguments) % 2U != 0U) {
         status = mylite_expression_warnings_append_condition(
-            warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+            warnings,
+            MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
             MYLITE_WARNING_WRONG_PARAMCOUNT_TO_NATIVE_FCT,
-            "Incorrect parameter count in the call to native function 'JSON_OBJECT'");
+            "Incorrect parameter count in the call to native function 'JSON_OBJECT'"
+        );
         return status == 0 ? MYLITE_EXEC_ERROR : status;
     }
 
@@ -4418,8 +6268,14 @@ static int eval_json_object_members(const struct mylite_sql_ast_node *arguments,
          key_node != NULL;) {
         const struct mylite_sql_ast_node *value_node = key_node->next_sibling;
 
-        status = eval_json_object_member(key_node, value_node, context, warnings, out_members,
-                                         out_member_count);
+        status = eval_json_object_member(
+            key_node,
+            value_node,
+            context,
+            warnings,
+            out_members,
+            out_member_count
+        );
         if (status != 0) {
             return status;
         }
@@ -4428,12 +6284,14 @@ static int eval_json_object_members(const struct mylite_sql_ast_node *arguments,
     return 0;
 }
 
-static int eval_json_object_member(const struct mylite_sql_ast_node *key_node,
-                                   const struct mylite_sql_ast_node *value_node,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct json_object_member **members, size_t *member_count)
-{
+static int eval_json_object_member(
+    const struct mylite_sql_ast_node *key_node,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct json_object_member **members,
+    size_t *member_count
+) {
     struct mylite_expression_value key = {0};
     struct mylite_expression_value value = {0};
     char *key_text = NULL;
@@ -4461,8 +6319,14 @@ static int eval_json_object_member(const struct mylite_sql_ast_node *key_node,
     if (status != 0) {
         goto cleanup;
     }
-    status = json_object_append_member(members, member_count, key_text, key_length, value_json,
-                                       value_json_length);
+    status = json_object_append_member(
+        members,
+        member_count,
+        key_text,
+        key_length,
+        value_json,
+        value_json_length
+    );
     if (status == 0) {
         key_text = NULL;
         value_json = NULL;
@@ -4476,9 +6340,12 @@ cleanup:
     return status;
 }
 
-static int json_object_to_text(struct json_object_member *members, size_t member_count,
-                               char **out_json, size_t *out_json_length)
-{
+static int json_object_to_text(
+    struct json_object_member *members,
+    size_t member_count,
+    char **out_json,
+    size_t *out_json_length
+) {
     char *json = NULL;
     size_t json_length = 0U;
     int status = 0;
@@ -4505,9 +6372,11 @@ static int json_object_to_text(struct json_object_member *members, size_t member
     return status;
 }
 
-static int append_json_object_member(char **json, size_t *json_length,
-                                     const struct json_object_member *member)
-{
+static int append_json_object_member(
+    char **json,
+    size_t *json_length,
+    const struct json_object_member *member
+) {
     char *quoted_key = NULL;
     size_t quoted_key_length = 0U;
     int status =
@@ -4526,10 +6395,12 @@ static int append_json_object_member(char **json, size_t *json_length,
     return status;
 }
 
-static int json_append_argument(char **json, size_t *json_length,
-                                const struct mylite_sql_ast_node *argument,
-                                const struct mylite_expression_value *value)
-{
+static int json_append_argument(
+    char **json,
+    size_t *json_length,
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_value *value
+) {
     char *text = NULL;
     size_t text_length = 0U;
     int status = 0;
@@ -4563,9 +6434,11 @@ static int json_append_argument(char **json, size_t *json_length,
     return status;
 }
 
-static int json_argument_to_text(const struct mylite_expression_value *value, char **out_text,
-                                 size_t *out_length)
-{
+static int json_argument_to_text(
+    const struct mylite_expression_value *value,
+    char **out_text,
+    size_t *out_length
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     char *text = NULL;
     int length = 0;
@@ -4616,22 +6489,19 @@ static int json_argument_to_text(const struct mylite_expression_value *value, ch
     return 0;
 }
 
-static bool json_argument_is_true_literal(const struct mylite_sql_ast_node *argument)
-{
+static bool json_argument_is_true_literal(const struct mylite_sql_ast_node *argument) {
     argument = unwrap_parenthesized_node(argument);
     return argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
            argument->literal_kind == MYLITE_SQL_AST_LITERAL_TRUE;
 }
 
-static bool json_argument_is_false_literal(const struct mylite_sql_ast_node *argument)
-{
+static bool json_argument_is_false_literal(const struct mylite_sql_ast_node *argument) {
     argument = unwrap_parenthesized_node(argument);
     return argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
            argument->literal_kind == MYLITE_SQL_AST_LITERAL_FALSE;
 }
 
-static bool json_argument_is_json_creation(const struct mylite_sql_ast_node *argument)
-{
+static bool json_argument_is_json_creation(const struct mylite_sql_ast_node *argument) {
     enum mylite_scalar_function_id function_id = MYLITE_SCALAR_FUNCTION_UNKNOWN;
 
     argument = unwrap_parenthesized_node(argument);
@@ -4643,9 +6513,14 @@ static bool json_argument_is_json_creation(const struct mylite_sql_ast_node *arg
            function_id == MYLITE_SCALAR_FUNCTION_JSON_OBJECT;
 }
 
-static int json_object_append_member(struct json_object_member **members, size_t *count, char *key,
-                                     size_t key_length, char *value, size_t value_length)
-{
+static int json_object_append_member(
+    struct json_object_member **members,
+    size_t *count,
+    char *key,
+    size_t key_length,
+    char *value,
+    size_t value_length
+) {
     struct json_object_member *updated = NULL;
 
     for (size_t index = 0U; index < *count; ++index) {
@@ -4676,8 +6551,7 @@ static int json_object_append_member(struct json_object_member **members, size_t
 
 // qsort requires this two-pointer comparator shape.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-static int json_object_member_compare(const void *left, const void *right)
-{
+static int json_object_member_compare(const void *left, const void *right) {
     const struct json_object_member *left_member = left;
     const struct json_object_member *right_member = right;
     size_t min_length = left_member->key_length < right_member->key_length
@@ -4698,8 +6572,7 @@ static int json_object_member_compare(const void *left, const void *right)
     return 0;
 }
 
-static void json_object_members_deinit(struct json_object_member *members, size_t count)
-{
+static void json_object_members_deinit(struct json_object_member *members, size_t count) {
     for (size_t index = 0U; index < count; ++index) {
         free(members[index].key);
         free(members[index].value);
@@ -4707,100 +6580,140 @@ static void json_object_members_deinit(struct json_object_member *members, size_
     free(members);
 }
 
-static int append_json_invalid_text_error(struct mylite_expression_warnings *warnings,
-                                          const char *function_name,
-                                          const struct mylite_json_error *error)
-{
+static int append_json_invalid_text_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    const struct mylite_json_error *error
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     const char *detail =
         error == NULL || error->message == NULL ? "Invalid value." : error->message;
     size_t position = error == NULL ? 0U : error->position;
-    int length = snprintf(message, sizeof(message),
-                          "Invalid JSON text in argument 1 to function %s: \"%s\" at position %zu.",
-                          function_name == NULL ? "" : function_name, detail, position);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Invalid JSON text in argument 1 to function %s: \"%s\" at position %zu.",
+        function_name == NULL ? "" : function_name,
+        detail,
+        position
+    );
 
     if (length <= 0 || (size_t)length >= sizeof(message)) {
         return -1;
     }
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INVALID_JSON_TEXT, message);
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_INVALID_JSON_TEXT,
+        message
+    );
 }
 
-static int append_json_incorrect_type_error(struct mylite_expression_warnings *warnings,
-                                            const char *function_name)
-{
-    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
-    int length = snprintf(message, sizeof(message), "Incorrect type for argument 1 in function %s.",
-                          function_name == NULL ? "" : function_name);
-
-    if (length <= 0 || (size_t)length >= sizeof(message)) {
-        return -1;
-    }
-    return mylite_expression_warnings_append_condition(warnings,
-                                                       MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
-                                                       MYLITE_WARNING_INCORRECT_JSON_TYPE, message);
-}
-
-static int append_json_invalid_data_error(struct mylite_expression_warnings *warnings,
-                                          const char *function_name)
-{
+static int append_json_incorrect_type_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     int length = snprintf(
-        message, sizeof(message),
-        "Invalid data type for JSON data in argument 1 to function %s; a JSON string or JSON type "
-        "is required.",
-        function_name == NULL ? "" : function_name);
+        message,
+        sizeof(message),
+        "Incorrect type for argument 1 in function %s.",
+        function_name == NULL ? "" : function_name
+    );
 
     if (length <= 0 || (size_t)length >= sizeof(message)) {
         return -1;
     }
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INVALID_JSON_DATA, message);
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_INCORRECT_JSON_TYPE,
+        message
+    );
 }
 
-static int append_json_invalid_path_error(struct mylite_expression_warnings *warnings,
-                                          const struct mylite_json_error *error)
-{
+static int append_json_invalid_data_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+) {
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Invalid data type for JSON data in argument 1 to function %s; a JSON string or JSON type "
+        "is required.",
+        function_name == NULL ? "" : function_name
+    );
+
+    if (length <= 0 || (size_t)length >= sizeof(message)) {
+        return -1;
+    }
+    return mylite_expression_warnings_append_condition(
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_INVALID_JSON_DATA,
+        message
+    );
+}
+
+static int append_json_invalid_path_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_json_error *error
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     size_t position = error == NULL ? 1U : error->position;
     int length = snprintf(
-        message, sizeof(message),
-        "Invalid JSON path expression. The error is around character position %zu.", position);
+        message,
+        sizeof(message),
+        "Invalid JSON path expression. The error is around character position %zu.",
+        position
+    );
 
     if (length <= 0 || (size_t)length >= sizeof(message)) {
         return -1;
     }
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INVALID_JSON_PATH, message);
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_INVALID_JSON_PATH,
+        message
+    );
 }
 
-static int append_json_path_wildcard_error(struct mylite_expression_warnings *warnings)
-{
+static int append_json_path_wildcard_error(struct mylite_expression_warnings *warnings) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_JSON_PATH_WILDCARD,
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_JSON_PATH_WILDCARD,
         "In this situation, path expressions may not contain the * and ** tokens or an array "
-        "range.");
+        "range."
+    );
 }
 
-static int append_json_one_or_all_error(struct mylite_expression_warnings *warnings)
-{
+static int append_json_one_or_all_error(struct mylite_expression_warnings *warnings) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INVALID_JSON_ONE_OR_ALL,
-        "The oneOrAll argument to json_contains_path may take these values: 'one' or 'all'.");
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_INVALID_JSON_ONE_OR_ALL,
+        "The oneOrAll argument to json_contains_path may take these values: 'one' or 'all'."
+    );
 }
 
-static int append_json_null_key_error(struct mylite_expression_warnings *warnings)
-{
+static int append_json_null_key_error(struct mylite_expression_warnings *warnings) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_JSON_DOCUMENT_NULL_KEY,
-        "JSON documents may not contain NULL member names.");
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_JSON_DOCUMENT_NULL_KEY,
+        "JSON documents may not contain NULL member names."
+    );
 }
 
-static int eval_unix_timestamp_function(const struct mylite_sql_ast_node *node,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value)
-{
+static int eval_unix_timestamp_function(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
     const struct mylite_sql_ast_node *argument_node = child_at(arguments, 0U);
     struct mylite_expression_value argument = {0};
@@ -4811,8 +6724,13 @@ static int eval_unix_timestamp_function(const struct mylite_sql_ast_node *node,
     if (argument_node == NULL) {
         return context == NULL || context->eval_session_function == NULL
                    ? -1
-                   : context->eval_session_function(context->user_data, node, context, warnings,
-                                                    out_value);
+                   : context->eval_session_function(
+                         context->user_data,
+                         node,
+                         context,
+                         warnings,
+                         out_value
+                     );
     }
 
     status = eval_node(argument_node, context, warnings, &argument);
@@ -4838,9 +6756,10 @@ cleanup:
     return status;
 }
 
-static int set_unix_timestamp_value(const struct temporal_date_value *date,
-                                    struct mylite_expression_value *out_value)
-{
+static int set_unix_timestamp_value(
+    const struct temporal_date_value *date,
+    struct mylite_expression_value *out_value
+) {
     static const struct temporal_date_value unix_epoch = {
         .year = 1970,
         .month = 1,
@@ -4870,13 +6789,17 @@ static int set_unix_timestamp_value(const struct temporal_date_value *date,
     int length = 0;
 
     if (seconds < 0 || seconds > max_seconds) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 0
+        };
         return 0;
     }
     if (date->microsecond == 0) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = seconds};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = seconds
+        };
         return 0;
     }
 
@@ -4887,11 +6810,12 @@ static int set_unix_timestamp_value(const struct temporal_date_value *date,
     return set_text_value(buffer, (size_t)length, out_value);
 }
 
-static int eval_date_format_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_date_format_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value date_value = {0};
     struct mylite_expression_value format_value = {0};
     struct temporal_date_value date = {0};
@@ -4932,9 +6856,12 @@ cleanup:
     return status;
 }
 
-static int date_format_text_value(const struct temporal_date_value *date, const char *format,
-                                  size_t format_length, struct mylite_expression_value *out_value)
-{
+static int date_format_text_value(
+    const struct temporal_date_value *date,
+    const char *format,
+    size_t format_length,
+    struct mylite_expression_value *out_value
+) {
     char *result = copy_span_text("", 0U);
     size_t result_length = 0U;
     int status = 0;
@@ -4963,11 +6890,12 @@ static int date_format_text_value(const struct temporal_date_value *date, const 
     return status;
 }
 
-static int eval_str_to_date_function(const struct mylite_sql_ast_node *node,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_str_to_date_function(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
     const struct mylite_sql_ast_node *format_argument = child_at(arguments, 1U);
     struct mylite_expression_value text_value = {0};
@@ -4998,8 +6926,15 @@ static int eval_str_to_date_function(const struct mylite_sql_ast_node *node,
     if (status != 0) {
         goto cleanup;
     }
-    status = str_to_date_text_value(text, text_length, format, format_length, dynamic_format,
-                                    warnings, out_value);
+    status = str_to_date_text_value(
+        text,
+        text_length,
+        format,
+        format_length,
+        dynamic_format,
+        warnings,
+        out_value
+    );
 
 cleanup:
     free(format);
@@ -5009,11 +6944,15 @@ cleanup:
     return status;
 }
 
-static int str_to_date_text_value(const char *text, size_t text_length, const char *format,
-                                  size_t format_length, bool dynamic_format,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value)
-{
+static int str_to_date_text_value(
+    const char *text,
+    size_t text_length,
+    const char *format,
+    size_t format_length,
+    bool dynamic_format,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct str_to_date_parts parts = {0};
     int status = 0;
 
@@ -5036,17 +6975,20 @@ static int str_to_date_text_value(const char *text, size_t text_length, const ch
     return set_str_to_date_result_value(&parts, out_value);
 }
 
-static bool str_to_date_format_argument_is_literal(const struct mylite_sql_ast_node *argument)
-{
+static bool str_to_date_format_argument_is_literal(const struct mylite_sql_ast_node *argument) {
     argument = unwrap_parenthesized_node(argument);
     return argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
            (argument->literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
             argument->literal_kind == MYLITE_SQL_AST_LITERAL_NATIONAL_STRING);
 }
 
-static bool parse_str_to_date_text(const char *text, size_t text_length, const char *format,
-                                   size_t format_length, struct str_to_date_parts *out_parts)
-{
+static bool parse_str_to_date_text(
+    const char *text,
+    size_t text_length,
+    const char *format,
+    size_t format_length,
+    struct str_to_date_parts *out_parts
+) {
     struct str_to_date_parts parts = {0};
     size_t text_offset = 0U;
 
@@ -5069,8 +7011,13 @@ static bool parse_str_to_date_text(const char *text, size_t text_length, const c
             }
             continue;
         }
-        if (!parse_str_to_date_token(text, text_length, &text_offset, format[++format_offset],
-                                     &parts)) {
+        if (!parse_str_to_date_token(
+                text,
+                text_length,
+                &text_offset,
+                format[++format_offset],
+                &parts
+            )) {
             return false;
         }
     }
@@ -5080,9 +7027,13 @@ static bool parse_str_to_date_text(const char *text, size_t text_length, const c
     return true;
 }
 
-static bool parse_str_to_date_token(const char *text, size_t text_length, size_t *offset,
-                                    char token, struct str_to_date_parts *parts)
-{
+static bool parse_str_to_date_token(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    char token,
+    struct str_to_date_parts *parts
+) {
     struct str_to_date_numeric_token number = {0};
 
     switch (token) {
@@ -5201,9 +7152,13 @@ static bool parse_str_to_date_token(const char *text, size_t text_length, size_t
     }
 }
 
-static bool parse_str_to_date_time_sequence(const char *text, size_t text_length, size_t *offset,
-                                            bool hour_is_12_hour, struct str_to_date_parts *parts)
-{
+static bool parse_str_to_date_time_sequence(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    bool hour_is_12_hour,
+    struct str_to_date_parts *parts
+) {
     struct str_to_date_numeric_token number = {0};
 
     if (!parse_str_to_date_number(text, text_length, offset, 1U, 2U, &number)) {
@@ -5234,10 +7189,14 @@ static bool parse_str_to_date_time_sequence(const char *text, size_t text_length
                : false;
 }
 
-static bool parse_str_to_date_number(const char *text, size_t text_length, size_t *offset,
-                                     size_t minimum_digits, size_t maximum_digits,
-                                     struct str_to_date_numeric_token *out_token)
-{
+static bool parse_str_to_date_number(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    size_t minimum_digits,
+    size_t maximum_digits,
+    struct str_to_date_numeric_token *out_token
+) {
     size_t cursor = offset == NULL ? 0U : *offset;
     size_t digits = 0U;
     int value = 0;
@@ -5262,9 +7221,12 @@ static bool parse_str_to_date_number(const char *text, size_t text_length, size_
     return true;
 }
 
-static bool parse_str_to_date_fraction(const char *text, size_t text_length, size_t *offset,
-                                       struct str_to_date_parts *parts)
-{
+static bool parse_str_to_date_fraction(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    struct str_to_date_parts *parts
+) {
     size_t cursor = offset == NULL ? 0U : *offset;
     size_t digits = 0U;
     int microsecond = 0;
@@ -5291,15 +7253,42 @@ static bool parse_str_to_date_fraction(const char *text, size_t text_length, siz
     return true;
 }
 
-static bool parse_str_to_date_month_name(const char *text, size_t text_length, size_t *offset,
-                                         bool abbreviated, int *out_month)
-{
+static bool parse_str_to_date_month_name(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    bool abbreviated,
+    int *out_month
+) {
     static const char *const month_names[] = {
-        "",     "January", "February",  "March",   "April",    "May",      "June",
-        "July", "August",  "September", "October", "November", "December",
+        "",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     };
     static const char *const month_abbreviations[] = {
-        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        "",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
     };
 
     for (int month = 1; month <= MYLITE_TEMPORAL_MONTHS_PER_YEAR; ++month) {
@@ -5315,13 +7304,16 @@ static bool parse_str_to_date_month_name(const char *text, size_t text_length, s
     return false;
 }
 
-static bool parse_str_to_date_weekday_name(const char *text, size_t text_length, size_t *offset,
-                                           bool abbreviated)
-{
-    static const char *const weekday_names[] = {"Sunday",   "Monday", "Tuesday", "Wednesday",
-                                                "Thursday", "Friday", "Saturday"};
-    static const char *const weekday_abbreviations[] = {"Sun", "Mon", "Tue", "Wed",
-                                                        "Thu", "Fri", "Sat"};
+static bool parse_str_to_date_weekday_name(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    bool abbreviated
+) {
+    static const char *const weekday_names[] =
+        {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    static const char *const weekday_abbreviations[] =
+        {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
     for (size_t index = 0U; index < MYLITE_TEMPORAL_DAYS_PER_WEEK; ++index) {
         const char *name = abbreviated ? weekday_abbreviations[index] : weekday_names[index];
@@ -5335,9 +7327,12 @@ static bool parse_str_to_date_weekday_name(const char *text, size_t text_length,
     return false;
 }
 
-static bool match_str_to_date_literal(const char *text, size_t text_length, size_t *offset,
-                                      char literal)
-{
+static bool match_str_to_date_literal(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    char literal
+) {
     if (text == NULL || offset == NULL || *offset >= text_length || text[*offset] != literal) {
         return false;
     }
@@ -5345,9 +7340,12 @@ static bool match_str_to_date_literal(const char *text, size_t text_length, size
     return true;
 }
 
-static bool match_str_to_date_name(const char *text, size_t text_length, size_t *offset,
-                                   const char *name)
-{
+static bool match_str_to_date_name(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    const char *name
+) {
     size_t cursor = offset == NULL ? 0U : *offset;
     size_t name_length = name == NULL ? 0U : strlen(name);
 
@@ -5365,9 +7363,12 @@ static bool match_str_to_date_name(const char *text, size_t text_length, size_t 
     return true;
 }
 
-static bool match_str_to_date_meridiem(const char *text, size_t text_length, size_t *offset,
-                                       bool *out_pm)
-{
+static bool match_str_to_date_meridiem(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    bool *out_pm
+) {
     size_t cursor = offset == NULL ? 0U : *offset;
 
     if (match_str_to_date_name(text, text_length, &cursor, "AM")) {
@@ -5384,16 +7385,18 @@ static bool match_str_to_date_meridiem(const char *text, size_t text_length, siz
     return false;
 }
 
-static bool match_str_to_date_ordinal_suffix(const char *text, size_t text_length, size_t *offset,
-                                             int day)
-{
+static bool match_str_to_date_ordinal_suffix(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    int day
+) {
     const char *suffix = date_format_day_ordinal_suffix(day);
 
     return match_str_to_date_name(text, text_length, offset, suffix);
 }
 
-static int str_to_date_normalized_year(int year, size_t digit_count)
-{
+static int str_to_date_normalized_year(int year, size_t digit_count) {
     if (digit_count <= 2U) {
         return temporal_normalized_year((struct temporal_year_parts){
             .year = year,
@@ -5403,8 +7406,7 @@ static int str_to_date_normalized_year(int year, size_t digit_count)
     return year;
 }
 
-static bool finalize_str_to_date_parts(struct str_to_date_parts *parts)
-{
+static bool finalize_str_to_date_parts(struct str_to_date_parts *parts) {
     if (parts == NULL) {
         return false;
     }
@@ -5419,8 +7421,11 @@ static bool finalize_str_to_date_parts(struct str_to_date_parts *parts)
         return false;
     }
     if (parts->result_kind == STR_TO_DATE_RESULT_TIME) {
-        return temporal_time_parts_are_valid(parts->time.hour, parts->time.minute,
-                                             parts->time.second);
+        return temporal_time_parts_are_valid(
+            parts->time.hour,
+            parts->time.minute,
+            parts->time.second
+        );
     }
     if (!str_to_date_complete_date_is_valid(&parts->date)) {
         return false;
@@ -5437,8 +7442,7 @@ static bool finalize_str_to_date_parts(struct str_to_date_parts *parts)
     return true;
 }
 
-static bool apply_str_to_date_dynamic_format_result(struct str_to_date_parts *parts)
-{
+static bool apply_str_to_date_dynamic_format_result(struct str_to_date_parts *parts) {
     if (parts == NULL) {
         return false;
     }
@@ -5454,8 +7458,7 @@ static bool apply_str_to_date_dynamic_format_result(struct str_to_date_parts *pa
     return true;
 }
 
-static bool apply_str_to_date_day_of_year(struct str_to_date_parts *parts)
-{
+static bool apply_str_to_date_day_of_year(struct str_to_date_parts *parts) {
     struct temporal_date_value first_day = {0};
     struct temporal_date_value day_date = {0};
     int64_t day_number = 0;
@@ -5490,8 +7493,7 @@ static bool apply_str_to_date_day_of_year(struct str_to_date_parts *parts)
     return true;
 }
 
-static bool apply_str_to_date_time(struct str_to_date_parts *parts)
-{
+static bool apply_str_to_date_time(struct str_to_date_parts *parts) {
     if (parts == NULL) {
         return false;
     }
@@ -5509,15 +7511,15 @@ static bool apply_str_to_date_time(struct str_to_date_parts *parts)
     return temporal_time_parts_are_valid(parts->time.hour, parts->time.minute, parts->time.second);
 }
 
-static bool str_to_date_complete_date_is_valid(const struct temporal_date_value *date)
-{
+static bool str_to_date_complete_date_is_valid(const struct temporal_date_value *date) {
     return date != NULL && date->year > 0 &&
            temporal_date_parts_are_valid(date->year, date->month, date->day);
 }
 
-static int set_str_to_date_result_value(const struct str_to_date_parts *parts,
-                                        struct mylite_expression_value *out_value)
-{
+static int set_str_to_date_result_value(
+    const struct str_to_date_parts *parts,
+    struct mylite_expression_value *out_value
+) {
     switch (parts->result_kind) {
     case STR_TO_DATE_RESULT_DATE:
         return set_temporal_date_text_value(&parts->date, out_value);
@@ -5529,16 +7531,22 @@ static int set_str_to_date_result_value(const struct str_to_date_parts *parts,
     return -1;
 }
 
-static int append_str_to_date_incorrect_warning(struct mylite_expression_warnings *warnings,
-                                                const char *text, size_t text_length)
-{
+static int append_str_to_date_incorrect_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     int preview_length = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                              ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                              : (int)text_length;
-    int length = snprintf(message, sizeof(message),
-                          "Incorrect datetime value: '%.*s' for function str_to_date",
-                          preview_length, text == NULL ? "" : text);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect datetime value: '%.*s' for function str_to_date",
+        preview_length,
+        text == NULL ? "" : text
+    );
 
     if (length < 0) {
         return -1;
@@ -5546,10 +7554,12 @@ static int append_str_to_date_incorrect_warning(struct mylite_expression_warning
     return append_warning(warnings, MYLITE_WARNING_INCORRECT_STRING_VALUE, message);
 }
 
-static int append_str_to_date_truncated_warning(struct mylite_expression_warnings *warnings,
-                                                enum str_to_date_result_kind kind, const char *text,
-                                                size_t text_length)
-{
+static int append_str_to_date_truncated_warning(
+    struct mylite_expression_warnings *warnings,
+    enum str_to_date_result_kind kind,
+    const char *text,
+    size_t text_length
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     const char *value_kind = "date";
     int preview_length = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
@@ -5562,19 +7572,26 @@ static int append_str_to_date_truncated_warning(struct mylite_expression_warning
     } else if (kind == STR_TO_DATE_RESULT_DATETIME) {
         value_kind = "datetime";
     }
-    length = snprintf(message, sizeof(message), "Truncated incorrect %s value: '%.*s'", value_kind,
-                      preview_length, text == NULL ? "" : text);
+    length = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect %s value: '%.*s'",
+        value_kind,
+        preview_length,
+        text == NULL ? "" : text
+    );
     if (length < 0) {
         return -1;
     }
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
-static int eval_time_format_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_time_format_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value time_value = {0};
     struct mylite_expression_value format_value = {0};
     struct temporal_time_value time = {0};
@@ -5615,9 +7632,12 @@ cleanup:
     return status;
 }
 
-static int time_format_text_value(const struct temporal_time_value *time, const char *format,
-                                  size_t format_length, struct mylite_expression_value *out_value)
-{
+static int time_format_text_value(
+    const struct temporal_time_value *time,
+    const char *format,
+    size_t format_length,
+    struct mylite_expression_value *out_value
+) {
     char *result = copy_span_text("", 0U);
     size_t result_length = 0U;
     int status = 0;
@@ -5651,11 +7671,12 @@ static int time_format_text_value(const struct temporal_time_value *time, const 
     return status;
 }
 
-static int eval_from_unixtime_function(const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value)
-{
+static int eval_from_unixtime_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *format_argument = child_at(arguments, 1U);
     struct mylite_expression_value timestamp_value = {0};
     struct mylite_expression_value format_value = {0};
@@ -5706,11 +7727,12 @@ cleanup:
     return status;
 }
 
-static int from_unixtime_value_from_expression(const struct mylite_expression_value *value,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct from_unixtime_value *out_timestamp,
-                                               bool *out_valid)
-{
+static int from_unixtime_value_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct from_unixtime_value *out_timestamp,
+    bool *out_valid
+) {
     static const int64_t max_from_unixtime_microseconds =
         (INT64_C(32536771199) * MYLITE_TEMPORAL_MICROSECOND_LIMIT) +
         (MYLITE_TEMPORAL_MICROSECOND_LIMIT - 1);
@@ -5740,9 +7762,11 @@ static int from_unixtime_value_from_expression(const struct mylite_expression_va
     return 0;
 }
 
-static bool from_unixtime_microseconds_from_value(const struct mylite_expression_value *value,
-                                                  double fallback, int64_t *out_microseconds)
-{
+static bool from_unixtime_microseconds_from_value(
+    const struct mylite_expression_value *value,
+    double fallback,
+    int64_t *out_microseconds
+) {
     const char *text = value == NULL ? NULL : value->text_value;
     uint64_t seconds = 0U;
 
@@ -5765,7 +7789,9 @@ static bool from_unixtime_microseconds_from_value(const struct mylite_expression
             return from_unixtime_microseconds_from_text(text, out_microseconds);
         }
         return from_unixtime_microseconds_from_double(
-            text == NULL ? (long double)fallback : strtold(text, NULL), out_microseconds);
+            text == NULL ? (long double)fallback : strtold(text, NULL),
+            out_microseconds
+        );
     case MYLITE_EXPRESSION_VALUE_NULL:
         return false;
     }
@@ -5776,8 +7802,7 @@ static bool from_unixtime_microseconds_from_value(const struct mylite_expression
     return true;
 }
 
-static bool from_unixtime_microseconds_from_text(const char *text, int64_t *out_microseconds)
-{
+static bool from_unixtime_microseconds_from_text(const char *text, int64_t *out_microseconds) {
     const unsigned char *cursor = (const unsigned char *)text;
     uint64_t seconds = 0U;
     uint64_t microseconds = 0U;
@@ -5846,8 +7871,10 @@ static bool from_unixtime_microseconds_from_text(const char *text, int64_t *out_
     return true;
 }
 
-static bool from_unixtime_microseconds_from_double(long double timestamp, int64_t *out_microseconds)
-{
+static bool from_unixtime_microseconds_from_double(
+    long double timestamp,
+    int64_t *out_microseconds
+) {
     long double rounded_microseconds = 0.0L;
 
     if (out_microseconds == NULL || !isfinite(timestamp) || timestamp < 0.0L) {
@@ -5862,8 +7889,7 @@ static bool from_unixtime_microseconds_from_double(long double timestamp, int64_
     return true;
 }
 
-static unsigned int from_unixtime_fraction_digits(const struct mylite_expression_value *value)
-{
+static unsigned int from_unixtime_fraction_digits(const struct mylite_expression_value *value) {
     if (value == NULL) {
         return 0U;
     }
@@ -5879,8 +7905,7 @@ static unsigned int from_unixtime_fraction_digits(const struct mylite_expression
     return 0U;
 }
 
-static unsigned int from_unixtime_text_fraction_digits(const char *text)
-{
+static unsigned int from_unixtime_text_fraction_digits(const char *text) {
     const char *dot = text == NULL ? NULL : strchr(text, '.');
     unsigned int digits = 0U;
 
@@ -5893,14 +7918,14 @@ static unsigned int from_unixtime_text_fraction_digits(const char *text)
     return digits;
 }
 
-static bool from_unixtime_text_uses_exponent(const char *text)
-{
+static bool from_unixtime_text_uses_exponent(const char *text) {
     return text != NULL && (strchr(text, 'e') != NULL || strchr(text, 'E') != NULL);
 }
 
-static bool from_unixtime_date_from_value(const struct from_unixtime_value *timestamp,
-                                          struct temporal_date_value *out_date)
-{
+static bool from_unixtime_date_from_value(
+    const struct from_unixtime_value *timestamp,
+    struct temporal_date_value *out_date
+) {
     static const struct temporal_date_value unix_epoch = {
         .year = 1970,
         .month = 1,
@@ -5935,29 +7960,63 @@ static bool from_unixtime_date_from_value(const struct from_unixtime_value *time
     return true;
 }
 
-static int append_date_format_token(char **result, size_t *length,
-                                    const struct temporal_date_value *date, char token)
-{
-    static const char *const weekday_names[] = {"Sunday",   "Monday", "Tuesday", "Wednesday",
-                                                "Thursday", "Friday", "Saturday"};
-    static const char *const weekday_abbreviations[] = {"Sun", "Mon", "Tue", "Wed",
-                                                        "Thu", "Fri", "Sat"};
+static int append_date_format_token(
+    char **result,
+    size_t *length,
+    const struct temporal_date_value *date,
+    char token
+) {
+    static const char *const weekday_names[] =
+        {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    static const char *const weekday_abbreviations[] =
+        {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     static const char *const month_names[] = {
-        "",     "January", "February",  "March",   "April",    "May",      "June",
-        "July", "August",  "September", "October", "November", "December",
+        "",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     };
     static const char *const month_abbreviations[] = {
-        "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        "",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
     };
     int weekday = date_format_weekday_sunday(date);
 
     switch (token) {
     case 'a':
-        return append_text(result, length, weekday_abbreviations[weekday],
-                           strlen(weekday_abbreviations[weekday]));
+        return append_text(
+            result,
+            length,
+            weekday_abbreviations[weekday],
+            strlen(weekday_abbreviations[weekday])
+        );
     case 'b':
-        return append_text(result, length, month_abbreviations[date->month],
-                           strlen(month_abbreviations[date->month]));
+        return append_text(
+            result,
+            length,
+            month_abbreviations[date->month],
+            strlen(month_abbreviations[date->month])
+        );
     case 'c':
         return append_formatted_date_part(result, length, "%d", date->month);
     case 'D':
@@ -5982,8 +8041,12 @@ static int append_date_format_token(char **result, size_t *length,
     case 'l':
         return append_formatted_date_part(result, length, "%d", date_format_hour_12(date->hour));
     case 'M':
-        return append_text(result, length, month_names[date->month],
-                           strlen(month_names[date->month]));
+        return append_text(
+            result,
+            length,
+            month_names[date->month],
+            strlen(month_names[date->month])
+        );
     case 'm':
         return append_formatted_date_part(result, length, "%02d", date->month);
     case 'p':
@@ -5996,11 +8059,19 @@ static int append_date_format_token(char **result, size_t *length,
     case 'T':
         return append_date_format_time_24(result, length, date);
     case 'U':
-        return append_formatted_date_part(result, length, "%02d",
-                                          date_format_week_zero(date, false));
+        return append_formatted_date_part(
+            result,
+            length,
+            "%02d",
+            date_format_week_zero(date, false)
+        );
     case 'u':
-        return append_formatted_date_part(result, length, "%02d",
-                                          date_format_week_zero(date, true));
+        return append_formatted_date_part(
+            result,
+            length,
+            "%02d",
+            date_format_week_zero(date, true)
+        );
     case 'V':
         return append_date_format_week_year(result, length, date, false, false);
     case 'v':
@@ -6024,9 +8095,12 @@ static int append_date_format_token(char **result, size_t *length,
     }
 }
 
-static int append_time_format_token(char **result, size_t *length,
-                                    const struct temporal_time_value *time, char token)
-{
+static int append_time_format_token(
+    char **result,
+    size_t *length,
+    const struct temporal_time_value *time,
+    char token
+) {
     switch (token) {
     case 'c':
     case 'e':
@@ -6080,8 +8154,12 @@ static int append_time_format_token(char **result, size_t *length,
     }
 }
 
-static int append_formatted_date_part(char **result, size_t *length, const char *format, int value)
-{
+static int append_formatted_date_part(
+    char **result,
+    size_t *length,
+    const char *format,
+    int value
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     int formatted = snprintf(buffer, sizeof(buffer), format, value);
 
@@ -6091,8 +8169,7 @@ static int append_formatted_date_part(char **result, size_t *length, const char 
     return append_text(result, length, buffer, (size_t)formatted);
 }
 
-static int append_date_format_day_ordinal(char **result, size_t *length, int day)
-{
+static int append_date_format_day_ordinal(char **result, size_t *length, int day) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     const char *suffix = date_format_day_ordinal_suffix(day);
     int formatted = snprintf(buffer, sizeof(buffer), "%d%s", day, suffix);
@@ -6103,8 +8180,7 @@ static int append_date_format_day_ordinal(char **result, size_t *length, int day
     return append_text(result, length, buffer, (size_t)formatted);
 }
 
-static const char *date_format_day_ordinal_suffix(int day)
-{
+static const char *date_format_day_ordinal_suffix(int day) {
     if (day % 100 >= 11 && day % 100 <= 13) {
         return "th";
     }
@@ -6120,13 +8196,21 @@ static const char *date_format_day_ordinal_suffix(int day)
     }
 }
 
-static int append_date_format_time_12(char **result, size_t *length,
-                                      const struct temporal_date_value *date)
-{
+static int append_date_format_time_12(
+    char **result,
+    size_t *length,
+    const struct temporal_date_value *date
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
-    int formatted =
-        snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d %s", date_format_hour_12(date->hour),
-                 date->minute, date->second, date->hour < 12 ? "AM" : "PM");
+    int formatted = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%02d:%02d:%02d %s",
+        date_format_hour_12(date->hour),
+        date->minute,
+        date->second,
+        date->hour < 12 ? "AM" : "PM"
+    );
 
     if (formatted <= 0 || (size_t)formatted >= sizeof(buffer)) {
         return -1;
@@ -6134,9 +8218,11 @@ static int append_date_format_time_12(char **result, size_t *length,
     return append_text(result, length, buffer, (size_t)formatted);
 }
 
-static int append_date_format_time_24(char **result, size_t *length,
-                                      const struct temporal_date_value *date)
-{
+static int append_date_format_time_24(
+    char **result,
+    size_t *length,
+    const struct temporal_date_value *date
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     int formatted =
         snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", date->hour, date->minute, date->second);
@@ -6147,9 +8233,12 @@ static int append_date_format_time_24(char **result, size_t *length,
     return append_text(result, length, buffer, (size_t)formatted);
 }
 
-static int append_time_format_hour_24(char **result, size_t *length,
-                                      const struct temporal_time_value *time, bool padded)
-{
+static int append_time_format_hour_24(
+    char **result,
+    size_t *length,
+    const struct temporal_time_value *time,
+    bool padded
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     const char *sign = time != NULL && time->negative && padded ? "-" : "";
     int hour = time == NULL ? 0 : time->hour;
@@ -6162,14 +8251,21 @@ static int append_time_format_hour_24(char **result, size_t *length,
     return append_text(result, length, buffer, (size_t)formatted);
 }
 
-static int append_time_format_time_12(char **result, size_t *length,
-                                      const struct temporal_time_value *time)
-{
+static int append_time_format_time_12(
+    char **result,
+    size_t *length,
+    const struct temporal_time_value *time
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
-    int formatted = snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d %s",
-                             time_format_hour_12(time == NULL ? 0 : time->hour),
-                             time == NULL ? 0 : time->minute, time == NULL ? 0 : time->second,
-                             time_format_meridiem(time == NULL ? 0 : time->hour));
+    int formatted = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%02d:%02d:%02d %s",
+        time_format_hour_12(time == NULL ? 0 : time->hour),
+        time == NULL ? 0 : time->minute,
+        time == NULL ? 0 : time->second,
+        time_format_meridiem(time == NULL ? 0 : time->hour)
+    );
 
     if (formatted <= 0 || (size_t)formatted >= sizeof(buffer)) {
         return -1;
@@ -6177,13 +8273,20 @@ static int append_time_format_time_12(char **result, size_t *length,
     return append_text(result, length, buffer, (size_t)formatted);
 }
 
-static int append_time_format_time_24(char **result, size_t *length,
-                                      const struct temporal_time_value *time)
-{
+static int append_time_format_time_24(
+    char **result,
+    size_t *length,
+    const struct temporal_time_value *time
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
-    int formatted =
-        snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", time == NULL ? 0 : time->hour,
-                 time == NULL ? 0 : time->minute, time == NULL ? 0 : time->second);
+    int formatted = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%02d:%02d:%02d",
+        time == NULL ? 0 : time->hour,
+        time == NULL ? 0 : time->minute,
+        time == NULL ? 0 : time->second
+    );
 
     if (formatted <= 0 || (size_t)formatted >= sizeof(buffer)) {
         return -1;
@@ -6191,54 +8294,54 @@ static int append_time_format_time_24(char **result, size_t *length,
     return append_text(result, length, buffer, (size_t)formatted);
 }
 
-static int append_date_format_week_year(char **result, size_t *length,
-                                        const struct temporal_date_value *date, bool monday_first,
-                                        bool year)
-{
+static int append_date_format_week_year(
+    char **result,
+    size_t *length,
+    const struct temporal_date_value *date,
+    bool monday_first,
+    bool year
+) {
     struct temporal_week_year week_year = date_format_week_year(date, monday_first);
 
-    return append_formatted_date_part(result, length, year ? "%04d" : "%02d",
-                                      year ? week_year.year : week_year.week);
+    return append_formatted_date_part(
+        result,
+        length,
+        year ? "%04d" : "%02d",
+        year ? week_year.year : week_year.week
+    );
 }
 
-static int date_format_hour_12(int hour)
-{
+static int date_format_hour_12(int hour) {
     int hour12 = hour % 12;
 
     return hour12 == 0 ? 12 : hour12;
 }
 
-static int time_format_hour_12(int hour)
-{
+static int time_format_hour_12(int hour) {
     return date_format_hour_12(hour);
 }
 
-static const char *time_format_meridiem(int hour)
-{
+static const char *time_format_meridiem(int hour) {
     int day_hour = hour % 24;
 
     return day_hour < 12 ? "AM" : "PM";
 }
 
-static int date_format_day_of_year(const struct temporal_date_value *date)
-{
+static int date_format_day_of_year(const struct temporal_date_value *date) {
     return temporal_days_before_month(date->year, date->month) + date->day;
 }
 
-static int date_format_weekday_sunday(const struct temporal_date_value *date)
-{
+static int date_format_weekday_sunday(const struct temporal_date_value *date) {
     int weekday = (int)(temporal_day_number(date) % MYLITE_TEMPORAL_DAYS_PER_WEEK);
 
     return weekday < 0 ? weekday + MYLITE_TEMPORAL_DAYS_PER_WEEK : weekday;
 }
 
-static int date_format_weekday_monday(const struct temporal_date_value *date)
-{
+static int date_format_weekday_monday(const struct temporal_date_value *date) {
     return (date_format_weekday_sunday(date) + 6) % MYLITE_TEMPORAL_DAYS_PER_WEEK;
 }
 
-static int date_format_week_zero(const struct temporal_date_value *date, bool monday_first)
-{
+static int date_format_week_zero(const struct temporal_date_value *date, bool monday_first) {
     int day = date_format_day_of_year(date);
     int weekday =
         monday_first ? date_format_weekday_monday(date) : date_format_weekday_sunday(date);
@@ -6249,8 +8352,7 @@ static int date_format_week_zero(const struct temporal_date_value *date, bool mo
     return (day + 6 - weekday) / MYLITE_TEMPORAL_DAYS_PER_WEEK;
 }
 
-static int date_format_week_monday_zero(const struct temporal_date_value *date)
-{
+static int date_format_week_monday_zero(const struct temporal_date_value *date) {
     struct temporal_date_value first_day = {
         .year = date->year,
         .month = 1,
@@ -6269,9 +8371,10 @@ static int date_format_week_monday_zero(const struct temporal_date_value *date)
     return (int)((date_day - first_week_start) / MYLITE_TEMPORAL_DAYS_PER_WEEK) + 1;
 }
 
-static struct temporal_week_year date_format_week_year(const struct temporal_date_value *date,
-                                                       bool monday_first)
-{
+static struct temporal_week_year date_format_week_year(
+    const struct temporal_date_value *date,
+    bool monday_first
+) {
     int weekday =
         monday_first ? date_format_weekday_monday(date) : date_format_weekday_sunday(date);
     int64_t anchor_day = temporal_day_number(date) + (3 - weekday);
@@ -6289,9 +8392,9 @@ static struct temporal_week_year date_format_week_year(const struct temporal_dat
     };
 }
 
-static struct temporal_week_year
-date_format_sunday_week_year(const struct temporal_date_value *date)
-{
+static struct temporal_week_year date_format_sunday_week_year(
+    const struct temporal_date_value *date
+) {
     struct temporal_date_value previous_year_end = {
         .year = date->year - 1,
         .month = 12,
@@ -6309,11 +8412,12 @@ date_format_sunday_week_year(const struct temporal_date_value *date)
     };
 }
 
-static int eval_week_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_week_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *date_argument = child_at(arguments, 0U);
     const struct mylite_sql_ast_node *mode_argument = child_at(arguments, 1U);
     struct mylite_expression_value date_value = {0};
@@ -6355,10 +8459,11 @@ cleanup:
     return status;
 }
 
-static int eval_week_null_date_mode_warnings(const struct mylite_sql_ast_node *mode_argument,
-                                             const struct mylite_expression_eval_context *context,
-                                             struct mylite_expression_warnings *warnings)
-{
+static int eval_week_null_date_mode_warnings(
+    const struct mylite_sql_ast_node *mode_argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings
+) {
     struct mylite_expression_value mode_value = {0};
     int status = 0;
 
@@ -6370,11 +8475,12 @@ static int eval_week_null_date_mode_warnings(const struct mylite_sql_ast_node *m
     return status;
 }
 
-static int week_mode_from_argument(const struct mylite_sql_ast_node *mode_argument,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   unsigned int *out_mode)
-{
+static int week_mode_from_argument(
+    const struct mylite_sql_ast_node *mode_argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    unsigned int *out_mode
+) {
     struct mylite_expression_value mode_value = {0};
     int status = 0;
 
@@ -6391,9 +8497,11 @@ static int week_mode_from_argument(const struct mylite_sql_ast_node *mode_argume
     return status;
 }
 
-static int week_mode_from_value(const struct mylite_expression_value *value,
-                                struct mylite_expression_warnings *warnings, unsigned int *out_mode)
-{
+static int week_mode_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    unsigned int *out_mode
+) {
     int64_t integer = 0;
     int status = 0;
 
@@ -6411,8 +8519,7 @@ static int week_mode_from_value(const struct mylite_expression_value *value,
     return status;
 }
 
-static int week_number(const struct temporal_date_value *date, unsigned int mode)
-{
+static int week_number(const struct temporal_date_value *date, unsigned int mode) {
     int64_t date_day = temporal_day_number(date);
     int64_t current_start = week_year_start_day(date == NULL ? 0 : date->year, mode);
 
@@ -6435,8 +8542,7 @@ static int week_number(const struct temporal_date_value *date, unsigned int mode
     return (int)((date_day - current_start) / MYLITE_TEMPORAL_DAYS_PER_WEEK) + 1;
 }
 
-static int64_t week_year_start_day(int year, unsigned int mode)
-{
+static int64_t week_year_start_day(int year, unsigned int mode) {
     struct temporal_date_value first_day = {
         .year = year,
         .month = 1,
@@ -6454,35 +8560,32 @@ static int64_t week_year_start_day(int year, unsigned int mode)
     return start_day;
 }
 
-static int week_relative_weekday(const struct temporal_date_value *date, unsigned int mode)
-{
+static int week_relative_weekday(const struct temporal_date_value *date, unsigned int mode) {
     return week_mode_is_monday_first(mode) ? date_format_weekday_monday(date)
                                            : date_format_weekday_sunday(date);
 }
 
-static bool week_mode_uses_first_weekday(unsigned int mode)
-{
+static bool week_mode_uses_first_weekday(unsigned int mode) {
     bool monday_first = week_mode_is_monday_first(mode);
     bool first_weekday_bit = (mode & 4U) != 0U;
 
     return monday_first == first_weekday_bit;
 }
 
-static bool week_mode_is_monday_first(unsigned int mode)
-{
+static bool week_mode_is_monday_first(unsigned int mode) {
     return (mode & 1U) != 0U;
 }
 
-static bool week_mode_has_one_based_range(unsigned int mode)
-{
+static bool week_mode_has_one_based_range(unsigned int mode) {
     return (mode & 2U) != 0U;
 }
 
-static int eval_date_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_date_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct temporal_date_value date = {0};
     bool valid = false;
@@ -6510,11 +8613,12 @@ cleanup:
     return status;
 }
 
-static int eval_datediff_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value)
-{
+static int eval_datediff_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value left = {0};
     struct mylite_expression_value right = {0};
     struct temporal_date_value left_date = {0};
@@ -6552,9 +8656,10 @@ static int eval_datediff_function(const struct mylite_sql_ast_node *arguments,
         goto cleanup;
     }
 
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = temporal_day_number(&left_date) -
-                                                                 temporal_day_number(&right_date)};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = temporal_day_number(&left_date) - temporal_day_number(&right_date)
+    };
 
 cleanup:
     mylite_expression_value_deinit(&left);
@@ -6562,11 +8667,12 @@ cleanup:
     return status;
 }
 
-static int eval_last_day_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value)
-{
+static int eval_last_day_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct temporal_date_source source = {0};
     struct temporal_date_value date = {0};
@@ -6590,8 +8696,12 @@ static int eval_last_day_function(const struct mylite_sql_ast_node *arguments,
         date.warning_kind = TEMPORAL_DATE_WARNING_INCORRECT;
     }
     if (date.warning_kind != TEMPORAL_DATE_WARNING_NONE) {
-        status = append_temporal_date_warning(warnings, date.warning_kind, source.warning_text,
-                                              source.warning_length);
+        status = append_temporal_date_warning(
+            warnings,
+            date.warning_kind,
+            source.warning_text,
+            source.warning_length
+        );
         if (status != 0) {
             goto cleanup;
         }
@@ -6615,26 +8725,35 @@ cleanup:
     return status;
 }
 
-static int append_last_day_zero_month_warning(struct mylite_expression_warnings *warnings,
-                                              const struct temporal_date_source *source,
-                                              const struct temporal_date_value *date)
-{
+static int append_last_day_zero_month_warning(
+    struct mylite_expression_warnings *warnings,
+    const struct temporal_date_source *source,
+    const struct temporal_date_value *date
+) {
     static const char zero_date_text[] = "0000-00-00";
 
     if (date != NULL && temporal_date_parts_are_all_zero(date->year, date->month, date->day)) {
-        return append_temporal_date_warning(warnings, TEMPORAL_DATE_WARNING_INCORRECT,
-                                            zero_date_text, strlen(zero_date_text));
+        return append_temporal_date_warning(
+            warnings,
+            TEMPORAL_DATE_WARNING_INCORRECT,
+            zero_date_text,
+            strlen(zero_date_text)
+        );
     }
-    return append_temporal_date_warning(warnings, TEMPORAL_DATE_WARNING_INCORRECT,
-                                        source == NULL ? NULL : source->warning_text,
-                                        source == NULL ? 0U : source->warning_length);
+    return append_temporal_date_warning(
+        warnings,
+        TEMPORAL_DATE_WARNING_INCORRECT,
+        source == NULL ? NULL : source->warning_text,
+        source == NULL ? 0U : source->warning_length
+    );
 }
 
-static int eval_to_days_function(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
+static int eval_to_days_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct temporal_date_value date = {0};
     bool valid = false;
@@ -6656,19 +8775,22 @@ static int eval_to_days_function(const struct mylite_sql_ast_node *arguments,
         goto cleanup;
     }
 
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = temporal_day_number(&date) + 1};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = temporal_day_number(&date) + 1
+    };
 
 cleanup:
     mylite_expression_value_deinit(&argument);
     return status;
 }
 
-static int eval_to_seconds_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value)
-{
+static int eval_to_seconds_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct temporal_date_value date = {0};
     bool valid = false;
@@ -6695,18 +8817,20 @@ static int eval_to_seconds_function(const struct mylite_sql_ast_node *arguments,
         .int64_value = ((temporal_day_number(&date) + 1) * MYLITE_TEMPORAL_SECONDS_PER_DAY) +
                        ((int64_t)date.hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
                        ((int64_t)date.minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
-                       (int64_t)date.second};
+                       (int64_t)date.second
+    };
 
 cleanup:
     mylite_expression_value_deinit(&argument);
     return status;
 }
 
-static int eval_from_days_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_from_days_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct temporal_date_value date = {0};
     int64_t day_number = 0;
@@ -6741,31 +8865,38 @@ cleanup:
     return status;
 }
 
-static int from_days_number_from_value(const struct mylite_expression_value *value,
-                                       struct mylite_expression_warnings *warnings,
-                                       int64_t *out_number)
-{
+static int from_days_number_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_number
+) {
     if (value == NULL || out_number == NULL) {
         return -1;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return cast_string_to_signed_integer(value->text_value == NULL ? "" : value->text_value,
-                                             warnings, out_number);
+        return cast_string_to_signed_integer(
+            value->text_value == NULL ? "" : value->text_value,
+            warnings,
+            out_number
+        );
     }
     return cast_value_to_signed_integer(value, warnings, out_number);
 }
 
-static int append_from_days_overflow_warning(struct mylite_expression_warnings *warnings)
-{
-    return append_warning(warnings, MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW,
-                          "Datetime function: from_days field overflow");
+static int append_from_days_overflow_warning(struct mylite_expression_warnings *warnings) {
+    return append_warning(
+        warnings,
+        MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW,
+        "Datetime function: from_days field overflow"
+    );
 }
 
-static int eval_time_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_time_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct temporal_time_value time = {0};
     bool valid = false;
@@ -6793,11 +8924,12 @@ cleanup:
     return status;
 }
 
-static int eval_time_to_sec_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_time_to_sec_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct temporal_time_value time = {0};
     int64_t seconds = 0;
@@ -6825,19 +8957,22 @@ static int eval_time_to_sec_function(const struct mylite_sql_ast_node *arguments
     if (time.negative) {
         seconds = -seconds;
     }
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = seconds};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = seconds
+    };
 
 cleanup:
     mylite_expression_value_deinit(&argument);
     return status;
 }
 
-static int eval_sec_to_time_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_sec_to_time_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct temporal_time_value time = {0};
     int status = eval_node(child_at(arguments, 0U), context, warnings, &argument);
@@ -6860,11 +8995,12 @@ cleanup:
     return status;
 }
 
-static int eval_timediff_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value)
-{
+static int eval_timediff_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value left_value = {0};
     struct mylite_expression_value right_value = {0};
     struct timediff_operand left = {0};
@@ -6920,12 +9056,13 @@ cleanup:
     return status;
 }
 
-static int eval_addsubtime_function(enum mylite_scalar_function_id function_id,
-                                    const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value)
-{
+static int eval_addsubtime_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value left_value = {0};
     struct mylite_expression_value right_value = {0};
     struct timediff_operand left = {0};
@@ -6977,11 +9114,12 @@ cleanup:
     return status;
 }
 
-static int addsubtime_interval_from_expression(const struct mylite_expression_value *value,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct temporal_time_value *out_time,
-                                               bool *out_valid)
-{
+static int addsubtime_interval_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+) {
     if (value == NULL || out_time == NULL || out_valid == NULL) {
         return -1;
     }
@@ -6999,8 +9137,7 @@ static int addsubtime_interval_from_expression(const struct mylite_expression_va
     return time_value_from_expression(value, warnings, out_time, out_valid);
 }
 
-static bool addsubtime_untyped_datetime_interval(const struct mylite_expression_value *value)
-{
+static bool addsubtime_untyped_datetime_interval(const struct mylite_expression_value *value) {
     struct temporal_date_source source = {0};
     struct temporal_date_value date = {0};
 
@@ -7008,10 +9145,12 @@ static bool addsubtime_untyped_datetime_interval(const struct mylite_expression_
            parse_temporal_date_source(&source, true, false, &date) && date.has_time;
 }
 
-static int timediff_operand_from_expression(const struct mylite_expression_value *value,
-                                            struct mylite_expression_warnings *warnings,
-                                            struct timediff_operand *out_operand, bool *out_valid)
-{
+static int timediff_operand_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct timediff_operand *out_operand,
+    bool *out_valid
+) {
     bool valid = false;
     int status = 0;
 
@@ -7046,10 +9185,11 @@ static int timediff_operand_from_expression(const struct mylite_expression_value
     return 0;
 }
 
-static bool timediff_untyped_datetime_operand(const struct mylite_expression_value *value,
-                                              struct mylite_expression_warnings *warnings,
-                                              struct timediff_operand *out_operand)
-{
+static bool timediff_untyped_datetime_operand(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct timediff_operand *out_operand
+) {
     struct temporal_date_source source = {0};
     struct temporal_date_value date = {0};
 
@@ -7066,8 +9206,7 @@ static bool timediff_untyped_datetime_operand(const struct mylite_expression_val
     return true;
 }
 
-static int64_t timediff_time_microseconds(const struct temporal_time_value *time)
-{
+static int64_t timediff_time_microseconds(const struct temporal_time_value *time) {
     int64_t microseconds =
         (((int64_t)time->hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
          ((int64_t)time->minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) + (int64_t)time->second) *
@@ -7077,8 +9216,7 @@ static int64_t timediff_time_microseconds(const struct temporal_time_value *time
     return time->negative ? -microseconds : microseconds;
 }
 
-static int64_t timediff_datetime_microseconds(const struct temporal_date_value *date)
-{
+static int64_t timediff_datetime_microseconds(const struct temporal_date_value *date) {
     int64_t seconds = (temporal_day_number(date) * MYLITE_TEMPORAL_SECONDS_PER_DAY) +
                       ((int64_t)date->hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
                       ((int64_t)date->minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
@@ -7087,10 +9225,12 @@ static int64_t timediff_datetime_microseconds(const struct temporal_date_value *
     return (seconds * MYLITE_TEMPORAL_MICROSECOND_LIMIT) + (int64_t)date->microsecond;
 }
 
-static int timediff_result_from_microseconds(int64_t microseconds, unsigned int fraction_digits,
-                                             struct mylite_expression_warnings *warnings,
-                                             struct mylite_expression_value *out_value)
-{
+static int timediff_result_from_microseconds(
+    int64_t microseconds,
+    unsigned int fraction_digits,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     uint64_t max_microseconds = sec_to_time_max_microseconds();
     bool negative = microseconds < 0;
     uint64_t magnitude = negative ? (uint64_t)(-(microseconds + 1)) + 1U : (uint64_t)microseconds;
@@ -7122,11 +9262,12 @@ static int timediff_result_from_microseconds(int64_t microseconds, unsigned int 
     return set_temporal_time_text_value(&time, out_value);
 }
 
-static int addsubtime_datetime_result(struct temporal_date_value date,
-                                      const struct temporal_time_value *interval,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value)
-{
+static int addsubtime_datetime_result(
+    struct temporal_date_value date,
+    const struct temporal_time_value *interval,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     bool upper_overflow = false;
     int status = 0;
 
@@ -7143,11 +9284,12 @@ static int addsubtime_datetime_result(struct temporal_date_value date,
     return set_temporal_datetime_text_value(&date, out_value);
 }
 
-static int addsubtime_time_result(const struct temporal_time_value *time,
-                                  const struct temporal_time_value *interval,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value)
-{
+static int addsubtime_time_result(
+    const struct temporal_time_value *time,
+    const struct temporal_time_value *interval,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     int64_t microseconds = timediff_time_microseconds(time) + timediff_time_microseconds(interval);
     unsigned int fraction_digits = time->fraction_digits > interval->fraction_digits
                                        ? time->fraction_digits
@@ -7156,10 +9298,10 @@ static int addsubtime_time_result(const struct temporal_time_value *time,
     return timediff_result_from_microseconds(microseconds, fraction_digits, warnings, out_value);
 }
 
-static struct temporal_time_value
-addsubtime_effective_interval(enum mylite_scalar_function_id function_id,
-                              const struct temporal_time_value *interval)
-{
+static struct temporal_time_value addsubtime_effective_interval(
+    enum mylite_scalar_function_id function_id,
+    const struct temporal_time_value *interval
+) {
     struct temporal_time_value effective =
         interval == NULL ? (struct temporal_time_value){0} : *interval;
 
@@ -7169,9 +9311,11 @@ addsubtime_effective_interval(enum mylite_scalar_function_id function_id,
     return effective;
 }
 
-static int append_timediff_range_warning(struct mylite_expression_warnings *warnings,
-                                         int64_t microseconds, unsigned int fraction_digits)
-{
+static int append_timediff_range_warning(
+    struct mylite_expression_warnings *warnings,
+    int64_t microseconds,
+    unsigned int fraction_digits
+) {
     char text[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     size_t length = timediff_format_microseconds(text, sizeof(text), microseconds, fraction_digits);
 
@@ -7181,10 +9325,14 @@ static int append_timediff_range_warning(struct mylite_expression_warnings *warn
     return append_temporal_time_warning(warnings, text, length);
 }
 
-static size_t timediff_format_microseconds(char *buffer, size_t buffer_size, int64_t microseconds,
-                                           unsigned int fraction_digits)
-{
+static size_t timediff_format_microseconds(
+    char *buffer,
+    size_t buffer_size,
+    int64_t microseconds,
+    unsigned int fraction_digits
+) {
     enum { temporal_time_fraction_text_length = 6U };
+
     bool negative = microseconds < 0;
     uint64_t magnitude = negative ? (uint64_t)(-(microseconds + 1)) + 1U : (uint64_t)microseconds;
     uint64_t hour = magnitude / ((uint64_t)MYLITE_TEMPORAL_SECONDS_PER_HOUR *
@@ -7204,9 +9352,15 @@ static size_t timediff_format_microseconds(char *buffer, size_t buffer_size, int
     if (fraction_digits > MYLITE_TEMPORAL_MAX_FSP) {
         fraction_digits = MYLITE_TEMPORAL_MAX_FSP;
     }
-    length =
-        snprintf(buffer, buffer_size, "%s%llu:%02llu:%02llu", negative ? "-" : "",
-                 (unsigned long long)hour, (unsigned long long)minute, (unsigned long long)second);
+    length = snprintf(
+        buffer,
+        buffer_size,
+        "%s%llu:%02llu:%02llu",
+        negative ? "-" : "",
+        (unsigned long long)hour,
+        (unsigned long long)minute,
+        (unsigned long long)second
+    );
     if (length < 0 || (size_t)length >= buffer_size) {
         return 0U;
     }
@@ -7228,11 +9382,12 @@ static size_t timediff_format_microseconds(char *buffer, size_t buffer_size, int
     return (size_t)length;
 }
 
-static int eval_timestamp_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_timestamp_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value base_value = {0};
     struct mylite_expression_value interval_value = {0};
     struct temporal_date_value date = {0};
@@ -7268,8 +9423,12 @@ static int eval_timestamp_function(const struct mylite_sql_ast_node *arguments,
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
             goto cleanup;
         }
-        status = timestamp_interval_from_expression(&interval_value, warnings, &interval,
-                                                    &interval_valid);
+        status = timestamp_interval_from_expression(
+            &interval_value,
+            warnings,
+            &interval,
+            &interval_valid
+        );
         if (status != 0) {
             goto cleanup;
         }
@@ -7294,11 +9453,13 @@ cleanup:
     return status;
 }
 
-static int timestamp_base_from_expression(const struct mylite_expression_value *value,
-                                          const struct mylite_expression_eval_context *context,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct temporal_date_value *out_date, bool *out_valid)
-{
+static int timestamp_base_from_expression(
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+) {
     if (value == NULL || out_date == NULL || out_valid == NULL) {
         return -1;
     }
@@ -7310,11 +9471,13 @@ static int timestamp_base_from_expression(const struct mylite_expression_value *
     return temporal_date_from_value(value, true, warnings, out_date, out_valid);
 }
 
-static int timestamp_base_from_typed_time(const struct mylite_expression_value *value,
-                                          const struct mylite_expression_eval_context *context,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct temporal_date_value *out_date, bool *out_valid)
-{
+static int timestamp_base_from_typed_time(
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+) {
     struct temporal_time_value time = {0};
     bool time_valid = false;
     bool date_valid = false;
@@ -7342,11 +9505,12 @@ static int timestamp_base_from_typed_time(const struct mylite_expression_value *
     return 0;
 }
 
-static int timestamp_current_date_from_context(const struct mylite_expression_eval_context *context,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct temporal_date_value *out_date,
-                                               bool *out_valid)
-{
+static int timestamp_current_date_from_context(
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+) {
     static const char current_date_name[] = "CURRENT_DATE";
     struct mylite_sql_ast_node function_call = {
         .kind = MYLITE_SQL_AST_FUNCTION_CALL,
@@ -7394,8 +9558,13 @@ static int timestamp_current_date_from_context(const struct mylite_expression_ev
     function_call.first_child = &name;
     function_call.last_child = &arguments;
     name.next_sibling = &arguments;
-    status = context->eval_session_function(context->user_data, &function_call, context, warnings,
-                                            &current_date);
+    status = context->eval_session_function(
+        context->user_data,
+        &function_call,
+        context,
+        warnings,
+        &current_date
+    );
     if (status != 0) {
         goto cleanup;
     }
@@ -7406,10 +9575,12 @@ cleanup:
     return status;
 }
 
-static int timestamp_interval_from_expression(const struct mylite_expression_value *value,
-                                              struct mylite_expression_warnings *warnings,
-                                              struct temporal_time_value *out_time, bool *out_valid)
-{
+static int timestamp_interval_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+) {
     if (value == NULL || out_time == NULL || out_valid == NULL) {
         return -1;
     }
@@ -7423,9 +9594,11 @@ static int timestamp_interval_from_expression(const struct mylite_expression_val
     return time_value_from_expression(value, warnings, out_time, out_valid);
 }
 
-static bool timestamp_add_time(struct temporal_date_value *date,
-                               const struct temporal_time_value *time, bool *out_upper_overflow)
-{
+static bool timestamp_add_time(
+    struct temporal_date_value *date,
+    const struct temporal_time_value *time,
+    bool *out_upper_overflow
+) {
     const int64_t microseconds_per_day =
         (int64_t)MYLITE_TEMPORAL_SECONDS_PER_DAY * (int64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
     const struct temporal_date_value minimum_date = {.year = 1, .month = 1, .day = 1};
@@ -7493,16 +9666,19 @@ static bool timestamp_add_time(struct temporal_date_value *date,
     return true;
 }
 
-static int append_timestamp_add_overflow_warning(struct mylite_expression_warnings *warnings)
-{
-    return append_warning(warnings, MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW,
-                          "Datetime function: add_time field overflow");
+static int append_timestamp_add_overflow_warning(struct mylite_expression_warnings *warnings) {
+    return append_warning(
+        warnings,
+        MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW,
+        "Datetime function: add_time field overflow"
+    );
 }
 
-static int sec_to_time_value_from_expression(const struct mylite_expression_value *value,
-                                             struct mylite_expression_warnings *warnings,
-                                             struct temporal_time_value *out_time)
-{
+static int sec_to_time_value_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time
+) {
     const uint64_t max_microseconds = sec_to_time_max_microseconds();
     int64_t microseconds = 0;
     uint64_t magnitude = 0U;
@@ -7539,9 +9715,11 @@ static int sec_to_time_value_from_expression(const struct mylite_expression_valu
     return 0;
 }
 
-static bool sec_to_time_microseconds_from_value(const struct mylite_expression_value *value,
-                                                double fallback, int64_t *out_microseconds)
-{
+static bool sec_to_time_microseconds_from_value(
+    const struct mylite_expression_value *value,
+    double fallback,
+    int64_t *out_microseconds
+) {
     const uint64_t max_seconds =
         sec_to_time_max_microseconds() / (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
     uint64_t seconds = 0U;
@@ -7586,8 +9764,7 @@ static bool sec_to_time_microseconds_from_value(const struct mylite_expression_v
     return false;
 }
 
-static bool sec_to_time_microseconds_from_text(const char *text, int64_t *out_microseconds)
-{
+static bool sec_to_time_microseconds_from_text(const char *text, int64_t *out_microseconds) {
     const uint64_t max_microseconds = sec_to_time_max_microseconds();
     const uint64_t max_seconds = max_microseconds / MYLITE_TEMPORAL_MICROSECOND_LIMIT;
     const unsigned char *cursor = (const unsigned char *)text;
@@ -7662,8 +9839,7 @@ static bool sec_to_time_microseconds_from_text(const char *text, int64_t *out_mi
     return true;
 }
 
-static bool sec_to_time_microseconds_from_double(long double value, int64_t *out_microseconds)
-{
+static bool sec_to_time_microseconds_from_double(long double value, int64_t *out_microseconds) {
     const uint64_t max_microseconds = sec_to_time_max_microseconds();
     long double rounded = 0.0L;
     bool negative = signbit(value);
@@ -7690,17 +9866,16 @@ static bool sec_to_time_microseconds_from_double(long double value, int64_t *out
     return true;
 }
 
-static uint64_t sec_to_time_max_microseconds(void)
-{
+static uint64_t sec_to_time_max_microseconds(void) {
     return (((uint64_t)MYLITE_TEMPORAL_MAX_TIME_HOUR * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
             ((uint64_t)MYLITE_TEMPORAL_MAX_MINUTE_SECOND * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
             MYLITE_TEMPORAL_MAX_MINUTE_SECOND) *
            (uint64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
 }
 
-static unsigned int
-sec_to_time_fraction_digits_from_value(const struct mylite_expression_value *value)
-{
+static unsigned int sec_to_time_fraction_digits_from_value(
+    const struct mylite_expression_value *value
+) {
     const char *dot =
         value == NULL ? NULL : strchr(value->text_value == NULL ? "" : value->text_value, '.');
     const char *text = value == NULL ? NULL : value->text_value;
@@ -7729,10 +9904,11 @@ sec_to_time_fraction_digits_from_value(const struct mylite_expression_value *val
     return decimals;
 }
 
-static int append_sec_to_time_range_warning(struct mylite_expression_warnings *warnings,
-                                            const struct mylite_expression_value *value,
-                                            double fallback)
-{
+static int append_sec_to_time_range_warning(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_expression_value *value,
+    double fallback
+) {
     char buffer[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
     size_t length = sec_to_time_warning_text(value, fallback, buffer, sizeof(buffer));
 
@@ -7742,9 +9918,12 @@ static int append_sec_to_time_range_warning(struct mylite_expression_warnings *w
     return append_temporal_time_warning(warnings, buffer, length);
 }
 
-static size_t sec_to_time_warning_text(const struct mylite_expression_value *value, double fallback,
-                                       char *buffer, size_t buffer_size)
-{
+static size_t sec_to_time_warning_text(
+    const struct mylite_expression_value *value,
+    double fallback,
+    char *buffer,
+    size_t buffer_size
+) {
     int length = 0;
     size_t prefix_length =
         value == NULL ? 0U : sec_to_time_numeric_prefix_length(value->text_value);
@@ -7770,8 +9949,7 @@ static size_t sec_to_time_warning_text(const struct mylite_expression_value *val
     return length <= 0 || (size_t)length >= buffer_size ? 0U : (size_t)length;
 }
 
-static size_t sec_to_time_numeric_prefix_length(const char *text)
-{
+static size_t sec_to_time_numeric_prefix_length(const char *text) {
     const char *cursor = text;
     bool saw_digit = false;
 
@@ -7814,10 +9992,12 @@ static size_t sec_to_time_numeric_prefix_length(const char *text)
     return saw_digit ? (size_t)(cursor - text) : 0U;
 }
 
-static int time_value_from_expression(const struct mylite_expression_value *value,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct temporal_time_value *out_time, bool *out_valid)
-{
+static int time_value_from_expression(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+) {
     if (value == NULL || out_time == NULL || out_valid == NULL) {
         return -1;
     }
@@ -7835,10 +10015,12 @@ static int time_value_from_expression(const struct mylite_expression_value *valu
     return time_value_from_untyped_value(value, warnings, out_time, out_valid);
 }
 
-static int time_value_from_temporal_text(const struct mylite_expression_value *value,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct temporal_time_value *out_time, bool *out_valid)
-{
+static int time_value_from_temporal_text(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+) {
     struct temporal_time_parse_result parsed = {0};
     struct temporal_date_value date = {0};
     bool date_valid = false;
@@ -7880,10 +10062,12 @@ static int time_value_from_temporal_text(const struct mylite_expression_value *v
     return 0;
 }
 
-static int time_value_from_untyped_value(const struct mylite_expression_value *value,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct temporal_time_value *out_time, bool *out_valid)
-{
+static int time_value_from_untyped_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     char *text = NULL;
     int status = 0;
@@ -7896,38 +10080,63 @@ static int time_value_from_untyped_value(const struct mylite_expression_value *v
             return time_value_from_approximate_real(value, warnings, out_time, out_valid);
         }
         if (value->text_value != NULL) {
-            return time_value_from_untyped_text(value->text_value, value->text_length, true,
-                                                warnings, out_time, out_valid);
+            return time_value_from_untyped_text(
+                value->text_value,
+                value->text_length,
+                true,
+                warnings,
+                out_time,
+                out_valid
+            );
         }
         int length = format_compact_real_text(value->real_value, buffer, sizeof(buffer));
 
         if (length <= 0 || (size_t)length >= sizeof(buffer)) {
             return -1;
         }
-        return time_value_from_untyped_text(buffer, (size_t)length, true, warnings, out_time,
-                                            out_valid);
+        return time_value_from_untyped_text(
+            buffer,
+            (size_t)length,
+            true,
+            warnings,
+            out_time,
+            out_valid
+        );
     }
     text = mylite_expression_value_to_text(value);
     if (text == NULL) {
         return -1;
     }
-    status = time_value_from_untyped_text(text, strlen(text),
-                                          value->kind != MYLITE_EXPRESSION_VALUE_TEXT, warnings,
-                                          out_time, out_valid);
+    status = time_value_from_untyped_text(
+        text,
+        strlen(text),
+        value->kind != MYLITE_EXPRESSION_VALUE_TEXT,
+        warnings,
+        out_time,
+        out_valid
+    );
     free(text);
     return status;
 }
 
-static int time_value_from_approximate_real(const struct mylite_expression_value *value,
-                                            struct mylite_expression_warnings *warnings,
-                                            struct temporal_time_value *out_time, bool *out_valid)
-{
+static int time_value_from_approximate_real(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+) {
     char parse_buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     char warning_buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
-    int warning_length = format_compact_real_text(value == NULL ? 0.0 : value->real_value,
-                                                  warning_buffer, sizeof(warning_buffer));
-    int parse_length = format_time_approximate_real_text(value == NULL ? 0.0 : value->real_value,
-                                                         parse_buffer, sizeof(parse_buffer));
+    int warning_length = format_compact_real_text(
+        value == NULL ? 0.0 : value->real_value,
+        warning_buffer,
+        sizeof(warning_buffer)
+    );
+    int parse_length = format_time_approximate_real_text(
+        value == NULL ? 0.0 : value->real_value,
+        parse_buffer,
+        sizeof(parse_buffer)
+    );
 
     if (warning_length <= 0 || (size_t)warning_length >= sizeof(warning_buffer) ||
         parse_length < 0) {
@@ -7938,13 +10147,19 @@ static int time_value_from_approximate_real(const struct mylite_expression_value
         *out_valid = false;
         return append_temporal_time_warning(warnings, warning_buffer, (size_t)warning_length);
     }
-    return time_value_from_untyped_text_with_warning(parse_buffer, (size_t)parse_length, true,
-                                                     warning_buffer, (size_t)warning_length,
-                                                     warnings, out_time, out_valid);
+    return time_value_from_untyped_text_with_warning(
+        parse_buffer,
+        (size_t)parse_length,
+        true,
+        warning_buffer,
+        (size_t)warning_length,
+        warnings,
+        out_time,
+        out_valid
+    );
 }
 
-static bool real_text_is_approximate(const struct mylite_expression_value *value)
-{
+static bool real_text_is_approximate(const struct mylite_expression_value *value) {
     if (value == NULL || value->text_value == NULL) {
         return true;
     }
@@ -7956,26 +10171,40 @@ static bool real_text_is_approximate(const struct mylite_expression_value *value
     return false;
 }
 
-static int format_time_approximate_real_text(double value, char *buffer, size_t buffer_size)
-{
+static int format_time_approximate_real_text(double value, char *buffer, size_t buffer_size) {
     return snprintf(buffer, buffer_size, "%.6f", value);
 }
 
-static int time_value_from_untyped_text(const char *text, size_t length, bool numeric,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct temporal_time_value *out_time, bool *out_valid)
-{
-    return time_value_from_untyped_text_with_warning(text, length, numeric, text, length, warnings,
-                                                     out_time, out_valid);
+static int time_value_from_untyped_text(
+    const char *text,
+    size_t length,
+    bool numeric,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+) {
+    return time_value_from_untyped_text_with_warning(
+        text,
+        length,
+        numeric,
+        text,
+        length,
+        warnings,
+        out_time,
+        out_valid
+    );
 }
 
-static int time_value_from_untyped_text_with_warning(const char *text, size_t length, bool numeric,
-                                                     const char *warning_text,
-                                                     size_t warning_length,
-                                                     struct mylite_expression_warnings *warnings,
-                                                     struct temporal_time_value *out_time,
-                                                     bool *out_valid)
-{
+static int time_value_from_untyped_text_with_warning(
+    const char *text,
+    size_t length,
+    bool numeric,
+    const char *warning_text,
+    size_t warning_length,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_time_value *out_time,
+    bool *out_valid
+) {
     struct temporal_date_source source = {
         .text = text,
         .length = length,
@@ -8021,15 +10250,22 @@ static int time_value_from_untyped_text_with_warning(const char *text, size_t le
     return 0;
 }
 
-static int append_temporal_time_warning(struct mylite_expression_warnings *warnings,
-                                        const char *text, size_t text_length)
-{
+static int append_temporal_time_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     int preview_length = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                              ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                              : (int)text_length;
-    int length = snprintf(message, sizeof(message), "Truncated incorrect time value: '%.*s'",
-                          preview_length, text == NULL ? "" : text);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect time value: '%.*s'",
+        preview_length,
+        text == NULL ? "" : text
+    );
 
     if (length < 0) {
         return -1;
@@ -8037,11 +10273,12 @@ static int append_temporal_time_warning(struct mylite_expression_warnings *warni
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
-static int eval_timestampdiff_function(const struct mylite_sql_ast_node *node,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value)
-{
+static int eval_timestampdiff_function(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
     struct mylite_expression_value start = {0};
     struct mylite_expression_value end = {0};
@@ -8089,8 +10326,10 @@ static int eval_timestampdiff_function(const struct mylite_sql_ast_node *node,
         goto cleanup;
     }
 
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = diff};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = diff
+    };
 
 cleanup:
     mylite_expression_value_deinit(&start);
@@ -8098,10 +10337,12 @@ cleanup:
     return status;
 }
 
-static bool timestampdiff_value(enum mylite_sql_ast_interval_unit unit,
-                                const struct temporal_date_value *start,
-                                const struct temporal_date_value *end, int64_t *out_value)
-{
+static bool timestampdiff_value(
+    enum mylite_sql_ast_interval_unit unit,
+    const struct temporal_date_value *start,
+    const struct temporal_date_value *end,
+    int64_t *out_value
+) {
     int64_t diff = 0;
 
     if (start == NULL || end == NULL || out_value == NULL) {
@@ -8139,9 +10380,10 @@ static bool timestampdiff_value(enum mylite_sql_ast_interval_unit unit,
     return false;
 }
 
-static int64_t timestampdiff_months(const struct temporal_date_value *start,
-                                    const struct temporal_date_value *end)
-{
+static int64_t timestampdiff_months(
+    const struct temporal_date_value *start,
+    const struct temporal_date_value *end
+) {
     int64_t months =
         (((int64_t)end->year - (int64_t)start->year) * MYLITE_TEMPORAL_MONTHS_PER_YEAR) +
         ((int64_t)end->month - (int64_t)start->month);
@@ -8155,9 +10397,10 @@ static int64_t timestampdiff_months(const struct temporal_date_value *start,
     return months;
 }
 
-static int timestampdiff_compare_day_time(const struct temporal_date_value *left,
-                                          const struct temporal_date_value *right)
-{
+static int timestampdiff_compare_day_time(
+    const struct temporal_date_value *left,
+    const struct temporal_date_value *right
+) {
     if (left->day < right->day) {
         return -1;
     }
@@ -8167,9 +10410,10 @@ static int timestampdiff_compare_day_time(const struct temporal_date_value *left
     return temporal_time_compare(left, right);
 }
 
-static int64_t timestampdiff_seconds(const struct temporal_date_value *start,
-                                     const struct temporal_date_value *end)
-{
+static int64_t timestampdiff_seconds(
+    const struct temporal_date_value *start,
+    const struct temporal_date_value *end
+) {
     int64_t day_diff = temporal_day_number(end) - temporal_day_number(start);
     int64_t start_seconds = ((int64_t)start->hour * MYLITE_TEMPORAL_SECONDS_PER_HOUR) +
                             ((int64_t)start->minute * MYLITE_TEMPORAL_SECONDS_PER_MINUTE) +
@@ -8187,9 +10431,10 @@ static int64_t timestampdiff_seconds(const struct temporal_date_value *start,
     return seconds;
 }
 
-static int temporal_time_compare(const struct temporal_date_value *left,
-                                 const struct temporal_date_value *right)
-{
+static int temporal_time_compare(
+    const struct temporal_date_value *left,
+    const struct temporal_date_value *right
+) {
     if (left->hour != right->hour) {
         return left->hour < right->hour ? -1 : 1;
     }
@@ -8205,12 +10450,13 @@ static int temporal_time_compare(const struct temporal_date_value *left,
     return 0;
 }
 
-static int eval_temporal_part_function(enum mylite_scalar_function_id function_id,
-                                       const struct mylite_sql_ast_node *node,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value)
-{
+static int eval_temporal_part_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
     struct mylite_expression_value argument = {0};
     struct temporal_date_value date = {0};
@@ -8237,7 +10483,13 @@ static int eval_temporal_part_function(enum mylite_scalar_function_id function_i
     }
 
     status = temporal_date_from_value_with_mode(
-        &argument, true, !temporal_part_requires_complete_date(part), warnings, &date, &valid);
+        &argument,
+        true,
+        !temporal_part_requires_complete_date(part),
+        warnings,
+        &date,
+        &valid
+    );
     if (status != 0) {
         goto cleanup;
     }
@@ -8256,10 +10508,11 @@ cleanup:
     return status;
 }
 
-static int eval_temporal_microsecond_part(const struct mylite_expression_value *argument,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct mylite_expression_value *out_value)
-{
+static int eval_temporal_microsecond_part(
+    const struct mylite_expression_value *argument,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct temporal_date_source source = {0};
     struct temporal_date_value date = {0};
     struct temporal_time_value time = {0};
@@ -8276,8 +10529,11 @@ static int eval_temporal_microsecond_part(const struct mylite_expression_value *
         }
         if (parse_temporal_date_source(&source, true, true, &date) && date.has_time) {
             if (date.warning_kind != TEMPORAL_DATE_WARNING_NONE) {
-                status = append_temporal_time_warning(warnings, source.warning_text,
-                                                      source.warning_length);
+                status = append_temporal_time_warning(
+                    warnings,
+                    source.warning_text,
+                    source.warning_length
+                );
                 if (status != 0) {
                     return status;
                 }
@@ -8305,10 +10561,11 @@ static int eval_temporal_microsecond_part(const struct mylite_expression_value *
     return 0;
 }
 
-static bool temporal_part_from_function(enum mylite_scalar_function_id function_id,
-                                        enum mylite_sql_ast_interval_unit unit,
-                                        enum temporal_part_kind *out_part)
-{
+static bool temporal_part_from_function(
+    enum mylite_scalar_function_id function_id,
+    enum mylite_sql_ast_interval_unit unit,
+    enum temporal_part_kind *out_part
+) {
     enum temporal_part_kind part = TEMPORAL_PART_NONE;
 
     switch (function_id) {
@@ -8526,13 +10783,14 @@ static bool temporal_part_from_function(enum mylite_scalar_function_id function_
     return part != TEMPORAL_PART_NONE;
 }
 
-static bool temporal_part_requires_complete_date(enum temporal_part_kind part)
-{
+static bool temporal_part_requires_complete_date(enum temporal_part_kind part) {
     return part == TEMPORAL_PART_DAYOFWEEK || part == TEMPORAL_PART_DAYOFYEAR;
 }
 
-static int temporal_part_value(const struct temporal_date_value *date, enum temporal_part_kind part)
-{
+static int temporal_part_value(
+    const struct temporal_date_value *date,
+    enum temporal_part_kind part
+) {
     switch (part) {
     case TEMPORAL_PART_YEAR:
         return date == NULL ? 0 : date->year;
@@ -8560,12 +10818,13 @@ static int temporal_part_value(const struct temporal_date_value *date, enum temp
     return 0;
 }
 
-static int eval_date_arithmetic_function(enum mylite_scalar_function_id function_id,
-                                         const struct mylite_sql_ast_node *node,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct mylite_expression_value *out_value)
-{
+static int eval_date_arithmetic_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
     struct mylite_expression_value temporal = {0};
     struct mylite_expression_value amount_value = {0};
@@ -8607,8 +10866,13 @@ static int eval_date_arithmetic_function(enum mylite_scalar_function_id function
     if (status != 0) {
         goto cleanup;
     }
-    if (!apply_date_interval_arithmetic(function_id, node->interval_unit, &date, amount,
-                                        &datetime_result)) {
+    if (!apply_date_interval_arithmetic(
+            function_id,
+            node->interval_unit,
+            &date,
+            amount,
+            &datetime_result
+        )) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         goto cleanup;
     }
@@ -8622,11 +10886,13 @@ cleanup:
     return status;
 }
 
-static bool apply_date_interval_arithmetic(enum mylite_scalar_function_id function_id,
-                                           enum mylite_sql_ast_interval_unit unit,
-                                           struct temporal_date_value *date, int64_t amount,
-                                           bool *out_datetime_result)
-{
+static bool apply_date_interval_arithmetic(
+    enum mylite_scalar_function_id function_id,
+    enum mylite_sql_ast_interval_unit unit,
+    struct temporal_date_value *date,
+    int64_t amount,
+    bool *out_datetime_result
+) {
     int64_t value = amount;
     int64_t scaled = 0;
 
@@ -8667,8 +10933,7 @@ static bool apply_date_interval_arithmetic(enum mylite_scalar_function_id functi
     return false;
 }
 
-static bool multiply_interval_amount(int64_t amount, int64_t factor, int64_t *out_value)
-{
+static bool multiply_interval_amount(int64_t amount, int64_t factor, int64_t *out_value) {
     if (out_value == NULL || factor <= 0) {
         return false;
     }
@@ -8682,8 +10947,7 @@ static bool multiply_interval_amount(int64_t amount, int64_t factor, int64_t *ou
     return true;
 }
 
-static bool add_temporal_months(struct temporal_date_value *date, int64_t months)
-{
+static bool add_temporal_months(struct temporal_date_value *date, int64_t months) {
     int64_t month_index = 0;
     int day_limit = 0;
 
@@ -8712,8 +10976,7 @@ static bool add_temporal_months(struct temporal_date_value *date, int64_t months
     return true;
 }
 
-static bool add_temporal_days(struct temporal_date_value *date, int64_t days)
-{
+static bool add_temporal_days(struct temporal_date_value *date, int64_t days) {
     int64_t day_number = 0;
 
     if (date == NULL) {
@@ -8727,9 +10990,9 @@ static bool add_temporal_days(struct temporal_date_value *date, int64_t days)
     return temporal_date_from_day_number(day_number + days, date);
 }
 
-static bool add_temporal_seconds(struct temporal_date_value *date, int64_t seconds)
-{
+static bool add_temporal_seconds(struct temporal_date_value *date, int64_t seconds) {
     enum { seconds_per_minute = 60, seconds_per_hour = 3600, seconds_per_day = 86400 };
+
     int64_t current = 0;
     int64_t total = 0;
     int64_t day_delta = 0;
@@ -8762,8 +11025,10 @@ static bool add_temporal_seconds(struct temporal_date_value *date, int64_t secon
     return true;
 }
 
-static bool temporal_date_from_day_number(int64_t day_number, struct temporal_date_value *out_date)
-{
+static bool temporal_date_from_day_number(
+    int64_t day_number,
+    struct temporal_date_value *out_date
+) {
     int low = 0;
     int high = MYLITE_TEMPORAL_MAX_YEAR;
     int year = 0;
@@ -8811,8 +11076,7 @@ static bool temporal_date_from_day_number(int64_t day_number, struct temporal_da
     return true;
 }
 
-static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit)
-{
+static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit) {
     if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_HOUR) {
         return true;
     }
@@ -8822,20 +11086,29 @@ static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit)
     return unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
 }
 
-static int set_temporal_datetime_text_value(const struct temporal_date_value *date,
-                                            struct mylite_expression_value *out_value)
-{
+static int set_temporal_datetime_text_value(
+    const struct temporal_date_value *date,
+    struct mylite_expression_value *out_value
+) {
     enum {
         temporal_datetime_text_length = 19U,
         temporal_fraction_text_length = 6U,
         temporal_datetime_fraction_text_length = 26U,
     };
+
     unsigned int fraction_digits = date == NULL ? 0U : date->fraction_digits;
     char buffer[temporal_datetime_fraction_text_length + 1U];
-    int length = snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d",
-                          date == NULL ? 0 : date->year, date == NULL ? 0 : date->month,
-                          date == NULL ? 0 : date->day, date == NULL ? 0 : date->hour,
-                          date == NULL ? 0 : date->minute, date == NULL ? 0 : date->second);
+    int length = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%04d-%02d-%02d %02d:%02d:%02d",
+        date == NULL ? 0 : date->year,
+        date == NULL ? 0 : date->month,
+        date == NULL ? 0 : date->day,
+        date == NULL ? 0 : date->hour,
+        date == NULL ? 0 : date->minute,
+        date == NULL ? 0 : date->second
+    );
 
     if (length != temporal_datetime_text_length) {
         return -1;
@@ -8867,13 +11140,15 @@ static int set_temporal_datetime_text_value(const struct temporal_date_value *da
     return status;
 }
 
-static int set_temporal_time_text_value(const struct temporal_time_value *time,
-                                        struct mylite_expression_value *out_value)
-{
+static int set_temporal_time_text_value(
+    const struct temporal_time_value *time,
+    struct mylite_expression_value *out_value
+) {
     enum {
         temporal_time_fraction_text_length = 6U,
         temporal_time_buffer_length = 18U,
     };
+
     char buffer[temporal_time_buffer_length + 1U];
     int length = 0;
     unsigned int fraction_digits = time == NULL ? 0U : time->fraction_digits;
@@ -8881,9 +11156,15 @@ static int set_temporal_time_text_value(const struct temporal_time_value *time,
     if (fraction_digits > MYLITE_TEMPORAL_MAX_FSP) {
         fraction_digits = MYLITE_TEMPORAL_MAX_FSP;
     }
-    length = snprintf(buffer, sizeof(buffer), "%s%02d:%02d:%02d",
-                      time != NULL && time->negative ? "-" : "", time == NULL ? 0 : time->hour,
-                      time == NULL ? 0 : time->minute, time == NULL ? 0 : time->second);
+    length = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%s%02d:%02d:%02d",
+        time != NULL && time->negative ? "-" : "",
+        time == NULL ? 0 : time->hour,
+        time == NULL ? 0 : time->minute,
+        time == NULL ? 0 : time->second
+    );
     if (length < 0 || (size_t)length >= sizeof(buffer)) {
         return -1;
     }
@@ -8910,21 +11191,31 @@ static int set_temporal_time_text_value(const struct temporal_time_value *time,
     return status;
 }
 
-static int temporal_date_from_value(const struct mylite_expression_value *value,
-                                    bool warn_approximate_fraction,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct temporal_date_value *out_date, bool *out_valid)
-{
-    return temporal_date_from_value_with_mode(value, warn_approximate_fraction, false, warnings,
-                                              out_date, out_valid);
+static int temporal_date_from_value(
+    const struct mylite_expression_value *value,
+    bool warn_approximate_fraction,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+) {
+    return temporal_date_from_value_with_mode(
+        value,
+        warn_approximate_fraction,
+        false,
+        warnings,
+        out_date,
+        out_valid
+    );
 }
 
-static int temporal_date_from_value_with_mode(const struct mylite_expression_value *value,
-                                              bool warn_approximate_fraction,
-                                              bool allow_incomplete_date,
-                                              struct mylite_expression_warnings *warnings,
-                                              struct temporal_date_value *out_date, bool *out_valid)
-{
+static int temporal_date_from_value_with_mode(
+    const struct mylite_expression_value *value,
+    bool warn_approximate_fraction,
+    bool allow_incomplete_date,
+    struct mylite_expression_warnings *warnings,
+    struct temporal_date_value *out_date,
+    bool *out_valid
+) {
     struct temporal_date_source source = {0};
     bool valid = false;
     int status = 0;
@@ -8940,14 +11231,22 @@ static int temporal_date_from_value_with_mode(const struct mylite_expression_val
         return status;
     }
 
-    valid = parse_temporal_date_source(&source, warn_approximate_fraction, allow_incomplete_date,
-                                       out_date);
+    valid = parse_temporal_date_source(
+        &source,
+        warn_approximate_fraction,
+        allow_incomplete_date,
+        out_date
+    );
     if (!valid && out_date->warning_kind == TEMPORAL_DATE_WARNING_NONE) {
         out_date->warning_kind = TEMPORAL_DATE_WARNING_INCORRECT;
     }
     if (out_date->warning_kind != TEMPORAL_DATE_WARNING_NONE) {
-        status = append_temporal_date_warning(warnings, out_date->warning_kind, source.warning_text,
-                                              source.warning_length);
+        status = append_temporal_date_warning(
+            warnings,
+            out_date->warning_kind,
+            source.warning_text,
+            source.warning_length
+        );
         if (status != 0) {
             return status;
         }
@@ -8957,9 +11256,10 @@ static int temporal_date_from_value_with_mode(const struct mylite_expression_val
     return 0;
 }
 
-static int temporal_date_source_from_value(const struct mylite_expression_value *value,
-                                           struct temporal_date_source *out_source)
-{
+static int temporal_date_source_from_value(
+    const struct mylite_expression_value *value,
+    struct temporal_date_source *out_source
+) {
     int length = 0;
 
     if (value == NULL || out_source == NULL) {
@@ -8974,16 +11274,27 @@ static int temporal_date_source_from_value(const struct mylite_expression_value 
         out_source->warning_length = out_source->length;
         return 0;
     case MYLITE_EXPRESSION_VALUE_INT64:
-        length = snprintf(out_source->buffer, sizeof(out_source->buffer), "%lld",
-                          (long long)value->int64_value);
+        length = snprintf(
+            out_source->buffer,
+            sizeof(out_source->buffer),
+            "%lld",
+            (long long)value->int64_value
+        );
         break;
     case MYLITE_EXPRESSION_VALUE_UINT64:
-        length = snprintf(out_source->buffer, sizeof(out_source->buffer), "%llu",
-                          (unsigned long long)value->uint64_value);
+        length = snprintf(
+            out_source->buffer,
+            sizeof(out_source->buffer),
+            "%llu",
+            (unsigned long long)value->uint64_value
+        );
         break;
     case MYLITE_EXPRESSION_VALUE_REAL: {
         int original_length = format_compact_real_text(
-            value->real_value, out_source->warning_buffer, sizeof(out_source->warning_buffer));
+            value->real_value,
+            out_source->warning_buffer,
+            sizeof(out_source->warning_buffer)
+        );
         char *dot = NULL;
 
         if (original_length <= 0 || (size_t)original_length >= sizeof(out_source->buffer)) {
@@ -9016,8 +11327,7 @@ static int temporal_date_source_from_value(const struct mylite_expression_value 
     return 0;
 }
 
-static bool temporal_date_source_has_fraction(const struct temporal_date_source *source)
-{
+static bool temporal_date_source_has_fraction(const struct temporal_date_source *source) {
     const char *dot = source == NULL ? NULL : strchr(source->buffer, '.');
 
     if (dot == NULL) {
@@ -9031,16 +11341,23 @@ static bool temporal_date_source_has_fraction(const struct temporal_date_source 
     return false;
 }
 
-static bool parse_temporal_date_source(const struct temporal_date_source *source,
-                                       bool warn_approximate_fraction, bool allow_incomplete_date,
-                                       struct temporal_date_value *out_date)
-{
+static bool parse_temporal_date_source(
+    const struct temporal_date_source *source,
+    bool warn_approximate_fraction,
+    bool allow_incomplete_date,
+    struct temporal_date_value *out_date
+) {
     if (source == NULL || out_date == NULL || source->text == NULL || source->length == 0U) {
         return false;
     }
     if (source->numeric) {
-        bool valid = parse_temporal_compact_date(source->text, source->length, true,
-                                                 allow_incomplete_date, out_date);
+        bool valid = parse_temporal_compact_date(
+            source->text,
+            source->length,
+            true,
+            allow_incomplete_date,
+            out_date
+        );
 
         if (valid && warn_approximate_fraction && source->approximate_fraction &&
             out_date->warning_kind == TEMPORAL_DATE_WARNING_NONE) {
@@ -9048,18 +11365,29 @@ static bool parse_temporal_date_source(const struct temporal_date_source *source
         }
         return valid;
     }
-    if (parse_temporal_delimited_date(source->text, source->length, allow_incomplete_date,
-                                      out_date)) {
+    if (parse_temporal_delimited_date(
+            source->text,
+            source->length,
+            allow_incomplete_date,
+            out_date
+        )) {
         return true;
     }
-    return parse_temporal_compact_date(source->text, source->length, false, allow_incomplete_date,
-                                       out_date);
+    return parse_temporal_compact_date(
+        source->text,
+        source->length,
+        false,
+        allow_incomplete_date,
+        out_date
+    );
 }
 
-static bool parse_temporal_delimited_date(const char *text, size_t length,
-                                          bool allow_incomplete_date,
-                                          struct temporal_date_value *out_date)
-{
+static bool parse_temporal_delimited_date(
+    const char *text,
+    size_t length,
+    bool allow_incomplete_date,
+    struct temporal_date_value *out_date
+) {
     size_t offset = 0U;
     size_t year_start = 0U;
     int year = 0;
@@ -9085,16 +11413,24 @@ static bool parse_temporal_delimited_date(const char *text, size_t length,
         .digit_count = offset - year_start,
     });
     ++offset;
-    if (!parse_temporal_unsigned_part(text, length, &offset,
-                                      (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
-                                      &month) ||
+    if (!parse_temporal_unsigned_part(
+            text,
+            length,
+            &offset,
+            (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
+            &month
+        ) ||
         offset >= length || text[offset] != '-') {
         return false;
     }
     ++offset;
-    if (!parse_temporal_unsigned_part(text, length, &offset,
-                                      (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
-                                      &day)) {
+    if (!parse_temporal_unsigned_part(
+            text,
+            length,
+            &offset,
+            (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
+            &day
+        )) {
         return false;
     }
     all_zero = allow_incomplete_date && temporal_date_parts_are_all_zero(year, month, day);
@@ -9119,10 +11455,13 @@ static bool parse_temporal_delimited_date(const char *text, size_t length,
     return true;
 }
 
-static bool parse_temporal_compact_date(const char *text, size_t length, bool numeric,
-                                        bool allow_incomplete_date,
-                                        struct temporal_date_value *out_date)
-{
+static bool parse_temporal_compact_date(
+    const char *text,
+    size_t length,
+    bool numeric,
+    bool allow_incomplete_date,
+    struct temporal_date_value *out_date
+) {
     char padded[MYLITE_TEMPORAL_LONG_DATETIME_DIGITS + 1U];
     const char *digits = text;
     size_t digit_length = length;
@@ -9143,12 +11482,14 @@ static bool parse_temporal_compact_date(const char *text, size_t length, bool nu
     }
 
     year_digits = temporal_compact_year_digit_count(digit_length);
-    if (!parse_temporal_fixed_digits(digits,
-                                     (struct temporal_digit_range){
-                                         .offset = offset,
-                                         .count = year_digits,
-                                     },
-                                     &year)) {
+    if (!parse_temporal_fixed_digits(
+            digits,
+            (struct temporal_digit_range){
+                .offset = offset,
+                .count = year_digits,
+            },
+            &year
+        )) {
         return false;
     }
     year = temporal_normalized_year((struct temporal_year_parts){
@@ -9157,9 +11498,15 @@ static bool parse_temporal_compact_date(const char *text, size_t length, bool nu
     });
     offset += year_digits;
     if (!parse_temporal_fixed_digits(
-            digits, (struct temporal_digit_range){.offset = offset, .count = 2U}, &month) ||
+            digits,
+            (struct temporal_digit_range){.offset = offset, .count = 2U},
+            &month
+        ) ||
         !parse_temporal_fixed_digits(
-            digits, (struct temporal_digit_range){.offset = offset + 2U, .count = 2U}, &day)) {
+            digits,
+            (struct temporal_digit_range){.offset = offset + 2U, .count = 2U},
+            &day
+        )) {
         return false;
     }
     offset += 4U;
@@ -9187,8 +11534,7 @@ static bool parse_temporal_compact_date(const char *text, size_t length, bool nu
     return true;
 }
 
-static bool temporal_text_is_digits(const char *text, size_t length)
-{
+static bool temporal_text_is_digits(const char *text, size_t length) {
     if (text == NULL) {
         return false;
     }
@@ -9200,10 +11546,14 @@ static bool temporal_text_is_digits(const char *text, size_t length)
     return true;
 }
 
-static bool prepare_temporal_compact_digits(const char *text, size_t length, bool numeric,
-                                            char *padded, const char **out_digits,
-                                            size_t *out_digit_length)
-{
+static bool prepare_temporal_compact_digits(
+    const char *text,
+    size_t length,
+    bool numeric,
+    char *padded,
+    const char **out_digits,
+    size_t *out_digit_length
+) {
     size_t digit_length = length;
 
     if (text == NULL || padded == NULL || out_digits == NULL || out_digit_length == NULL ||
@@ -9224,8 +11574,7 @@ static bool prepare_temporal_compact_digits(const char *text, size_t length, boo
     return true;
 }
 
-static bool temporal_numeric_compact_digit_length(size_t length, size_t *out_digit_length)
-{
+static bool temporal_numeric_compact_digit_length(size_t length, size_t *out_digit_length) {
     if (out_digit_length == NULL) {
         return false;
     }
@@ -9248,8 +11597,7 @@ static bool temporal_numeric_compact_digit_length(size_t length, size_t *out_dig
     return false;
 }
 
-static bool temporal_compact_digit_length(size_t length, bool numeric, size_t *out_digit_length)
-{
+static bool temporal_compact_digit_length(size_t length, bool numeric, size_t *out_digit_length) {
     if (numeric) {
         return temporal_numeric_compact_digit_length(length, out_digit_length);
     }
@@ -9265,8 +11613,7 @@ static bool temporal_compact_digit_length(size_t length, bool numeric, size_t *o
     return true;
 }
 
-static size_t temporal_compact_year_digit_count(size_t digit_length)
-{
+static size_t temporal_compact_year_digit_count(size_t digit_length) {
     if (digit_length == MYLITE_TEMPORAL_LONG_DATE_DIGITS ||
         digit_length == MYLITE_TEMPORAL_LONG_DATETIME_DIGITS) {
         return 4U;
@@ -9274,25 +11621,35 @@ static size_t temporal_compact_year_digit_count(size_t digit_length)
     return 2U;
 }
 
-static bool temporal_compact_datetime_has_time(size_t digit_length)
-{
+static bool temporal_compact_datetime_has_time(size_t digit_length) {
     return digit_length == MYLITE_TEMPORAL_SHORT_DATETIME_DIGITS ||
            digit_length == MYLITE_TEMPORAL_LONG_DATETIME_DIGITS;
 }
 
-static bool parse_temporal_compact_time(const char *digits, size_t offset,
-                                        struct temporal_date_value *out_date)
-{
+static bool parse_temporal_compact_time(
+    const char *digits,
+    size_t offset,
+    struct temporal_date_value *out_date
+) {
     int hour = 0;
     int minute = 0;
     int second = 0;
 
     if (!parse_temporal_fixed_digits(
-            digits, (struct temporal_digit_range){.offset = offset, .count = 2U}, &hour) ||
+            digits,
+            (struct temporal_digit_range){.offset = offset, .count = 2U},
+            &hour
+        ) ||
         !parse_temporal_fixed_digits(
-            digits, (struct temporal_digit_range){.offset = offset + 2U, .count = 2U}, &minute) ||
+            digits,
+            (struct temporal_digit_range){.offset = offset + 2U, .count = 2U},
+            &minute
+        ) ||
         !parse_temporal_fixed_digits(
-            digits, (struct temporal_digit_range){.offset = offset + 4U, .count = 2U}, &second) ||
+            digits,
+            (struct temporal_digit_range){.offset = offset + 4U, .count = 2U},
+            &second
+        ) ||
         !temporal_time_parts_are_valid(hour, minute, second)) {
         return false;
     }
@@ -9305,9 +11662,12 @@ static bool parse_temporal_compact_time(const char *digits, size_t offset,
     return true;
 }
 
-static bool parse_temporal_time_suffix(const char *text, size_t length, size_t offset,
-                                       struct temporal_date_value *date)
-{
+static bool parse_temporal_time_suffix(
+    const char *text,
+    size_t length,
+    size_t offset,
+    struct temporal_date_value *date
+) {
     int hour = 0;
     int minute = 0;
     int second = 0;
@@ -9327,25 +11687,37 @@ static bool parse_temporal_time_suffix(const char *text, size_t length, size_t o
         date->warning_kind = TEMPORAL_DATE_WARNING_TRUNCATED_DATE;
         return true;
     }
-    if (!parse_temporal_unsigned_part(text, length, &offset,
-                                      (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
-                                      &hour) ||
+    if (!parse_temporal_unsigned_part(
+            text,
+            length,
+            &offset,
+            (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
+            &hour
+        ) ||
         offset >= length || text[offset] != ':') {
         date->warning_kind = TEMPORAL_DATE_WARNING_TRUNCATED_DATE;
         return true;
     }
     ++offset;
-    if (!parse_temporal_unsigned_part(text, length, &offset,
-                                      (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
-                                      &minute) ||
+    if (!parse_temporal_unsigned_part(
+            text,
+            length,
+            &offset,
+            (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
+            &minute
+        ) ||
         offset >= length || text[offset] != ':') {
         date->warning_kind = TEMPORAL_DATE_WARNING_TRUNCATED_DATE;
         return true;
     }
     ++offset;
-    if (!parse_temporal_unsigned_part(text, length, &offset,
-                                      (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
-                                      &second)) {
+    if (!parse_temporal_unsigned_part(
+            text,
+            length,
+            &offset,
+            (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
+            &second
+        )) {
         date->warning_kind = TEMPORAL_DATE_WARNING_TRUNCATED_DATE;
         return true;
     }
@@ -9383,9 +11755,11 @@ static bool parse_temporal_time_suffix(const char *text, size_t length, size_t o
     return true;
 }
 
-static bool parse_temporal_fixed_digits(const char *text, struct temporal_digit_range range,
-                                        int *out_value)
-{
+static bool parse_temporal_fixed_digits(
+    const char *text,
+    struct temporal_digit_range range,
+    int *out_value
+) {
     int value = 0;
 
     if (text == NULL || out_value == NULL) {
@@ -9403,9 +11777,13 @@ static bool parse_temporal_fixed_digits(const char *text, struct temporal_digit_
     return true;
 }
 
-static bool parse_temporal_unsigned_part(const char *text, size_t length, size_t *offset,
-                                         struct temporal_digit_width width, int *out_value)
-{
+static bool parse_temporal_unsigned_part(
+    const char *text,
+    size_t length,
+    size_t *offset,
+    struct temporal_digit_width width,
+    int *out_value
+) {
     size_t cursor = offset == NULL ? 0U : *offset;
     size_t digits = 0U;
     int value = 0;
@@ -9427,9 +11805,13 @@ static bool parse_temporal_unsigned_part(const char *text, size_t length, size_t
     return true;
 }
 
-static bool parse_temporal_fraction(const char *text, size_t length, size_t *offset,
-                                    int *out_microsecond, unsigned int *out_digits)
-{
+static bool parse_temporal_fraction(
+    const char *text,
+    size_t length,
+    size_t *offset,
+    int *out_microsecond,
+    unsigned int *out_digits
+) {
     size_t cursor = offset == NULL ? 0U : *offset;
     size_t digits = 0U;
     int microsecond = 0;
@@ -9463,8 +11845,7 @@ static bool parse_temporal_fraction(const char *text, size_t length, size_t *off
     return true;
 }
 
-static bool temporal_date_parts_are_valid(int year, int month, int day)
-{
+static bool temporal_date_parts_are_valid(int year, int month, int day) {
     if (year < 0 || year > MYLITE_TEMPORAL_MAX_YEAR || month < 1 ||
         month > MYLITE_TEMPORAL_MONTHS_PER_YEAR || day < 1) {
         return false;
@@ -9472,9 +11853,12 @@ static bool temporal_date_parts_are_valid(int year, int month, int day)
     return day <= temporal_month_day_limit(year, month);
 }
 
-static bool temporal_date_parts_are_valid_for_mode(int year, int month, int day,
-                                                   bool allow_incomplete_date)
-{
+static bool temporal_date_parts_are_valid_for_mode(
+    int year,
+    int month,
+    int day,
+    bool allow_incomplete_date
+) {
     if (!allow_incomplete_date) {
         return temporal_date_parts_are_valid(year, month, day);
     }
@@ -9491,21 +11875,21 @@ static bool temporal_date_parts_are_valid_for_mode(int year, int month, int day,
     return day <= temporal_month_day_limit(year, month);
 }
 
-static bool temporal_date_parts_are_all_zero(int year, int month, int day)
-{
+static bool temporal_date_parts_are_all_zero(int year, int month, int day) {
     return year == 0 && month == 0 && day == 0;
 }
 
-static bool temporal_time_parts_are_valid(int hour, int minute, int second)
-{
+static bool temporal_time_parts_are_valid(int hour, int minute, int second) {
     return hour >= 0 && hour <= MYLITE_TEMPORAL_MAX_HOUR && minute >= 0 &&
            minute <= MYLITE_TEMPORAL_MAX_MINUTE_SECOND && second >= 0 &&
            second <= MYLITE_TEMPORAL_MAX_MINUTE_SECOND;
 }
 
-static struct temporal_time_parse_result parse_temporal_time_text(const char *text, size_t length,
-                                                                  bool numeric)
-{
+static struct temporal_time_parse_result parse_temporal_time_text(
+    const char *text,
+    size_t length,
+    bool numeric
+) {
     struct temporal_time_parse_result result = {0};
     size_t offset = 0U;
     bool negative = false;
@@ -9538,29 +11922,45 @@ static struct temporal_time_parse_result parse_temporal_time_text(const char *te
     return result;
 }
 
-static bool parse_temporal_colon_time(const char *text, size_t length, size_t offset, bool negative,
-                                      struct temporal_time_parse_result *result)
-{
+static bool parse_temporal_colon_time(
+    const char *text,
+    size_t length,
+    size_t offset,
+    bool negative,
+    struct temporal_time_parse_result *result
+) {
     struct temporal_time_value time = {.negative = negative};
     bool warned = false;
 
-    if (!parse_temporal_unsigned_part(text, length, &offset,
-                                      (struct temporal_digit_width){.minimum = 1U, .maximum = 3U},
-                                      &time.hour) ||
+    if (!parse_temporal_unsigned_part(
+            text,
+            length,
+            &offset,
+            (struct temporal_digit_width){.minimum = 1U, .maximum = 3U},
+            &time.hour
+        ) ||
         offset >= length || text[offset] != ':') {
         return false;
     }
     ++offset;
-    if (!parse_temporal_unsigned_part(text, length, &offset,
-                                      (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
-                                      &time.minute)) {
+    if (!parse_temporal_unsigned_part(
+            text,
+            length,
+            &offset,
+            (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
+            &time.minute
+        )) {
         return false;
     }
     if (offset < length && text[offset] == ':') {
         ++offset;
         if (!parse_temporal_unsigned_part(
-                text, length, &offset, (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
-                &time.second)) {
+                text,
+                length,
+                &offset,
+                (struct temporal_digit_width){.minimum = 1U, .maximum = 2U},
+                &time.second
+            )) {
             warned = true;
             time.second = 0;
         }
@@ -9583,9 +11983,14 @@ static bool parse_temporal_colon_time(const char *text, size_t length, size_t of
     return true;
 }
 
-static bool parse_temporal_digit_time(const char *text, size_t length, size_t offset, bool negative,
-                                      bool numeric, struct temporal_time_parse_result *result)
-{
+static bool parse_temporal_digit_time(
+    const char *text,
+    size_t length,
+    size_t offset,
+    bool negative,
+    bool numeric,
+    struct temporal_time_parse_result *result
+) {
     struct temporal_time_value time = {.negative = negative};
     size_t digit_start = offset;
     size_t digit_length = 0U;
@@ -9617,10 +12022,13 @@ static bool parse_temporal_digit_time(const char *text, size_t length, size_t of
     return parse_temporal_digit_time_tail(text, length, &offset, &time, result);
 }
 
-static bool parse_temporal_digit_time_tail(const char *text, size_t length, size_t *offset,
-                                           struct temporal_time_value *time,
-                                           struct temporal_time_parse_result *result)
-{
+static bool parse_temporal_digit_time_tail(
+    const char *text,
+    size_t length,
+    size_t *offset,
+    struct temporal_time_value *time,
+    struct temporal_time_parse_result *result
+) {
     if (offset == NULL || time == NULL || result == NULL) {
         return false;
     }
@@ -9641,9 +12049,12 @@ static bool parse_temporal_digit_time_tail(const char *text, size_t length, size
     return true;
 }
 
-static bool parse_temporal_compact_digit_time(const char *text, size_t digit_start,
-                                              size_t digit_length, struct temporal_time_value *time)
-{
+static bool parse_temporal_compact_digit_time(
+    const char *text,
+    size_t digit_start,
+    size_t digit_length,
+    struct temporal_time_value *time
+) {
     char padded[MYLITE_TEMPORAL_COMPACT_TIME_BUFFER_SIZE];
 
     if (text == NULL || time == NULL || digit_length > MYLITE_TEMPORAL_COMPACT_TIME_DIGITS) {
@@ -9652,29 +12063,38 @@ static bool parse_temporal_compact_digit_time(const char *text, size_t digit_sta
     memset(padded, '0', sizeof(padded) - 1U);
     memcpy(padded + (sizeof(padded) - 1U - digit_length), text + digit_start, digit_length);
     padded[sizeof(padded) - 1U] = '\0';
-    return parse_temporal_fixed_digits(padded,
-                                       (struct temporal_digit_range){
-                                           .offset = MYLITE_TEMPORAL_COMPACT_TIME_HOUR_OFFSET,
-                                           .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
-                                       },
-                                       &time->hour) &&
-           parse_temporal_fixed_digits(padded,
-                                       (struct temporal_digit_range){
-                                           .offset = MYLITE_TEMPORAL_COMPACT_TIME_MINUTE_OFFSET,
-                                           .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
-                                       },
-                                       &time->minute) &&
-           parse_temporal_fixed_digits(padded,
-                                       (struct temporal_digit_range){
-                                           .offset = MYLITE_TEMPORAL_COMPACT_TIME_SECOND_OFFSET,
-                                           .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
-                                       },
-                                       &time->second);
+    return parse_temporal_fixed_digits(
+               padded,
+               (struct temporal_digit_range){
+                   .offset = MYLITE_TEMPORAL_COMPACT_TIME_HOUR_OFFSET,
+                   .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
+               },
+               &time->hour
+           ) &&
+           parse_temporal_fixed_digits(
+               padded,
+               (struct temporal_digit_range){
+                   .offset = MYLITE_TEMPORAL_COMPACT_TIME_MINUTE_OFFSET,
+                   .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
+               },
+               &time->minute
+           ) &&
+           parse_temporal_fixed_digits(
+               padded,
+               (struct temporal_digit_range){
+                   .offset = MYLITE_TEMPORAL_COMPACT_TIME_SECOND_OFFSET,
+                   .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
+               },
+               &time->second
+           );
 }
 
-static bool parse_temporal_long_digit_time(const char *text, size_t digit_start,
-                                           size_t digit_length, struct temporal_time_value *time)
-{
+static bool parse_temporal_long_digit_time(
+    const char *text,
+    size_t digit_start,
+    size_t digit_length,
+    struct temporal_time_value *time
+) {
     if (text == NULL || time == NULL || digit_length <= MYLITE_TEMPORAL_COMPACT_TIME_DIGITS) {
         return false;
     }
@@ -9684,26 +12104,33 @@ static bool parse_temporal_long_digit_time(const char *text, size_t digit_start,
                    .offset = digit_start,
                    .count = digit_length - MYLITE_TEMPORAL_COMPACT_TIME_SECOND_OFFSET,
                },
-               &time->hour) &&
-           parse_temporal_fixed_digits(text,
-                                       (struct temporal_digit_range){
-                                           .offset = digit_start + digit_length -
-                                                     MYLITE_TEMPORAL_COMPACT_TIME_SECOND_OFFSET,
-                                           .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
-                                       },
-                                       &time->minute) &&
-           parse_temporal_fixed_digits(text,
-                                       (struct temporal_digit_range){
-                                           .offset = digit_start + digit_length -
-                                                     MYLITE_TEMPORAL_COMPACT_TIME_MINUTE_OFFSET,
-                                           .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
-                                       },
-                                       &time->second);
+               &time->hour
+           ) &&
+           parse_temporal_fixed_digits(
+               text,
+               (struct temporal_digit_range){
+                   .offset =
+                       digit_start + digit_length - MYLITE_TEMPORAL_COMPACT_TIME_SECOND_OFFSET,
+                   .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
+               },
+               &time->minute
+           ) &&
+           parse_temporal_fixed_digits(
+               text,
+               (struct temporal_digit_range){
+                   .offset =
+                       digit_start + digit_length - MYLITE_TEMPORAL_COMPACT_TIME_MINUTE_OFFSET,
+                   .count = MYLITE_TEMPORAL_COMPACT_TIME_COMPONENT_DIGITS,
+               },
+               &time->second
+           );
 }
 
-static bool parse_temporal_compact_datetime_time_value(const char *text, size_t length,
-                                                       struct temporal_time_value *out_time)
-{
+static bool parse_temporal_compact_datetime_time_value(
+    const char *text,
+    size_t length,
+    struct temporal_time_value *out_time
+) {
     struct temporal_date_value date = {0};
 
     if (length != MYLITE_TEMPORAL_LONG_DATETIME_DIGITS &&
@@ -9721,9 +12148,12 @@ static bool parse_temporal_compact_datetime_time_value(const char *text, size_t 
     return true;
 }
 
-static bool parse_temporal_time_fraction_part(const char *text, size_t length, size_t *offset,
-                                              struct temporal_time_value *time)
-{
+static bool parse_temporal_time_fraction_part(
+    const char *text,
+    size_t length,
+    size_t *offset,
+    struct temporal_time_value *time
+) {
     if (text == NULL || offset == NULL || time == NULL || *offset >= length ||
         text[*offset] != '.') {
         return false;
@@ -9732,8 +12162,13 @@ static bool parse_temporal_time_fraction_part(const char *text, size_t length, s
     if (*offset >= length || text[*offset] < '0' || text[*offset] > '9') {
         return true;
     }
-    if (!parse_temporal_fraction(text, length, offset, &time->microsecond,
-                                 &time->fraction_digits)) {
+    if (!parse_temporal_fraction(
+            text,
+            length,
+            offset,
+            &time->microsecond,
+            &time->fraction_digits
+        )) {
         return false;
     }
     if (time->microsecond >= MYLITE_TEMPORAL_MICROSECOND_LIMIT) {
@@ -9743,8 +12178,7 @@ static bool parse_temporal_time_fraction_part(const char *text, size_t length, s
     return true;
 }
 
-static void normalize_temporal_time_range(struct temporal_time_parse_result *result)
-{
+static void normalize_temporal_time_range(struct temporal_time_parse_result *result) {
     if (result == NULL || !result->valid) {
         return;
     }
@@ -9754,8 +12188,7 @@ static void normalize_temporal_time_range(struct temporal_time_parse_result *res
     }
 }
 
-static bool temporal_time_is_out_of_range(const struct temporal_time_value *time)
-{
+static bool temporal_time_is_out_of_range(const struct temporal_time_value *time) {
     if (time == NULL || time->hour > MYLITE_TEMPORAL_MAX_TIME_HOUR) {
         return true;
     }
@@ -9766,8 +12199,7 @@ static bool temporal_time_is_out_of_range(const struct temporal_time_value *time
            time->second > MYLITE_TEMPORAL_MAX_MINUTE_SECOND || time->microsecond != 0;
 }
 
-static void clip_temporal_time(struct temporal_time_value *time)
-{
+static void clip_temporal_time(struct temporal_time_value *time) {
     if (time == NULL) {
         return;
     }
@@ -9777,8 +12209,7 @@ static void clip_temporal_time(struct temporal_time_value *time)
     time->microsecond = 0;
 }
 
-static bool temporal_time_add_second(struct temporal_time_value *time)
-{
+static bool temporal_time_add_second(struct temporal_time_value *time) {
     if (time == NULL) {
         return false;
     }
@@ -9796,8 +12227,7 @@ static bool temporal_time_add_second(struct temporal_time_value *time)
     return !temporal_time_is_out_of_range(time);
 }
 
-static bool temporal_year_is_leap(int year)
-{
+static bool temporal_year_is_leap(int year) {
     if (year <= 0) {
         return false;
     }
@@ -9806,8 +12236,7 @@ static bool temporal_year_is_leap(int year)
            year % MYLITE_TEMPORAL_QUADRICENTENNIAL_YEARS == 0;
 }
 
-static int temporal_month_day_limit(int year, int month)
-{
+static int temporal_month_day_limit(int year, int month) {
     static const int days_by_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
     if (month == MYLITE_TEMPORAL_FEBRUARY && temporal_year_is_leap(year)) {
@@ -9819,8 +12248,7 @@ static int temporal_month_day_limit(int year, int month)
     return days_by_month[month - 1];
 }
 
-static int temporal_normalized_year(struct temporal_year_parts parts)
-{
+static int temporal_normalized_year(struct temporal_year_parts parts) {
     if (parts.digit_count != 2U) {
         return parts.year;
     }
@@ -9829,8 +12257,7 @@ static int temporal_normalized_year(struct temporal_year_parts parts)
                : MYLITE_TEMPORAL_TWO_DIGIT_YEAR_LOW_CENTURY + parts.year;
 }
 
-static int64_t temporal_day_number(const struct temporal_date_value *date)
-{
+static int64_t temporal_day_number(const struct temporal_date_value *date) {
     if (date == NULL) {
         return 0;
     }
@@ -9838,8 +12265,7 @@ static int64_t temporal_day_number(const struct temporal_date_value *date)
            temporal_days_before_month(date->year, date->month) + (int64_t)(date->day - 1);
 }
 
-static int64_t temporal_days_before_year(int year)
-{
+static int64_t temporal_days_before_year(int year) {
     int64_t previous = year <= 0 ? 0 : (int64_t)year - 1;
 
     return ((int64_t)year * MYLITE_TEMPORAL_DAYS_PER_COMMON_YEAR) +
@@ -9848,8 +12274,7 @@ static int64_t temporal_days_before_year(int year)
            (previous / MYLITE_TEMPORAL_QUADRICENTENNIAL_YEARS);
 }
 
-static int temporal_days_before_month(int year, int month)
-{
+static int temporal_days_before_month(int year, int month) {
     static const int common[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
     static const int leap[] = {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335};
 
@@ -9859,13 +12284,21 @@ static int temporal_days_before_month(int year, int month)
     return temporal_year_is_leap(year) ? leap[month - 1] : common[month - 1];
 }
 
-static int set_temporal_date_text_value(const struct temporal_date_value *date,
-                                        struct mylite_expression_value *out_value)
-{
+static int set_temporal_date_text_value(
+    const struct temporal_date_value *date,
+    struct mylite_expression_value *out_value
+) {
     enum { temporal_date_text_length = 10U };
+
     char buffer[temporal_date_text_length + 1U];
-    int length = snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d", date == NULL ? 0 : date->year,
-                          date == NULL ? 0 : date->month, date == NULL ? 0 : date->day);
+    int length = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%04d-%02d-%02d",
+        date == NULL ? 0 : date->year,
+        date == NULL ? 0 : date->month,
+        date == NULL ? 0 : date->day
+    );
 
     if (length != temporal_date_text_length) {
         return -1;
@@ -9878,10 +12311,12 @@ static int set_temporal_date_text_value(const struct temporal_date_value *date,
     return status;
 }
 
-static int append_temporal_date_warning(struct mylite_expression_warnings *warnings,
-                                        enum temporal_date_warning_kind warning_kind,
-                                        const char *text, size_t text_length)
-{
+static int append_temporal_date_warning(
+    struct mylite_expression_warnings *warnings,
+    enum temporal_date_warning_kind warning_kind,
+    const char *text,
+    size_t text_length
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     const char *format = "Incorrect datetime value: '%.*s'";
     int preview_length = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
@@ -9890,8 +12325,11 @@ static int append_temporal_date_warning(struct mylite_expression_warnings *warni
     int length = 0;
 
     if (warning_kind == TEMPORAL_DATE_WARNING_DATETIME_OVERFLOW) {
-        int status = append_warning(warnings, MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW,
-                                    "Datetime function: datetime field overflow");
+        int status = append_warning(
+            warnings,
+            MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW,
+            "Datetime function: datetime field overflow"
+        );
         if (status != 0) {
             return status;
         }
@@ -9909,11 +12347,12 @@ static int append_temporal_date_warning(struct mylite_expression_warnings *warni
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
-static int eval_concat_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_concat_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     char *result = copy_span_text("", 0U);
     size_t result_length = 0U;
 
@@ -9951,11 +12390,12 @@ static int eval_concat_function(const struct mylite_sql_ast_node *arguments,
     return 0;
 }
 
-static int eval_concat_ws_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_concat_ws_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value separator_value = {0};
     char *separator = NULL;
     char *result = NULL;
@@ -10016,12 +12456,13 @@ static int eval_concat_ws_function(const struct mylite_sql_ast_node *arguments,
     return 0;
 }
 
-static int eval_unary_string_function(enum mylite_scalar_function_id function_id,
-                                      const struct mylite_sql_ast_node *arguments,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value)
-{
+static int eval_unary_string_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
@@ -10042,8 +12483,10 @@ static int eval_unary_string_function(enum mylite_scalar_function_id function_id
 
     switch (function_id) {
     case MYLITE_SCALAR_FUNCTION_LENGTH:
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = (int64_t)text_length};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = (int64_t)text_length
+        };
         free(text);
         return 0;
     case MYLITE_SCALAR_FUNCTION_CHAR_LENGTH: {
@@ -10052,8 +12495,10 @@ static int eval_unary_string_function(enum mylite_scalar_function_id function_id
         status = utf8_char_count(text, &count);
         free(text);
         if (status == 0) {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = count};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = count
+            };
         }
         return status;
     }
@@ -10081,12 +12526,13 @@ static int eval_unary_string_function(enum mylite_scalar_function_id function_id
     }
 }
 
-static int eval_leftmost_code_function(enum mylite_scalar_function_id function_id,
-                                       const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value)
-{
+static int eval_leftmost_code_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     int status = eval_node(arguments->first_child, context, warnings, &value);
@@ -10105,11 +12551,15 @@ static int eval_leftmost_code_function(enum mylite_scalar_function_id function_i
     }
 
     if (text[0] == '\0') {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 0
+        };
     } else if (function_id == MYLITE_SCALAR_FUNCTION_ASCII) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = (unsigned char)text[0]};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = (unsigned char)text[0]
+        };
     } else {
         uint64_t result = 0U;
         size_t character_length = utf8_first_character_length(text);
@@ -10117,19 +12567,22 @@ static int eval_leftmost_code_function(enum mylite_scalar_function_id function_i
         for (size_t index = 0U; index < character_length; ++index) {
             result = (result * MYLITE_EXPRESSION_ORD_BYTE_BASE) + (unsigned char)text[index];
         }
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = (int64_t)result};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = (int64_t)result
+        };
     }
     free(text);
     return 0;
 }
 
-static int eval_left_right_function(enum mylite_scalar_function_id function_id,
-                                    const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value)
-{
+static int eval_left_right_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     struct mylite_expression_value count = {0};
     char *text = NULL;
@@ -10171,11 +12624,12 @@ static int eval_left_right_function(enum mylite_scalar_function_id function_id,
     return status;
 }
 
-static int eval_substring_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_substring_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value values[3] = {{0}, {0}, {0}};
     struct substring_range range = {0};
     char *text = NULL;
@@ -10203,10 +12657,13 @@ static int eval_substring_function(const struct mylite_sql_ast_node *arguments,
         goto cleanup;
     }
 
-    range = substring_range_from_arguments(values, (struct substring_context){
-                                                       .char_count = char_count,
-                                                       .arity = arity,
-                                                   });
+    range = substring_range_from_arguments(
+        values,
+        (struct substring_context){
+            .char_count = char_count,
+            .arity = arity,
+        }
+    );
     if (range.empty) {
         status = set_text_value("", 0U, out_value);
         goto cleanup;
@@ -10227,10 +12684,10 @@ cleanup:
     return status;
 }
 
-static struct substring_range
-substring_range_from_arguments(const struct mylite_expression_value *values,
-                               struct substring_context context)
-{
+static struct substring_range substring_range_from_arguments(
+    const struct mylite_expression_value *values,
+    struct substring_context context
+) {
     struct substring_range range = {.empty = true};
     int64_t position = mylite_expression_value_to_int64(&values[1]);
 
@@ -10264,11 +12721,12 @@ substring_range_from_arguments(const struct mylite_expression_value *values,
     return range;
 }
 
-static int eval_substring_index_function(const struct mylite_sql_ast_node *arguments,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct mylite_expression_value *out_value)
-{
+static int eval_substring_index_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value values[3] = {{0}, {0}, {0}};
     char *text = NULL;
     char *delimiter = NULL;
@@ -10307,7 +12765,8 @@ static int eval_substring_index_function(const struct mylite_sql_ast_node *argum
                 .requested = requested,
                 .negative_count = negative_count,
             },
-            out_value);
+            out_value
+        );
     }
 
 cleanup:
@@ -10319,10 +12778,12 @@ cleanup:
     return status;
 }
 
-static int substring_index_count_from_value(const struct mylite_expression_value *value,
-                                            struct mylite_expression_warnings *warnings,
-                                            uint64_t *out_requested, bool *out_negative)
-{
+static int substring_index_count_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_requested,
+    bool *out_negative
+) {
     int64_t signed_count = 0;
 
     if (value == NULL || out_requested == NULL || out_negative == NULL) {
@@ -10335,8 +12796,12 @@ static int substring_index_count_from_value(const struct mylite_expression_value
         return 0;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return substring_index_count_from_text(value->text_value == NULL ? "" : value->text_value,
-                                               warnings, out_requested, out_negative);
+        return substring_index_count_from_text(
+            value->text_value == NULL ? "" : value->text_value,
+            warnings,
+            out_requested,
+            out_negative
+        );
     }
     if (cast_value_to_signed_integer(value, warnings, &signed_count) != 0) {
         return -1;
@@ -10350,10 +12815,12 @@ static int substring_index_count_from_value(const struct mylite_expression_value
     return 0;
 }
 
-static int substring_index_count_from_text(const char *text,
-                                           struct mylite_expression_warnings *warnings,
-                                           uint64_t *out_requested, bool *out_negative)
-{
+static int substring_index_count_from_text(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_requested,
+    bool *out_negative
+) {
     struct cast_integer_parse parsed = parse_cast_integer_text(text);
     bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
 
@@ -10387,9 +12854,10 @@ static int substring_index_count_from_text(const char *text,
     return 0;
 }
 
-static int substring_index_text_value(struct substring_index_input input,
-                                      struct mylite_expression_value *out_value)
-{
+static int substring_index_text_value(
+    struct substring_index_input input,
+    struct mylite_expression_value *out_value
+) {
     if (input.requested == 0U || input.delimiter_length == 0U) {
         return set_text_value("", 0U, out_value);
     }
@@ -10399,9 +12867,11 @@ static int substring_index_text_value(struct substring_index_input input,
     return substring_index_negative_value(input, input.requested, out_value);
 }
 
-static int substring_index_positive_value(struct substring_index_input input, uint64_t requested,
-                                          struct mylite_expression_value *out_value)
-{
+static int substring_index_positive_value(
+    struct substring_index_input input,
+    uint64_t requested,
+    struct mylite_expression_value *out_value
+) {
     uint64_t matches = 0U;
     size_t offset = 0U;
     size_t match_offset = 0U;
@@ -10416,9 +12886,11 @@ static int substring_index_positive_value(struct substring_index_input input, ui
     return set_text_value(input.text, input.text_length, out_value);
 }
 
-static int substring_index_negative_value(struct substring_index_input input, uint64_t requested,
-                                          struct mylite_expression_value *out_value)
-{
+static int substring_index_negative_value(
+    struct substring_index_input input,
+    uint64_t requested,
+    struct mylite_expression_value *out_value
+) {
     size_t delimiter_count = count_substring_index_delimiters(input);
     size_t offset = 0U;
     size_t match_offset = 0U;
@@ -10437,8 +12909,7 @@ static int substring_index_negative_value(struct substring_index_input input, ui
     return set_text_value(input.text + offset, input.text_length - offset, out_value);
 }
 
-static size_t count_substring_index_delimiters(struct substring_index_input input)
-{
+static size_t count_substring_index_delimiters(struct substring_index_input input) {
     size_t count = 0U;
     size_t offset = 0U;
     size_t match_offset = 0U;
@@ -10450,9 +12921,11 @@ static size_t count_substring_index_delimiters(struct substring_index_input inpu
     return count;
 }
 
-static bool find_next_substring_index_delimiter(struct substring_index_input input,
-                                                size_t start_offset, size_t *out_offset)
-{
+static bool find_next_substring_index_delimiter(
+    struct substring_index_input input,
+    size_t start_offset,
+    size_t *out_offset
+) {
     if (input.delimiter_length == 0U || input.delimiter_length > input.text_length ||
         start_offset > input.text_length - input.delimiter_length) {
         return false;
@@ -10467,12 +12940,13 @@ static bool find_next_substring_index_delimiter(struct substring_index_input inp
     return false;
 }
 
-static int eval_trim_function(enum mylite_scalar_function_id function_id,
-                              const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_trim_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     enum mylite_sql_ast_trim_direction direction = MYLITE_SQL_AST_TRIM_DIRECTION_BOTH;
     const struct mylite_sql_ast_node *source = child_at(arguments, 0U);
     const struct mylite_sql_ast_node *remove = NULL;
@@ -10489,13 +12963,14 @@ static int eval_trim_function(enum mylite_scalar_function_id function_id,
     return eval_trim_operands(direction, source, remove, context, warnings, out_value);
 }
 
-static int eval_trim_operands(enum mylite_sql_ast_trim_direction direction,
-                              const struct mylite_sql_ast_node *source_node,
-                              const struct mylite_sql_ast_node *remove_node,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_trim_operands(
+    enum mylite_sql_ast_trim_direction direction,
+    const struct mylite_sql_ast_node *source_node,
+    const struct mylite_sql_ast_node *remove_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value source = {0};
     struct mylite_expression_value remove = {0};
     char *text = NULL;
@@ -10538,10 +13013,12 @@ static int eval_trim_operands(enum mylite_sql_ast_trim_direction direction,
     return status;
 }
 
-static int trim_text_value(const char *text, const char *remove,
-                           enum mylite_sql_ast_trim_direction direction,
-                           struct mylite_expression_value *out_value)
-{
+static int trim_text_value(
+    const char *text,
+    const char *remove,
+    enum mylite_sql_ast_trim_direction direction,
+    struct mylite_expression_value *out_value
+) {
     size_t text_length = strlen(text == NULL ? "" : text);
     size_t remove_length = strlen(remove == NULL ? "" : remove);
     size_t start = 0U;
@@ -10560,15 +13037,18 @@ static int trim_text_value(const char *text, const char *remove,
     }
     if (direction == MYLITE_SQL_AST_TRIM_DIRECTION_BOTH ||
         direction == MYLITE_SQL_AST_TRIM_DIRECTION_TRAILING) {
-        end = trim_trailing_length((text == NULL ? "" : text) + start, text_length - start, remove,
-                                   remove_length) +
+        end = trim_trailing_length(
+                  (text == NULL ? "" : text) + start,
+                  text_length - start,
+                  remove,
+                  remove_length
+              ) +
               start;
     }
     return set_text_value((text == NULL ? "" : text) + start, end - start, out_value);
 }
 
-static size_t trim_leading_offset(struct trim_match match)
-{
+static size_t trim_leading_offset(struct trim_match match) {
     const char *source = match.source == NULL ? "" : match.source;
     const char *remove = match.remove == NULL ? "" : match.remove;
     size_t offset = 0U;
@@ -10579,9 +13059,12 @@ static size_t trim_leading_offset(struct trim_match match)
     return offset;
 }
 
-static size_t trim_trailing_length(const char *text, size_t text_length, const char *remove,
-                                   size_t remove_length)
-{
+static size_t trim_trailing_length(
+    const char *text,
+    size_t text_length,
+    const char *remove,
+    size_t remove_length
+) {
     const char *source = text == NULL ? "" : text;
     size_t length = text_length;
 
@@ -10592,11 +13075,12 @@ static size_t trim_trailing_length(const char *text, size_t text_length, const c
     return length;
 }
 
-static int eval_replace_function(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
+static int eval_replace_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value values[3] = {{0}, {0}, {0}};
     char *text = NULL;
     char *from = NULL;
@@ -10662,11 +13146,12 @@ cleanup:
     return status;
 }
 
-static int eval_insert_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_insert_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct insert_operands operands = {0};
     struct insert_range range = {0};
     char *text = NULL;
@@ -10690,7 +13175,8 @@ static int eval_insert_function(const struct mylite_sql_ast_node *arguments,
     if (status == 0) {
         status = insert_text_value(
             (struct insert_text_input){.text = text, .replacement = replacement, .range = range},
-            out_value);
+            out_value
+        );
     }
 
 cleanup:
@@ -10700,25 +13186,42 @@ cleanup:
     return status;
 }
 
-static int eval_insert_operands(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct insert_operands *operands, struct insert_range *out_range,
-                                bool *out_null_result)
-{
-    int status = eval_insert_nonnull_argument(child_at(arguments, 0U), context, warnings,
-                                              &operands->text, out_null_result);
+static int eval_insert_operands(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct insert_operands *operands,
+    struct insert_range *out_range,
+    bool *out_null_result
+) {
+    int status = eval_insert_nonnull_argument(
+        child_at(arguments, 0U),
+        context,
+        warnings,
+        &operands->text,
+        out_null_result
+    );
 
     if (status != 0 || *out_null_result) {
         return status;
     }
-    status = eval_insert_nonnull_argument(child_at(arguments, 3U), context, warnings,
-                                          &operands->replacement, out_null_result);
+    status = eval_insert_nonnull_argument(
+        child_at(arguments, 3U),
+        context,
+        warnings,
+        &operands->replacement,
+        out_null_result
+    );
     if (status != 0 || *out_null_result) {
         return status;
     }
-    status = eval_insert_nonnull_argument(child_at(arguments, 1U), context, warnings,
-                                          &operands->position, out_null_result);
+    status = eval_insert_nonnull_argument(
+        child_at(arguments, 1U),
+        context,
+        warnings,
+        &operands->position,
+        out_null_result
+    );
     if (status != 0 || *out_null_result) {
         return status;
     }
@@ -10726,37 +13229,43 @@ static int eval_insert_operands(const struct mylite_sql_ast_node *arguments,
     if (status != 0) {
         return status;
     }
-    status = eval_insert_nonnull_argument(child_at(arguments, 2U), context, warnings,
-                                          &operands->length, out_null_result);
+    status = eval_insert_nonnull_argument(
+        child_at(arguments, 2U),
+        context,
+        warnings,
+        &operands->length,
+        out_null_result
+    );
     if (status != 0 || *out_null_result) {
         return status;
     }
     return cast_value_to_signed_integer(&operands->length, warnings, &out_range->length);
 }
 
-static int eval_insert_nonnull_argument(const struct mylite_sql_ast_node *argument,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value,
-                                        bool *out_null_result)
-{
+static int eval_insert_nonnull_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    bool *out_null_result
+) {
     int status = eval_node(argument, context, warnings, out_value);
 
     *out_null_result = status == 0 && is_null(out_value);
     return status;
 }
 
-static void insert_operands_deinit(struct insert_operands *operands)
-{
+static void insert_operands_deinit(struct insert_operands *operands) {
     mylite_expression_value_deinit(&operands->text);
     mylite_expression_value_deinit(&operands->replacement);
     mylite_expression_value_deinit(&operands->position);
     mylite_expression_value_deinit(&operands->length);
 }
 
-static int insert_text_value(struct insert_text_input input,
-                             struct mylite_expression_value *out_value)
-{
+static int insert_text_value(
+    struct insert_text_input input,
+    struct mylite_expression_value *out_value
+) {
     const char *source = input.text == NULL ? "" : input.text;
     const char *new_text = input.replacement == NULL ? "" : input.replacement;
     int64_t source_chars = 0;
@@ -10791,8 +13300,12 @@ static int insert_text_value(struct insert_text_input input,
         status = append_text(&result, &result_length, new_text, strlen(new_text));
     }
     if (status == 0) {
-        status = append_text(&result, &result_length, source + suffix_offset,
-                             strlen(source + suffix_offset));
+        status = append_text(
+            &result,
+            &result_length,
+            source + suffix_offset,
+            strlen(source + suffix_offset)
+        );
     }
     if (status == 0) {
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
@@ -10804,11 +13317,12 @@ static int insert_text_value(struct insert_text_input input,
     return status;
 }
 
-static int eval_quote_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value)
-{
+static int eval_quote_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     int status = eval_node(arguments->first_child, context, warnings, &value);
@@ -10832,8 +13346,7 @@ cleanup:
     return status;
 }
 
-static int quote_text_value(const char *text, struct mylite_expression_value *out_value)
-{
+static int quote_text_value(const char *text, struct mylite_expression_value *out_value) {
     const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
     size_t source_length = strlen((const char *)source);
     char *result = copy_span_text("'", 1U);
@@ -10873,11 +13386,12 @@ static int quote_text_value(const char *text, struct mylite_expression_value *ou
     return 0;
 }
 
-static int eval_repeat_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_repeat_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value text_value = {0};
     struct mylite_expression_value count_value = {0};
     char *text = NULL;
@@ -10909,9 +13423,11 @@ cleanup:
     return status;
 }
 
-static int repeat_text_value(const char *text, int64_t count,
-                             struct mylite_expression_value *out_value)
-{
+static int repeat_text_value(
+    const char *text,
+    int64_t count,
+    struct mylite_expression_value *out_value
+) {
     const char *source = text == NULL ? "" : text;
     size_t source_length = strlen(source);
     size_t output_length = 0U;
@@ -10942,11 +13458,12 @@ static int repeat_text_value(const char *text, int64_t count,
     return 0;
 }
 
-static int eval_space_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value)
-{
+static int eval_space_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value count_value = {0};
     int64_t count = 0;
     int status = eval_node(arguments->first_child, context, warnings, &count_value);
@@ -10967,8 +13484,7 @@ static int eval_space_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int space_text_value(int64_t count, struct mylite_expression_value *out_value)
-{
+static int space_text_value(int64_t count, struct mylite_expression_value *out_value) {
     char *result = NULL;
 
     if (count < 1) {
@@ -10989,11 +13505,12 @@ static int space_text_value(int64_t count, struct mylite_expression_value *out_v
     return 0;
 }
 
-static int eval_reverse_function(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
+static int eval_reverse_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     int status = eval_node(arguments->first_child, context, warnings, &value);
@@ -11015,8 +13532,7 @@ static int eval_reverse_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int reverse_text_value(const char *text, struct mylite_expression_value *out_value)
-{
+static int reverse_text_value(const char *text, struct mylite_expression_value *out_value) {
     const char *source = text == NULL ? "" : text;
     size_t source_length = strlen(source);
     size_t read_offset = source_length;
@@ -11047,12 +13563,13 @@ static int reverse_text_value(const char *text, struct mylite_expression_value *
     return 0;
 }
 
-static int eval_pad_function(enum mylite_scalar_function_id function_id,
-                             const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value)
-{
+static int eval_pad_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value values[3] = {{0}, {0}, {0}};
     char *text = NULL;
     char *pad = NULL;
@@ -11093,10 +13610,13 @@ cleanup:
     return status;
 }
 
-static int pad_text_value(enum mylite_scalar_function_id function_id, const char *text,
-                          int64_t target_length, const char *pad,
-                          struct mylite_expression_value *out_value)
-{
+static int pad_text_value(
+    enum mylite_scalar_function_id function_id,
+    const char *text,
+    int64_t target_length,
+    const char *pad,
+    struct mylite_expression_value *out_value
+) {
     const char *source = text == NULL ? "" : text;
     const char *padding = pad == NULL ? "" : pad;
     int64_t source_chars = 0;
@@ -11158,9 +13678,13 @@ static int pad_text_value(enum mylite_scalar_function_id function_id, const char
     return status;
 }
 
-static int append_padding_chars(char **result, size_t *result_length, const char *pad,
-                                int64_t pad_chars, int64_t needed_chars)
-{
+static int append_padding_chars(
+    char **result,
+    size_t *result_length,
+    const char *pad,
+    int64_t pad_chars,
+    int64_t needed_chars
+) {
     size_t pad_length = strlen(pad == NULL ? "" : pad);
     int64_t full_repetitions = pad_chars == 0 ? 0 : needed_chars / pad_chars;
     int64_t partial_chars = pad_chars == 0 ? 0 : needed_chars % pad_chars;
@@ -11178,12 +13702,13 @@ static int append_padding_chars(char **result, size_t *result_length, const char
     return status;
 }
 
-static int eval_locate_function(enum mylite_scalar_function_id function_id,
-                                const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_locate_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value values[3] = {{0}, {0}, {0}};
     char *needle = NULL;
     char *text = NULL;
@@ -11213,8 +13738,11 @@ static int eval_locate_function(enum mylite_scalar_function_id function_id,
         start = mylite_expression_value_to_int64(&values[2]);
     }
 
-    status = set_locate_function_result((struct locate_texts){.text = text, .needle = needle},
-                                        start, out_value);
+    status = set_locate_function_result(
+        (struct locate_texts){.text = text, .needle = needle},
+        start,
+        out_value
+    );
 
 cleanup:
     free(needle);
@@ -11225,13 +13753,14 @@ cleanup:
     return status;
 }
 
-static int eval_locate_arguments(enum mylite_scalar_function_id function_id,
-                                 const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value values[3],
-                                 const struct mylite_sql_ast_node **out_start_node)
-{
+static int eval_locate_arguments(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value values[3],
+    const struct mylite_sql_ast_node **out_start_node
+) {
     const struct mylite_sql_ast_node *needle_node = child_at(arguments, 0U);
     const struct mylite_sql_ast_node *text_node = child_at(arguments, 1U);
     int status = 0;
@@ -11254,16 +13783,19 @@ static int eval_locate_arguments(enum mylite_scalar_function_id function_id,
     return status;
 }
 
-static bool locate_arguments_are_null(const struct mylite_expression_value values[3],
-                                      const struct mylite_sql_ast_node *start_node)
-{
+static bool locate_arguments_are_null(
+    const struct mylite_expression_value values[3],
+    const struct mylite_sql_ast_node *start_node
+) {
     return is_null(&values[0]) || is_null(&values[1]) ||
            (start_node != NULL && is_null(&values[2]));
 }
 
-static int set_locate_function_result(struct locate_texts texts, int64_t start,
-                                      struct mylite_expression_value *out_value)
-{
+static int set_locate_function_result(
+    struct locate_texts texts,
+    int64_t start,
+    struct mylite_expression_value *out_value
+) {
     const char *text = texts.text == NULL ? "" : texts.text;
     const char *needle = texts.needle == NULL ? "" : texts.needle;
     int64_t char_count = 0;
@@ -11273,18 +13805,24 @@ static int set_locate_function_result(struct locate_texts texts, int64_t start,
         return status;
     }
     if (start <= 0 || start > char_count + 1) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 0
+        };
         return 0;
     }
     if (needle[0] == '\0') {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = start};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = start
+        };
         return 0;
     }
     if (start > char_count) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 0
+        };
         return 0;
     }
 
@@ -11297,17 +13835,20 @@ static int set_locate_function_result(struct locate_texts texts, int64_t start,
             .start_position = start,
         });
 
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = position};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = position
+        };
     }
     return 0;
 }
 
-static int eval_elt_function(const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value)
-{
+static int eval_elt_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value index_value = {0};
     struct mylite_expression_value selected_value = {0};
     char *text = NULL;
@@ -11352,11 +13893,12 @@ cleanup:
     return status;
 }
 
-static int eval_field_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value)
-{
+static int eval_field_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value search = {0};
     struct mylite_expression_value *candidates = NULL;
     size_t argument_count = child_count(arguments);
@@ -11368,13 +13910,17 @@ static int eval_field_function(const struct mylite_sql_ast_node *arguments,
         goto cleanup;
     }
     if (is_null(&search)) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 0
+        };
         goto cleanup;
     }
     if (candidate_count == 0U) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 0
+        };
         goto cleanup;
     }
 
@@ -11392,12 +13938,18 @@ static int eval_field_function(const struct mylite_sql_ast_node *arguments,
             .candidate_count = candidate_count,
         };
 
-        status = field_match_position(input, field_comparison_mode_from_values(input), warnings,
-                                      &position);
+        status = field_match_position(
+            input,
+            field_comparison_mode_from_values(input),
+            warnings,
+            &position
+        );
     }
     if (status == 0) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = position};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = position
+        };
     }
 
 cleanup:
@@ -11411,11 +13963,13 @@ cleanup:
     return status;
 }
 
-static int eval_field_candidates(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *candidates, size_t candidate_count)
-{
+static int eval_field_candidates(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *candidates,
+    size_t candidate_count
+) {
     for (size_t index = 0U; index < candidate_count; ++index) {
         int status =
             eval_node(child_at(arguments, index + 1U), context, warnings, &candidates[index]);
@@ -11427,9 +13981,12 @@ static int eval_field_candidates(const struct mylite_sql_ast_node *arguments,
     return 0;
 }
 
-static int field_match_position(struct field_match_input input, enum field_comparison_mode mode,
-                                struct mylite_expression_warnings *warnings, int64_t *out_position)
-{
+static int field_match_position(
+    struct field_match_input input,
+    enum field_comparison_mode mode,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_position
+) {
     *out_position = 0;
     if (mode == FIELD_COMPARISON_STRING) {
         return field_string_match_position(input, out_position);
@@ -11437,8 +13994,9 @@ static int field_match_position(struct field_match_input input, enum field_compa
     return field_numeric_match_position(input, warnings, out_position);
 }
 
-static enum field_comparison_mode field_comparison_mode_from_values(struct field_match_input input)
-{
+static enum field_comparison_mode field_comparison_mode_from_values(
+    struct field_match_input input
+) {
     bool saw_string = input.search->kind == MYLITE_EXPRESSION_VALUE_TEXT;
     bool saw_numeric = is_numeric_kind(input.search->kind);
 
@@ -11452,8 +14010,7 @@ static enum field_comparison_mode field_comparison_mode_from_values(struct field
     return saw_string && !saw_numeric ? FIELD_COMPARISON_STRING : FIELD_COMPARISON_NUMERIC;
 }
 
-static int field_string_match_position(struct field_match_input input, int64_t *out_position)
-{
+static int field_string_match_position(struct field_match_input input, int64_t *out_position) {
     char *search_text = NULL;
     int status = value_to_string(input.search, &search_text);
 
@@ -11486,10 +14043,11 @@ static int field_string_match_position(struct field_match_input input, int64_t *
     return status;
 }
 
-static int field_numeric_match_position(struct field_match_input input,
-                                        struct mylite_expression_warnings *warnings,
-                                        int64_t *out_position)
-{
+static int field_numeric_match_position(
+    struct field_match_input input,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_position
+) {
     struct numeric_value search_number = {0};
     int status = value_to_numeric(input.search, warnings, &search_number);
 
@@ -11514,11 +14072,12 @@ static int field_numeric_match_position(struct field_match_input input,
     return 0;
 }
 
-static int eval_find_in_set_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_find_in_set_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value needle_value = {0};
     struct mylite_expression_value list_value = {0};
     char *needle = NULL;
@@ -11552,8 +14111,10 @@ static int eval_find_in_set_function(const struct mylite_sql_ast_node *arguments
             .needle = needle,
             .list = list,
         });
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = position};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = position
+        };
     }
 
 cleanup:
@@ -11564,8 +14125,7 @@ cleanup:
     return status;
 }
 
-static int64_t find_in_set_position(struct find_in_set_input input)
-{
+static int64_t find_in_set_position(struct find_in_set_input input) {
     const char *target = input.needle == NULL ? "" : input.needle;
     const char *source = input.list == NULL ? "" : input.list;
     size_t target_length = strlen(target);
@@ -11597,11 +14157,12 @@ static int64_t find_in_set_position(struct find_in_set_input input)
     return 0;
 }
 
-static int eval_make_set_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value)
-{
+static int eval_make_set_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value bits_value = {0};
     char *result = copy_span_text("", 0U);
     size_t result_length = 0U;
@@ -11665,19 +14226,26 @@ cleanup:
     return status;
 }
 
-static int make_set_bits_from_value(const struct mylite_expression_value *value,
-                                    struct mylite_expression_warnings *warnings, uint64_t *out_bits)
-{
+static int make_set_bits_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+) {
     if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return make_set_bits_from_string(value->text_value == NULL ? "" : value->text_value,
-                                         warnings, out_bits);
+        return make_set_bits_from_string(
+            value->text_value == NULL ? "" : value->text_value,
+            warnings,
+            out_bits
+        );
     }
     return cast_value_to_unsigned_integer(value, warnings, out_bits);
 }
 
-static int make_set_bits_from_string(const char *text, struct mylite_expression_warnings *warnings,
-                                     uint64_t *out_bits)
-{
+static int make_set_bits_from_string(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+) {
     struct cast_integer_parse parsed = parse_cast_integer_text(text);
     bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
 
@@ -11697,19 +14265,19 @@ static int make_set_bits_from_string(const char *text, struct mylite_expression_
     return 0;
 }
 
-static bool make_set_member_is_selected(uint64_t bits, size_t index)
-{
+static bool make_set_member_is_selected(uint64_t bits, size_t index) {
     if (index >= (size_t)MYLITE_EXPRESSION_BITS_PER_UINT64) {
         return false;
     }
     return (bits & (UINT64_C(1) << index)) != 0U;
 }
 
-static int eval_char_function(const struct mylite_sql_ast_node *function_call,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_char_function(
+    const struct mylite_sql_ast_node *function_call,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *arguments = child_at(function_call, 1U);
     const struct mylite_sql_ast_node *charset_node = child_at(function_call, 2U);
     char *charset_name = copy_charset_node_name(charset_node);
@@ -11732,7 +14300,8 @@ static int eval_char_function(const struct mylite_sql_ast_node *function_call,
         return -1;
     }
     for (const struct mylite_sql_ast_node *argument = arguments->first_child;
-         status == 0 && argument != NULL; argument = argument->next_sibling) {
+         status == 0 && argument != NULL;
+         argument = argument->next_sibling) {
         struct mylite_expression_value value = {0};
         uint32_t char_value = 0U;
 
@@ -11753,10 +14322,12 @@ static int eval_char_function(const struct mylite_sql_ast_node *function_call,
     return status;
 }
 
-static int char_argument_value(const struct mylite_expression_value *value,
-                               const struct mylite_sql_ast_node *argument,
-                               struct mylite_expression_warnings *warnings, uint32_t *out_value)
-{
+static int char_argument_value(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_value
+) {
     bool handled_literal = false;
     int status =
         char_integer_literal_overflow_value(argument, warnings, out_value, &handled_literal);
@@ -11778,19 +14349,24 @@ static int char_argument_value(const struct mylite_expression_value *value,
                                      : cast_real_to_signed_integer_half_even(value->real_value));
         return 0;
     case MYLITE_EXPRESSION_VALUE_TEXT:
-        return char_text_value(value->text_value == NULL ? "" : value->text_value,
-                               value->text_value == NULL ? 0U : value->text_length, warnings,
-                               out_value);
+        return char_text_value(
+            value->text_value == NULL ? "" : value->text_value,
+            value->text_value == NULL ? 0U : value->text_length,
+            warnings,
+            out_value
+        );
     case MYLITE_EXPRESSION_VALUE_NULL:
         break;
     }
     return -1;
 }
 
-static int char_integer_literal_overflow_value(const struct mylite_sql_ast_node *argument,
-                                               struct mylite_expression_warnings *warnings,
-                                               uint32_t *out_value, bool *out_handled)
-{
+static int char_integer_literal_overflow_value(
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_value,
+    bool *out_handled
+) {
     const struct mylite_sql_ast_node *node = argument;
     bool negative = false;
     struct char_integer_parse parsed = {0};
@@ -11820,13 +14396,20 @@ static int char_integer_literal_overflow_value(const struct mylite_sql_ast_node 
 
     *out_handled = true;
     *out_value = effective_negative ? 0U : UINT32_MAX;
-    return append_char_integer_warning(warnings, "DECIMAL", argument->span.text,
-                                       argument->span.length);
+    return append_char_integer_warning(
+        warnings,
+        "DECIMAL",
+        argument->span.text,
+        argument->span.length
+    );
 }
 
-static int char_text_value(const char *text, size_t text_length,
-                           struct mylite_expression_warnings *warnings, uint32_t *out_value)
-{
+static int char_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_value
+) {
     struct char_integer_parse parsed = parse_char_integer_text(text, text_length);
     bool negative_overflow =
         parsed.negative && parsed.magnitude > mylite_expression_int64_min_magnitude;
@@ -11856,8 +14439,7 @@ static int char_text_value(const char *text, size_t text_length,
     return 0;
 }
 
-static struct char_integer_parse parse_char_integer_text(const char *text, size_t text_length)
-{
+static struct char_integer_parse parse_char_integer_text(const char *text, size_t text_length) {
     const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
     size_t index = 0U;
     struct char_integer_parse parsed = {0};
@@ -11891,15 +14473,24 @@ static struct char_integer_parse parse_char_integer_text(const char *text, size_
     return parsed;
 }
 
-static int append_char_integer_warning(struct mylite_expression_warnings *warnings,
-                                       const char *type_name, const char *text, size_t text_length)
-{
+static int append_char_integer_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *type_name,
+    const char *text,
+    size_t text_length
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       : (int)text_length;
-    int length = snprintf(message, sizeof(message), "Truncated incorrect %s value: '%.*s'",
-                          type_name == NULL ? "" : type_name, preview, text == NULL ? "" : text);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect %s value: '%.*s'",
+        type_name == NULL ? "" : type_name,
+        preview,
+        text == NULL ? "" : text
+    );
 
     if (length < 0) {
         return -1;
@@ -11907,8 +14498,7 @@ static int append_char_integer_warning(struct mylite_expression_warnings *warnin
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
-static int append_char_bytes(char **result, size_t *result_length, uint32_t value)
-{
+static int append_char_bytes(char **result, size_t *result_length, uint32_t value) {
     char bytes[MYLITE_EXPRESSION_CHAR_VALUE_BYTES];
     size_t offset = 0U;
 
@@ -11923,21 +14513,26 @@ static int append_char_bytes(char **result, size_t *result_length, uint32_t valu
     return append_text(result, result_length, bytes + offset, sizeof(bytes) - offset);
 }
 
-static int set_char_result(enum char_function_charset charset, const char *charset_name,
-                           const char *text, size_t text_length,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value)
-{
+static int set_char_result(
+    enum char_function_charset charset,
+    const char *charset_name,
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     if (text == NULL) {
         text_length = 0U;
     }
     if (!char_text_is_valid_for_charset(charset, text, text_length)) {
-        int status =
-            append_invalid_char_string_warning(warnings, (struct char_invalid_string_warning){
-                                                             .charset_name = charset_name,
-                                                             .text = text,
-                                                             .text_length = text_length,
-                                                         });
+        int status = append_invalid_char_string_warning(
+            warnings,
+            (struct char_invalid_string_warning){
+                .charset_name = charset_name,
+                .text = text,
+                .text_length = text_length,
+            }
+        );
 
         if (status != 0) {
             return status;
@@ -11950,9 +14545,11 @@ static int set_char_result(enum char_function_charset charset, const char *chars
     return set_text_value(text == NULL ? "" : text, text_length, out_value);
 }
 
-static bool char_text_is_valid_for_charset(enum char_function_charset charset, const char *text,
-                                           size_t text_length)
-{
+static bool char_text_is_valid_for_charset(
+    enum char_function_charset charset,
+    const char *text,
+    size_t text_length
+) {
     switch (charset) {
     case CHAR_FUNCTION_CHARSET_BINARY:
     case CHAR_FUNCTION_CHARSET_LATIN1:
@@ -11969,8 +14566,7 @@ static bool char_text_is_valid_for_charset(enum char_function_charset charset, c
     return false;
 }
 
-static bool char_text_is_ascii(const char *text, size_t text_length)
-{
+static bool char_text_is_ascii(const char *text, size_t text_length) {
     const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
 
     if (text == NULL) {
@@ -11984,8 +14580,7 @@ static bool char_text_is_ascii(const char *text, size_t text_length)
     return true;
 }
 
-static bool char_text_is_utf8(const char *text, size_t text_length, bool allow_four_byte)
-{
+static bool char_text_is_utf8(const char *text, size_t text_length, bool allow_four_byte) {
     const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
     size_t index = 0U;
 
@@ -12017,9 +14612,11 @@ static bool char_text_is_utf8(const char *text, size_t text_length, bool allow_f
     return true;
 }
 
-static bool utf8_sequence_from_first(unsigned char first, bool allow_four_byte,
-                                     struct utf8_sequence *out_sequence)
-{
+static bool utf8_sequence_from_first(
+    unsigned char first,
+    bool allow_four_byte,
+    struct utf8_sequence *out_sequence
+) {
     static const struct utf8_sequence_range ranges[] = {
         {.length = MYLITE_UTF8_TWO_BYTE_LENGTH,
          .first_min = MYLITE_UTF8_TWO_BYTE_MIN,
@@ -12082,14 +14679,14 @@ static bool utf8_sequence_from_first(unsigned char first, bool allow_four_byte,
     return false;
 }
 
-static bool utf8_continuation_byte(unsigned char character)
-{
+static bool utf8_continuation_byte(unsigned char character) {
     return (character & MYLITE_UTF8_CONTINUATION_MASK) == MYLITE_UTF8_CONTINUATION_MARKER;
 }
 
-static int append_invalid_char_string_warning(struct mylite_expression_warnings *warnings,
-                                              struct char_invalid_string_warning warning)
-{
+static int append_invalid_char_string_warning(
+    struct mylite_expression_warnings *warnings,
+    struct char_invalid_string_warning warning
+) {
     static const char digits[] = "0123456789ABCDEF";
     char hex_preview[(MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW * 2U) + 1U];
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
@@ -12106,19 +14703,21 @@ static int append_invalid_char_string_warning(struct mylite_expression_warnings 
         hex_preview[output++] = digits[source[index] & MYLITE_EXPRESSION_HEX_LOW_NIBBLE_MASK];
     }
     hex_preview[output] = '\0';
-    length = snprintf(message, sizeof(message), "Invalid %s character string: '%s'",
-                      warning.charset_name == NULL || warning.charset_name[0] == '\0'
-                          ? "binary"
-                          : warning.charset_name,
-                      hex_preview);
+    length = snprintf(
+        message,
+        sizeof(message),
+        "Invalid %s character string: '%s'",
+        warning.charset_name == NULL || warning.charset_name[0] == '\0' ? "binary"
+                                                                        : warning.charset_name,
+        hex_preview
+    );
     if (length < 0) {
         return -1;
     }
     return append_warning(warnings, MYLITE_WARNING_INVALID_CHARACTER_STRING, message);
 }
 
-static char *copy_charset_node_name(const struct mylite_sql_ast_node *node)
-{
+static char *copy_charset_node_name(const struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return copy_span_text("binary", strlen("binary"));
     }
@@ -12128,8 +14727,7 @@ static char *copy_charset_node_name(const struct mylite_sql_ast_node *node)
     return copy_unquoted_identifier_text(node->span);
 }
 
-static char *copy_unquoted_identifier_text(struct mylite_sql_source_span span)
-{
+static char *copy_unquoted_identifier_text(struct mylite_sql_source_span span) {
     const char *text = span.text == NULL ? "" : span.text;
     size_t start = 0U;
     size_t end = span.text == NULL ? 0U : span.length;
@@ -12155,8 +14753,7 @@ static char *copy_unquoted_identifier_text(struct mylite_sql_source_span span)
     return copy;
 }
 
-static enum char_function_charset char_function_charset_from_name(const char *name)
-{
+static enum char_function_charset char_function_charset_from_name(const char *name) {
     const char *text = name == NULL ? "binary" : name;
     size_t length = strlen(text);
 
@@ -12179,8 +14776,7 @@ static enum char_function_charset char_function_charset_from_name(const char *na
     return CHAR_FUNCTION_CHARSET_UNKNOWN;
 }
 
-static bool char_charset_name_is(const char *text, size_t text_length, const char *expected)
-{
+static bool char_charset_name_is(const char *text, size_t text_length, const char *expected) {
     return ascii_text_equal_ci((struct text_compare_input){
         .left = text,
         .left_length = text_length,
@@ -12189,11 +14785,12 @@ static bool char_charset_name_is(const char *text, size_t text_length, const cha
     });
 }
 
-static int eval_hex_function(const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value)
-{
+static int eval_hex_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
     struct mylite_expression_value value = {0};
     uint64_t number = 0U;
@@ -12205,8 +14802,11 @@ static int eval_hex_function(const struct mylite_sql_ast_node *arguments,
     if (is_null(&value)) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
     } else if (value.kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        status = set_hex_bytes_value(value.text_value == NULL ? "" : value.text_value,
-                                     value.text_value == NULL ? 0U : value.text_length, out_value);
+        status = set_hex_bytes_value(
+            value.text_value == NULL ? "" : value.text_value,
+            value.text_value == NULL ? 0U : value.text_length,
+            out_value
+        );
     } else {
         status = hex_numeric_value(&value, argument, warnings, &number);
         if (status == 0) {
@@ -12217,10 +14817,12 @@ static int eval_hex_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int hex_numeric_value(const struct mylite_expression_value *value,
-                             const struct mylite_sql_ast_node *argument,
-                             struct mylite_expression_warnings *warnings, uint64_t *out_number)
-{
+static int hex_numeric_value(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_number
+) {
     if (value == NULL || out_number == NULL) {
         return -1;
     }
@@ -12242,16 +14844,17 @@ static int hex_numeric_value(const struct mylite_expression_value *value,
     return -1;
 }
 
-static int64_t hex_real_to_signed_integer(double value, const struct mylite_sql_ast_node *argument)
-{
+static int64_t hex_real_to_signed_integer(
+    double value,
+    const struct mylite_sql_ast_node *argument
+) {
     if (numeric_argument_uses_exact_rounding(argument)) {
         return cast_real_to_signed_integer(value);
     }
     return cast_real_to_signed_integer_half_even(value);
 }
 
-static bool numeric_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument)
-{
+static bool numeric_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument) {
     while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         argument = child_at(argument, 0U);
     }
@@ -12269,8 +14872,7 @@ static bool numeric_argument_uses_exact_rounding(const struct mylite_sql_ast_nod
     return false;
 }
 
-static int64_t cast_real_to_signed_integer_half_even(double value)
-{
+static int64_t cast_real_to_signed_integer_half_even(double value) {
     int64_t truncated = 0;
     double fraction = 0.0;
 
@@ -12286,15 +14888,16 @@ static int64_t cast_real_to_signed_integer_half_even(double value)
     if (fraction > mylite_expression_round_half ||
         (fraction == mylite_expression_round_half && (truncated & INT64_C(1)) != 0)) {
         ++truncated;
-    } else if (fraction < -mylite_expression_round_half ||
-               (fraction == -mylite_expression_round_half && (truncated & INT64_C(1)) != 0)) {
+    } else if (
+        fraction < -mylite_expression_round_half ||
+        (fraction == -mylite_expression_round_half && (truncated & INT64_C(1)) != 0)
+    ) {
         --truncated;
     }
     return truncated;
 }
 
-static int set_hex_uint64_value(uint64_t number, struct mylite_expression_value *out_value)
-{
+static int set_hex_uint64_value(uint64_t number, struct mylite_expression_value *out_value) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     int length = snprintf(buffer, sizeof(buffer), "%llX", (unsigned long long)number);
 
@@ -12304,9 +14907,11 @@ static int set_hex_uint64_value(uint64_t number, struct mylite_expression_value 
     return set_text_value(buffer, (size_t)length, out_value);
 }
 
-static int set_hex_bytes_value(const char *text, size_t text_length,
-                               struct mylite_expression_value *out_value)
-{
+static int set_hex_bytes_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+) {
     static const char digits[] = "0123456789ABCDEF";
     const unsigned char *bytes = (const unsigned char *)(text == NULL ? "" : text);
     char *result = NULL;
@@ -12331,11 +14936,12 @@ static int set_hex_bytes_value(const char *text, size_t text_length,
     return 0;
 }
 
-static int eval_unhex_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value)
-{
+static int eval_unhex_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
@@ -12359,10 +14965,12 @@ static int eval_unhex_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int unhex_argument_to_text(const struct mylite_expression_value *value,
-                                  const struct mylite_sql_ast_node *argument, char **out_text,
-                                  size_t *out_length)
-{
+static int unhex_argument_to_text(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+) {
     if (value == NULL || out_text == NULL || out_length == NULL) {
         return -1;
     }
@@ -12386,8 +14994,7 @@ static int unhex_argument_to_text(const struct mylite_expression_value *value,
     return value_to_string_with_length(value, out_text, out_length);
 }
 
-static bool unhex_argument_uses_exact_decimal_text(const struct mylite_sql_ast_node *argument)
-{
+static bool unhex_argument_uses_exact_decimal_text(const struct mylite_sql_ast_node *argument) {
     while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         argument = child_at(argument, 0U);
     }
@@ -12405,10 +15012,12 @@ static bool unhex_argument_uses_exact_decimal_text(const struct mylite_sql_ast_n
     return false;
 }
 
-static int unhex_text_value(const char *text, size_t text_length,
-                            struct mylite_expression_warnings *warnings,
-                            struct mylite_expression_value *out_value)
-{
+static int unhex_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const unsigned char *source = (const unsigned char *)text;
     size_t result_length = (text_length / 2U) + (text_length % 2U);
     size_t input = 0U;
@@ -12456,17 +15065,23 @@ static int unhex_text_value(const char *text, size_t text_length,
     return 0;
 }
 
-static int append_unhex_warning(struct mylite_expression_warnings *warnings, const char *text,
-                                size_t text_length)
-{
+static int append_unhex_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       : (int)text_length;
-    int length = snprintf(message, sizeof(message),
-                          "Incorrect string value: ''%.*s'' for "
-                          "function unhex",
-                          preview, text == NULL ? "" : text);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect string value: ''%.*s'' for "
+        "function unhex",
+        preview,
+        text == NULL ? "" : text
+    );
 
     if (length < 0) {
         return -1;
@@ -12474,8 +15089,7 @@ static int append_unhex_warning(struct mylite_expression_warnings *warnings, con
     return append_warning(warnings, MYLITE_WARNING_INCORRECT_STRING_VALUE, message);
 }
 
-static int hex_digit_value(unsigned char character)
-{
+static int hex_digit_value(unsigned char character) {
     if (character >= '0' && character <= '9') {
         return character - '0';
     }
@@ -12488,11 +15102,12 @@ static int hex_digit_value(unsigned char character)
     return -1;
 }
 
-static int eval_to_base64_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_to_base64_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
@@ -12516,9 +15131,11 @@ static int eval_to_base64_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int to_base64_text_value(const char *text, size_t text_length,
-                                struct mylite_expression_value *out_value)
-{
+static int to_base64_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+) {
     static const char digits[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvw"
                                  "xyz0123456789+/";
     const unsigned char *source = (const unsigned char *)text;
@@ -12559,13 +15176,15 @@ static int to_base64_text_value(const char *text, size_t text_length,
         input += source_count;
 
         result[output++] = digits[first >> MYLITE_EXPRESSION_BASE64_SHIFT_TWO];
-        result[output++] = digits[((first & MYLITE_EXPRESSION_BASE64_TWO_BIT_MASK)
-                                   << MYLITE_EXPRESSION_BASE64_SHIFT_FOUR) |
-                                  (second >> MYLITE_EXPRESSION_BASE64_SHIFT_FOUR)];
+        result[output++] = digits
+            [((first & MYLITE_EXPRESSION_BASE64_TWO_BIT_MASK)
+              << MYLITE_EXPRESSION_BASE64_SHIFT_FOUR) |
+             (second >> MYLITE_EXPRESSION_BASE64_SHIFT_FOUR)];
         if (source_count > 1U) {
-            result[output++] = digits[((second & MYLITE_EXPRESSION_BASE64_FOUR_BIT_MASK)
-                                       << MYLITE_EXPRESSION_BASE64_SHIFT_TWO) |
-                                      (third >> MYLITE_EXPRESSION_BASE64_SHIFT_SIX)];
+            result[output++] = digits
+                [((second & MYLITE_EXPRESSION_BASE64_FOUR_BIT_MASK)
+                  << MYLITE_EXPRESSION_BASE64_SHIFT_TWO) |
+                 (third >> MYLITE_EXPRESSION_BASE64_SHIFT_SIX)];
         } else {
             result[output++] = '=';
         }
@@ -12587,10 +15206,12 @@ static int to_base64_text_value(const char *text, size_t text_length,
     return 0;
 }
 
-static int base64_argument_to_text(const struct mylite_expression_value *value,
-                                   const struct mylite_sql_ast_node *argument, char **out_text,
-                                   size_t *out_length)
-{
+static int base64_argument_to_text(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     bool matched_literal = false;
     int length = 0;
@@ -12601,8 +15222,12 @@ static int base64_argument_to_text(const struct mylite_expression_value *value,
     }
     *out_text = NULL;
     *out_length = 0U;
-    status = base_conversion_exact_numeric_literal_to_text(argument, out_text, out_length,
-                                                           &matched_literal);
+    status = base_conversion_exact_numeric_literal_to_text(
+        argument,
+        out_text,
+        out_length,
+        &matched_literal
+    );
     if (status != 0 || matched_literal) {
         if (status == 0 && *out_length > 0U && (*out_text)[0] == '+') {
             memmove(*out_text, *out_text + 1, *out_length);
@@ -12639,8 +15264,7 @@ static int base64_argument_to_text(const struct mylite_expression_value *value,
     return 0;
 }
 
-static size_t base64_encoded_length(size_t text_length)
-{
+static size_t base64_encoded_length(size_t text_length) {
     size_t groups = 0U;
     size_t encoded = 0U;
     size_t newlines = 0U;
@@ -12664,11 +15288,12 @@ static size_t base64_encoded_length(size_t text_length)
     return encoded + newlines;
 }
 
-static int eval_from_base64_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_from_base64_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
@@ -12694,9 +15319,11 @@ cleanup:
     return status;
 }
 
-static int from_base64_text_value(const char *text, size_t text_length,
-                                  struct mylite_expression_value *out_value)
-{
+static int from_base64_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+) {
     size_t clean_length = 0U;
     char *clean = copy_base64_clean_text(text, text_length, &clean_length);
     char *result = NULL;
@@ -12723,9 +15350,12 @@ static int from_base64_text_value(const char *text, size_t text_length,
         return -1;
     }
     for (size_t input = 0U; input < clean_length; input += MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP) {
-        if (!base64_decode_group((const unsigned char *)clean + input,
-                                 input + MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP == clean_length,
-                                 result, &output)) {
+        if (!base64_decode_group(
+                (const unsigned char *)clean + input,
+                input + MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP == clean_length,
+                result,
+                &output
+            )) {
             free(result);
             free(clean);
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
@@ -12740,8 +15370,7 @@ static int from_base64_text_value(const char *text, size_t text_length,
     return 0;
 }
 
-static char *copy_base64_clean_text(const char *text, size_t text_length, size_t *out_length)
-{
+static char *copy_base64_clean_text(const char *text, size_t text_length, size_t *out_length) {
     const unsigned char *source = (const unsigned char *)text;
     char *clean = NULL;
     size_t output = 0U;
@@ -12776,9 +15405,12 @@ static char *copy_base64_clean_text(const char *text, size_t text_length, size_t
     return clean;
 }
 
-static bool base64_decode_group(const unsigned char *source, bool is_last_group, char *result,
-                                size_t *output)
-{
+static bool base64_decode_group(
+    const unsigned char *source,
+    bool is_last_group,
+    char *result,
+    size_t *output
+) {
     int first = base64_digit_value(source[0]);
     int second = base64_digit_value(source[1]);
     int third = source[2] == '=' ? 0 : base64_digit_value(source[2]);
@@ -12821,8 +15453,7 @@ static bool base64_decode_group(const unsigned char *source, bool is_last_group,
     return true;
 }
 
-static int base64_digit_value(unsigned char character)
-{
+static int base64_digit_value(unsigned char character) {
     if (character >= 'A' && character <= 'Z') {
         return character - 'A';
     }
@@ -12841,25 +15472,35 @@ static int base64_digit_value(unsigned char character)
     return -1;
 }
 
-static bool base64_ignored_whitespace(unsigned char character)
-{
+static bool base64_ignored_whitespace(unsigned char character) {
     return character == ' ' || character == '\t' || character == '\n' || character == '\v' ||
            character == '\f' || character == '\r';
 }
 
-static int eval_base_conversion_function(enum mylite_scalar_function_id function_id,
-                                         const struct mylite_sql_ast_node *arguments,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct mylite_expression_value *out_value)
-{
+static int eval_base_conversion_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     switch (function_id) {
     case MYLITE_SCALAR_FUNCTION_BIN:
-        return eval_bin_oct_function(child_at(arguments, 0U), MYLITE_EXPRESSION_BINARY_BASE,
-                                     context, warnings, out_value);
+        return eval_bin_oct_function(
+            child_at(arguments, 0U),
+            MYLITE_EXPRESSION_BINARY_BASE,
+            context,
+            warnings,
+            out_value
+        );
     case MYLITE_SCALAR_FUNCTION_OCT:
-        return eval_bin_oct_function(child_at(arguments, 0U), MYLITE_EXPRESSION_OCTAL_BASE, context,
-                                     warnings, out_value);
+        return eval_bin_oct_function(
+            child_at(arguments, 0U),
+            MYLITE_EXPRESSION_OCTAL_BASE,
+            context,
+            warnings,
+            out_value
+        );
     case MYLITE_SCALAR_FUNCTION_CONV:
         return eval_conv_function(arguments, context, warnings, out_value);
     case MYLITE_SCALAR_FUNCTION_UNKNOWN:
@@ -13026,11 +15667,12 @@ static int eval_base_conversion_function(enum mylite_scalar_function_id function
     return -1;
 }
 
-static int eval_bit_count_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_bit_count_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     uint64_t bits = 0U;
     int status = eval_node(child_at(arguments, 0U), context, warnings, &value);
@@ -13043,17 +15685,21 @@ static int eval_bit_count_function(const struct mylite_sql_ast_node *arguments,
     } else {
         status = bit_count_value_bits(&value, warnings, &bits);
         if (status == 0) {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = uint64_bit_count(bits)};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = uint64_bit_count(bits)
+            };
         }
     }
     mylite_expression_value_deinit(&value);
     return status;
 }
 
-static int bit_count_value_bits(const struct mylite_expression_value *value,
-                                struct mylite_expression_warnings *warnings, uint64_t *out_bits)
-{
+static int bit_count_value_bits(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+) {
     if (value == NULL || out_bits == NULL) {
         return -1;
     }
@@ -13069,17 +15715,22 @@ static int bit_count_value_bits(const struct mylite_expression_value *value,
         *out_bits = (uint64_t)cast_real_to_signed_integer(value->real_value);
         return 0;
     case MYLITE_EXPRESSION_VALUE_TEXT:
-        return bit_count_string_bits(value->text_value == NULL ? "" : value->text_value, warnings,
-                                     out_bits);
+        return bit_count_string_bits(
+            value->text_value == NULL ? "" : value->text_value,
+            warnings,
+            out_bits
+        );
     case MYLITE_EXPRESSION_VALUE_NULL:
         break;
     }
     return -1;
 }
 
-static int bit_count_string_bits(const char *text, struct mylite_expression_warnings *warnings,
-                                 uint64_t *out_bits)
-{
+static int bit_count_string_bits(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+) {
     struct cast_integer_parse parsed = parse_cast_integer_text(text);
     bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
 
@@ -13102,8 +15753,7 @@ static int bit_count_string_bits(const char *text, struct mylite_expression_warn
     return 0;
 }
 
-static unsigned int uint64_bit_count(uint64_t value)
-{
+static unsigned int uint64_bit_count(uint64_t value) {
     unsigned int count = 0U;
 
     while (value != 0U) {
@@ -13113,11 +15763,12 @@ static unsigned int uint64_bit_count(uint64_t value)
     return count;
 }
 
-static int eval_bit_length_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value)
-{
+static int eval_bit_length_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
@@ -13148,18 +15799,20 @@ static int eval_bit_length_function(const struct mylite_sql_ast_node *arguments,
         free(text);
         return -1;
     }
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = (int64_t)text_length *
-                                                                 MYLITE_EXPRESSION_BITS_PER_BYTE};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = (int64_t)text_length * MYLITE_EXPRESSION_BITS_PER_BYTE
+    };
     free(text);
     return 0;
 }
 
-static int eval_crc32_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value)
-{
+static int eval_crc32_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
     struct mylite_expression_value value = {0};
     char *text = NULL;
@@ -13188,12 +15841,13 @@ static int eval_crc32_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int eval_hash_function(enum mylite_scalar_function_id function_id,
-                              const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_hash_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
     struct mylite_expression_value value = {0};
     char *text = NULL;
@@ -13228,11 +15882,12 @@ static int eval_hash_function(enum mylite_scalar_function_id function_id,
     return status;
 }
 
-static int eval_sha2_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_sha2_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *text_argument = child_at(arguments, 0U);
     struct mylite_expression_value text_value = {0};
     struct mylite_expression_value length_value = {0};
@@ -13260,9 +15915,13 @@ static int eval_sha2_function(const struct mylite_sql_ast_node *arguments,
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
     } else if (status == 0) {
         status = checksum_argument_to_text(&text_value, text_argument, &text, &text_length);
-        if (status == 0 &&
-            !mylite_digest_sha2_hex((const unsigned char *)(text == NULL ? "" : text), text_length,
-                                    bits, hex, &hex_length)) {
+        if (status == 0 && !mylite_digest_sha2_hex(
+                               (const unsigned char *)(text == NULL ? "" : text),
+                               text_length,
+                               bits,
+                               hex,
+                               &hex_length
+                           )) {
             status = -1;
         }
         if (status == 0) {
@@ -13276,10 +15935,12 @@ static int eval_sha2_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int checksum_argument_to_text(const struct mylite_expression_value *value,
-                                     const struct mylite_sql_ast_node *argument, char **out_text,
-                                     size_t *out_length)
-{
+static int checksum_argument_to_text(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+) {
     bool matched_literal = false;
     int status = 0;
 
@@ -13288,8 +15949,12 @@ static int checksum_argument_to_text(const struct mylite_expression_value *value
     }
     *out_text = NULL;
     *out_length = 0U;
-    status = base_conversion_exact_numeric_literal_to_text(argument, out_text, out_length,
-                                                           &matched_literal);
+    status = base_conversion_exact_numeric_literal_to_text(
+        argument,
+        out_text,
+        out_length,
+        &matched_literal
+    );
     if (status != 0 || matched_literal) {
         if (status == 0 && memchr(*out_text, '.', *out_length) == NULL) {
             free(*out_text);
@@ -13312,8 +15977,7 @@ static int checksum_argument_to_text(const struct mylite_expression_value *value
     return value_to_string_with_length(value, out_text, out_length);
 }
 
-static void normalize_checksum_exact_decimal_text(char *text, size_t *length)
-{
+static void normalize_checksum_exact_decimal_text(char *text, size_t *length) {
     char *decimal = NULL;
     size_t sign_length = 0U;
     size_t decimal_index = 0U;
@@ -13340,8 +16004,7 @@ static void normalize_checksum_exact_decimal_text(char *text, size_t *length)
     }
 }
 
-static int checksum_real_to_text(double value, char **out_text, size_t *out_length)
-{
+static int checksum_real_to_text(double value, char **out_text, size_t *out_length) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE] = {0};
     int length = 0;
 
@@ -13358,8 +16021,7 @@ static int checksum_real_to_text(double value, char **out_text, size_t *out_leng
     return *out_text == NULL ? -1 : 0;
 }
 
-static void remove_positive_exponent_marker(char *text, size_t *length)
-{
+static void remove_positive_exponent_marker(char *text, size_t *length) {
     if (text == NULL || length == NULL || *length < 3U) {
         return;
     }
@@ -13372,8 +16034,7 @@ static void remove_positive_exponent_marker(char *text, size_t *length)
     }
 }
 
-static uint32_t crc32_bytes(const char *text, size_t text_length)
-{
+static uint32_t crc32_bytes(const char *text, size_t text_length) {
     uint32_t crc = mylite_expression_crc32_initial;
 
     for (size_t index = 0U; index < text_length; ++index) {
@@ -13387,10 +16048,11 @@ static uint32_t crc32_bytes(const char *text, size_t text_length)
     return crc ^ mylite_expression_crc32_initial;
 }
 
-static int sha2_hash_length_from_value(const struct mylite_expression_value *value,
-                                       struct mylite_expression_warnings *warnings,
-                                       unsigned int *out_bits)
-{
+static int sha2_hash_length_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    unsigned int *out_bits
+) {
     int64_t bits = 0;
 
     if (value == NULL || out_bits == NULL) {
@@ -13407,22 +16069,24 @@ static int sha2_hash_length_from_value(const struct mylite_expression_value *val
     return 0;
 }
 
-static bool sha2_hash_length_is_supported(unsigned int bits)
-{
+static bool sha2_hash_length_is_supported(unsigned int bits) {
     return bits == 0U || bits == 224U || bits == 256U || bits == 384U || bits == 512U;
 }
 
-static int append_sha2_wrong_parameters_warning(struct mylite_expression_warnings *warnings)
-{
-    return append_warning(warnings, MYLITE_WARNING_WRONG_PARAMETERS_TO_NATIVE_FCT,
-                          "Incorrect parameters in the call to native function 'sha2'");
+static int append_sha2_wrong_parameters_warning(struct mylite_expression_warnings *warnings) {
+    return append_warning(
+        warnings,
+        MYLITE_WARNING_WRONG_PARAMETERS_TO_NATIVE_FCT,
+        "Incorrect parameters in the call to native function 'sha2'"
+    );
 }
 
-static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_inet_aton_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
@@ -13441,8 +16105,10 @@ static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
 
     status = inet_aton_input_to_text(&value, &text, &text_length, &was_text);
     if (status == 0 && parse_inet_aton_text(text, text_length, &address)) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
-                                                      .uint64_value = address};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+            .uint64_value = address
+        };
     } else if (status == 0) {
         status = append_inet_aton_warning(warnings, text, text_length, was_text);
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
@@ -13453,11 +16119,12 @@ static int eval_inet_aton_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int eval_inet_ntoa_function(const struct mylite_sql_ast_node *arguments,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_inet_ntoa_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
     struct mylite_expression_value value = {0};
     uint32_t address = 0U;
@@ -13483,9 +16150,12 @@ static int eval_inet_ntoa_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int inet_aton_input_to_text(const struct mylite_expression_value *value, char **out_text,
-                                   size_t *out_length, bool *out_was_text)
-{
+static int inet_aton_input_to_text(
+    const struct mylite_expression_value *value,
+    char **out_text,
+    size_t *out_length,
+    bool *out_was_text
+) {
     if (value == NULL || out_text == NULL || out_length == NULL || out_was_text == NULL) {
         return -1;
     }
@@ -13500,8 +16170,7 @@ static int inet_aton_input_to_text(const struct mylite_expression_value *value, 
     return 0;
 }
 
-static bool parse_inet_aton_text(const char *text, size_t text_length, uint64_t *out_address)
-{
+static bool parse_inet_aton_text(const char *text, size_t text_length, uint64_t *out_address) {
     struct inet_aton_parse parsed = {0};
     uint64_t address = 0U;
 
@@ -13540,9 +16209,11 @@ static bool parse_inet_aton_text(const char *text, size_t text_length, uint64_t 
     return true;
 }
 
-static bool parse_inet_aton_parts(const char *text, size_t text_length,
-                                  struct inet_aton_parse *out_parse)
-{
+static bool parse_inet_aton_parts(
+    const char *text,
+    size_t text_length,
+    struct inet_aton_parse *out_parse
+) {
     uint64_t value = 0U;
     bool saw_any_digit = false;
     bool saw_digit = false;
@@ -13582,8 +16253,7 @@ static bool parse_inet_aton_parts(const char *text, size_t text_length,
     return true;
 }
 
-static bool inet_aton_part_limit(size_t part_count, size_t part_index, uint64_t *out_limit)
-{
+static bool inet_aton_part_limit(size_t part_count, size_t part_index, uint64_t *out_limit) {
     if (out_limit == NULL || part_count == 0U || part_count > MYLITE_EXPRESSION_IPV4_PART_COUNT ||
         part_index >= part_count) {
         return false;
@@ -13592,21 +16262,32 @@ static bool inet_aton_part_limit(size_t part_count, size_t part_index, uint64_t 
     return true;
 }
 
-static int append_inet_aton_warning(struct mylite_expression_warnings *warnings, const char *text,
-                                    size_t text_length, bool was_text)
-{
+static int append_inet_aton_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length,
+    bool was_text
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       : (int)text_length;
-    int length = was_text ? snprintf(message, sizeof(message),
-                                     "Incorrect string value: ''%.*s'' "
-                                     "for function inet_aton",
-                                     preview, text == NULL ? "" : text)
-                          : snprintf(message, sizeof(message),
-                                     "Incorrect string value: '%.*s' "
-                                     "for function inet_aton",
-                                     preview, text == NULL ? "" : text);
+    int length = was_text ? snprintf(
+                                message,
+                                sizeof(message),
+                                "Incorrect string value: ''%.*s'' "
+                                "for function inet_aton",
+                                preview,
+                                text == NULL ? "" : text
+                            )
+                          : snprintf(
+                                message,
+                                sizeof(message),
+                                "Incorrect string value: '%.*s' "
+                                "for function inet_aton",
+                                preview,
+                                text == NULL ? "" : text
+                            );
 
     if (length < 0) {
         return -1;
@@ -13614,11 +16295,12 @@ static int append_inet_aton_warning(struct mylite_expression_warnings *warnings,
     return append_warning(warnings, MYLITE_WARNING_INCORRECT_STRING_VALUE, message);
 }
 
-static int inet_ntoa_value_to_address(const struct mylite_expression_value *value,
-                                      const struct mylite_sql_ast_node *argument,
-                                      struct mylite_expression_warnings *warnings,
-                                      uint32_t *out_address)
-{
+static int inet_ntoa_value_to_address(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_address
+) {
     if (value == NULL || out_address == NULL) {
         return -1;
     }
@@ -13647,17 +16329,22 @@ static int inet_ntoa_value_to_address(const struct mylite_expression_value *valu
         return 0;
     }
     case MYLITE_EXPRESSION_VALUE_TEXT:
-        return inet_ntoa_text_to_address(value->text_value == NULL ? "" : value->text_value,
-                                         warnings, out_address);
+        return inet_ntoa_text_to_address(
+            value->text_value == NULL ? "" : value->text_value,
+            warnings,
+            out_address
+        );
     case MYLITE_EXPRESSION_VALUE_NULL:
         break;
     }
     return -1;
 }
 
-static int inet_ntoa_text_to_address(const char *text, struct mylite_expression_warnings *warnings,
-                                     uint32_t *out_address)
-{
+static int inet_ntoa_text_to_address(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint32_t *out_address
+) {
     struct cast_integer_parse parsed = parse_cast_integer_text(text);
     bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
 
@@ -13682,10 +16369,11 @@ static int inet_ntoa_text_to_address(const char *text, struct mylite_expression_
     return 0;
 }
 
-static int append_inet_ntoa_range_warning(struct mylite_expression_warnings *warnings,
-                                          const struct mylite_expression_value *value,
-                                          const struct mylite_sql_ast_node *argument)
-{
+static int append_inet_ntoa_range_warning(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument
+) {
     char *text = NULL;
     int status = 0;
 
@@ -13717,9 +16405,10 @@ static int append_inet_ntoa_range_warning(struct mylite_expression_warnings *war
     return status;
 }
 
-static int append_inet_ntoa_negative_magnitude_warning(struct mylite_expression_warnings *warnings,
-                                                       uint64_t magnitude)
-{
+static int append_inet_ntoa_negative_magnitude_warning(
+    struct mylite_expression_warnings *warnings,
+    uint64_t magnitude
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     int length = snprintf(buffer, sizeof(buffer), "-(%llu)", (unsigned long long)magnitude);
 
@@ -13729,10 +16418,11 @@ static int append_inet_ntoa_negative_magnitude_warning(struct mylite_expression_
     return append_inet_ntoa_range_text_warning(warnings, buffer);
 }
 
-static int
-append_inet_ntoa_negative_integer_span_warning(struct mylite_expression_warnings *warnings,
-                                               const char *text, bool *out_handled)
-{
+static int append_inet_ntoa_negative_integer_span_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    bool *out_handled
+) {
     if (out_handled == NULL) {
         return -1;
     }
@@ -13757,14 +16447,19 @@ append_inet_ntoa_negative_integer_span_warning(struct mylite_expression_warnings
     }
 }
 
-static int append_inet_ntoa_range_text_warning(struct mylite_expression_warnings *warnings,
-                                               const char *text)
-{
+static int append_inet_ntoa_range_text_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
-    int length = snprintf(message, sizeof(message),
-                          "Incorrect integer value: '%.*s' for "
-                          "function inet_ntoa",
-                          MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW, text == NULL ? "" : text);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect integer value: '%.*s' for "
+        "function inet_ntoa",
+        MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW,
+        text == NULL ? "" : text
+    );
 
     if (length < 0) {
         return -1;
@@ -13772,17 +16467,20 @@ static int append_inet_ntoa_range_text_warning(struct mylite_expression_warnings
     return append_warning(warnings, MYLITE_WARNING_INCORRECT_STRING_VALUE, message);
 }
 
-static int set_inet_ntoa_result(uint32_t address, struct mylite_expression_value *out_value)
-{
+static int set_inet_ntoa_result(uint32_t address, struct mylite_expression_value *out_value) {
     char text[MYLITE_EXPRESSION_IPV4_NTOA_BUFFER_SIZE];
-    int length = snprintf(text, sizeof(text), "%u.%u.%u.%u",
-                          (unsigned int)((address >> MYLITE_EXPRESSION_IPV4_FIRST_OCTET_SHIFT) &
-                                         MYLITE_EXPRESSION_IPV4_OCTET_MAX),
-                          (unsigned int)((address >> MYLITE_EXPRESSION_IPV4_SECOND_OCTET_SHIFT) &
-                                         MYLITE_EXPRESSION_IPV4_OCTET_MAX),
-                          (unsigned int)((address >> MYLITE_EXPRESSION_IPV4_THIRD_OCTET_SHIFT) &
-                                         MYLITE_EXPRESSION_IPV4_OCTET_MAX),
-                          (unsigned int)(address & MYLITE_EXPRESSION_IPV4_OCTET_MAX));
+    int length = snprintf(
+        text,
+        sizeof(text),
+        "%u.%u.%u.%u",
+        (unsigned int)((address >> MYLITE_EXPRESSION_IPV4_FIRST_OCTET_SHIFT) &
+                       MYLITE_EXPRESSION_IPV4_OCTET_MAX),
+        (unsigned int)((address >> MYLITE_EXPRESSION_IPV4_SECOND_OCTET_SHIFT) &
+                       MYLITE_EXPRESSION_IPV4_OCTET_MAX),
+        (unsigned int)((address >> MYLITE_EXPRESSION_IPV4_THIRD_OCTET_SHIFT) &
+                       MYLITE_EXPRESSION_IPV4_OCTET_MAX),
+        (unsigned int)(address & MYLITE_EXPRESSION_IPV4_OCTET_MAX)
+    );
 
     if (length < 0 || (size_t)length >= sizeof(text)) {
         return -1;
@@ -13790,17 +16488,24 @@ static int set_inet_ntoa_result(uint32_t address, struct mylite_expression_value
     return set_text_value(text, (size_t)length, out_value);
 }
 
-static int eval_is_uuid_function(const struct mylite_sql_ast_node *arguments,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
+static int eval_is_uuid_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
     unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
-    int status = eval_uuid_first_argument(child_at(arguments, 0U), context, warnings, &value, &text,
-                                          &text_length);
+    int status = eval_uuid_first_argument(
+        child_at(arguments, 0U),
+        context,
+        warnings,
+        &value,
+        &text,
+        &text_length
+    );
 
     if (status != 0) {
         return status;
@@ -13818,18 +16523,25 @@ static int eval_is_uuid_function(const struct mylite_sql_ast_node *arguments,
     return 0;
 }
 
-static int eval_uuid_to_bin_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_uuid_to_bin_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
     unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
     bool swap = false;
-    int status = eval_uuid_first_argument(child_at(arguments, 0U), context, warnings, &value, &text,
-                                          &text_length);
+    int status = eval_uuid_first_argument(
+        child_at(arguments, 0U),
+        context,
+        warnings,
+        &value,
+        &text,
+        &text_length
+    );
 
     if (status != 0) {
         return status;
@@ -13857,18 +16569,25 @@ cleanup:
     return status;
 }
 
-static int eval_bin_to_uuid_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_bin_to_uuid_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
     unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
     bool swap = false;
-    int status = eval_uuid_first_argument(child_at(arguments, 0U), context, warnings, &value, &text,
-                                          &text_length);
+    int status = eval_uuid_first_argument(
+        child_at(arguments, 0U),
+        context,
+        warnings,
+        &value,
+        &text,
+        &text_length
+    );
 
     if (status != 0) {
         return status;
@@ -13897,12 +16616,14 @@ cleanup:
     return status;
 }
 
-static int eval_uuid_first_argument(const struct mylite_sql_ast_node *argument,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value, char **out_text,
-                                    size_t *out_length)
-{
+static int eval_uuid_first_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    char **out_text,
+    size_t *out_length
+) {
     int status = eval_node(argument, context, warnings, out_value);
 
     if (status != 0 || is_null(out_value)) {
@@ -13911,10 +16632,12 @@ static int eval_uuid_first_argument(const struct mylite_sql_ast_node *argument,
     return value_to_string_with_length(out_value, out_text, out_length);
 }
 
-static int eval_uuid_swap_flag(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings, bool *out_swap)
-{
+static int eval_uuid_swap_flag(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    bool *out_swap
+) {
     const struct mylite_sql_ast_node *flag_argument = child_at(arguments, 1U);
     struct mylite_expression_value value = {0};
     int truth = 0;
@@ -13939,23 +16662,30 @@ static int eval_uuid_swap_flag(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static bool parse_uuid_text(const char *text, size_t text_length,
-                            unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH])
-{
+static bool parse_uuid_text(
+    const char *text,
+    size_t text_length,
+    unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]
+) {
     if (text == NULL) {
         return false;
     }
     if (text_length == MYLITE_EXPRESSION_UUID_BRACED_TEXT_LENGTH && text[0] == '{' &&
         text[MYLITE_EXPRESSION_UUID_BRACED_TEXT_LENGTH - 1U] == '}') {
-        return parse_uuid_unbraced_text(text + 1U, MYLITE_EXPRESSION_UUID_CANONICAL_TEXT_LENGTH,
-                                        out_bytes);
+        return parse_uuid_unbraced_text(
+            text + 1U,
+            MYLITE_EXPRESSION_UUID_CANONICAL_TEXT_LENGTH,
+            out_bytes
+        );
     }
     return parse_uuid_unbraced_text(text, text_length, out_bytes);
 }
 
-static bool parse_uuid_unbraced_text(const char *text, size_t text_length,
-                                     unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH])
-{
+static bool parse_uuid_unbraced_text(
+    const char *text,
+    size_t text_length,
+    unsigned char out_bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]
+) {
     unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
     size_t hex_index = 0U;
 
@@ -13990,55 +16720,76 @@ static bool parse_uuid_unbraced_text(const char *text, size_t text_length,
     return true;
 }
 
-static bool uuid_canonical_dash_position(size_t index)
-{
+static bool uuid_canonical_dash_position(size_t index) {
     return index == MYLITE_EXPRESSION_UUID_FIRST_DASH ||
            index == MYLITE_EXPRESSION_UUID_SECOND_DASH ||
            index == MYLITE_EXPRESSION_UUID_THIRD_DASH ||
            index == MYLITE_EXPRESSION_UUID_FOURTH_DASH;
 }
 
-static void swap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH])
-{
+static void swap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]) {
     unsigned char copy[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
 
     memcpy(copy, bytes, sizeof(copy));
-    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET,
-           copy + MYLITE_EXPRESSION_UUID_TIME_HIGH_OFFSET,
-           MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH);
-    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH,
-           copy + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET, MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH);
-    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET,
-           copy + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET, MYLITE_EXPRESSION_UUID_TIME_LOW_LENGTH);
-    memcpy(bytes + MYLITE_EXPRESSION_UUID_REST_OFFSET, copy + MYLITE_EXPRESSION_UUID_REST_OFFSET,
-           MYLITE_EXPRESSION_UUID_BINARY_LENGTH - MYLITE_EXPRESSION_UUID_REST_OFFSET);
+    memcpy(
+        bytes + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET,
+        copy + MYLITE_EXPRESSION_UUID_TIME_HIGH_OFFSET,
+        MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH
+    );
+    memcpy(
+        bytes + MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH,
+        copy + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET,
+        MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH
+    );
+    memcpy(
+        bytes + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET,
+        copy + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET,
+        MYLITE_EXPRESSION_UUID_TIME_LOW_LENGTH
+    );
+    memcpy(
+        bytes + MYLITE_EXPRESSION_UUID_REST_OFFSET,
+        copy + MYLITE_EXPRESSION_UUID_REST_OFFSET,
+        MYLITE_EXPRESSION_UUID_BINARY_LENGTH - MYLITE_EXPRESSION_UUID_REST_OFFSET
+    );
 }
 
-static void unswap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH])
-{
+static void unswap_uuid_time_parts(unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH]) {
     unsigned char copy[MYLITE_EXPRESSION_UUID_BINARY_LENGTH] = {0};
 
     memcpy(copy, bytes, sizeof(copy));
-    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET,
-           copy + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET, MYLITE_EXPRESSION_UUID_TIME_LOW_LENGTH);
-    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET,
-           copy + MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH,
-           MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH);
-    memcpy(bytes + MYLITE_EXPRESSION_UUID_TIME_HIGH_OFFSET,
-           copy + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET, MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH);
-    memcpy(bytes + MYLITE_EXPRESSION_UUID_REST_OFFSET, copy + MYLITE_EXPRESSION_UUID_REST_OFFSET,
-           MYLITE_EXPRESSION_UUID_BINARY_LENGTH - MYLITE_EXPRESSION_UUID_REST_OFFSET);
+    memcpy(
+        bytes + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET,
+        copy + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET,
+        MYLITE_EXPRESSION_UUID_TIME_LOW_LENGTH
+    );
+    memcpy(
+        bytes + MYLITE_EXPRESSION_UUID_TIME_MID_OFFSET,
+        copy + MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH,
+        MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH
+    );
+    memcpy(
+        bytes + MYLITE_EXPRESSION_UUID_TIME_HIGH_OFFSET,
+        copy + MYLITE_EXPRESSION_UUID_TIME_LOW_OFFSET,
+        MYLITE_EXPRESSION_UUID_TIME_FIELD_LENGTH
+    );
+    memcpy(
+        bytes + MYLITE_EXPRESSION_UUID_REST_OFFSET,
+        copy + MYLITE_EXPRESSION_UUID_REST_OFFSET,
+        MYLITE_EXPRESSION_UUID_BINARY_LENGTH - MYLITE_EXPRESSION_UUID_REST_OFFSET
+    );
 }
 
-static int set_uuid_binary_value(const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
-                                 struct mylite_expression_value *out_value)
-{
+static int set_uuid_binary_value(
+    const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
+    struct mylite_expression_value *out_value
+) {
     return set_text_value((const char *)bytes, MYLITE_EXPRESSION_UUID_BINARY_LENGTH, out_value);
 }
 
-static int set_uuid_text_value(const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
-                               struct mylite_expression_value *out_value)
-{
+static int set_uuid_text_value(
+    const unsigned char bytes[MYLITE_EXPRESSION_UUID_BINARY_LENGTH],
+    struct mylite_expression_value *out_value
+) {
     static const char digits[] = "0123456789abcdef";
     char text[MYLITE_EXPRESSION_UUID_CANONICAL_TEXT_LENGTH + 1U];
     size_t output = 0U;
@@ -14057,31 +16808,43 @@ static int set_uuid_text_value(const unsigned char bytes[MYLITE_EXPRESSION_UUID_
     return set_text_value(text, output, out_value);
 }
 
-static int append_uuid_incorrect_string_error(struct mylite_expression_warnings *warnings,
-                                              const char *function_name, const char *text,
-                                              size_t text_length)
-{
+static int append_uuid_incorrect_string_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    const char *text,
+    size_t text_length
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       : (int)text_length;
-    int length =
-        snprintf(message, sizeof(message), "Incorrect string value: '%.*s' for function %s",
-                 preview, text == NULL ? "" : text, function_name == NULL ? "" : function_name);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect string value: '%.*s' for function %s",
+        preview,
+        text == NULL ? "" : text,
+        function_name == NULL ? "" : function_name
+    );
 
     if (length < 0) {
         return -1;
     }
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INCORRECT_STRING_VALUE,
-        message);
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_INCORRECT_STRING_VALUE,
+        message
+    );
 }
 
-static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uint64_t to_base,
-                                 const struct mylite_expression_eval_context *context,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct mylite_expression_value *out_value)
-{
+static int eval_bin_oct_function(
+    const struct mylite_sql_ast_node *argument,
+    uint64_t to_base,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
@@ -14100,8 +16863,14 @@ static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uin
     if (status == 0 && text_length == 0U) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
     } else if (status == 0) {
-        status = parse_base_conversion_input(text, text_length, MYLITE_EXPRESSION_DECIMAL_BASE,
-                                             false, warnings, &bits);
+        status = parse_base_conversion_input(
+            text,
+            text_length,
+            MYLITE_EXPRESSION_DECIMAL_BASE,
+            false,
+            warnings,
+            &bits
+        );
         if (status == 0) {
             status = set_base_conversion_value(
                 (struct base_conversion_format_input){
@@ -14109,7 +16878,8 @@ static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uin
                     .to_base = to_base,
                     .signed_output = false,
                 },
-                out_value);
+                out_value
+            );
         }
     }
     free(text);
@@ -14117,11 +16887,12 @@ static int eval_bin_oct_function(const struct mylite_sql_ast_node *argument, uin
     return status;
 }
 
-static int eval_conv_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_conv_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value number = {0};
     struct mylite_expression_value from = {0};
     struct mylite_expression_value to_value = {0};
@@ -14156,8 +16927,14 @@ static int eval_conv_function(const struct mylite_sql_ast_node *arguments,
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         goto cleanup;
     }
-    status = eval_conv_conversion(&number, from_base, child_at(arguments, 0U), to_base, warnings,
-                                  out_value);
+    status = eval_conv_conversion(
+        &number,
+        from_base,
+        child_at(arguments, 0U),
+        to_base,
+        warnings,
+        out_value
+    );
 
 cleanup:
     mylite_expression_value_deinit(&number);
@@ -14166,11 +16943,14 @@ cleanup:
     return status;
 }
 
-static int eval_conv_conversion(const struct mylite_expression_value *number, int64_t from_base,
-                                const struct mylite_sql_ast_node *number_argument, int64_t to_base,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_conv_conversion(
+    const struct mylite_expression_value *number,
+    int64_t from_base,
+    const struct mylite_sql_ast_node *number_argument,
+    int64_t to_base,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     char *text = NULL;
     size_t text_length = 0U;
     uint64_t from_base_abs = 0U;
@@ -14188,8 +16968,14 @@ static int eval_conv_conversion(const struct mylite_expression_value *number, in
     if (status == 0 && text_length == 0U) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
     } else if (status == 0) {
-        status = parse_base_conversion_input(text, text_length, from_base_abs, from_base < 0,
-                                             warnings, &bits);
+        status = parse_base_conversion_input(
+            text,
+            text_length,
+            from_base_abs,
+            from_base < 0,
+            warnings,
+            &bits
+        );
         if (status == 0) {
             status = set_base_conversion_value(
                 (struct base_conversion_format_input){
@@ -14197,15 +16983,15 @@ static int eval_conv_conversion(const struct mylite_expression_value *number, in
                     .to_base = to_base_abs,
                     .signed_output = to_base < 0,
                 },
-                out_value);
+                out_value
+            );
         }
     }
     free(text);
     return status;
 }
 
-static bool base_conversion_abs_base(int64_t base, uint64_t *out_abs_base)
-{
+static bool base_conversion_abs_base(int64_t base, uint64_t *out_abs_base) {
     if (base >= MYLITE_EXPRESSION_MIN_BASE && base <= MYLITE_EXPRESSION_MAX_BASE) {
         *out_abs_base = (uint64_t)base;
         return true;
@@ -14217,11 +17003,12 @@ static bool base_conversion_abs_base(int64_t base, uint64_t *out_abs_base)
     return false;
 }
 
-static int base_argument_to_signed_integer(const struct mylite_expression_value *value,
-                                           const struct mylite_sql_ast_node *argument,
-                                           struct mylite_expression_warnings *warnings,
-                                           int64_t *out_base)
-{
+static int base_argument_to_signed_integer(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_base
+) {
     if (value == NULL || out_base == NULL) {
         return -1;
     }
@@ -14234,8 +17021,7 @@ static int base_argument_to_signed_integer(const struct mylite_expression_value 
     return cast_value_to_signed_integer(value, warnings, out_base);
 }
 
-static bool base_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument)
-{
+static bool base_argument_uses_exact_rounding(const struct mylite_sql_ast_node *argument) {
     while (argument != NULL && argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         argument = child_at(argument, 0U);
     }
@@ -14253,10 +17039,12 @@ static bool base_argument_uses_exact_rounding(const struct mylite_sql_ast_node *
     return false;
 }
 
-static int base_conversion_input_to_text(const struct mylite_expression_value *value,
-                                         const struct mylite_sql_ast_node *argument,
-                                         char **out_text, size_t *out_length)
-{
+static int base_conversion_input_to_text(
+    const struct mylite_expression_value *value,
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     bool matched_literal = false;
     int length = 0;
@@ -14268,8 +17056,12 @@ static int base_conversion_input_to_text(const struct mylite_expression_value *v
     *out_length = 0U;
 
     {
-        int status = base_conversion_exact_numeric_literal_to_text(argument, out_text, out_length,
-                                                                   &matched_literal);
+        int status = base_conversion_exact_numeric_literal_to_text(
+            argument,
+            out_text,
+            out_length,
+            &matched_literal
+        );
 
         if (status != 0 || matched_literal) {
             return status;
@@ -14304,8 +17096,7 @@ static int base_conversion_input_to_text(const struct mylite_expression_value *v
     return 0;
 }
 
-static int base_conversion_real_to_text(double value, char **out_text, size_t *out_length)
-{
+static int base_conversion_real_to_text(double value, char **out_text, size_t *out_length) {
     int status = cast_real_to_string(value, out_text);
 
     if (status == 0) {
@@ -14314,10 +17105,12 @@ static int base_conversion_real_to_text(double value, char **out_text, size_t *o
     return status;
 }
 
-static int base_conversion_exact_numeric_literal_to_text(const struct mylite_sql_ast_node *argument,
-                                                         char **out_text, size_t *out_length,
-                                                         bool *out_matched)
-{
+static int base_conversion_exact_numeric_literal_to_text(
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length,
+    bool *out_matched
+) {
     char sign = '\0';
 
     if (out_matched == NULL) {
@@ -14346,9 +17139,12 @@ static int base_conversion_exact_numeric_literal_to_text(const struct mylite_sql
     return copy_base_conversion_literal_text(sign, argument, out_text, out_length);
 }
 
-static int copy_base_conversion_literal_text(char sign, const struct mylite_sql_ast_node *literal,
-                                             char **out_text, size_t *out_length)
-{
+static int copy_base_conversion_literal_text(
+    char sign,
+    const struct mylite_sql_ast_node *literal,
+    char **out_text,
+    size_t *out_length
+) {
     const char *text = literal->span.text == NULL ? "" : literal->span.text;
     size_t text_length = literal->span.length;
     size_t sign_length = sign == '\0' ? 0U : 1U;
@@ -14375,11 +17171,14 @@ static int copy_base_conversion_literal_text(char sign, const struct mylite_sql_
     return 0;
 }
 
-static int parse_base_conversion_input(const char *text, size_t text_length, uint64_t from_base,
-                                       bool signed_input,
-                                       struct mylite_expression_warnings *warnings,
-                                       uint64_t *out_bits)
-{
+static int parse_base_conversion_input(
+    const char *text,
+    size_t text_length,
+    uint64_t from_base,
+    bool signed_input,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_bits
+) {
     struct base_conversion_parse parsed =
         parse_base_conversion_digits((struct base_conversion_parse_input){
             .text = text,
@@ -14398,9 +17197,9 @@ static int parse_base_conversion_input(const char *text, size_t text_length, uin
     return 0;
 }
 
-static struct base_conversion_parse
-parse_base_conversion_digits(struct base_conversion_parse_input input)
-{
+static struct base_conversion_parse parse_base_conversion_digits(
+    struct base_conversion_parse_input input
+) {
     const unsigned char *source = (const unsigned char *)(input.text == NULL ? "" : input.text);
     size_t text_length = input.text == NULL ? 0U : input.text_length;
     size_t index = 0U;
@@ -14445,15 +17244,22 @@ parse_base_conversion_digits(struct base_conversion_parse_input input)
     return parsed;
 }
 
-static int append_base_conversion_warning(struct mylite_expression_warnings *warnings,
-                                          const char *text, size_t text_length)
-{
+static int append_base_conversion_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
     int preview = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
                       : (int)text_length;
-    int length = snprintf(message, sizeof(message), "Truncated incorrect DECIMAL value: '%.*s'",
-                          preview, text == NULL ? "" : text);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect DECIMAL value: '%.*s'",
+        preview,
+        text == NULL ? "" : text
+    );
 
     if (length < 0) {
         return -1;
@@ -14461,8 +17267,7 @@ static int append_base_conversion_warning(struct mylite_expression_warnings *war
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
-static int base_digit_value(unsigned char character)
-{
+static int base_digit_value(unsigned char character) {
     if (character >= '0' && character <= '9') {
         return character - '0';
     }
@@ -14475,9 +17280,10 @@ static int base_digit_value(unsigned char character)
     return -1;
 }
 
-static int set_base_conversion_value(struct base_conversion_format_input input,
-                                     struct mylite_expression_value *out_value)
-{
+static int set_base_conversion_value(
+    struct base_conversion_format_input input,
+    struct mylite_expression_value *out_value
+) {
     static const char digits[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     char reversed[MYLITE_EXPRESSION_BASE_CONVERSION_BUFFER_SIZE];
     char result[MYLITE_EXPRESSION_BASE_CONVERSION_BUFFER_SIZE];
@@ -14516,11 +17322,12 @@ static int set_base_conversion_value(struct base_conversion_format_input input,
     return set_text_value(result, result_length, out_value);
 }
 
-static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value)
-{
+static int eval_mod_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value left = {0};
     struct mylite_expression_value right = {0};
     int status = eval_node(child_at(arguments, 0U), context, warnings, &left);
@@ -14537,11 +17344,12 @@ static int eval_mod_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int eval_power_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value)
-{
+static int eval_power_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value base = {0};
     struct mylite_expression_value exponent = {0};
     struct numeric_value base_number = {0};
@@ -14590,11 +17398,12 @@ cleanup:
     return status;
 }
 
-static int eval_exp_function(const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value)
-{
+static int eval_exp_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct numeric_value number = {0};
     double result = 0.0;
@@ -14634,25 +17443,32 @@ cleanup:
     return status;
 }
 
-static int eval_log_function(enum mylite_scalar_function_id function_id,
-                             const struct mylite_sql_ast_node *arguments,
-                             const struct mylite_expression_eval_context *context,
-                             struct mylite_expression_warnings *warnings,
-                             struct mylite_expression_value *out_value)
-{
+static int eval_log_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     if (function_id == MYLITE_SCALAR_FUNCTION_LOG && child_count(arguments) == 2U) {
         return eval_binary_log_function(arguments, context, warnings, out_value);
     }
-    return eval_unary_log_function(function_id, child_at(arguments, 0U), context, warnings,
-                                   out_value);
+    return eval_unary_log_function(
+        function_id,
+        child_at(arguments, 0U),
+        context,
+        warnings,
+        out_value
+    );
 }
 
-static int eval_unary_log_function(enum mylite_scalar_function_id function_id,
-                                   const struct mylite_sql_ast_node *argument,
-                                   const struct mylite_expression_eval_context *context,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int eval_unary_log_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     struct numeric_value number = {0};
     double result = 0.0;
@@ -14695,11 +17511,12 @@ cleanup:
     return status;
 }
 
-static int eval_binary_log_function(const struct mylite_sql_ast_node *arguments,
-                                    const struct mylite_expression_eval_context *context,
-                                    struct mylite_expression_warnings *warnings,
-                                    struct mylite_expression_value *out_value)
-{
+static int eval_binary_log_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value base = {0};
     struct mylite_expression_value value = {0};
     struct numeric_value base_number = {0};
@@ -14759,11 +17576,12 @@ cleanup:
     return status;
 }
 
-static int eval_sqrt_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_sqrt_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value argument = {0};
     struct numeric_value number = {0};
     double result = 0.0;
@@ -14806,12 +17624,13 @@ cleanup:
     return status;
 }
 
-static int eval_trigonometric_function(enum mylite_scalar_function_id function_id,
-                                       const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value)
-{
+static int eval_trigonometric_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *argument_node = child_at(arguments, 0U);
     struct mylite_expression_value argument = {0};
     struct numeric_value number = {0};
@@ -14836,7 +17655,9 @@ static int eval_trigonometric_function(enum mylite_scalar_function_id function_i
 
     status = trigonometric_function_result(
         (struct trigonometric_input){.function_id = function_id, .input = number.real_value},
-        warnings, &result);
+        warnings,
+        &result
+    );
     if (status != 0) {
         goto cleanup;
     }
@@ -14855,10 +17676,11 @@ cleanup:
     return status;
 }
 
-static int trigonometric_function_result(struct trigonometric_input input,
-                                         struct mylite_expression_warnings *warnings,
-                                         double *out_result)
-{
+static int trigonometric_function_result(
+    struct trigonometric_input input,
+    struct mylite_expression_warnings *warnings,
+    double *out_result
+) {
     double result = 0.0;
     int status = 0;
 
@@ -15049,18 +17871,20 @@ static int trigonometric_function_result(struct trigonometric_input input,
     return 0;
 }
 
-static bool trigonometric_result_is_out_of_range(enum mylite_scalar_function_id function_id,
-                                                 double result)
-{
+static bool trigonometric_result_is_out_of_range(
+    enum mylite_scalar_function_id function_id,
+    double result
+) {
     return function_id == MYLITE_SCALAR_FUNCTION_COT && (isnan(result) || isinf(result));
 }
 
-static int eval_inverse_trigonometric_function(enum mylite_scalar_function_id function_id,
-                                               const struct mylite_sql_ast_node *arguments,
-                                               const struct mylite_expression_eval_context *context,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct mylite_expression_value *out_value)
-{
+static int eval_inverse_trigonometric_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *argument_node = child_at(arguments, 0U);
     struct mylite_expression_value argument = {0};
     struct numeric_value number = {0};
@@ -15072,8 +17896,14 @@ static int eval_inverse_trigonometric_function(enum mylite_scalar_function_id fu
         return eval_atan_function(arguments, context, warnings, out_value);
     }
 
-    status = eval_inverse_trigonometric_argument(argument_node, context, warnings, &argument,
-                                                 &number, &null_result);
+    status = eval_inverse_trigonometric_argument(
+        argument_node,
+        context,
+        warnings,
+        &argument,
+        &number,
+        &null_result
+    );
 
     if (status != 0) {
         goto cleanup;
@@ -15084,9 +17914,11 @@ static int eval_inverse_trigonometric_function(enum mylite_scalar_function_id fu
     }
 
     status = inverse_trigonometric_function_result(
-        (struct inverse_trigonometric_input){.function_id = function_id,
-                                             .input = number.real_value},
-        &result);
+        (
+            struct inverse_trigonometric_input
+        ){.function_id = function_id, .input = number.real_value},
+        &result
+    );
     if (status != 0) {
         goto cleanup;
     }
@@ -15109,11 +17941,12 @@ cleanup:
     return status;
 }
 
-static int eval_atan_function(const struct mylite_sql_ast_node *arguments,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_atan_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value y_argument = {0};
     struct mylite_expression_value x_argument = {0};
     struct numeric_value y_number = {0};
@@ -15121,8 +17954,14 @@ static int eval_atan_function(const struct mylite_sql_ast_node *arguments,
     size_t arity = child_count(arguments);
     double result = 0.0;
     bool null_result = false;
-    int status = eval_atan_argument(child_at(arguments, 0U), context, warnings, &y_argument,
-                                    &y_number, &null_result);
+    int status = eval_atan_argument(
+        child_at(arguments, 0U),
+        context,
+        warnings,
+        &y_argument,
+        &y_number,
+        &null_result
+    );
 
     if (status != 0) {
         goto cleanup;
@@ -15133,8 +17972,14 @@ static int eval_atan_function(const struct mylite_sql_ast_node *arguments,
     }
 
     if (arity == 2U) {
-        status = eval_atan_argument(child_at(arguments, 1U), context, warnings, &x_argument,
-                                    &x_number, &null_result);
+        status = eval_atan_argument(
+            child_at(arguments, 1U),
+            context,
+            warnings,
+            &x_argument,
+            &x_number,
+            &null_result
+        );
         if (status != 0) {
             goto cleanup;
         }
@@ -15151,7 +17996,9 @@ static int eval_atan_function(const struct mylite_sql_ast_node *arguments,
         x_number.real_value = 0.0;
     }
     result = atan_function_result(
-        (struct atan_input){.y = y_number.real_value, .x = x_number.real_value}, arity);
+        (struct atan_input){.y = y_number.real_value, .x = x_number.real_value},
+        arity
+    );
     if (!isfinite(result)) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         goto cleanup;
@@ -15172,30 +18019,39 @@ cleanup:
     return status;
 }
 
-static int eval_atan_argument(const struct mylite_sql_ast_node *argument_node,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *argument,
-                              struct numeric_value *number, bool *out_null_result)
-{
-    return eval_inverse_trigonometric_argument(argument_node, context, warnings, argument, number,
-                                               out_null_result);
+static int eval_atan_argument(
+    const struct mylite_sql_ast_node *argument_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *argument,
+    struct numeric_value *number,
+    bool *out_null_result
+) {
+    return eval_inverse_trigonometric_argument(
+        argument_node,
+        context,
+        warnings,
+        argument,
+        number,
+        out_null_result
+    );
 }
 
-static double atan_function_result(struct atan_input input, size_t arity)
-{
+static double atan_function_result(struct atan_input input, size_t arity) {
     if (arity == 1U) {
         return atan(input.y);
     }
     return atan2(input.y, input.x);
 }
 
-static int eval_inverse_trigonometric_argument(const struct mylite_sql_ast_node *argument_node,
-                                               const struct mylite_expression_eval_context *context,
-                                               struct mylite_expression_warnings *warnings,
-                                               struct mylite_expression_value *argument,
-                                               struct numeric_value *number, bool *out_null_result)
-{
+static int eval_inverse_trigonometric_argument(
+    const struct mylite_sql_ast_node *argument_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *argument,
+    struct numeric_value *number,
+    bool *out_null_result
+) {
     int status = 0;
 
     *out_null_result = false;
@@ -15214,9 +18070,10 @@ static int eval_inverse_trigonometric_argument(const struct mylite_sql_ast_node 
     return value_to_numeric(argument, warnings, number);
 }
 
-static int inverse_trigonometric_function_result(struct inverse_trigonometric_input input,
-                                                 double *out_result)
-{
+static int inverse_trigonometric_function_result(
+    struct inverse_trigonometric_input input,
+    double *out_result
+) {
     if (out_result == NULL) {
         return -1;
     }
@@ -15393,29 +18250,34 @@ static int inverse_trigonometric_function_result(struct inverse_trigonometric_in
     return -1;
 }
 
-static bool inverse_trigonometric_input_is_out_of_domain(double value)
-{
+static bool inverse_trigonometric_input_is_out_of_domain(double value) {
     return value < -1.0 || value > 1.0 || !isfinite(value);
 }
 
-static bool inverse_trigonometric_result_is_null(double result)
-{
+static bool inverse_trigonometric_result_is_null(double result) {
     return !isfinite(result);
 }
 
-static int eval_angle_conversion_function(enum mylite_scalar_function_id function_id,
-                                          const struct mylite_sql_ast_node *arguments,
-                                          const struct mylite_expression_eval_context *context,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct mylite_expression_value *out_value)
-{
+static int eval_angle_conversion_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *argument_node = child_at(arguments, 0U);
     struct mylite_expression_value argument = {0};
     struct numeric_value number = {0};
     double result = 0.0;
     bool null_result = false;
-    int status = eval_angle_conversion_argument(argument_node, context, warnings, &argument,
-                                                &number, &null_result);
+    int status = eval_angle_conversion_argument(
+        argument_node,
+        context,
+        warnings,
+        &argument,
+        &number,
+        &null_result
+    );
 
     if (status != 0) {
         goto cleanup;
@@ -15427,13 +18289,16 @@ static int eval_angle_conversion_function(enum mylite_scalar_function_id functio
 
     status = angle_conversion_result(
         (struct angle_conversion_input){.function_id = function_id, .input = number.real_value},
-        &result);
+        &result
+    );
     if (status != 0) {
         goto cleanup;
     }
     if (angle_conversion_result_is_out_of_range(result)) {
         status = append_angle_conversion_out_of_range_error(
-            warnings, angle_conversion_function_name(function_id));
+            warnings,
+            angle_conversion_function_name(function_id)
+        );
         if (status == 0) {
             status = MYLITE_EXEC_ERROR;
         }
@@ -15454,12 +18319,14 @@ cleanup:
     return status;
 }
 
-static int eval_angle_conversion_argument(const struct mylite_sql_ast_node *argument_node,
-                                          const struct mylite_expression_eval_context *context,
-                                          struct mylite_expression_warnings *warnings,
-                                          struct mylite_expression_value *argument,
-                                          struct numeric_value *number, bool *out_null_result)
-{
+static int eval_angle_conversion_argument(
+    const struct mylite_sql_ast_node *argument_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *argument,
+    struct numeric_value *number,
+    bool *out_null_result
+) {
     int status = 0;
 
     *out_null_result = false;
@@ -15478,8 +18345,7 @@ static int eval_angle_conversion_argument(const struct mylite_sql_ast_node *argu
     return value_to_numeric(argument, warnings, number);
 }
 
-static int angle_conversion_result(struct angle_conversion_input conversion, double *out_result)
-{
+static int angle_conversion_result(struct angle_conversion_input conversion, double *out_result) {
     switch (conversion.function_id) {
     case MYLITE_SCALAR_FUNCTION_DEGREES:
         *out_result = (conversion.input * mylite_angle_straight_degrees) / mylite_pi_double_value;
@@ -15652,30 +18518,31 @@ static int angle_conversion_result(struct angle_conversion_input conversion, dou
     return -1;
 }
 
-static bool angle_conversion_result_is_out_of_range(double result)
-{
+static bool angle_conversion_result_is_out_of_range(double result) {
     return isnan(result) || isinf(result);
 }
 
-static const char *angle_conversion_function_name(enum mylite_scalar_function_id function_id)
-{
+static const char *angle_conversion_function_name(enum mylite_scalar_function_id function_id) {
     if (function_id == MYLITE_SCALAR_FUNCTION_DEGREES) {
         return "degrees";
     }
     return "radians";
 }
 
-static bool trigonometric_pi_expression_value(const struct mylite_sql_ast_node *node,
-                                              double *out_value)
-{
+static bool trigonometric_pi_expression_value(
+    const struct mylite_sql_ast_node *node,
+    double *out_value
+) {
     bool contains_pi = false;
 
     return trigonometric_pi_expression_value_impl(node, out_value, &contains_pi) && contains_pi;
 }
 
-static bool trigonometric_pi_expression_value_impl(const struct mylite_sql_ast_node *node,
-                                                   double *out_value, bool *out_contains_pi)
-{
+static bool trigonometric_pi_expression_value_impl(
+    const struct mylite_sql_ast_node *node,
+    double *out_value,
+    bool *out_contains_pi
+) {
     double left = 0.0;
     double right = 0.0;
     bool left_contains_pi = false;
@@ -15771,9 +18638,10 @@ static bool trigonometric_pi_expression_value_impl(const struct mylite_sql_ast_n
     return false;
 }
 
-static bool trigonometric_pi_literal_value(const struct mylite_sql_ast_node *node,
-                                           double *out_value)
-{
+static bool trigonometric_pi_literal_value(
+    const struct mylite_sql_ast_node *node,
+    double *out_value
+) {
     char *text = NULL;
     char *end = NULL;
     bool matched = false;
@@ -15795,8 +18663,7 @@ static bool trigonometric_pi_literal_value(const struct mylite_sql_ast_node *nod
     return matched;
 }
 
-static bool trigonometric_expression_is_pi_call(const struct mylite_sql_ast_node *node)
-{
+static bool trigonometric_expression_is_pi_call(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *arguments = NULL;
 
     if (node == NULL || node->kind != MYLITE_SQL_AST_FUNCTION_CALL ||
@@ -15808,11 +18675,12 @@ static bool trigonometric_expression_is_pi_call(const struct mylite_sql_ast_node
            child_count(arguments) == 0U;
 }
 
-static int eval_round_function(const struct mylite_sql_ast_node *arguments,
-                               const struct mylite_expression_eval_context *context,
-                               struct mylite_expression_warnings *warnings,
-                               struct mylite_expression_value *out_value)
-{
+static int eval_round_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     const struct mylite_sql_ast_node *value_argument = child_at(arguments, 0U);
     int scale = 0;
@@ -15849,10 +18717,12 @@ static int eval_round_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int eval_round_scale(const struct mylite_sql_ast_node *arguments,
-                            const struct mylite_expression_eval_context *context,
-                            struct mylite_expression_warnings *warnings, int *out_scale)
-{
+static int eval_round_scale(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    int *out_scale
+) {
     const struct mylite_sql_ast_node *scale_argument = child_at(arguments, 1U);
     struct mylite_expression_value value = {0};
     int status = 0;
@@ -15877,11 +18747,12 @@ static int eval_round_scale(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int eval_format_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_format_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *value_argument = child_at(arguments, 0U);
     const struct mylite_sql_ast_node *scale_argument = child_at(arguments, 1U);
     const struct mylite_sql_ast_node *locale_argument = child_at(arguments, 2U);
@@ -15942,11 +18813,12 @@ static int eval_format_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int format_locale_from_argument(const struct mylite_sql_ast_node *locale_argument,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       const struct format_locale **out_locale)
-{
+static int format_locale_from_argument(
+    const struct mylite_sql_ast_node *locale_argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    const struct format_locale **out_locale
+) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
     size_t text_length = 0U;
@@ -15985,8 +18857,7 @@ static int format_locale_from_argument(const struct mylite_sql_ast_node *locale_
     return status;
 }
 
-static bool format_locale_argument_is_literal(const struct mylite_sql_ast_node *locale_argument)
-{
+static bool format_locale_argument_is_literal(const struct mylite_sql_ast_node *locale_argument) {
     while (locale_argument != NULL &&
            locale_argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         locale_argument = child_at(locale_argument, 0U);
@@ -15994,11 +18865,12 @@ static bool format_locale_argument_is_literal(const struct mylite_sql_ast_node *
     return locale_argument != NULL && locale_argument->kind == MYLITE_SQL_AST_LITERAL;
 }
 
-static int format_input_from_value(const struct mylite_sql_ast_node *argument,
-                                   const struct mylite_expression_value *value,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct format_numeric_input *out_input)
-{
+static int format_input_from_value(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct format_numeric_input *out_input
+) {
     struct round_exact_argument_text exact = {0};
     int status = 0;
 
@@ -16019,9 +18891,11 @@ static int format_input_from_value(const struct mylite_sql_ast_node *argument,
     return value_to_numeric(value, warnings, &out_input->number);
 }
 
-static int format_scale_from_value(const struct mylite_expression_value *value,
-                                   struct mylite_expression_warnings *warnings, int *out_scale)
-{
+static int format_scale_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int *out_scale
+) {
     int scale = 0;
     int status = round_scale_from_value(value, warnings, &scale);
 
@@ -16035,9 +18909,12 @@ static int format_scale_from_value(const struct mylite_expression_value *value,
     return 0;
 }
 
-static int format_rounded_text_from_input(const struct format_numeric_input *input, int scale,
-                                          char **out_text, size_t *out_length)
-{
+static int format_rounded_text_from_input(
+    const struct format_numeric_input *input,
+    int scale,
+    char **out_text,
+    size_t *out_length
+) {
     if (input == NULL || out_text == NULL || out_length == NULL) {
         return -1;
     }
@@ -16050,19 +18927,25 @@ static int format_rounded_text_from_input(const struct format_numeric_input *inp
                 .text_length = input->exact_text_length,
                 .scale = scale,
             },
-            out_text, out_length);
+            out_text,
+            out_length
+        );
     }
     return format_round_approximate_text(
         (struct format_approximate_round_input){
             .value = input->number.real_value,
             .scale = scale,
         },
-        out_text, out_length);
+        out_text,
+        out_length
+    );
 }
 
-static int format_round_exact_decimal_text(struct format_exact_round_input input, char **out_text,
-                                           size_t *out_length)
-{
+static int format_round_exact_decimal_text(
+    struct format_exact_round_input input,
+    char **out_text,
+    size_t *out_length
+) {
     char *copy = copy_span_text(input.text == NULL ? "" : input.text, input.text_length);
     struct decimal_text_parts parts = {0};
     size_t fraction_length = (size_t)input.scale;
@@ -16093,8 +18976,11 @@ static int format_round_exact_decimal_text(struct format_exact_round_input input
         memcpy(digits + parts.integer_length, parts.fraction, copied_fraction);
     }
     if (fraction_length > copied_fraction) {
-        memset(digits + parts.integer_length + copied_fraction, '0',
-               fraction_length - copied_fraction);
+        memset(
+            digits + parts.integer_length + copied_fraction,
+            '0',
+            fraction_length - copied_fraction
+        );
     }
     digits[digits_length] = '\0';
 
@@ -16102,8 +18988,13 @@ static int format_round_exact_decimal_text(struct format_exact_round_input input
         status = increment_decimal_digits(&digits, &digits_length);
     }
     if (status == 0) {
-        status = round_append_signed_decimal_result(&parts, digits, digits_length, fraction_length,
-                                                    &value);
+        status = round_append_signed_decimal_result(
+            &parts,
+            digits,
+            digits_length,
+            fraction_length,
+            &value
+        );
     }
     if (status == 0) {
         *out_text = value.text_value;
@@ -16119,9 +19010,11 @@ static int format_round_exact_decimal_text(struct format_exact_round_input input
     return status;
 }
 
-static int format_round_approximate_text(struct format_approximate_round_input input,
-                                         char **out_text, size_t *out_length)
-{
+static int format_round_approximate_text(
+    struct format_approximate_round_input input,
+    char **out_text,
+    size_t *out_length
+) {
     char buffer[MYLITE_EXPRESSION_FORMAT_TEXT_BUFFER_SIZE];
     double factor = 1.0;
     double scaled = 0.0;
@@ -16155,10 +19048,12 @@ static int format_round_approximate_text(struct format_approximate_round_input i
     return 0;
 }
 
-static int format_apply_locale(const char *rounded_text, size_t rounded_length,
-                               const struct format_locale *locale,
-                               struct mylite_expression_value *out_value)
-{
+static int format_apply_locale(
+    const char *rounded_text,
+    size_t rounded_length,
+    const struct format_locale *locale,
+    struct mylite_expression_value *out_value
+) {
     const char *text = rounded_text == NULL ? "" : rounded_text;
     size_t text_length = rounded_text == NULL ? 0U : rounded_length;
     const char *integer = text;
@@ -16191,8 +19086,12 @@ static int format_apply_locale(const char *rounded_text, size_t rounded_length,
             format_append_grouped_integer(&result, &result_length, integer, integer_length, locale);
     }
     if (status == 0 && fraction_length != 0U) {
-        status = append_text(&result, &result_length, locale->decimal_separator,
-                             strlen(locale->decimal_separator));
+        status = append_text(
+            &result,
+            &result_length,
+            locale->decimal_separator,
+            strlen(locale->decimal_separator)
+        );
     }
     if (status == 0 && fraction_length != 0U) {
         status = append_text(&result, &result_length, fraction, fraction_length);
@@ -16207,9 +19106,13 @@ static int format_apply_locale(const char *rounded_text, size_t rounded_length,
     return status;
 }
 
-static int format_append_grouped_integer(char **result, size_t *result_length, const char *integer,
-                                         size_t integer_length, const struct format_locale *locale)
-{
+static int format_append_grouped_integer(
+    char **result,
+    size_t *result_length,
+    const char *integer,
+    size_t integer_length,
+    const struct format_locale *locale
+) {
     const char *separator = locale->group_separator == NULL ? "" : locale->group_separator;
     size_t separator_length = strlen(separator);
 
@@ -16217,17 +19120,33 @@ static int format_append_grouped_integer(char **result, size_t *result_length, c
         return append_text(result, result_length, integer, integer_length);
     }
     if (locale->grouping == FORMAT_GROUPING_INDIAN) {
-        return format_append_indian_grouped_integer(result, result_length, integer, integer_length,
-                                                    separator, separator_length);
+        return format_append_indian_grouped_integer(
+            result,
+            result_length,
+            integer,
+            integer_length,
+            separator,
+            separator_length
+        );
     }
-    return format_append_western_grouped_integer(result, result_length, integer, integer_length,
-                                                 separator, separator_length);
+    return format_append_western_grouped_integer(
+        result,
+        result_length,
+        integer,
+        integer_length,
+        separator,
+        separator_length
+    );
 }
 
-static int format_append_western_grouped_integer(char **result, size_t *result_length,
-                                                 const char *integer, size_t integer_length,
-                                                 const char *separator, size_t separator_length)
-{
+static int format_append_western_grouped_integer(
+    char **result,
+    size_t *result_length,
+    const char *integer,
+    size_t integer_length,
+    const char *separator,
+    size_t separator_length
+) {
     size_t first_group = integer_length % 3U;
     size_t offset = 0U;
     int status = 0;
@@ -16250,10 +19169,14 @@ static int format_append_western_grouped_integer(char **result, size_t *result_l
     return status;
 }
 
-static int format_append_indian_grouped_integer(char **result, size_t *result_length,
-                                                const char *integer, size_t integer_length,
-                                                const char *separator, size_t separator_length)
-{
+static int format_append_indian_grouped_integer(
+    char **result,
+    size_t *result_length,
+    const char *integer,
+    size_t integer_length,
+    const char *separator,
+    size_t separator_length
+) {
     size_t prefix_length = 0U;
     size_t offset = 0U;
     int status = 0;
@@ -16283,17 +19206,20 @@ static int format_append_indian_grouped_integer(char **result, size_t *result_le
     return status;
 }
 
-static const struct format_locale *format_locale_by_name(const char *name, size_t name_length)
-{
+static const struct format_locale *format_locale_by_name(const char *name, size_t name_length) {
     static const struct format_locale locales[] = {
-        {"en_US", ".", ",", FORMAT_GROUPING_WESTERN}, {"de_DE", ",", ".", FORMAT_GROUPING_WESTERN},
-        {"en_IN", ".", ",", FORMAT_GROUPING_INDIAN},  {"ru_RU", ",", " ", FORMAT_GROUPING_WESTERN},
-        {"fr_FR", ",", "", FORMAT_GROUPING_NONE},     {"nl_NL", ",", "", FORMAT_GROUPING_NONE},
+        {"en_US", ".", ",", FORMAT_GROUPING_WESTERN},
+        {"de_DE", ",", ".", FORMAT_GROUPING_WESTERN},
+        {"en_IN", ".", ",", FORMAT_GROUPING_INDIAN},
+        {"ru_RU", ",", " ", FORMAT_GROUPING_WESTERN},
+        {"fr_FR", ",", "", FORMAT_GROUPING_NONE},
+        {"nl_NL", ",", "", FORMAT_GROUPING_NONE},
     };
 
     for (size_t index = 0U; index < sizeof(locales) / sizeof(locales[0]); ++index) {
-        if (strlen(locales[index].name) == name_length &&
-            ascii_text_equal_ci((struct text_compare_input){.left = locales[index].name,
+        if (strlen(locales[index].name) == name_length && ascii_text_equal_ci((
+                                                              struct text_compare_input
+                                                          ){.left = locales[index].name,
                                                             .left_length = name_length,
                                                             .right = name,
                                                             .right_length = name_length})) {
@@ -16303,19 +19229,25 @@ static const struct format_locale *format_locale_by_name(const char *name, size_
     return NULL;
 }
 
-static const struct format_locale *format_default_locale(void)
-{
+static const struct format_locale *format_default_locale(void) {
     static const struct format_locale locale = {"en_US", ".", ",", FORMAT_GROUPING_WESTERN};
 
     return &locale;
 }
 
-static int append_format_unknown_locale_warning(struct mylite_expression_warnings *warnings,
-                                                const char *locale, size_t locale_length)
-{
+static int append_format_unknown_locale_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *locale,
+    size_t locale_length
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
-    int length = snprintf(message, sizeof(message), "Unknown locale: '%.*s'", (int)locale_length,
-                          locale == NULL ? "" : locale);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Unknown locale: '%.*s'",
+        (int)locale_length,
+        locale == NULL ? "" : locale
+    );
 
     if (length < 0) {
         return -1;
@@ -16323,8 +19255,7 @@ static int append_format_unknown_locale_warning(struct mylite_expression_warning
     return append_warning(warnings, MYLITE_WARNING_UNKNOWN_LOCALE, message);
 }
 
-static void format_numeric_input_deinit(struct format_numeric_input *input)
-{
+static void format_numeric_input_deinit(struct format_numeric_input *input) {
     if (input == NULL) {
         return;
     }
@@ -16332,9 +19263,11 @@ static void format_numeric_input_deinit(struct format_numeric_input *input)
     *input = (struct format_numeric_input){0};
 }
 
-static int round_scale_from_value(const struct mylite_expression_value *value,
-                                  struct mylite_expression_warnings *warnings, int *out_scale)
-{
+static int round_scale_from_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int *out_scale
+) {
     int64_t scale = 0;
 
     if (value == NULL || out_scale == NULL) {
@@ -16358,11 +19291,14 @@ static int round_scale_from_value(const struct mylite_expression_value *value,
     return 0;
 }
 
-static int round_exact_argument_value(const struct mylite_sql_ast_node *argument,
-                                      const struct mylite_expression_value *value, int scale,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value, bool *out_handled)
-{
+static int round_exact_argument_value(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_value *value,
+    int scale,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value,
+    bool *out_handled
+) {
     struct round_exact_argument_text exact = {0};
     int status = 0;
 
@@ -16389,10 +19325,11 @@ static int round_exact_argument_value(const struct mylite_sql_ast_node *argument
     return status;
 }
 
-static int round_exact_argument_text(const struct mylite_sql_ast_node *argument,
-                                     const struct mylite_expression_value *value,
-                                     struct round_exact_argument_text *out_text)
-{
+static int round_exact_argument_text(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_value *value,
+    struct round_exact_argument_text *out_text
+) {
     char buffer[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
     bool integer_literal = false;
     int length = 0;
@@ -16401,8 +19338,12 @@ static int round_exact_argument_text(const struct mylite_sql_ast_node *argument,
         return -1;
     }
     *out_text = (struct round_exact_argument_text){0};
-    if (round_argument_exact_literal_text(argument, &out_text->text, &out_text->text_length,
-                                          &integer_literal)) {
+    if (round_argument_exact_literal_text(
+            argument,
+            &out_text->text,
+            &out_text->text_length,
+            &integer_literal
+        )) {
         out_text->bound_signed = integer_literal && value->kind != MYLITE_EXPRESSION_VALUE_UINT64;
         out_text->bound_unsigned = integer_literal && value->kind == MYLITE_EXPRESSION_VALUE_UINT64;
         return out_text->text == NULL ? -1 : 0;
@@ -16424,10 +19365,11 @@ static int round_exact_argument_text(const struct mylite_sql_ast_node *argument,
     return out_text->text == NULL ? -1 : 0;
 }
 
-static int round_check_integer_result_bound(struct round_exact_argument_text input,
-                                            struct mylite_expression_warnings *warnings,
-                                            struct mylite_expression_value *out_value)
-{
+static int round_check_integer_result_bound(
+    struct round_exact_argument_text input,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const char *result = NULL;
     bool negative = false;
     const char *magnitude = NULL;
@@ -16453,9 +19395,12 @@ static int round_check_integer_result_bound(struct round_exact_argument_text inp
     return status == 0 ? MYLITE_EXEC_ERROR : status;
 }
 
-static int round_exact_decimal_text(const char *text, size_t text_length,
-                                    struct mylite_expression_value *out_value, int scale)
-{
+static int round_exact_decimal_text(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value,
+    int scale
+) {
     char *copy = copy_span_text(text == NULL ? "" : text, text_length);
     struct decimal_text_parts parts = {0};
     int status = 0;
@@ -16476,9 +19421,11 @@ static int round_exact_decimal_text(const char *text, size_t text_length,
     return status;
 }
 
-static int round_exact_decimal_positive_scale(const struct decimal_text_parts *parts, int scale,
-                                              struct mylite_expression_value *out_value)
-{
+static int round_exact_decimal_positive_scale(
+    const struct decimal_text_parts *parts,
+    int scale,
+    struct mylite_expression_value *out_value
+) {
     size_t requested_fraction = (size_t)scale;
     size_t kept_fraction =
         requested_fraction < parts->fraction_length ? requested_fraction : parts->fraction_length;
@@ -16498,16 +19445,23 @@ static int round_exact_decimal_positive_scale(const struct decimal_text_parts *p
         status = increment_decimal_digits(&digits, &digits_length);
     }
     if (status == 0) {
-        status = round_append_signed_decimal_result(parts, digits, digits_length, kept_fraction,
-                                                    out_value);
+        status = round_append_signed_decimal_result(
+            parts,
+            digits,
+            digits_length,
+            kept_fraction,
+            out_value
+        );
     }
     free(digits);
     return status;
 }
 
-static int round_exact_decimal_negative_scale(const struct decimal_text_parts *parts, int scale,
-                                              struct mylite_expression_value *out_value)
-{
+static int round_exact_decimal_negative_scale(
+    const struct decimal_text_parts *parts,
+    int scale,
+    struct mylite_expression_value *out_value
+) {
     size_t places = (size_t)(-scale);
     size_t kept_integer = parts->integer_length > places ? parts->integer_length - places : 0U;
     size_t digits_length = kept_integer;
@@ -16548,11 +19502,13 @@ static int round_exact_decimal_negative_scale(const struct decimal_text_parts *p
     return status;
 }
 
-static int round_append_signed_decimal_result(const struct decimal_text_parts *parts,
-                                              const char *digits, size_t digits_length,
-                                              size_t fraction_length,
-                                              struct mylite_expression_value *out_value)
-{
+static int round_append_signed_decimal_result(
+    const struct decimal_text_parts *parts,
+    const char *digits,
+    size_t digits_length,
+    size_t fraction_length,
+    struct mylite_expression_value *out_value
+) {
     const char *integer = digits;
     size_t integer_length = 0U;
     bool has_nonzero_digit = false;
@@ -16605,10 +19561,12 @@ static int round_append_signed_decimal_result(const struct decimal_text_parts *p
     return 0;
 }
 
-static int round_approximate_value(const struct mylite_expression_value *value, int scale,
-                                   struct mylite_expression_warnings *warnings,
-                                   struct mylite_expression_value *out_value)
-{
+static int round_approximate_value(
+    const struct mylite_expression_value *value,
+    int scale,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct numeric_value number = {0};
     double factor = 1.0;
     double rounded = 0.0;
@@ -16629,8 +19587,7 @@ static int round_approximate_value(const struct mylite_expression_value *value, 
     return set_round_approximate_text((long double)rounded, out_value, scale);
 }
 
-static double round_half_even_double(double value)
-{
+static double round_half_even_double(double value) {
     double truncated = 0.0;
     double fraction = 0.0;
     int64_t integer = 0;
@@ -16652,9 +19609,11 @@ static double round_half_even_double(double value)
     return truncated;
 }
 
-static int set_round_approximate_text(long double value, struct mylite_expression_value *out_value,
-                                      int scale)
-{
+static int set_round_approximate_text(
+    long double value,
+    struct mylite_expression_value *out_value,
+    int scale
+) {
     char buffer[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
     int decimals = scale > 0 ? scale : 0;
     int length = 0;
@@ -16680,11 +19639,12 @@ static int set_round_approximate_text(long double value, struct mylite_expressio
     return set_text_value(buffer, (size_t)length, out_value);
 }
 
-static int eval_truncate_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value)
-{
+static int eval_truncate_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *value_argument = child_at(arguments, 0U);
     const struct mylite_sql_ast_node *scale_argument = child_at(arguments, 1U);
     struct mylite_expression_value value = {0};
@@ -16742,9 +19702,12 @@ cleanup:
     return status;
 }
 
-static int truncate_exact_decimal_text(const char *text, size_t text_length,
-                                       struct mylite_expression_value *out_value, int scale)
-{
+static int truncate_exact_decimal_text(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value,
+    int scale
+) {
     char *copy = copy_span_text(text == NULL ? "" : text, text_length);
     struct decimal_text_parts parts = {0};
     int status = 0;
@@ -16765,9 +19728,11 @@ static int truncate_exact_decimal_text(const char *text, size_t text_length,
     return status;
 }
 
-static int truncate_exact_decimal_positive_scale(const struct decimal_text_parts *parts, int scale,
-                                                 struct mylite_expression_value *out_value)
-{
+static int truncate_exact_decimal_positive_scale(
+    const struct decimal_text_parts *parts,
+    int scale,
+    struct mylite_expression_value *out_value
+) {
     size_t requested_fraction = (size_t)scale;
     size_t kept_fraction =
         requested_fraction < parts->fraction_length ? requested_fraction : parts->fraction_length;
@@ -16789,9 +19754,11 @@ static int truncate_exact_decimal_positive_scale(const struct decimal_text_parts
     return status;
 }
 
-static int truncate_exact_decimal_negative_scale(const struct decimal_text_parts *parts, int scale,
-                                                 struct mylite_expression_value *out_value)
-{
+static int truncate_exact_decimal_negative_scale(
+    const struct decimal_text_parts *parts,
+    int scale,
+    struct mylite_expression_value *out_value
+) {
     size_t places = (size_t)(-scale);
     size_t kept_integer = parts->integer_length > places ? parts->integer_length - places : 0U;
     size_t digits_length = kept_integer;
@@ -16823,9 +19790,11 @@ static int truncate_exact_decimal_negative_scale(const struct decimal_text_parts
     return status;
 }
 
-static int truncate_approximate_numeric(const struct numeric_value *number, int scale,
-                                        struct mylite_expression_value *out_value)
-{
+static int truncate_approximate_numeric(
+    const struct numeric_value *number,
+    int scale,
+    struct mylite_expression_value *out_value
+) {
     long double factor = mylite_expression_long_double_one;
     long double truncated = 0.0L;
     int places = scale < 0 ? -scale : scale;
@@ -16844,9 +19813,11 @@ static int truncate_approximate_numeric(const struct numeric_value *number, int 
     return set_truncate_approximate_text(truncated, out_value, scale);
 }
 
-static int set_truncate_approximate_text(long double value,
-                                         struct mylite_expression_value *out_value, int scale)
-{
+static int set_truncate_approximate_text(
+    long double value,
+    struct mylite_expression_value *out_value,
+    int scale
+) {
     char buffer[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
     int decimals = scale > 0 ? scale : 0;
     int length = 0;
@@ -16880,10 +19851,12 @@ static int set_truncate_approximate_text(long double value,
     return set_text_value(buffer, (size_t)length, out_value);
 }
 
-static bool round_argument_exact_literal_text(const struct mylite_sql_ast_node *argument,
-                                              char **out_text, size_t *out_length,
-                                              bool *out_integer_literal)
-{
+static bool round_argument_exact_literal_text(
+    const struct mylite_sql_ast_node *argument,
+    char **out_text,
+    size_t *out_length,
+    bool *out_integer_literal
+) {
     char sign = '\0';
 
     if (out_text == NULL || out_length == NULL || out_integer_literal == NULL) {
@@ -16913,8 +19886,7 @@ static bool round_argument_exact_literal_text(const struct mylite_sql_ast_node *
     return copy_base_conversion_literal_text(sign, argument, out_text, out_length) == 0;
 }
 
-static bool parse_decimal_text_parts(char *text, struct decimal_text_parts *out_parts)
-{
+static bool parse_decimal_text_parts(char *text, struct decimal_text_parts *out_parts) {
     char *scan = text == NULL ? NULL : text;
     char *dot = NULL;
 
@@ -16944,8 +19916,7 @@ static bool parse_decimal_text_parts(char *text, struct decimal_text_parts *out_
     return true;
 }
 
-static void trim_leading_decimal_zeros(const char **digits, size_t *length)
-{
+static void trim_leading_decimal_zeros(const char **digits, size_t *length) {
     if (digits == NULL || length == NULL || *digits == NULL) {
         return;
     }
@@ -16955,8 +19926,7 @@ static void trim_leading_decimal_zeros(const char **digits, size_t *length)
     }
 }
 
-static bool decimal_digits_all_zero(const char *digits, size_t length)
-{
+static bool decimal_digits_all_zero(const char *digits, size_t length) {
     for (size_t index = 0U; index < length; ++index) {
         if (digits[index] != '0') {
             return false;
@@ -16965,8 +19935,7 @@ static bool decimal_digits_all_zero(const char *digits, size_t length)
     return true;
 }
 
-static bool decimal_text_exceeds_bound(const char *text, const char *bound)
-{
+static bool decimal_text_exceeds_bound(const char *text, const char *bound) {
     size_t text_length = strlen(text == NULL ? "" : text);
     size_t bound_length = strlen(bound == NULL ? "" : bound);
 
@@ -16976,8 +19945,7 @@ static bool decimal_text_exceeds_bound(const char *text, const char *bound)
     return strcmp(text == NULL ? "" : text, bound == NULL ? "" : bound) > 0;
 }
 
-static int increment_decimal_digits(char **digits, size_t *length)
-{
+static int increment_decimal_digits(char **digits, size_t *length) {
     size_t index = 0U;
     char *grown = NULL;
 
@@ -17004,22 +19972,27 @@ static int increment_decimal_digits(char **digits, size_t *length)
     return 0;
 }
 
-static int append_round_out_of_range_error(struct mylite_expression_warnings *warnings,
-                                           bool unsigned_value)
-{
+static int append_round_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    bool unsigned_value
+) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE,
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_OUT_OF_RANGE,
         unsigned_value ? "BIGINT UNSIGNED value is out of range in "
                          "'round()'"
-                       : "BIGINT value is out of range in 'round()'");
+                       : "BIGINT value is out of range in 'round()'"
+    );
 }
 
-static int eval_numeric_unary_function(enum mylite_scalar_function_id function_id,
-                                       const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value)
-{
+static int eval_numeric_unary_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     struct numeric_value number = {0};
     int status = eval_node(arguments->first_child, context, warnings, &value);
@@ -17042,50 +20015,64 @@ static int eval_numeric_unary_function(enum mylite_scalar_function_id function_i
         eval_abs_function(&number, out_value);
         return 0;
     case MYLITE_SCALAR_FUNCTION_SIGN:
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = (number.real_value > 0.0) -
-                                                                     (number.real_value < 0.0)};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = (number.real_value > 0.0) - (number.real_value < 0.0)
+        };
         return 0;
     case MYLITE_SCALAR_FUNCTION_FLOOR:
-        *out_value =
-            (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                             .int64_value = floor_real_value(number.real_value)};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = floor_real_value(number.real_value)
+        };
         return 0;
     case MYLITE_SCALAR_FUNCTION_CEIL:
-        *out_value =
-            (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                             .int64_value = ceil_real_value(number.real_value)};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = ceil_real_value(number.real_value)
+        };
         return 0;
     default:
         return -1;
     }
 }
 
-static void eval_abs_function(const struct numeric_value *number,
-                              struct mylite_expression_value *out_value)
-{
+static void eval_abs_function(
+    const struct numeric_value *number,
+    struct mylite_expression_value *out_value
+) {
     if (number->is_integer && !number->is_unsigned && number->int64_value >= 0) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = number->int64_value};
-    } else if (number->is_integer && !number->is_unsigned && number->int64_value < 0 &&
-               number->int64_value != INT64_MIN) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = -number->int64_value};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = number->int64_value
+        };
+    } else if (
+        number->is_integer && !number->is_unsigned && number->int64_value < 0 &&
+        number->int64_value != INT64_MIN
+    ) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = -number->int64_value
+        };
     } else if (number->is_integer && number->is_unsigned) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
-                                                      .uint64_value = number->uint64_value};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+            .uint64_value = number->uint64_value
+        };
     } else {
-        *out_value =
-            (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_REAL,
-                                             .real_value = absolute_real_value(number->real_value)};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_REAL,
+            .real_value = absolute_real_value(number->real_value)
+        };
     }
 }
 
-static int eval_if_function(const struct mylite_sql_ast_node *arguments,
-                            const struct mylite_expression_eval_context *context,
-                            struct mylite_expression_warnings *warnings,
-                            struct mylite_expression_value *out_value)
-{
+static int eval_if_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value condition = {0};
     size_t branch_index = 2U;
     int truth = -1;
@@ -17104,11 +20091,12 @@ static int eval_if_function(const struct mylite_sql_ast_node *arguments,
     return eval_node(child_at(arguments, branch_index), context, warnings, out_value);
 }
 
-static int eval_ifnull_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_ifnull_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     int status = eval_node(child_at(arguments, 0U), context, warnings, &value);
 
@@ -17124,11 +20112,12 @@ static int eval_ifnull_function(const struct mylite_sql_ast_node *arguments,
     return 0;
 }
 
-static int eval_nullif_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_nullif_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value left = {0};
     struct mylite_expression_value right = {0};
     bool moved_left = false;
@@ -17154,11 +20143,12 @@ static int eval_nullif_function(const struct mylite_sql_ast_node *arguments,
     return status;
 }
 
-static int eval_coalesce_function(const struct mylite_sql_ast_node *arguments,
-                                  const struct mylite_expression_eval_context *context,
-                                  struct mylite_expression_warnings *warnings,
-                                  struct mylite_expression_value *out_value)
-{
+static int eval_coalesce_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     for (const struct mylite_sql_ast_node *argument = arguments->first_child; argument != NULL;
          argument = argument->next_sibling) {
         struct mylite_expression_value value = {0};
@@ -17178,12 +20168,13 @@ static int eval_coalesce_function(const struct mylite_sql_ast_node *arguments,
     return 0;
 }
 
-static int eval_greatest_least_function(enum mylite_scalar_function_id function_id,
-                                        const struct mylite_sql_ast_node *arguments,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value)
-{
+static int eval_greatest_least_function(
+    enum mylite_scalar_function_id function_id,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     size_t value_count = child_count(arguments);
     struct greatest_least_argument *values = NULL;
     struct greatest_least_eval_state state = {0};
@@ -17201,8 +20192,14 @@ static int eval_greatest_least_function(enum mylite_scalar_function_id function_
     if (status == 0 && state.null_result) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
     } else if (status == 0) {
-        status = set_greatest_least_result(function_id, values, value_count, state.string_domain,
-                                           warnings, out_value);
+        status = set_greatest_least_result(
+            function_id,
+            values,
+            value_count,
+            state.string_domain,
+            warnings,
+            out_value
+        );
     }
 
     greatest_least_arguments_deinit(values, value_count);
@@ -17210,18 +20207,20 @@ static int eval_greatest_least_function(enum mylite_scalar_function_id function_
     return status;
 }
 
-static int eval_greatest_least_arguments(const struct mylite_sql_ast_node *arguments,
-                                         const struct mylite_expression_eval_context *context,
-                                         struct mylite_expression_warnings *warnings,
-                                         struct greatest_least_argument *values,
-                                         struct greatest_least_eval_state *out_state)
-{
+static int eval_greatest_least_arguments(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct greatest_least_argument *values,
+    struct greatest_least_eval_state *out_state
+) {
     size_t index = 0U;
 
     *out_state = (struct greatest_least_eval_state){0};
     for (const struct mylite_sql_ast_node *argument = arguments == NULL ? NULL
                                                                         : arguments->first_child;
-         argument != NULL; argument = argument->next_sibling, ++index) {
+         argument != NULL;
+         argument = argument->next_sibling, ++index) {
         int status = eval_node(argument, context, warnings, &values[index].value);
 
         if (status != 0) {
@@ -17238,23 +20237,26 @@ static int eval_greatest_least_arguments(const struct mylite_sql_ast_node *argum
     return 0;
 }
 
-static int set_greatest_least_result(enum mylite_scalar_function_id function_id,
-                                     struct greatest_least_argument *values, size_t value_count,
-                                     bool string_domain,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int set_greatest_least_result(
+    enum mylite_scalar_function_id function_id,
+    struct greatest_least_argument *values,
+    size_t value_count,
+    bool string_domain,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     if (string_domain) {
         return set_greatest_least_string_result(function_id, values, value_count, out_value);
     }
     return set_greatest_least_numeric_result(function_id, values, value_count, warnings, out_value);
 }
 
-static int set_greatest_least_string_result(enum mylite_scalar_function_id function_id,
-                                            struct greatest_least_argument *values,
-                                            size_t value_count,
-                                            struct mylite_expression_value *out_value)
-{
+static int set_greatest_least_string_result(
+    enum mylite_scalar_function_id function_id,
+    struct greatest_least_argument *values,
+    size_t value_count,
+    struct mylite_expression_value *out_value
+) {
     size_t selected = 0U;
 
     for (size_t index = 0U; index < value_count; ++index) {
@@ -17281,18 +20283,23 @@ static int set_greatest_least_string_result(enum mylite_scalar_function_id funct
     return status;
 }
 
-static int set_greatest_least_numeric_result(enum mylite_scalar_function_id function_id,
-                                             struct greatest_least_argument *values,
-                                             size_t value_count,
-                                             struct mylite_expression_warnings *warnings,
-                                             struct mylite_expression_value *out_value)
-{
+static int set_greatest_least_numeric_result(
+    enum mylite_scalar_function_id function_id,
+    struct greatest_least_argument *values,
+    size_t value_count,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     size_t selected = 0U;
 
     for (size_t index = 1U; index < value_count; ++index) {
         int comparison = 0;
         int status = compare_greatest_least_numeric_values(
-            &values[selected].value, &values[index].value, warnings, &comparison);
+            &values[selected].value,
+            &values[index].value,
+            warnings,
+            &comparison
+        );
 
         if (status != 0) {
             return status;
@@ -17305,8 +20312,7 @@ static int set_greatest_least_numeric_result(enum mylite_scalar_function_id func
     return mylite_expression_value_copy(&values[selected].value, out_value);
 }
 
-static int greatest_least_argument_to_text(struct greatest_least_argument *argument)
-{
+static int greatest_least_argument_to_text(struct greatest_least_argument *argument) {
     if (argument->value.kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         const char *text = argument->value.text_value == NULL ? "" : argument->value.text_value;
         size_t length = argument->value.text_value == NULL ? 0U : argument->value.text_length;
@@ -17329,9 +20335,10 @@ static int greatest_least_argument_to_text(struct greatest_least_argument *argum
     return status;
 }
 
-static int greatest_least_argument_prepare_compare_text(struct greatest_least_argument *argument,
-                                                        size_t length)
-{
+static int greatest_least_argument_prepare_compare_text(
+    struct greatest_least_argument *argument,
+    size_t length
+) {
     const char *text = argument->text == NULL ? "" : argument->text;
 
     while (length > 0U && text[length - 1U] == ' ') {
@@ -17353,20 +20360,24 @@ static int greatest_least_argument_prepare_compare_text(struct greatest_least_ar
     return 0;
 }
 
-static int compare_greatest_least_text(const struct greatest_least_argument *left,
-                                       const struct greatest_least_argument *right)
-{
-    int comparison = strcmp(left->compare_text == NULL ? "" : left->compare_text,
-                            right->compare_text == NULL ? "" : right->compare_text);
+static int compare_greatest_least_text(
+    const struct greatest_least_argument *left,
+    const struct greatest_least_argument *right
+) {
+    int comparison = strcmp(
+        left->compare_text == NULL ? "" : left->compare_text,
+        right->compare_text == NULL ? "" : right->compare_text
+    );
 
     return (comparison > 0) - (comparison < 0);
 }
 
-static int compare_greatest_least_numeric_values(const struct mylite_expression_value *left,
-                                                 const struct mylite_expression_value *right,
-                                                 struct mylite_expression_warnings *warnings,
-                                                 int *out_compare)
-{
+static int compare_greatest_least_numeric_values(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_compare
+) {
     if (left->kind == MYLITE_EXPRESSION_VALUE_INT64 &&
         right->kind == MYLITE_EXPRESSION_VALUE_INT64) {
         *out_compare =
@@ -17399,18 +20410,20 @@ static int compare_greatest_least_numeric_values(const struct mylite_expression_
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-static bool greatest_least_candidate_replaces_selected(enum mylite_scalar_function_id function_id,
-                                                       int selected_vs_candidate)
-{
+static bool greatest_least_candidate_replaces_selected(
+    enum mylite_scalar_function_id function_id,
+    int selected_vs_candidate
+) {
     if (function_id == MYLITE_SCALAR_FUNCTION_GREATEST) {
         return selected_vs_candidate <= 0;
     }
     return selected_vs_candidate > 0;
 }
 
-static void greatest_least_arguments_deinit(struct greatest_least_argument *values,
-                                            size_t value_count)
-{
+static void greatest_least_arguments_deinit(
+    struct greatest_least_argument *values,
+    size_t value_count
+) {
     for (size_t index = 0U; index < value_count; ++index) {
         mylite_expression_value_deinit(&values[index].value);
         free(values[index].text);
@@ -17418,27 +20431,31 @@ static void greatest_least_arguments_deinit(struct greatest_least_argument *valu
     }
 }
 
-static int eval_isnull_function(const struct mylite_sql_ast_node *arguments,
-                                const struct mylite_expression_eval_context *context,
-                                struct mylite_expression_warnings *warnings,
-                                struct mylite_expression_value *out_value)
-{
+static int eval_isnull_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     int status = eval_node(arguments->first_child, context, warnings, &value);
 
     if (status == 0) {
         int null_result = is_null(&value) ? 1 : 0;
 
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = null_result};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = null_result
+        };
     }
     mylite_expression_value_deinit(&value);
     return status;
 }
 
-static int eval_literal(const struct mylite_sql_ast_node *node,
-                        struct mylite_expression_value *out_value)
-{
+static int eval_literal(
+    const struct mylite_sql_ast_node *node,
+    struct mylite_expression_value *out_value
+) {
     char *text = NULL;
     char *end = NULL;
     errno = 0;
@@ -17448,12 +20465,16 @@ static int eval_literal(const struct mylite_sql_ast_node *node,
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         return 0;
     case MYLITE_SQL_AST_LITERAL_TRUE:
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 1};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 1
+        };
         return 0;
     case MYLITE_SQL_AST_LITERAL_FALSE:
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = 0
+        };
         return 0;
     case MYLITE_SQL_AST_LITERAL_INTEGER:
         text = copy_span_text(node->span.text, node->span.length);
@@ -17502,9 +20523,10 @@ static int eval_literal(const struct mylite_sql_ast_node *node,
     return -1;
 }
 
-static int eval_hex_literal(const struct mylite_sql_ast_node *node,
-                            struct mylite_expression_value *out_value)
-{
+static int eval_hex_literal(
+    const struct mylite_sql_ast_node *node,
+    struct mylite_expression_value *out_value
+) {
     const char *digits = NULL;
     size_t digit_count = 0U;
     size_t result_length = 0U;
@@ -17547,13 +20569,17 @@ static int eval_hex_literal(const struct mylite_sql_ast_node *node,
 
     result[result_length] = '\0';
     *out_value = (struct mylite_expression_value){
-        .kind = MYLITE_EXPRESSION_VALUE_TEXT, .text_value = result, .text_length = result_length};
+        .kind = MYLITE_EXPRESSION_VALUE_TEXT,
+        .text_value = result,
+        .text_length = result_length
+    };
     return 0;
 }
 
-static int eval_bit_literal(const struct mylite_sql_ast_node *node,
-                            struct mylite_expression_value *out_value)
-{
+static int eval_bit_literal(
+    const struct mylite_sql_ast_node *node,
+    struct mylite_expression_value *out_value
+) {
     const char *digits = NULL;
     size_t digit_count = 0U;
     size_t result_length = 0U;
@@ -17576,9 +20602,9 @@ static int eval_bit_literal(const struct mylite_sql_ast_node *node,
 
     for (size_t index = 0U; index < digit_count; ++index) {
         size_t bit_position = leading_pad + index;
-        unsigned char mask =
-            (unsigned char)(1U << ((MYLITE_EXPRESSION_BITS_PER_BYTE - 1U) -
-                                   (bit_position % MYLITE_EXPRESSION_BITS_PER_BYTE)));
+        unsigned char mask = (unsigned char)(1U
+                                             << ((MYLITE_EXPRESSION_BITS_PER_BYTE - 1U) -
+                                                 (bit_position % MYLITE_EXPRESSION_BITS_PER_BYTE)));
 
         if (digits[index] == '0') {
             continue;
@@ -17593,13 +20619,18 @@ static int eval_bit_literal(const struct mylite_sql_ast_node *node,
     }
 
     *out_value = (struct mylite_expression_value){
-        .kind = MYLITE_EXPRESSION_VALUE_TEXT, .text_value = result, .text_length = result_length};
+        .kind = MYLITE_EXPRESSION_VALUE_TEXT,
+        .text_value = result,
+        .text_length = result_length
+    };
     return 0;
 }
 
-static bool hex_literal_digits(const struct mylite_sql_ast_node *node, const char **out_digits,
-                               size_t *out_length)
-{
+static bool hex_literal_digits(
+    const struct mylite_sql_ast_node *node,
+    const char **out_digits,
+    size_t *out_length
+) {
     const char *text = node == NULL ? NULL : node->span.text;
     size_t length = node == NULL ? 0U : node->span.length;
 
@@ -17620,9 +20651,11 @@ static bool hex_literal_digits(const struct mylite_sql_ast_node *node, const cha
     return false;
 }
 
-static bool bit_literal_digits(const struct mylite_sql_ast_node *node, const char **out_digits,
-                               size_t *out_length)
-{
+static bool bit_literal_digits(
+    const struct mylite_sql_ast_node *node,
+    const char **out_digits,
+    size_t *out_length
+) {
     const char *text = node == NULL ? NULL : node->span.text;
     size_t length = node == NULL ? 0U : node->span.length;
 
@@ -17643,12 +20676,13 @@ static bool bit_literal_digits(const struct mylite_sql_ast_node *node, const cha
     return false;
 }
 
-static int eval_is_expression(enum mylite_sql_ast_operator operator_kind,
-                              const struct mylite_sql_ast_node *operand,
-                              const struct mylite_expression_eval_context *context,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_is_expression(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *operand,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     int truth = -1;
     int result = 0;
@@ -17693,17 +20727,20 @@ static int eval_is_expression(enum mylite_sql_ast_operator operator_kind,
     if (status != 0) {
         return status;
     }
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = result ? 1 : 0};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = result ? 1 : 0
+    };
     return 0;
 }
 
-static int eval_between(enum mylite_sql_ast_operator operator_kind,
-                        const struct mylite_sql_ast_node *node,
-                        const struct mylite_expression_eval_context *context,
-                        struct mylite_expression_warnings *warnings,
-                        struct mylite_expression_value *out_value)
-{
+static int eval_between(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     struct mylite_expression_value low = {0};
     struct mylite_expression_value high = {0};
@@ -17734,10 +20771,13 @@ cleanup:
     return status;
 }
 
-static int eval_between_bound_truth(const struct mylite_expression_value *value,
-                                    const struct mylite_expression_value *bound, bool lower_bound,
-                                    struct mylite_expression_warnings *warnings, int *out_truth)
-{
+static int eval_between_bound_truth(
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_value *bound,
+    bool lower_bound,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+) {
     int comparison = 0;
     int status = 0;
 
@@ -17754,29 +20794,35 @@ static int eval_between_bound_truth(const struct mylite_expression_value *value,
     return 0;
 }
 
-static void set_between_result(enum mylite_sql_ast_operator operator_kind,
-                               struct between_truth truth,
-                               struct mylite_expression_value *out_value)
-{
+static void set_between_result(
+    enum mylite_sql_ast_operator operator_kind,
+    struct between_truth truth,
+    struct mylite_expression_value *out_value
+) {
     bool between = operator_kind == MYLITE_SQL_AST_OPERATOR_BETWEEN;
 
     if (truth.low == 0 || truth.high == 0) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = between ? 0 : 1};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = between ? 0 : 1
+        };
     } else if (truth.low < 0 || truth.high < 0) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
     } else {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = between ? 1 : 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = between ? 1 : 0
+        };
     }
 }
 
-static int eval_like(enum mylite_sql_ast_operator operator_kind,
-                     const struct mylite_sql_ast_node *node,
-                     const struct mylite_expression_eval_context *context,
-                     struct mylite_expression_warnings *warnings,
-                     struct mylite_expression_value *out_value)
-{
+static int eval_like(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     struct mylite_expression_value pattern = {0};
     struct mylite_expression_value escape_value = {0};
@@ -17810,8 +20856,11 @@ static int eval_like(enum mylite_sql_ast_operator operator_kind,
     if (status == 0 && child_at(node, 2U) != NULL) {
         status = value_to_string(&escape_value, &escape_text);
         if (status == 0 && strlen(escape_text) != 1U) {
-            status = append_warning(warnings, MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS,
-                                    "Incorrect arguments to ESCAPE");
+            status = append_warning(
+                warnings,
+                MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS,
+                "Incorrect arguments to ESCAPE"
+            );
             if (status == 0) {
                 status = -1;
             }
@@ -17825,8 +20874,10 @@ static int eval_like(enum mylite_sql_ast_operator operator_kind,
         if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE) {
             result = !result;
         }
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = result ? 1 : 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = result ? 1 : 0
+        };
     }
 
 cleanup:
@@ -17839,12 +20890,13 @@ cleanup:
     return status;
 }
 
-static int eval_regexp(enum mylite_sql_ast_operator operator_kind,
-                       const struct mylite_sql_ast_node *node,
-                       const struct mylite_expression_eval_context *context,
-                       struct mylite_expression_warnings *warnings,
-                       struct mylite_expression_value *out_value)
-{
+static int eval_regexp(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     struct mylite_expression_value pattern = {0};
     struct mylite_regexp_options options = {
@@ -17873,8 +20925,15 @@ static int eval_regexp(enum mylite_sql_ast_operator operator_kind,
         status = value_to_string(&pattern, &pattern_text);
     }
     if (status == 0) {
-        status = mylite_regexp_match(value_text, strlen(value_text), pattern_text,
-                                     strlen(pattern_text), options, &result, &error);
+        status = mylite_regexp_match(
+            value_text,
+            strlen(value_text),
+            pattern_text,
+            strlen(pattern_text),
+            options,
+            &result,
+            &error
+        );
         if (status == MYLITE_REGEXP_PATTERN_ERROR) {
             status = append_regexp_pattern_error(warnings, &error);
             status = status == 0 ? MYLITE_EXEC_ERROR : status;
@@ -17884,8 +20943,10 @@ static int eval_regexp(enum mylite_sql_ast_operator operator_kind,
         if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_REGEXP) {
             result = !result;
         }
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = result ? 1 : 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = result ? 1 : 0
+        };
     }
 
 cleanup:
@@ -17896,11 +20957,12 @@ cleanup:
     return status;
 }
 
-static int eval_regexp_like_function(const struct mylite_sql_ast_node *arguments,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int eval_regexp_like_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     struct mylite_expression_value pattern = {0};
     struct mylite_expression_value match_type = {0};
@@ -17936,16 +20998,25 @@ static int eval_regexp_like_function(const struct mylite_sql_ast_node *arguments
         status = value_to_string(&pattern, &pattern_text);
     }
     if (status == 0) {
-        status = mylite_regexp_match(value_text, strlen(value_text), pattern_text,
-                                     strlen(pattern_text), options, &result, &error);
+        status = mylite_regexp_match(
+            value_text,
+            strlen(value_text),
+            pattern_text,
+            strlen(pattern_text),
+            options,
+            &result,
+            &error
+        );
         if (status == MYLITE_REGEXP_PATTERN_ERROR) {
             status = append_regexp_pattern_error(warnings, &error);
             status = status == 0 ? MYLITE_EXEC_ERROR : status;
         }
     }
     if (status == 0) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = result ? 1 : 0};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = result ? 1 : 0
+        };
     }
 
 cleanup:
@@ -17957,11 +21028,12 @@ cleanup:
     return status;
 }
 
-static int eval_regexp_instr_function(const struct mylite_sql_ast_node *arguments,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value)
-{
+static int eval_regexp_instr_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     char *value_text = NULL;
     char *pattern_text = NULL;
     size_t value_length = 0U;
@@ -17973,28 +21045,61 @@ static int eval_regexp_instr_function(const struct mylite_sql_ast_node *argument
     struct mylite_regexp_match match = {0};
     bool null_result = false;
     bool found = false;
-    int status = eval_regexp_text_argument(child_at(arguments, 0U), context, warnings, &value_text,
-                                           &value_length, &null_result);
+    int status = eval_regexp_text_argument(
+        child_at(arguments, 0U),
+        context,
+        warnings,
+        &value_text,
+        &value_length,
+        &null_result
+    );
 
     if (status == 0 && !null_result) {
-        status = eval_regexp_text_argument(child_at(arguments, 1U), context, warnings,
-                                           &pattern_text, &pattern_length, &null_result);
+        status = eval_regexp_text_argument(
+            child_at(arguments, 1U),
+            context,
+            warnings,
+            &pattern_text,
+            &pattern_length,
+            &null_result
+        );
     }
     if (status == 0 && !null_result && child_at(arguments, 2U) != NULL) {
-        status = eval_regexp_integer_argument(child_at(arguments, 2U), context, warnings, &position,
-                                              &null_result);
+        status = eval_regexp_integer_argument(
+            child_at(arguments, 2U),
+            context,
+            warnings,
+            &position,
+            &null_result
+        );
     }
     if (status == 0 && !null_result && child_at(arguments, 3U) != NULL) {
-        status = eval_regexp_integer_argument(child_at(arguments, 3U), context, warnings,
-                                              &occurrence, &null_result);
+        status = eval_regexp_integer_argument(
+            child_at(arguments, 3U),
+            context,
+            warnings,
+            &occurrence,
+            &null_result
+        );
     }
     if (status == 0 && !null_result && child_at(arguments, 4U) != NULL) {
-        status = eval_regexp_integer_argument(child_at(arguments, 4U), context, warnings,
-                                              &return_option, &null_result);
+        status = eval_regexp_integer_argument(
+            child_at(arguments, 4U),
+            context,
+            warnings,
+            &return_option,
+            &null_result
+        );
     }
     if (status == 0 && !null_result) {
-        status = eval_regexp_match_type_argument(child_at(arguments, 5U), context, warnings,
-                                                 "regexp_instr", &options, &null_result);
+        status = eval_regexp_match_type_argument(
+            child_at(arguments, 5U),
+            context,
+            warnings,
+            "regexp_instr",
+            &options,
+            &null_result
+        );
     }
     if (status != 0) {
         goto cleanup;
@@ -18015,14 +21120,25 @@ static int eval_regexp_instr_function(const struct mylite_sql_ast_node *argument
     }
 
     occurrence = occurrence <= 0 ? 1 : occurrence;
-    status = find_regexp_match(value_text, value_length, pattern_text, pattern_length,
-                               (size_t)(position - 1), regexp_occurrence_to_size(occurrence),
-                               options, warnings, &found, &match);
+    status = find_regexp_match(
+        value_text,
+        value_length,
+        pattern_text,
+        pattern_length,
+        (size_t)(position - 1),
+        regexp_occurrence_to_size(occurrence),
+        options,
+        warnings,
+        &found,
+        &match
+    );
     if (status == 0) {
         int64_t result = found ? (int64_t)((return_option == 0 ? match.start : match.end) + 1U) : 0;
 
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = result};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = result
+        };
     }
 
 cleanup:
@@ -18031,11 +21147,12 @@ cleanup:
     return status;
 }
 
-static int eval_regexp_substr_function(const struct mylite_sql_ast_node *arguments,
-                                       const struct mylite_expression_eval_context *context,
-                                       struct mylite_expression_warnings *warnings,
-                                       struct mylite_expression_value *out_value)
-{
+static int eval_regexp_substr_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     char *value_text = NULL;
     char *pattern_text = NULL;
     size_t value_length = 0U;
@@ -18046,24 +21163,52 @@ static int eval_regexp_substr_function(const struct mylite_sql_ast_node *argumen
     struct mylite_regexp_match match = {0};
     bool null_result = false;
     bool found = false;
-    int status = eval_regexp_text_argument(child_at(arguments, 0U), context, warnings, &value_text,
-                                           &value_length, &null_result);
+    int status = eval_regexp_text_argument(
+        child_at(arguments, 0U),
+        context,
+        warnings,
+        &value_text,
+        &value_length,
+        &null_result
+    );
 
     if (status == 0 && !null_result) {
-        status = eval_regexp_text_argument(child_at(arguments, 1U), context, warnings,
-                                           &pattern_text, &pattern_length, &null_result);
+        status = eval_regexp_text_argument(
+            child_at(arguments, 1U),
+            context,
+            warnings,
+            &pattern_text,
+            &pattern_length,
+            &null_result
+        );
     }
     if (status == 0 && !null_result && child_at(arguments, 2U) != NULL) {
-        status = eval_regexp_integer_argument(child_at(arguments, 2U), context, warnings, &position,
-                                              &null_result);
+        status = eval_regexp_integer_argument(
+            child_at(arguments, 2U),
+            context,
+            warnings,
+            &position,
+            &null_result
+        );
     }
     if (status == 0 && !null_result && child_at(arguments, 3U) != NULL) {
-        status = eval_regexp_integer_argument(child_at(arguments, 3U), context, warnings,
-                                              &occurrence, &null_result);
+        status = eval_regexp_integer_argument(
+            child_at(arguments, 3U),
+            context,
+            warnings,
+            &occurrence,
+            &null_result
+        );
     }
     if (status == 0 && !null_result) {
-        status = eval_regexp_match_type_argument(child_at(arguments, 4U), context, warnings,
-                                                 "regexp_substr", &options, &null_result);
+        status = eval_regexp_match_type_argument(
+            child_at(arguments, 4U),
+            context,
+            warnings,
+            "regexp_substr",
+            &options,
+            &null_result
+        );
     }
     if (status != 0) {
         goto cleanup;
@@ -18084,9 +21229,18 @@ static int eval_regexp_substr_function(const struct mylite_sql_ast_node *argumen
     }
 
     occurrence = occurrence <= 0 ? 1 : occurrence;
-    status = find_regexp_match(value_text, value_length, pattern_text, pattern_length,
-                               (size_t)(position - 1), regexp_occurrence_to_size(occurrence),
-                               options, warnings, &found, &match);
+    status = find_regexp_match(
+        value_text,
+        value_length,
+        pattern_text,
+        pattern_length,
+        (size_t)(position - 1),
+        regexp_occurrence_to_size(occurrence),
+        options,
+        warnings,
+        &found,
+        &match
+    );
     if (status == 0 && found) {
         status = set_text_value(value_text + match.start, match.end - match.start, out_value);
     } else if (status == 0) {
@@ -18099,11 +21253,12 @@ cleanup:
     return status;
 }
 
-static int eval_regexp_replace_function(const struct mylite_sql_ast_node *arguments,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        struct mylite_expression_value *out_value)
-{
+static int eval_regexp_replace_function(
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     char *value_text = NULL;
     char *pattern_text = NULL;
     char *replacement_text = NULL;
@@ -18114,28 +21269,62 @@ static int eval_regexp_replace_function(const struct mylite_sql_ast_node *argume
     int64_t occurrence = 0;
     struct mylite_regexp_options options = {0};
     bool null_result = false;
-    int status = eval_regexp_text_argument(child_at(arguments, 0U), context, warnings, &value_text,
-                                           &value_length, &null_result);
+    int status = eval_regexp_text_argument(
+        child_at(arguments, 0U),
+        context,
+        warnings,
+        &value_text,
+        &value_length,
+        &null_result
+    );
 
     if (status == 0 && !null_result) {
-        status = eval_regexp_text_argument(child_at(arguments, 1U), context, warnings,
-                                           &pattern_text, &pattern_length, &null_result);
+        status = eval_regexp_text_argument(
+            child_at(arguments, 1U),
+            context,
+            warnings,
+            &pattern_text,
+            &pattern_length,
+            &null_result
+        );
     }
     if (status == 0 && !null_result) {
-        status = eval_regexp_text_argument(child_at(arguments, 2U), context, warnings,
-                                           &replacement_text, &replacement_length, &null_result);
+        status = eval_regexp_text_argument(
+            child_at(arguments, 2U),
+            context,
+            warnings,
+            &replacement_text,
+            &replacement_length,
+            &null_result
+        );
     }
     if (status == 0 && !null_result && child_at(arguments, 3U) != NULL) {
-        status = eval_regexp_integer_argument(child_at(arguments, 3U), context, warnings, &position,
-                                              &null_result);
+        status = eval_regexp_integer_argument(
+            child_at(arguments, 3U),
+            context,
+            warnings,
+            &position,
+            &null_result
+        );
     }
     if (status == 0 && !null_result && child_at(arguments, 4U) != NULL) {
-        status = eval_regexp_integer_argument(child_at(arguments, 4U), context, warnings,
-                                              &occurrence, &null_result);
+        status = eval_regexp_integer_argument(
+            child_at(arguments, 4U),
+            context,
+            warnings,
+            &occurrence,
+            &null_result
+        );
     }
     if (status == 0 && !null_result) {
-        status = eval_regexp_match_type_argument(child_at(arguments, 5U), context, warnings,
-                                                 "regexp_replace", &options, &null_result);
+        status = eval_regexp_match_type_argument(
+            child_at(arguments, 5U),
+            context,
+            warnings,
+            "regexp_replace",
+            &options,
+            &null_result
+        );
     }
     if (status != 0) {
         goto cleanup;
@@ -18156,9 +21345,19 @@ static int eval_regexp_replace_function(const struct mylite_sql_ast_node *argume
     }
 
     occurrence = occurrence < 0 ? 1 : occurrence;
-    status = set_regexp_replace_result(value_text, value_length, pattern_text, pattern_length,
-                                       replacement_text, replacement_length, (size_t)(position - 1),
-                                       occurrence, options, warnings, out_value);
+    status = set_regexp_replace_result(
+        value_text,
+        value_length,
+        pattern_text,
+        pattern_length,
+        replacement_text,
+        replacement_length,
+        (size_t)(position - 1),
+        occurrence,
+        options,
+        warnings,
+        out_value
+    );
 
 cleanup:
     free(value_text);
@@ -18167,10 +21366,12 @@ cleanup:
     return status;
 }
 
-static int eval_regexp_match_type(const struct mylite_expression_value *match_type,
-                                  struct mylite_expression_warnings *warnings,
-                                  const char *function_name, struct mylite_regexp_options *options)
-{
+static int eval_regexp_match_type(
+    const struct mylite_expression_value *match_type,
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    struct mylite_regexp_options *options
+) {
     char *text = NULL;
     int status = value_to_string(match_type, &text);
 
@@ -18204,13 +21405,14 @@ static int eval_regexp_match_type(const struct mylite_expression_value *match_ty
     return 0;
 }
 
-static int eval_regexp_match_type_argument(const struct mylite_sql_ast_node *match_type_node,
-                                           const struct mylite_expression_eval_context *context,
-                                           struct mylite_expression_warnings *warnings,
-                                           const char *function_name,
-                                           struct mylite_regexp_options *options,
-                                           bool *out_null_result)
-{
+static int eval_regexp_match_type_argument(
+    const struct mylite_sql_ast_node *match_type_node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    const char *function_name,
+    struct mylite_regexp_options *options,
+    bool *out_null_result
+) {
     struct mylite_expression_value match_type = {0};
     int status = 0;
 
@@ -18229,11 +21431,13 @@ static int eval_regexp_match_type_argument(const struct mylite_sql_ast_node *mat
     return status;
 }
 
-static int eval_regexp_integer_argument(const struct mylite_sql_ast_node *argument,
-                                        const struct mylite_expression_eval_context *context,
-                                        struct mylite_expression_warnings *warnings,
-                                        int64_t *out_integer, bool *out_null_result)
-{
+static int eval_regexp_integer_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_integer,
+    bool *out_null_result
+) {
     struct mylite_expression_value value = {0};
     int status = eval_node(argument, context, warnings, &value);
 
@@ -18247,11 +21451,14 @@ static int eval_regexp_integer_argument(const struct mylite_sql_ast_node *argume
     return status;
 }
 
-static int eval_regexp_text_argument(const struct mylite_sql_ast_node *argument,
-                                     const struct mylite_expression_eval_context *context,
-                                     struct mylite_expression_warnings *warnings, char **out_text,
-                                     size_t *out_length, bool *out_null_result)
-{
+static int eval_regexp_text_argument(
+    const struct mylite_sql_ast_node *argument,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    char **out_text,
+    size_t *out_length,
+    bool *out_null_result
+) {
     struct mylite_expression_value value = {0};
     int status = eval_node(argument, context, warnings, &value);
 
@@ -18265,16 +21472,31 @@ static int eval_regexp_text_argument(const struct mylite_sql_ast_node *argument,
     return status;
 }
 
-static int find_regexp_match(const char *value_text, size_t value_length, const char *pattern_text,
-                             size_t pattern_length, size_t start_offset, size_t occurrence,
-                             struct mylite_regexp_options options,
-                             struct mylite_expression_warnings *warnings, bool *out_found,
-                             struct mylite_regexp_match *out_match)
-{
+static int find_regexp_match(
+    const char *value_text,
+    size_t value_length,
+    const char *pattern_text,
+    size_t pattern_length,
+    size_t start_offset,
+    size_t occurrence,
+    struct mylite_regexp_options options,
+    struct mylite_expression_warnings *warnings,
+    bool *out_found,
+    struct mylite_regexp_match *out_match
+) {
     struct mylite_regexp_error error = {0};
-    int status =
-        mylite_regexp_find(value_text, value_length, pattern_text, pattern_length, start_offset,
-                           occurrence, options, out_found, out_match, &error);
+    int status = mylite_regexp_find(
+        value_text,
+        value_length,
+        pattern_text,
+        pattern_length,
+        start_offset,
+        occurrence,
+        options,
+        out_found,
+        out_match,
+        &error
+    );
 
     if (status == MYLITE_REGEXP_PATTERN_ERROR) {
         status = append_regexp_pattern_error(warnings, &error);
@@ -18283,14 +21505,19 @@ static int find_regexp_match(const char *value_text, size_t value_length, const 
     return status;
 }
 
-static int set_regexp_replace_result(const char *value_text, size_t value_length,
-                                     const char *pattern_text, size_t pattern_length,
-                                     const char *replacement_text, size_t replacement_length,
-                                     size_t start_offset, int64_t occurrence,
-                                     struct mylite_regexp_options options,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct mylite_expression_value *out_value)
-{
+static int set_regexp_replace_result(
+    const char *value_text,
+    size_t value_length,
+    const char *pattern_text,
+    size_t pattern_length,
+    const char *replacement_text,
+    size_t replacement_length,
+    size_t start_offset,
+    int64_t occurrence,
+    struct mylite_regexp_options options,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     char *result = copy_span_text("", 0U);
     size_t result_length = 0U;
     size_t copied_offset = 0U;
@@ -18310,8 +21537,18 @@ static int set_regexp_replace_result(const char *value_text, size_t value_length
         bool found = false;
         bool replace_match = false;
 
-        status = find_regexp_match(value_text, value_length, pattern_text, pattern_length,
-                                   search_offset, 1U, options, warnings, &found, &match);
+        status = find_regexp_match(
+            value_text,
+            value_length,
+            pattern_text,
+            pattern_length,
+            search_offset,
+            1U,
+            options,
+            warnings,
+            &found,
+            &match
+        );
         if (status != 0 || !found) {
             break;
         }
@@ -18319,8 +21556,12 @@ static int set_regexp_replace_result(const char *value_text, size_t value_length
         ++found_count;
         replace_match = occurrence == 0 || found_count == regexp_occurrence_to_size(occurrence);
         if (replace_match) {
-            status = append_text(&result, &result_length, value_text + copied_offset,
-                                 match.start - copied_offset);
+            status = append_text(
+                &result,
+                &result_length,
+                value_text + copied_offset,
+                match.start - copied_offset
+            );
             if (status == 0) {
                 status = append_text(&result, &result_length, replacement_text, replacement_length);
             }
@@ -18333,8 +21574,12 @@ static int set_regexp_replace_result(const char *value_text, size_t value_length
         search_offset = match.end > match.start ? match.end : match.start + 1U;
     }
     if (status == 0) {
-        status = append_text(&result, &result_length, value_text + copied_offset,
-                             value_length - copied_offset);
+        status = append_text(
+            &result,
+            &result_length,
+            value_text + copied_offset,
+            value_length - copied_offset
+        );
     }
     if (status == 0) {
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
@@ -18347,9 +21592,11 @@ static int set_regexp_replace_result(const char *value_text, size_t value_length
     return status;
 }
 
-static bool regexp_position_out_of_bounds(int64_t position, size_t value_length,
-                                          bool allow_position_after_end)
-{
+static bool regexp_position_out_of_bounds(
+    int64_t position,
+    size_t value_length,
+    bool allow_position_after_end
+) {
     size_t limit = value_length;
 
     if (position <= 0) {
@@ -18364,8 +21611,7 @@ static bool regexp_position_out_of_bounds(int64_t position, size_t value_length,
     return false;
 }
 
-static size_t regexp_occurrence_to_size(int64_t occurrence)
-{
+static size_t regexp_occurrence_to_size(int64_t occurrence) {
     if (occurrence <= 0) {
         return 1U;
     }
@@ -18375,69 +21621,94 @@ static size_t regexp_occurrence_to_size(int64_t occurrence)
     return (size_t)occurrence;
 }
 
-static int append_regexp_index_error(struct mylite_expression_warnings *warnings)
-{
+static int append_regexp_index_error(struct mylite_expression_warnings *warnings) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_REGEXP_INDEX_OUT_OF_BOUNDS,
-        "Index out of bounds in regular expression search.");
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_REGEXP_INDEX_OUT_OF_BOUNDS,
+        "Index out of bounds in regular expression search."
+    );
 }
 
-static int append_regexp_native_parameter_error(struct mylite_expression_warnings *warnings,
-                                                const char *function_name)
-{
+static int append_regexp_native_parameter_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+) {
     char message[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
-    int length = snprintf(message, sizeof(message),
-                          "Incorrect parameters in the call to native function '%s'",
-                          function_name == NULL ? "" : function_name);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect parameters in the call to native function '%s'",
+        function_name == NULL ? "" : function_name
+    );
 
     if (length <= 0 || (size_t)length >= sizeof(message)) {
         return -1;
     }
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
-        MYLITE_WARNING_WRONG_PARAMETERS_TO_NATIVE_FCT, message);
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_WRONG_PARAMETERS_TO_NATIVE_FCT,
+        message
+    );
 }
 
-static int append_regexp_instr_return_option_error(struct mylite_expression_warnings *warnings)
-{
+static int append_regexp_instr_return_option_error(struct mylite_expression_warnings *warnings) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS,
-        "Incorrect arguments to regexp_instr: return_option must be 1 or 0.");
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS,
+        "Incorrect arguments to regexp_instr: return_option must be 1 or 0."
+    );
 }
 
-static int append_regexp_pattern_error(struct mylite_expression_warnings *warnings,
-                                       const struct mylite_regexp_error *error)
-{
+static int append_regexp_pattern_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_regexp_error *error
+) {
     const char *message =
         error == NULL || error->message == NULL ? "Invalid regular expression." : error->message;
     unsigned int code =
         error == NULL || error->code == 0U ? MYLITE_WARNING_REGEXP_ERROR : error->code;
 
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, code, message);
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        code,
+        message
+    );
 }
 
-static int append_regexp_match_type_error(struct mylite_expression_warnings *warnings,
-                                          const char *function_name)
-{
+static int append_regexp_match_type_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+) {
     char message[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
-    int length = snprintf(message, sizeof(message), "Incorrect arguments to %s",
-                          function_name == NULL ? "regexp_like" : function_name);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect arguments to %s",
+        function_name == NULL ? "regexp_like" : function_name
+    );
 
     if (length <= 0 || (size_t)length >= sizeof(message)) {
         return -1;
     }
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS,
-        message);
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS,
+        message
+    );
 }
 
-static int eval_in(enum mylite_sql_ast_operator operator_kind,
-                   const struct mylite_sql_ast_node *node,
-                   const struct mylite_expression_eval_context *context,
-                   struct mylite_expression_warnings *warnings,
-                   struct mylite_expression_value *out_value)
-{
+static int eval_in(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     const struct mylite_sql_ast_node *list = child_at(node, 1U);
     bool saw_null = false;
@@ -18461,7 +21732,8 @@ static int eval_in(enum mylite_sql_ast_operator operator_kind,
     }
 
     for (const struct mylite_sql_ast_node *item = list == NULL ? NULL : list->first_child;
-         item != NULL; item = item->next_sibling) {
+         item != NULL;
+         item = item->next_sibling) {
         struct mylite_expression_value candidate = {0};
         int comparison = 0;
 
@@ -18482,8 +21754,10 @@ static int eval_in(enum mylite_sql_ast_operator operator_kind,
         }
         if (comparison == 0) {
             bool result = operator_kind == MYLITE_SQL_AST_OPERATOR_IN;
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = result ? 1 : 0};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = result ? 1 : 0
+            };
             mylite_expression_value_deinit(&value);
             return 0;
         }
@@ -18498,12 +21772,12 @@ static int eval_in(enum mylite_sql_ast_operator operator_kind,
     }
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_INT64,
-        .int64_value = operator_kind == MYLITE_SQL_AST_OPERATOR_IN ? 0 : 1};
+        .int64_value = operator_kind == MYLITE_SQL_AST_OPERATOR_IN ? 0 : 1
+    };
     return 0;
 }
 
-static bool binary_expression_is_row_subquery(const struct mylite_sql_ast_node *node)
-{
+static bool binary_expression_is_row_subquery(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *left = unwrap_parenthesized_node(child_at(node, 0U));
     const struct mylite_sql_ast_node *right = unwrap_parenthesized_node(child_at(node, 1U));
 
@@ -18519,8 +21793,7 @@ static bool binary_expression_is_row_subquery(const struct mylite_sql_ast_node *
     return binary_expression_is_row_scalar_subquery(node);
 }
 
-static bool binary_expression_is_row_scalar_subquery(const struct mylite_sql_ast_node *node)
-{
+static bool binary_expression_is_row_scalar_subquery(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *left = unwrap_parenthesized_node(child_at(node, 0U));
     const struct mylite_sql_ast_node *right = unwrap_parenthesized_node(child_at(node, 1U));
 
@@ -18532,9 +21805,9 @@ static bool binary_expression_is_row_scalar_subquery(const struct mylite_sql_ast
     return row_subquery_comparison_operator_is_supported(node->operator_kind);
 }
 
-static bool
-row_subquery_comparison_operator_is_supported(enum mylite_sql_ast_operator operator_kind)
-{
+static bool row_subquery_comparison_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
@@ -18587,19 +21860,24 @@ row_subquery_comparison_operator_is_supported(enum mylite_sql_ast_operator opera
     return false;
 }
 
-static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
-                                      const struct mylite_expression_eval_context *context,
-                                      struct mylite_expression_warnings *warnings,
-                                      struct mylite_expression_value *out_value)
-{
+static int eval_quantified_comparison(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct mylite_expression_value value = {0};
     int status = 0;
 
     if (quantified_comparison_has_row_left(node)) {
-        return context == NULL || context->eval_row_subquery == NULL
-                   ? -1
-                   : context->eval_row_subquery(context->user_data, node, context, warnings,
-                                                out_value);
+        return context == NULL || context->eval_row_subquery == NULL ? -1
+                                                                     : context->eval_row_subquery(
+                                                                           context->user_data,
+                                                                           node,
+                                                                           context,
+                                                                           warnings,
+                                                                           out_value
+                                                                       );
     }
 
     status = eval_node(child_at(node, 0U), context, warnings, &value);
@@ -18607,27 +21885,28 @@ static int eval_quantified_comparison(const struct mylite_sql_ast_node *node,
     if (status != 0) {
         return status;
     }
-    status = context == NULL || context->eval_quantified_subquery == NULL
-                 ? -1
-                 : context->eval_quantified_subquery(context->user_data, node, &value, warnings,
-                                                     out_value);
+    status =
+        context == NULL || context->eval_quantified_subquery == NULL
+            ? -1
+            : context
+                  ->eval_quantified_subquery(context->user_data, node, &value, warnings, out_value);
     mylite_expression_value_deinit(&value);
     return status;
 }
 
-static bool quantified_comparison_has_row_left(const struct mylite_sql_ast_node *node)
-{
+static bool quantified_comparison_has_row_left(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *left = unwrap_parenthesized_node(child_at(node, 0U));
 
     return node != NULL && node->kind == MYLITE_SQL_AST_QUANTIFIED_COMPARISON && left != NULL &&
            left->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR;
 }
 
-static int eval_numeric_unary(enum mylite_sql_ast_operator operator_kind,
-                              const struct mylite_expression_value *operand,
-                              struct mylite_expression_warnings *warnings,
-                              struct mylite_expression_value *out_value)
-{
+static int eval_numeric_unary(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *operand,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct numeric_value number = {0};
     int truth = -1;
     int status = 0;
@@ -18644,8 +21923,10 @@ static int eval_numeric_unary(enum mylite_sql_ast_operator operator_kind,
         if (truth < 0) {
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         } else {
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = truth == 0 ? 1 : 0};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = truth == 0 ? 1 : 0
+            };
         }
         return 0;
     }
@@ -18656,34 +21937,45 @@ static int eval_numeric_unary(enum mylite_sql_ast_operator operator_kind,
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_BITWISE_NOT) {
         uint64_t value = number.is_unsigned ? number.uint64_value : (uint64_t)number.int64_value;
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_UINT64,
-                                                      .uint64_value = ~value};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+            .uint64_value = ~value
+        };
         return 0;
     }
     if (number.is_integer && !number.is_unsigned) {
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_INT64,
             .int64_value = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ? -number.int64_value
-                                                                             : number.int64_value};
+                                                                             : number.int64_value
+        };
         return 0;
     }
     return set_unary_real_value(
-        operator_kind, operand,
+        operator_kind,
+        operand,
         operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ? -number.real_value : number.real_value,
-        out_value);
+        out_value
+    );
 }
 
-static int set_unary_real_value(enum mylite_sql_ast_operator operator_kind,
-                                const struct mylite_expression_value *operand, double real_value,
-                                struct mylite_expression_value *out_value)
-{
+static int set_unary_real_value(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *operand,
+    double real_value,
+    struct mylite_expression_value *out_value
+) {
     char *signed_text = NULL;
     size_t signed_length = 0U;
 
     if (operand != NULL && operand->kind == MYLITE_EXPRESSION_VALUE_REAL &&
         operand->text_value != NULL) {
-        signed_text = copy_unary_real_text(operator_kind, operand->text_value, operand->text_length,
-                                           &signed_length);
+        signed_text = copy_unary_real_text(
+            operator_kind,
+            operand->text_value,
+            operand->text_length,
+            &signed_length
+        );
         if (signed_text == NULL) {
             return -1;
         }
@@ -18698,9 +21990,12 @@ static int set_unary_real_value(enum mylite_sql_ast_operator operator_kind,
     return 0;
 }
 
-static char *copy_unary_real_text(enum mylite_sql_ast_operator operator_kind, const char *text,
-                                  size_t text_length, size_t *out_length)
-{
+static char *copy_unary_real_text(
+    enum mylite_sql_ast_operator operator_kind,
+    const char *text,
+    size_t text_length,
+    size_t *out_length
+) {
     if (out_length == NULL) {
         return NULL;
     }
@@ -18711,8 +22006,7 @@ static char *copy_unary_real_text(enum mylite_sql_ast_operator operator_kind, co
     return copy_span_text(text, text_length);
 }
 
-static char *copy_negated_real_text(const char *text, size_t text_length, size_t *out_length)
-{
+static char *copy_negated_real_text(const char *text, size_t text_length, size_t *out_length) {
     size_t magnitude_offset = 0U;
 
     if (out_length == NULL) {
@@ -18725,13 +22019,20 @@ static char *copy_negated_real_text(const char *text, size_t text_length, size_t
     if (text_length != 0U && text[0] == '+') {
         magnitude_offset = 1U;
     }
-    return copy_prefixed_text('-', text + magnitude_offset, text_length - magnitude_offset,
-                              out_length);
+    return copy_prefixed_text(
+        '-',
+        text + magnitude_offset,
+        text_length - magnitude_offset,
+        out_length
+    );
 }
 
-static char *copy_prefixed_text(char prefix, const char *text, size_t text_length,
-                                size_t *out_length)
-{
+static char *copy_prefixed_text(
+    char prefix,
+    const char *text,
+    size_t text_length,
+    size_t *out_length
+) {
     char *copy = NULL;
 
     if (out_length == NULL || text_length > SIZE_MAX - 2U) {
@@ -18748,12 +22049,13 @@ static char *copy_prefixed_text(char prefix, const char *text, size_t text_lengt
     return copy;
 }
 
-static int eval_arithmetic(enum mylite_sql_ast_operator operator_kind,
-                           const struct mylite_expression_value *left,
-                           const struct mylite_expression_value *right,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value)
-{
+static int eval_arithmetic(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct numeric_value left_number = {0};
     struct numeric_value right_number = {0};
     int status = 0;
@@ -18778,9 +22080,10 @@ static int eval_arithmetic(enum mylite_sql_ast_operator operator_kind,
         return status;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_DIVIDE) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_REAL,
-                                                      .real_value = left_number.real_value /
-                                                                    right_number.real_value};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_REAL,
+            .real_value = left_number.real_value / right_number.real_value
+        };
         return 0;
     }
 
@@ -18838,12 +22141,13 @@ static int eval_arithmetic(enum mylite_sql_ast_operator operator_kind,
     return -1;
 }
 
-static int eval_bitwise(enum mylite_sql_ast_operator operator_kind,
-                        const struct mylite_expression_value *left,
-                        const struct mylite_expression_value *right,
-                        struct mylite_expression_warnings *warnings,
-                        struct mylite_expression_value *out_value)
-{
+static int eval_bitwise(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     struct numeric_value left_number = {0};
     struct numeric_value right_number = {0};
     uint64_t left_int = 0U;
@@ -18890,20 +22194,23 @@ static int eval_bitwise(enum mylite_sql_ast_operator operator_kind,
     return -1;
 }
 
-static int eval_comparison(enum mylite_sql_ast_operator operator_kind,
-                           const struct mylite_expression_value *left,
-                           const struct mylite_expression_value *right,
-                           struct mylite_expression_warnings *warnings,
-                           struct mylite_expression_value *out_value)
-{
+static int eval_comparison(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     int comparison = 0;
     bool result = false;
 
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
         if (is_null(left) || is_null(right)) {
             result = is_null(left) && is_null(right);
-            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                          .int64_value = result ? 1 : 0};
+            *out_value = (struct mylite_expression_value){
+                .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                .int64_value = result ? 1 : 0
+            };
             return 0;
         }
     } else if (is_null(left) || is_null(right)) {
@@ -18937,17 +22244,20 @@ static int eval_comparison(enum mylite_sql_ast_operator operator_kind,
     default:
         return -1;
     }
-    *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                  .int64_value = result ? 1 : 0};
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = result ? 1 : 0
+    };
     return 0;
 }
 
-static int eval_logical(enum mylite_sql_ast_operator operator_kind,
-                        const struct mylite_expression_value *left,
-                        const struct mylite_expression_value *right,
-                        struct mylite_expression_warnings *warnings,
-                        struct mylite_expression_value *out_value)
-{
+static int eval_logical(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
     int left_truth = -1;
     int right_truth = -1;
     int status = truth_value(left, warnings, &left_truth);
@@ -18991,9 +22301,11 @@ static int eval_logical(enum mylite_sql_ast_operator operator_kind,
     return 0;
 }
 
-static int truth_value(const struct mylite_expression_value *value,
-                       struct mylite_expression_warnings *warnings, int *out_truth)
-{
+static int truth_value(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int *out_truth
+) {
     struct numeric_value number = {0};
     int status = 0;
 
@@ -19009,10 +22321,12 @@ static int truth_value(const struct mylite_expression_value *value,
     return 0;
 }
 
-static int compare_values(const struct mylite_expression_value *left,
-                          const struct mylite_expression_value *right,
-                          struct mylite_expression_warnings *warnings, int *out_compare)
-{
+static int compare_values(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    struct mylite_expression_warnings *warnings,
+    int *out_compare
+) {
     if (is_numeric_kind(left->kind) || is_numeric_kind(right->kind)) {
         struct numeric_value left_number = {0};
         struct numeric_value right_number = {0};
@@ -19078,10 +22392,11 @@ static int compare_values(const struct mylite_expression_value *left,
     return status;
 }
 
-static int value_to_numeric(const struct mylite_expression_value *value,
-                            struct mylite_expression_warnings *warnings,
-                            struct numeric_value *out_numeric)
-{
+static int value_to_numeric(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct numeric_value *out_numeric
+) {
     *out_numeric = (struct numeric_value){0};
     switch (value->kind) {
     case MYLITE_EXPRESSION_VALUE_INT64:
@@ -19109,10 +22424,11 @@ static int value_to_numeric(const struct mylite_expression_value *value,
     return -1;
 }
 
-static int text_value_to_numeric(const struct mylite_expression_value *value,
-                                 struct mylite_expression_warnings *warnings,
-                                 struct numeric_value *out_numeric)
-{
+static int text_value_to_numeric(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct numeric_value *out_numeric
+) {
     if (value->suppress_text_numeric_warnings) {
         return text_value_to_numeric_without_warnings(value, out_numeric);
     }
@@ -19132,20 +22448,26 @@ static int text_value_to_numeric(const struct mylite_expression_value *value,
 
     if (!numeric_text_has_digit(start)) {
         status = append_numeric_text_without_digits_warning(
-            warnings, (struct numeric_text_input){.start = start, .text = text});
+            warnings,
+            (struct numeric_text_input){.start = start, .text = text}
+        );
     } else if (numeric_text_is_hex_like(start)) {
         status = append_truncation_warning(warnings, text);
     } else {
         status = parse_numeric_text_double(
-            (struct numeric_text_parse_input){.text = text, .start = start}, warnings, out_numeric);
+            (struct numeric_text_parse_input){.text = text, .start = start},
+            warnings,
+            out_numeric
+        );
     }
     free(text);
     return status;
 }
 
-static int text_value_to_numeric_without_warnings(const struct mylite_expression_value *value,
-                                                  struct numeric_value *out_numeric)
-{
+static int text_value_to_numeric_without_warnings(
+    const struct mylite_expression_value *value,
+    struct numeric_value *out_numeric
+) {
     char *text = value->text_value == NULL
                      ? copy_span_text("", 0U)
                      : copy_span_text(value->text_value, strlen(value->text_value));
@@ -19179,8 +22501,7 @@ static int text_value_to_numeric_without_warnings(const struct mylite_expression
     return 0;
 }
 
-static bool numeric_text_prefix_is_integer(const char *start, const char *end)
-{
+static bool numeric_text_prefix_is_integer(const char *start, const char *end) {
     const char *scan = start;
 
     if (scan == NULL || end == NULL || end <= scan) {
@@ -19197,8 +22518,7 @@ static bool numeric_text_prefix_is_integer(const char *start, const char *end)
     return true;
 }
 
-static bool numeric_text_has_digit(const char *start)
-{
+static bool numeric_text_has_digit(const char *start) {
     const char *scan = start;
 
     if (*scan == '+' || *scan == '-') {
@@ -19215,8 +22535,7 @@ static bool numeric_text_has_digit(const char *start)
     return false;
 }
 
-static bool numeric_text_is_hex_like(const char *start)
-{
+static bool numeric_text_is_hex_like(const char *start) {
     const char *number_start = start;
 
     if (*number_start == '+' || *number_start == '-') {
@@ -19225,10 +22544,11 @@ static bool numeric_text_is_hex_like(const char *start)
     return number_start[0] == '0' && (number_start[1] == 'x' || number_start[1] == 'X');
 }
 
-static int parse_numeric_text_double(struct numeric_text_parse_input input,
-                                     struct mylite_expression_warnings *warnings,
-                                     struct numeric_value *out_numeric)
-{
+static int parse_numeric_text_double(
+    struct numeric_text_parse_input input,
+    struct mylite_expression_warnings *warnings,
+    struct numeric_value *out_numeric
+) {
     char *end = NULL;
     bool overflow = false;
 
@@ -19249,14 +22569,12 @@ static int parse_numeric_text_double(struct numeric_text_parse_input input,
     return 0;
 }
 
-static void clamp_numeric_text_range(struct numeric_value *numeric)
-{
+static void clamp_numeric_text_range(struct numeric_value *numeric) {
     numeric->real_value = signbit(numeric->real_value) ? -DBL_MAX : DBL_MAX;
     numeric->int64_value = numeric_real_to_truncated_int64(numeric->real_value);
 }
 
-static int64_t numeric_real_to_truncated_int64(double value)
-{
+static int64_t numeric_real_to_truncated_int64(double value) {
     if (isnan(value)) {
         return 0;
     }
@@ -19269,19 +22587,21 @@ static int64_t numeric_real_to_truncated_int64(double value)
     return (int64_t)value;
 }
 
-static int append_numeric_text_without_digits_warning(struct mylite_expression_warnings *warnings,
-                                                      struct numeric_text_input input)
-{
+static int append_numeric_text_without_digits_warning(
+    struct mylite_expression_warnings *warnings,
+    struct numeric_text_input input
+) {
     if (*input.start == '\0') {
         return 0;
     }
     return append_truncation_warning(warnings, input.text);
 }
 
-static int cast_value_to_signed_integer(const struct mylite_expression_value *value,
-                                        struct mylite_expression_warnings *warnings,
-                                        int64_t *out_integer)
-{
+static int cast_value_to_signed_integer(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_integer
+) {
     if (out_integer == NULL) {
         return -1;
     }
@@ -19298,16 +22618,20 @@ static int cast_value_to_signed_integer(const struct mylite_expression_value *va
         return 0;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return cast_string_to_signed_integer(value->text_value == NULL ? "" : value->text_value,
-                                             warnings, out_integer);
+        return cast_string_to_signed_integer(
+            value->text_value == NULL ? "" : value->text_value,
+            warnings,
+            out_integer
+        );
     }
     return -1;
 }
 
-static int cast_value_to_unsigned_integer(const struct mylite_expression_value *value,
-                                          struct mylite_expression_warnings *warnings,
-                                          uint64_t *out_integer)
-{
+static int cast_value_to_unsigned_integer(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_integer
+) {
     if (out_integer == NULL) {
         return -1;
     }
@@ -19324,16 +22648,20 @@ static int cast_value_to_unsigned_integer(const struct mylite_expression_value *
         return 0;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return cast_string_to_unsigned_integer(value->text_value == NULL ? "" : value->text_value,
-                                               warnings, out_integer);
+        return cast_string_to_unsigned_integer(
+            value->text_value == NULL ? "" : value->text_value,
+            warnings,
+            out_integer
+        );
     }
     return -1;
 }
 
-static int cast_string_to_signed_integer(const char *text,
-                                         struct mylite_expression_warnings *warnings,
-                                         int64_t *out_integer)
-{
+static int cast_string_to_signed_integer(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    int64_t *out_integer
+) {
     struct cast_integer_parse parsed = parse_cast_integer_text(text);
     bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
 
@@ -19361,10 +22689,11 @@ static int cast_string_to_signed_integer(const char *text,
     return 0;
 }
 
-static int cast_string_to_unsigned_integer(const char *text,
-                                           struct mylite_expression_warnings *warnings,
-                                           uint64_t *out_integer)
-{
+static int cast_string_to_unsigned_integer(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_integer
+) {
     struct cast_integer_parse parsed = parse_cast_integer_text(text);
     bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
 
@@ -19390,8 +22719,7 @@ static int cast_string_to_unsigned_integer(const char *text,
     return 0;
 }
 
-static struct cast_integer_parse parse_cast_integer_text(const char *text)
-{
+static struct cast_integer_parse parse_cast_integer_text(const char *text) {
     const char *start = text == NULL ? "" : text;
     const char *scan = NULL;
     const uint64_t radix = (uint64_t)MYLITE_EXPRESSION_DECIMAL_BASE;
@@ -19425,26 +22753,25 @@ static struct cast_integer_parse parse_cast_integer_text(const char *text)
     return parsed;
 }
 
-static int64_t signed_integer_from_uint64(uint64_t value)
-{
+static int64_t signed_integer_from_uint64(uint64_t value) {
     if (value <= (uint64_t)INT64_MAX) {
         return (int64_t)value;
     }
     return INT64_MIN + (int64_t)(value - mylite_expression_int64_min_magnitude);
 }
 
-static uint64_t unsigned_complement_from_magnitude(uint64_t magnitude)
-{
+static uint64_t unsigned_complement_from_magnitude(uint64_t magnitude) {
     if (magnitude == 0U) {
         return 0U;
     }
     return (UINT64_MAX - magnitude) + 1U;
 }
 
-static int cast_value_to_decimal_double(const struct mylite_expression_value *value,
-                                        struct mylite_expression_warnings *warnings,
-                                        double *out_number)
-{
+static int cast_value_to_decimal_double(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    double *out_number
+) {
     if (out_number == NULL) {
         return -1;
     }
@@ -19461,16 +22788,20 @@ static int cast_value_to_decimal_double(const struct mylite_expression_value *va
         return 0;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return cast_string_to_decimal_double(value->text_value == NULL ? "" : value->text_value,
-                                             warnings, out_number);
+        return cast_string_to_decimal_double(
+            value->text_value == NULL ? "" : value->text_value,
+            warnings,
+            out_number
+        );
     }
     return -1;
 }
 
-static int cast_string_to_decimal_double(const char *text,
-                                         struct mylite_expression_warnings *warnings,
-                                         double *out_number)
-{
+static int cast_string_to_decimal_double(
+    const char *text,
+    struct mylite_expression_warnings *warnings,
+    double *out_number
+) {
     char *copy = copy_span_text(text == NULL ? "" : text, strlen(text == NULL ? "" : text));
     char *start = NULL;
     char *end = NULL;
@@ -19500,8 +22831,7 @@ static int cast_string_to_decimal_double(const char *text,
     return 0;
 }
 
-static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text)
-{
+static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     int length = 0;
 
@@ -19524,8 +22854,10 @@ static int cast_value_to_string(const struct mylite_expression_value *value, cha
     case MYLITE_EXPRESSION_VALUE_REAL:
         return cast_real_to_string(value->real_value, out_text);
     case MYLITE_EXPRESSION_VALUE_TEXT:
-        *out_text = copy_span_text(value->text_value == NULL ? "" : value->text_value,
-                                   value->text_value == NULL ? 0U : value->text_length);
+        *out_text = copy_span_text(
+            value->text_value == NULL ? "" : value->text_value,
+            value->text_value == NULL ? 0U : value->text_length
+        );
         return *out_text == NULL ? -1 : 0;
     case MYLITE_EXPRESSION_VALUE_NULL:
         return -1;
@@ -19533,8 +22865,7 @@ static int cast_value_to_string(const struct mylite_expression_value *value, cha
     return -1;
 }
 
-static int cast_real_to_string(double value, char **out_text)
-{
+static int cast_real_to_string(double value, char **out_text) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE] = {0};
     int length = snprintf(buffer, sizeof(buffer), "%.15g", value);
 
@@ -19545,8 +22876,7 @@ static int cast_real_to_string(double value, char **out_text)
     return *out_text == NULL ? -1 : 0;
 }
 
-static int64_t cast_real_to_signed_integer(double value)
-{
+static int64_t cast_real_to_signed_integer(double value) {
     double rounded = 0.0;
 
     if (value >= (double)INT64_MAX) {
@@ -19569,43 +22899,40 @@ static int64_t cast_real_to_signed_integer(double value)
     return (int64_t)rounded;
 }
 
-static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target)
-{
+static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target) {
     if (target != NULL && target->has_column_scale) {
         return (unsigned int)target->column_scale;
     }
     return 0U;
 }
 
-static double absolute_real_value(double value)
-{
+static double absolute_real_value(double value) {
     return value < 0.0 ? -value : value;
 }
 
-static int64_t floor_real_value(double value)
-{
+static int64_t floor_real_value(double value) {
     int64_t truncated = (int64_t)value;
 
     return (double)truncated > value ? truncated - 1 : truncated;
 }
 
-static int64_t ceil_real_value(double value)
-{
+static int64_t ceil_real_value(double value) {
     int64_t truncated = (int64_t)value;
 
     return (double)truncated < value ? truncated + 1 : truncated;
 }
 
-static int value_to_string(const struct mylite_expression_value *value, char **out_text)
-{
+static int value_to_string(const struct mylite_expression_value *value, char **out_text) {
     size_t length = 0U;
 
     return value_to_string_with_length(value, out_text, &length);
 }
 
-static int value_to_string_with_length(const struct mylite_expression_value *value, char **out_text,
-                                       size_t *out_length)
-{
+static int value_to_string_with_length(
+    const struct mylite_expression_value *value,
+    char **out_text,
+    size_t *out_length
+) {
     if (out_text == NULL || out_length == NULL) {
         return -1;
     }
@@ -19623,8 +22950,7 @@ static int value_to_string_with_length(const struct mylite_expression_value *val
     return 0;
 }
 
-static int format_compact_real_text(double value, char *buffer, size_t buffer_size)
-{
+static int format_compact_real_text(double value, char *buffer, size_t buffer_size) {
     enum {
         min_double_precision = 15,
         max_double_precision = 17,
@@ -19656,8 +22982,7 @@ static int format_compact_real_text(double value, char *buffer, size_t buffer_si
     return (int)strlen(buffer);
 }
 
-static bool compact_real_text_round_trips(double value, const char *text)
-{
+static bool compact_real_text_round_trips(double value, const char *text) {
     char *end = NULL;
     double parsed = strtod(text, &end);
 
@@ -19665,8 +22990,7 @@ static bool compact_real_text_round_trips(double value, const char *text)
            (value != 0.0 || signbit(parsed) == signbit(value));
 }
 
-static void normalize_real_exponent_text(char *text)
-{
+static void normalize_real_exponent_text(char *text) {
     char *exponent = strchr(text, 'e');
     char *read = NULL;
     char *write = NULL;
@@ -19688,9 +23012,11 @@ static void normalize_real_exponent_text(char *text)
     memmove(write, read, strlen(read) + 1U);
 }
 
-static int set_text_value(const char *text, size_t length,
-                          struct mylite_expression_value *out_value)
-{
+static int set_text_value(
+    const char *text,
+    size_t length,
+    struct mylite_expression_value *out_value
+) {
     out_value->text_value = copy_span_text(text, length);
     if (out_value->text_value == NULL) {
         return -1;
@@ -19703,8 +23029,7 @@ static int set_text_value(const char *text, size_t length,
     return 0;
 }
 
-static int append_text(char **text, size_t *length, const char *addition, size_t addition_length)
-{
+static int append_text(char **text, size_t *length, const char *addition, size_t addition_length) {
     char *updated = NULL;
 
     if (*length >= (size_t)PTRDIFF_MAX || addition_length > (size_t)PTRDIFF_MAX - *length - 1U) {
@@ -19724,8 +23049,7 @@ static int append_text(char **text, size_t *length, const char *addition, size_t
     return 0;
 }
 
-static bool ascii_text_equal_ci(struct text_compare_input input)
-{
+static bool ascii_text_equal_ci(struct text_compare_input input) {
     if (input.left == NULL || input.right == NULL) {
         return false;
     }
@@ -19744,8 +23068,7 @@ static bool ascii_text_equal_ci(struct text_compare_input input)
     return true;
 }
 
-static int utf8_char_count(const char *text, int64_t *out_count)
-{
+static int utf8_char_count(const char *text, int64_t *out_count) {
     int64_t count = 0;
 
     if (text == NULL) {
@@ -19762,8 +23085,7 @@ static int utf8_char_count(const char *text, int64_t *out_count)
     return 0;
 }
 
-static size_t utf8_offset_for_chars(const char *text, int64_t char_count)
-{
+static size_t utf8_offset_for_chars(const char *text, int64_t char_count) {
     const unsigned char *cursor = (const unsigned char *)text;
     int64_t count = 0;
 
@@ -19781,8 +23103,7 @@ static size_t utf8_offset_for_chars(const char *text, int64_t char_count)
     return (size_t)((const char *)cursor - text);
 }
 
-static size_t utf8_first_character_length(const char *text)
-{
+static size_t utf8_first_character_length(const char *text) {
     const unsigned char *cursor = (const unsigned char *)(text == NULL ? "" : text);
     size_t length = 0U;
 
@@ -19799,8 +23120,7 @@ static size_t utf8_first_character_length(const char *text)
     return length;
 }
 
-static int64_t find_text_match_position(struct locate_search search)
-{
+static int64_t find_text_match_position(struct locate_search search) {
     const char *source = search.text == NULL ? "" : search.text;
     const char *target = search.needle == NULL ? "" : search.needle;
     size_t source_length = strlen(source);
@@ -19826,24 +23146,35 @@ static int64_t find_text_match_position(struct locate_search search)
     return 0;
 }
 
-static int append_warning(struct mylite_expression_warnings *warnings, unsigned int code,
-                          const char *message)
-{
+static int append_warning(
+    struct mylite_expression_warnings *warnings,
+    unsigned int code,
+    const char *message
+) {
     return mylite_expression_warnings_append(warnings, code, message);
 }
 
-static int append_binary_expr_deprecated_warning(struct mylite_expression_warnings *warnings)
-{
-    return append_warning(warnings, MYLITE_WARNING_WARN_DEPRECATED_SYNTAX,
-                          "'BINARY expr' is deprecated and will be removed in a future release. "
-                          "Please use CAST instead");
+static int append_binary_expr_deprecated_warning(struct mylite_expression_warnings *warnings) {
+    return append_warning(
+        warnings,
+        MYLITE_WARNING_WARN_DEPRECATED_SYNTAX,
+        "'BINARY expr' is deprecated and will be removed in a future release. "
+        "Please use CAST instead"
+    );
 }
 
-static int append_truncation_warning(struct mylite_expression_warnings *warnings, const char *text)
-{
+static int append_truncation_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
-    int length = snprintf(message, sizeof(message), "Truncated incorrect DOUBLE value: '%.*s'",
-                          MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW, text == NULL ? "" : text);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect DOUBLE value: '%.*s'",
+        MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW,
+        text == NULL ? "" : text
+    );
 
     if (length < 0) {
         return -1;
@@ -19851,13 +23182,20 @@ static int append_truncation_warning(struct mylite_expression_warnings *warnings
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
-static int append_cast_truncation_warning(struct mylite_expression_warnings *warnings,
-                                          const char *type_name, const char *text)
-{
+static int append_cast_truncation_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *type_name,
+    const char *text
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
-    int length = snprintf(message, sizeof(message), "Truncated incorrect %s value: '%.*s'",
-                          type_name == NULL ? "" : type_name,
-                          MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW, text == NULL ? "" : text);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect %s value: '%.*s'",
+        type_name == NULL ? "" : type_name,
+        MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW,
+        text == NULL ? "" : text
+    );
 
     if (length < 0) {
         return -1;
@@ -19865,54 +23203,78 @@ static int append_cast_truncation_warning(struct mylite_expression_warnings *war
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
-static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings)
-{
+static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE,
-        "DOUBLE value is out of range in 'pow()'");
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_OUT_OF_RANGE,
+        "DOUBLE value is out of range in 'pow()'"
+    );
 }
 
-static int append_exp_out_of_range_error(struct mylite_expression_warnings *warnings)
-{
+static int append_exp_out_of_range_error(struct mylite_expression_warnings *warnings) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE,
-        "DOUBLE value is out of range in 'exp()'");
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_OUT_OF_RANGE,
+        "DOUBLE value is out of range in 'exp()'"
+    );
 }
 
-static int append_cot_out_of_range_error(struct mylite_expression_warnings *warnings)
-{
+static int append_cot_out_of_range_error(struct mylite_expression_warnings *warnings) {
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE,
-        "DOUBLE value is out of range in 'cot()'");
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_OUT_OF_RANGE,
+        "DOUBLE value is out of range in 'cot()'"
+    );
 }
 
-static int append_angle_conversion_out_of_range_error(struct mylite_expression_warnings *warnings,
-                                                      const char *function_name)
-{
+static int append_angle_conversion_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    const char *function_name
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
-    int length = snprintf(message, sizeof(message), "DOUBLE value is out of range in '%s()'",
-                          function_name == NULL ? "" : function_name);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "DOUBLE value is out of range in '%s()'",
+        function_name == NULL ? "" : function_name
+    );
 
     if (length < 0) {
         return -1;
     }
     return mylite_expression_warnings_append_condition(
-        warnings, MYLITE_EXPRESSION_WARNING_LEVEL_ERROR, MYLITE_WARNING_OUT_OF_RANGE, message);
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_OUT_OF_RANGE,
+        message
+    );
 }
 
-static int append_invalid_logarithm_warning(struct mylite_expression_warnings *warnings)
-{
-    return append_warning(warnings, MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM,
-                          "Invalid argument for logarithm");
+static int append_invalid_logarithm_warning(struct mylite_expression_warnings *warnings) {
+    return append_warning(
+        warnings,
+        MYLITE_WARNING_INVALID_ARGUMENT_FOR_LOGARITHM,
+        "Invalid argument for logarithm"
+    );
 }
 
-static int append_char_truncation_warning(struct mylite_expression_warnings *warnings,
-                                          uint64_t length, const char *text)
-{
+static int append_char_truncation_warning(
+    struct mylite_expression_warnings *warnings,
+    uint64_t length,
+    const char *text
+) {
     char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
-    int written = snprintf(message, sizeof(message), "Truncated incorrect CHAR(%llu) value: '%.*s'",
-                           (unsigned long long)length, MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW,
-                           text == NULL ? "" : text);
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect CHAR(%llu) value: '%.*s'",
+        (unsigned long long)length,
+        MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW,
+        text == NULL ? "" : text
+    );
 
     if (written < 0) {
         return -1;
@@ -19920,24 +23282,27 @@ static int append_char_truncation_warning(struct mylite_expression_warnings *war
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
-static int append_signed_complement_warning(struct mylite_expression_warnings *warnings)
-{
-    return append_warning(warnings, MYLITE_WARNING_UNKNOWN,
-                          "Cast to signed converted positive out-of-range "
-                          "integer to its negative "
-                          "complement");
+static int append_signed_complement_warning(struct mylite_expression_warnings *warnings) {
+    return append_warning(
+        warnings,
+        MYLITE_WARNING_UNKNOWN,
+        "Cast to signed converted positive out-of-range "
+        "integer to its negative "
+        "complement"
+    );
 }
 
-static int append_unsigned_complement_warning(struct mylite_expression_warnings *warnings)
-{
-    return append_warning(warnings, MYLITE_WARNING_UNKNOWN,
-                          "Cast to unsigned converted negative integer to "
-                          "its positive "
-                          "complement");
+static int append_unsigned_complement_warning(struct mylite_expression_warnings *warnings) {
+    return append_warning(
+        warnings,
+        MYLITE_WARNING_UNKNOWN,
+        "Cast to unsigned converted negative integer to "
+        "its positive "
+        "complement"
+    );
 }
 
-static char *copy_span_text(const char *text, size_t length)
-{
+static char *copy_span_text(const char *text, size_t length) {
     char *copy = NULL;
 
     if (length == 0U) {
@@ -19955,8 +23320,7 @@ static char *copy_span_text(const char *text, size_t length)
     return copy;
 }
 
-static char *decode_string_literal(const struct mylite_sql_ast_node *node)
-{
+static char *decode_string_literal(const struct mylite_sql_ast_node *node) {
     const char *text = node->span.text;
     size_t length = node->span.length;
     size_t start = 0U;
@@ -19967,8 +23331,9 @@ static char *decode_string_literal(const struct mylite_sql_ast_node *node)
     if (length >= 2U && (text[0] == '\'' || text[0] == '"')) {
         start = 1U;
         end = length - 1U;
-    } else if (length >= 3U && (text[0] == 'N' || text[0] == 'n') &&
-               (text[1] == '\'' || text[1] == '"')) {
+    } else if (
+        length >= 3U && (text[0] == 'N' || text[0] == 'n') && (text[1] == '\'' || text[1] == '"')
+    ) {
         start = 2U;
         end = length - 1U;
     }
@@ -19987,8 +23352,10 @@ static char *decode_string_literal(const struct mylite_sql_ast_node *node)
             } else {
                 decoded[output++] = text[index];
             }
-        } else if ((text[index] == '\'' || text[index] == '"') && index + 1U < end &&
-                   text[index + 1U] == text[index]) {
+        } else if (
+            (text[index] == '\'' || text[index] == '"') && index + 1U < end &&
+            text[index + 1U] == text[index]
+        ) {
             decoded[output++] = text[index++];
         } else {
             decoded[output++] = text[index];
@@ -19998,8 +23365,7 @@ static char *decode_string_literal(const struct mylite_sql_ast_node *node)
     return decoded;
 }
 
-static bool decode_string_escape(char escaped, char *out_character)
-{
+static bool decode_string_escape(char escaped, char *out_character) {
     switch (escaped) {
     case '\'':
     case '"':
@@ -20026,17 +23392,16 @@ static bool decode_string_escape(char escaped, char *out_character)
     }
 }
 
-static const struct mylite_sql_ast_node *
-unwrap_parenthesized_node(const struct mylite_sql_ast_node *node)
-{
+static const struct mylite_sql_ast_node *unwrap_parenthesized_node(
+    const struct mylite_sql_ast_node *node
+) {
     while (node != NULL && node->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         node = child_at(node, 0U);
     }
     return node;
 }
 
-static bool expression_is_binary_string_modifier(const struct mylite_sql_ast_node *node)
-{
+static bool expression_is_binary_string_modifier(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *target = NULL;
 
     node = unwrap_parenthesized_node(node);
@@ -20055,9 +23420,10 @@ static bool expression_is_binary_string_modifier(const struct mylite_sql_ast_nod
            target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_BINARY;
 }
 
-static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_node *node,
-                                                  size_t index)
-{
+static const struct mylite_sql_ast_node *child_at(
+    const struct mylite_sql_ast_node *node,
+    size_t index
+) {
     const struct mylite_sql_ast_node *child = node == NULL ? NULL : node->first_child;
 
     for (size_t current = 0U; current < index && child != NULL; ++current) {
@@ -20066,19 +23432,18 @@ static const struct mylite_sql_ast_node *child_at(const struct mylite_sql_ast_no
     return child;
 }
 
-static size_t child_count(const struct mylite_sql_ast_node *node)
-{
+static size_t child_count(const struct mylite_sql_ast_node *node) {
     size_t count = 0U;
 
     for (const struct mylite_sql_ast_node *child = node == NULL ? NULL : node->first_child;
-         child != NULL; child = child->next_sibling) {
+         child != NULL;
+         child = child->next_sibling) {
         ++count;
     }
     return count;
 }
 
-static enum mylite_scalar_function_id scalar_function_id(const struct mylite_sql_ast_node *node)
-{
+static enum mylite_scalar_function_id scalar_function_id(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *name = child_at(node, 0U);
 
     if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
@@ -20087,9 +23452,9 @@ static enum mylite_scalar_function_id scalar_function_id(const struct mylite_sql
     return scalar_function_id_from_span(name->span);
 }
 
-static enum mylite_scalar_function_id
-scalar_function_id_from_span(struct mylite_sql_source_span span)
-{
+static enum mylite_scalar_function_id scalar_function_id_from_span(
+    struct mylite_sql_source_span span
+) {
     static const struct {
         const char *name;
         enum mylite_scalar_function_id id;
@@ -20281,8 +23646,7 @@ scalar_function_id_from_span(struct mylite_sql_source_span span)
     return MYLITE_SCALAR_FUNCTION_UNKNOWN;
 }
 
-static bool scalar_function_depends_on_session(enum mylite_scalar_function_id function_id)
-{
+static bool scalar_function_depends_on_session(enum mylite_scalar_function_id function_id) {
     switch (function_id) {
     case MYLITE_SCALAR_FUNCTION_DATABASE:
     case MYLITE_SCALAR_FUNCTION_SCHEMA:
@@ -20452,8 +23816,7 @@ static bool scalar_function_depends_on_session(enum mylite_scalar_function_id fu
     return false;
 }
 
-static bool ascii_span_equals(struct mylite_sql_source_span span, const char *text)
-{
+static bool ascii_span_equals(struct mylite_sql_source_span span, const char *text) {
     size_t text_length = text == NULL ? 0U : strlen(text);
 
     if (span.length != text_length || span.text == NULL || text == NULL) {
@@ -20468,26 +23831,30 @@ static bool ascii_span_equals(struct mylite_sql_source_span span, const char *te
     return true;
 }
 
-static bool is_null(const struct mylite_expression_value *value)
-{
+static bool is_null(const struct mylite_expression_value *value) {
     return value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL;
 }
 
-static bool is_numeric_kind(enum mylite_expression_value_kind kind)
-{
+static bool is_numeric_kind(enum mylite_expression_value_kind kind) {
     return kind == MYLITE_EXPRESSION_VALUE_INT64 || kind == MYLITE_EXPRESSION_VALUE_UINT64 ||
            kind == MYLITE_EXPRESSION_VALUE_REAL;
 }
 
-static bool like_match(const char *value, const char *pattern, char escape, bool case_sensitive)
-{
-    return like_match_here(value == NULL ? "" : value, pattern == NULL ? "" : pattern, escape,
-                           case_sensitive);
+static bool like_match(const char *value, const char *pattern, char escape, bool case_sensitive) {
+    return like_match_here(
+        value == NULL ? "" : value,
+        pattern == NULL ? "" : pattern,
+        escape,
+        case_sensitive
+    );
 }
 
-static bool like_match_here(const char *value, const char *pattern, char escape,
-                            bool case_sensitive)
-{
+static bool like_match_here(
+    const char *value,
+    const char *pattern,
+    char escape,
+    bool case_sensitive
+) {
     if (*pattern == '\0') {
         return *value == '\0';
     }
@@ -20510,16 +23877,14 @@ static bool like_match_here(const char *value, const char *pattern, char escape,
            like_match_here(value + 1, pattern + 1, escape, case_sensitive);
 }
 
-static bool like_char_equal(char value, char pattern, bool case_sensitive)
-{
+static bool like_char_equal(char value, char pattern, bool case_sensitive) {
     if (case_sensitive) {
         return value == pattern;
     }
     return ascii_case_fold((unsigned char)value) == ascii_case_fold((unsigned char)pattern);
 }
 
-static int ascii_case_fold(int character)
-{
+static int ascii_case_fold(int character) {
     return character >= 'A' && character <= 'Z' ? character - 'A' + 'a' : character;
 }
 

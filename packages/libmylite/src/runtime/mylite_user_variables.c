@@ -16,37 +16,68 @@ struct set_user_variable_eval_context {
     mylite_db *database;
 };
 
-static int copy_user_variable_identifier_tail(const struct mylite_sql_ast_node *identifier,
-                                              char **out_name);
+static int copy_user_variable_identifier_tail(
+    const struct mylite_sql_ast_node *identifier,
+    char **out_name
+);
+
 static void lowercase_ascii_text(char *text);
-static struct mylite_user_variable *
-find_user_variable_entry(struct mylite_user_variable_store *store, const char *name);
-static const struct mylite_user_variable *
-find_user_variable_entry_const(const struct mylite_user_variable_store *store, const char *name);
+
+static struct mylite_user_variable *find_user_variable_entry(
+    struct mylite_user_variable_store *store,
+    const char *name
+);
+
+static const struct mylite_user_variable *find_user_variable_entry_const(
+    const struct mylite_user_variable_store *store,
+    const char *name
+);
+
 static struct mylite_field_descriptor unset_user_variable_descriptor(void);
-static struct mylite_field_descriptor
-user_variable_descriptor_from_value(mylite_db *database,
-                                    const struct mylite_expression_value *value);
+
+static struct mylite_field_descriptor user_variable_descriptor_from_value(
+    mylite_db *database,
+    const struct mylite_expression_value *value
+);
+
 static struct mylite_field_descriptor assigned_null_user_variable_descriptor(void);
+
 static struct mylite_field_descriptor assigned_text_user_variable_descriptor(mylite_db *database);
-static int copy_set_user_variable_assignments(const struct mylite_sql_ast_node *statement,
-                                              struct mylite_set_user_variable_plan *plan);
-static int
-copy_set_user_variable_assignment(const struct mylite_sql_ast_node *assignment,
-                                  struct mylite_user_variable_assignment_plan *assignment_plan);
-static void
-user_variable_assignment_plan_deinit(struct mylite_user_variable_assignment_plan *assignment);
-static int eval_set_user_variable_identifier(void *user_data,
-                                             const struct mylite_sql_ast_node *identifier,
-                                             struct mylite_expression_value *out_value);
-static int set_user_variable_store_value(mylite_db *database, const char *name,
-                                         const struct mylite_expression_value *value,
-                                         const struct mylite_field_descriptor *descriptor);
+
+static int copy_set_user_variable_assignments(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_set_user_variable_plan *plan
+);
+
+static int copy_set_user_variable_assignment(
+    const struct mylite_sql_ast_node *assignment,
+    struct mylite_user_variable_assignment_plan *assignment_plan
+);
+
+static void user_variable_assignment_plan_deinit(
+    struct mylite_user_variable_assignment_plan *assignment
+);
+
+static int eval_set_user_variable_identifier(
+    void *user_data,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+);
+
+static int set_user_variable_store_value(
+    mylite_db *database,
+    const char *name,
+    const struct mylite_expression_value *value,
+    const struct mylite_field_descriptor *descriptor
+);
+
 static void user_variable_entry_deinit(struct mylite_user_variable *entry);
+
 static int map_set_user_variable_expression_status(mylite_db *database, int status);
 
-bool mylite_user_variable_identifier_is_user_variable(const struct mylite_sql_ast_node *identifier)
-{
+bool mylite_user_variable_identifier_is_user_variable(
+    const struct mylite_sql_ast_node *identifier
+) {
     if (identifier == NULL || identifier->kind != MYLITE_SQL_AST_IDENTIFIER ||
         identifier->span.text == NULL || identifier->span.length < 2U) {
         return false;
@@ -57,9 +88,10 @@ bool mylite_user_variable_identifier_is_user_variable(const struct mylite_sql_as
     return identifier->span.text[1] != '@';
 }
 
-int mylite_user_variable_copy_identifier_name(const struct mylite_sql_ast_node *identifier,
-                                              char **out_name)
-{
+int mylite_user_variable_copy_identifier_name(
+    const struct mylite_sql_ast_node *identifier,
+    char **out_name
+) {
     char *name = NULL;
 
     if (out_name == NULL) {
@@ -78,10 +110,11 @@ int mylite_user_variable_copy_identifier_name(const struct mylite_sql_ast_node *
     return MYLITE_OK;
 }
 
-int mylite_user_variable_eval_identifier(mylite_db *database,
-                                         const struct mylite_sql_ast_node *identifier,
-                                         struct mylite_expression_value *out_value)
-{
+int mylite_user_variable_eval_identifier(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+) {
     char *name = NULL;
     const struct mylite_user_variable *entry = NULL;
     int status = MYLITE_OK;
@@ -109,10 +142,11 @@ int mylite_user_variable_eval_identifier(mylite_db *database,
     return 0;
 }
 
-int mylite_user_variable_infer_identifier(mylite_db *database,
-                                          const struct mylite_sql_ast_node *identifier,
-                                          struct mylite_field_descriptor *out_descriptor)
-{
+int mylite_user_variable_infer_identifier(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_field_descriptor *out_descriptor
+) {
     char *name = NULL;
     const struct mylite_user_variable *entry = NULL;
     int status = MYLITE_OK;
@@ -133,10 +167,11 @@ int mylite_user_variable_infer_identifier(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_user_variable_prepare_set_statement(mylite_db *database,
-                                               const struct mylite_sql_ast_node *statement,
-                                               mylite_stmt **out_stmt)
-{
+int mylite_user_variable_prepare_set_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     mylite_stmt *stmt = calloc(1U, sizeof(*stmt));
     int status = MYLITE_OK;
 
@@ -164,8 +199,7 @@ int mylite_user_variable_prepare_set_statement(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_user_variable_execute_set_statement(mylite_stmt *stmt)
-{
+int mylite_user_variable_execute_set_statement(mylite_stmt *stmt) {
     const struct mylite_set_user_variable_plan *plan =
         stmt == NULL ? NULL : &stmt->set_user_variable;
     struct mylite_expression_value *values = NULL;
@@ -196,9 +230,12 @@ int mylite_user_variable_execute_set_statement(mylite_stmt *stmt)
     }
 
     for (size_t index = 0U; index < plan->assignment_count; ++index) {
-        status = mylite_expression_eval_with_context(plan->assignments[index].expression,
-                                                     &expression_context, &stmt->database->warnings,
-                                                     &values[index]);
+        status = mylite_expression_eval_with_context(
+            plan->assignments[index].expression,
+            &expression_context,
+            &stmt->database->warnings,
+            &values[index]
+        );
         if (status != 0) {
             status = map_set_user_variable_expression_status(stmt->database, status);
             goto done;
@@ -207,8 +244,12 @@ int mylite_user_variable_execute_set_statement(mylite_stmt *stmt)
     }
 
     for (size_t index = 0U; index < plan->assignment_count; ++index) {
-        status = set_user_variable_store_value(stmt->database, plan->assignments[index].name,
-                                               &values[index], &descriptors[index]);
+        status = set_user_variable_store_value(
+            stmt->database,
+            plan->assignments[index].name,
+            &values[index],
+            &descriptors[index]
+        );
         if (status != MYLITE_OK) {
             goto done;
         }
@@ -223,8 +264,7 @@ done:
     return status;
 }
 
-void mylite_user_variable_store_deinit(struct mylite_user_variable_store *store)
-{
+void mylite_user_variable_store_deinit(struct mylite_user_variable_store *store) {
     if (store == NULL) {
         return;
     }
@@ -235,8 +275,7 @@ void mylite_user_variable_store_deinit(struct mylite_user_variable_store *store)
     *store = (struct mylite_user_variable_store){0};
 }
 
-void mylite_user_variable_set_plan_deinit(struct mylite_set_user_variable_plan *plan)
-{
+void mylite_user_variable_set_plan_deinit(struct mylite_set_user_variable_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -247,26 +286,28 @@ void mylite_user_variable_set_plan_deinit(struct mylite_set_user_variable_plan *
     *plan = (struct mylite_set_user_variable_plan){0};
 }
 
-static int copy_user_variable_identifier_tail(const struct mylite_sql_ast_node *identifier,
-                                              char **out_name)
-{
+static int copy_user_variable_identifier_tail(
+    const struct mylite_sql_ast_node *identifier,
+    char **out_name
+) {
     struct mylite_sql_ast_node tail_node = {0};
     const char *tail = identifier->span.text + 1U;
     size_t tail_length = identifier->span.length - 1U;
 
     tail_node = (struct mylite_sql_ast_node){
         .kind = MYLITE_SQL_AST_IDENTIFIER,
-        .span =
-            (struct mylite_sql_source_span){
-                .text = tail,
-                .length = tail_length,
-            },
+        .span = (struct mylite_sql_source_span){
+            .text = tail,
+            .length = tail_length,
+        },
     };
 
     if (tail_length >= 2U && tail[0] == '`' && tail[tail_length - 1U] == '`') {
         *out_name = mylite_copy_identifier_span(&tail_node);
-    } else if (tail_length >= 2U && (tail[0] == '\'' || tail[0] == '"') &&
-               tail[tail_length - 1U] == tail[0]) {
+    } else if (
+        tail_length >= 2U && (tail[0] == '\'' || tail[0] == '"') &&
+        tail[tail_length - 1U] == tail[0]
+    ) {
         *out_name = mylite_copy_string_literal_span(&tail_node);
     } else {
         *out_name = mylite_copy_span_text(tail, tail_length);
@@ -274,8 +315,7 @@ static int copy_user_variable_identifier_tail(const struct mylite_sql_ast_node *
     return *out_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static void lowercase_ascii_text(char *text)
-{
+static void lowercase_ascii_text(char *text) {
     for (size_t index = 0U; text != NULL && text[index] != '\0'; ++index) {
         if (text[index] >= 'A' && text[index] <= 'Z') {
             text[index] = (char)(text[index] - 'A' + 'a');
@@ -283,9 +323,10 @@ static void lowercase_ascii_text(char *text)
     }
 }
 
-static struct mylite_user_variable *
-find_user_variable_entry(struct mylite_user_variable_store *store, const char *name)
-{
+static struct mylite_user_variable *find_user_variable_entry(
+    struct mylite_user_variable_store *store,
+    const char *name
+) {
     if (store == NULL || name == NULL) {
         return NULL;
     }
@@ -297,9 +338,10 @@ find_user_variable_entry(struct mylite_user_variable_store *store, const char *n
     return NULL;
 }
 
-static const struct mylite_user_variable *
-find_user_variable_entry_const(const struct mylite_user_variable_store *store, const char *name)
-{
+static const struct mylite_user_variable *find_user_variable_entry_const(
+    const struct mylite_user_variable_store *store,
+    const char *name
+) {
     if (store == NULL || name == NULL) {
         return NULL;
     }
@@ -311,8 +353,7 @@ find_user_variable_entry_const(const struct mylite_user_variable_store *store, c
     return NULL;
 }
 
-static struct mylite_field_descriptor unset_user_variable_descriptor(void)
-{
+static struct mylite_field_descriptor unset_user_variable_descriptor(void) {
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
         .flags = MYLITE_FIELD_FLAG_BINARY,
@@ -323,10 +364,10 @@ static struct mylite_field_descriptor unset_user_variable_descriptor(void)
     };
 }
 
-static struct mylite_field_descriptor
-user_variable_descriptor_from_value(mylite_db *database,
-                                    const struct mylite_expression_value *value)
-{
+static struct mylite_field_descriptor user_variable_descriptor_from_value(
+    mylite_db *database,
+    const struct mylite_expression_value *value
+) {
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_from_value(value);
 
     if (value == NULL || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
@@ -343,8 +384,7 @@ user_variable_descriptor_from_value(mylite_db *database,
     return descriptor;
 }
 
-static struct mylite_field_descriptor assigned_null_user_variable_descriptor(void)
-{
+static struct mylite_field_descriptor assigned_null_user_variable_descriptor(void) {
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_MEDIUM_BLOB,
         .flags = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
@@ -355,8 +395,7 @@ static struct mylite_field_descriptor assigned_null_user_variable_descriptor(voi
     };
 }
 
-static struct mylite_field_descriptor assigned_text_user_variable_descriptor(mylite_db *database)
-{
+static struct mylite_field_descriptor assigned_text_user_variable_descriptor(mylite_db *database) {
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_MEDIUM_BLOB,
         .flags = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL,
@@ -367,9 +406,10 @@ static struct mylite_field_descriptor assigned_text_user_variable_descriptor(myl
     };
 }
 
-static int copy_set_user_variable_assignments(const struct mylite_sql_ast_node *statement,
-                                              struct mylite_set_user_variable_plan *plan)
-{
+static int copy_set_user_variable_assignments(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_set_user_variable_plan *plan
+) {
     const struct mylite_sql_ast_node *assignment_list = mylite_ast_child_at(statement, 0U);
 
     if (assignment_list == NULL ||
@@ -378,7 +418,8 @@ static int copy_set_user_variable_assignments(const struct mylite_sql_ast_node *
     }
 
     for (const struct mylite_sql_ast_node *assignment = assignment_list->first_child;
-         assignment != NULL; assignment = assignment->next_sibling) {
+         assignment != NULL;
+         assignment = assignment->next_sibling) {
         struct mylite_user_variable_assignment_plan *assignments =
             realloc(plan->assignments, (plan->assignment_count + 1U) * sizeof(*plan->assignments));
         int status = MYLITE_OK;
@@ -389,8 +430,10 @@ static int copy_set_user_variable_assignments(const struct mylite_sql_ast_node *
         plan->assignments = assignments;
         plan->assignments[plan->assignment_count] =
             (struct mylite_user_variable_assignment_plan){0};
-        status = copy_set_user_variable_assignment(assignment,
-                                                   &plan->assignments[plan->assignment_count]);
+        status = copy_set_user_variable_assignment(
+            assignment,
+            &plan->assignments[plan->assignment_count]
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -399,10 +442,10 @@ static int copy_set_user_variable_assignments(const struct mylite_sql_ast_node *
     return MYLITE_OK;
 }
 
-static int
-copy_set_user_variable_assignment(const struct mylite_sql_ast_node *assignment,
-                                  struct mylite_user_variable_assignment_plan *assignment_plan)
-{
+static int copy_set_user_variable_assignment(
+    const struct mylite_sql_ast_node *assignment,
+    struct mylite_user_variable_assignment_plan *assignment_plan
+) {
     const struct mylite_sql_ast_node *variable = mylite_ast_child_at(assignment, 0U);
     const struct mylite_sql_ast_node *expression = mylite_ast_child_at(assignment, 1U);
     struct mylite_sql_ast_node *expression_clone = NULL;
@@ -422,9 +465,14 @@ copy_set_user_variable_assignment(const struct mylite_sql_ast_node *assignment,
         return MYLITE_NOMEM;
     }
 
-    status = mylite_statement_ast_clone_subtree(&assignment_plan->expression_ast, expression,
-                                                expression->span.text, assignment_plan->sql_text,
-                                                expression->span.length, &expression_clone);
+    status = mylite_statement_ast_clone_subtree(
+        &assignment_plan->expression_ast,
+        expression,
+        expression->span.text,
+        assignment_plan->sql_text,
+        expression->span.length,
+        &expression_clone
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -432,9 +480,9 @@ copy_set_user_variable_assignment(const struct mylite_sql_ast_node *assignment,
     return MYLITE_OK;
 }
 
-static void
-user_variable_assignment_plan_deinit(struct mylite_user_variable_assignment_plan *assignment)
-{
+static void user_variable_assignment_plan_deinit(
+    struct mylite_user_variable_assignment_plan *assignment
+) {
     if (assignment == NULL) {
         return;
     }
@@ -444,23 +492,29 @@ user_variable_assignment_plan_deinit(struct mylite_user_variable_assignment_plan
     *assignment = (struct mylite_user_variable_assignment_plan){0};
 }
 
-static int eval_set_user_variable_identifier(void *user_data,
-                                             const struct mylite_sql_ast_node *identifier,
-                                             struct mylite_expression_value *out_value)
-{
+static int eval_set_user_variable_identifier(
+    void *user_data,
+    const struct mylite_sql_ast_node *identifier,
+    struct mylite_expression_value *out_value
+) {
     struct set_user_variable_eval_context *context = user_data;
 
     if (!mylite_user_variable_identifier_is_user_variable(identifier)) {
         return -1;
     }
-    return mylite_user_variable_eval_identifier(context == NULL ? NULL : context->database,
-                                                identifier, out_value);
+    return mylite_user_variable_eval_identifier(
+        context == NULL ? NULL : context->database,
+        identifier,
+        out_value
+    );
 }
 
-static int set_user_variable_store_value(mylite_db *database, const char *name,
-                                         const struct mylite_expression_value *value,
-                                         const struct mylite_field_descriptor *descriptor)
-{
+static int set_user_variable_store_value(
+    mylite_db *database,
+    const char *name,
+    const struct mylite_expression_value *value,
+    const struct mylite_field_descriptor *descriptor
+) {
     struct mylite_user_variable *entry = NULL;
 
     if (database == NULL || name == NULL || value == NULL || descriptor == NULL) {
@@ -469,9 +523,10 @@ static int set_user_variable_store_value(mylite_db *database, const char *name,
 
     entry = find_user_variable_entry(&database->user_variables, name);
     if (entry == NULL) {
-        struct mylite_user_variable *items =
-            realloc(database->user_variables.items, (database->user_variables.count + 1U) *
-                                                        sizeof(*database->user_variables.items));
+        struct mylite_user_variable *items = realloc(
+            database->user_variables.items,
+            (database->user_variables.count + 1U) * sizeof(*database->user_variables.items)
+        );
 
         if (items == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -498,8 +553,7 @@ static int set_user_variable_store_value(mylite_db *database, const char *name,
     return MYLITE_OK;
 }
 
-static void user_variable_entry_deinit(struct mylite_user_variable *entry)
-{
+static void user_variable_entry_deinit(struct mylite_user_variable *entry) {
     if (entry == NULL) {
         return;
     }
@@ -508,8 +562,7 @@ static void user_variable_entry_deinit(struct mylite_user_variable *entry)
     *entry = (struct mylite_user_variable){0};
 }
 
-static int map_set_user_variable_expression_status(mylite_db *database, int status)
-{
+static int map_set_user_variable_expression_status(mylite_db *database, int status) {
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -517,7 +570,7 @@ static int map_set_user_variable_expression_status(mylite_db *database, int stat
     if (database != NULL && database->error_message != NULL) {
         return status > 0 ? status : MYLITE_EXEC_ERROR;
     }
-    (void)mylite_diagnostics_set_error_message(database,
-                                               "unsupported SET user variable expression");
+    (void)
+        mylite_diagnostics_set_error_message(database, "unsupported SET user variable expression");
     return MYLITE_UNSUPPORTED;
 }

@@ -12,22 +12,27 @@
 
 #include <stdlib.h>
 
-static int infer_table_identifier_descriptor(const struct mylite_select_table *table,
-                                             const struct mylite_sql_ast_node *expression,
-                                             struct mylite_field_descriptor *out_descriptor);
+static int infer_table_identifier_descriptor(
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor
+);
 
 int mylite_expression_infer_literal_collation_info(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_collation_callbacks *callbacks,
-    struct mylite_charset_collation_info *out_info)
-{
+    struct mylite_charset_collation_info *out_info
+) {
     switch (expression->literal_kind) {
     case MYLITE_SQL_AST_LITERAL_NULL:
         *out_info = mylite_expression_binary_collation_info(mylite_mysql_coercibility_ignorable);
         return MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_STRING:
         *out_info = mylite_expression_connection_collation_info(
-            database, mylite_mysql_coercibility_coercible);
+            database,
+            mylite_mysql_coercibility_coercible
+        );
         return MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
         *out_info =
@@ -44,17 +49,24 @@ int mylite_expression_infer_literal_collation_info(
     case MYLITE_SQL_AST_LITERAL_BIT:
     case MYLITE_SQL_AST_LITERAL_NONE:
         return mylite_expression_infer_descriptor_collation_info(
-            database, NULL, expression, mylite_mysql_coercibility_coercible, callbacks, out_info);
+            database,
+            NULL,
+            expression,
+            mylite_mysql_coercibility_coercible,
+            callbacks,
+            out_info
+        );
     }
     return MYLITE_UNSUPPORTED;
 }
 
 int mylite_expression_infer_identifier_collation_info(
-    mylite_db *database, const struct mylite_expression_collation_context *context,
+    mylite_db *database,
+    const struct mylite_expression_collation_context *context,
     const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_collation_callbacks *callbacks,
-    struct mylite_charset_collation_info *out_info)
-{
+    struct mylite_charset_collation_info *out_info
+) {
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
     int status = MYLITE_UNSUPPORTED;
 
@@ -64,24 +76,30 @@ int mylite_expression_infer_identifier_collation_info(
         status = mylite_user_variable_infer_identifier(database, expression, &descriptor);
     } else if (context != NULL && context->table != NULL) {
         status = infer_table_identifier_descriptor(context->table, expression, &descriptor);
-    } else if (context != NULL && context->plan != NULL && callbacks != NULL &&
-               callbacks->infer_expression_descriptor != NULL) {
-        status = callbacks->infer_expression_descriptor(database, context->plan, expression,
-                                                        &descriptor);
+    } else if (
+        context != NULL && context->plan != NULL && callbacks != NULL &&
+        callbacks->infer_expression_descriptor != NULL
+    ) {
+        status =
+            callbacks
+                ->infer_expression_descriptor(database, context->plan, expression, &descriptor);
     }
     if (status != MYLITE_OK) {
         return status;
     }
-    *out_info = mylite_expression_descriptor_collation_info(&descriptor,
-                                                            mylite_mysql_coercibility_implicit);
+    *out_info = mylite_expression_descriptor_collation_info(
+        &descriptor,
+        mylite_mysql_coercibility_implicit
+    );
     return MYLITE_OK;
 }
 
 int mylite_expression_infer_cast_collation_info(
-    mylite_db *database, const struct mylite_sql_ast_node *expression,
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_collation_callbacks *callbacks,
-    struct mylite_charset_collation_info *out_info)
-{
+    struct mylite_charset_collation_info *out_info
+) {
     const struct mylite_sql_ast_node *target = mylite_ast_child_at(expression, 1U);
 
     if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE) {
@@ -96,7 +114,9 @@ int mylite_expression_infer_cast_collation_info(
 
         if (!target->has_column_character_set) {
             *out_info = mylite_expression_connection_collation_info(
-                database, mylite_mysql_coercibility_implicit);
+                database,
+                mylite_mysql_coercibility_implicit
+            );
             return MYLITE_OK;
         }
         charset_name = mylite_copy_unquoted_span_text(target->column_character_set);
@@ -115,13 +135,20 @@ int mylite_expression_infer_cast_collation_info(
         return MYLITE_OK;
     }
     return mylite_expression_infer_descriptor_collation_info(
-        database, NULL, expression, mylite_mysql_coercibility_coercible, callbacks, out_info);
+        database,
+        NULL,
+        expression,
+        mylite_mysql_coercibility_coercible,
+        callbacks,
+        out_info
+    );
 }
 
-static int infer_table_identifier_descriptor(const struct mylite_select_table *table,
-                                             const struct mylite_sql_ast_node *expression,
-                                             struct mylite_field_descriptor *out_descriptor)
-{
+static int infer_table_identifier_descriptor(
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor
+) {
     size_t column_index = table == NULL ? 0U : table->column_count;
     int status = table == NULL
                      ? MYLITE_UNSUPPORTED

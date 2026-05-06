@@ -15,37 +15,74 @@
 
 #include <stdlib.h>
 
-static bool
-select_statement_callbacks_are_valid(const struct mylite_select_statement_callbacks *callbacks);
-static int
-clone_table_select_expressions(mylite_stmt *stmt, const struct mylite_sql_ast_node *where_clause,
-                               const char *sql, size_t sql_length,
-                               const struct mylite_select_statement_callbacks *callbacks);
-static int clone_table_select_join_expressions(mylite_stmt *stmt, const char *sql,
-                                               size_t sql_length);
-static int clone_table_select_output_expressions(mylite_stmt *stmt, const char *sql,
-                                                 size_t sql_length);
-static int clone_table_select_group_expressions(mylite_stmt *stmt, const char *sql,
-                                                size_t sql_length);
-static int clone_table_select_having_expression(mylite_stmt *stmt, const char *sql,
-                                                size_t sql_length);
-static int
-collect_table_select_aggregate_bindings(mylite_stmt *stmt,
-                                        const struct mylite_select_statement_callbacks *callbacks);
+static bool select_statement_callbacks_are_valid(
+    const struct mylite_select_statement_callbacks *callbacks
+);
+
+static int clone_table_select_expressions(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *where_clause,
+    const char *sql,
+    size_t sql_length,
+    const struct mylite_select_statement_callbacks *callbacks
+);
+
+static int clone_table_select_join_expressions(
+    mylite_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+);
+
+static int clone_table_select_output_expressions(
+    mylite_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+);
+
+static int clone_table_select_group_expressions(
+    mylite_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+);
+
+static int clone_table_select_having_expression(
+    mylite_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+);
+
+static int collect_table_select_aggregate_bindings(
+    mylite_stmt *stmt,
+    const struct mylite_select_statement_callbacks *callbacks
+);
+
 static int collect_table_select_expression_aggregate_bindings(
-    mylite_stmt *stmt, const struct mylite_select_statement_callbacks *callbacks);
+    mylite_stmt *stmt,
+    const struct mylite_select_statement_callbacks *callbacks
+);
+
 static int collect_table_select_order_aggregate_bindings(
-    mylite_stmt *stmt, const struct mylite_select_statement_callbacks *callbacks);
-static int clone_table_select_expression_node(mylite_stmt *stmt,
-                                              const struct mylite_sql_ast_node *expression,
-                                              const char *source_sql, size_t sql_length,
-                                              struct mylite_sql_ast_node **out_node);
+    mylite_stmt *stmt,
+    const struct mylite_select_statement_callbacks *callbacks
+);
+
+static int clone_table_select_expression_node(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const char *source_sql,
+    size_t sql_length,
+    struct mylite_sql_ast_node **out_node
+);
 
 int mylite_select_prepare_custom_table_statement(
-    mylite_db *database, const struct mylite_sql_ast_node *where_clause, const char *sql,
-    size_t sql_length, struct mylite_select_plan *plan, mylite_stmt **out_stmt,
-    const struct mylite_select_statement_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const char *sql,
+    size_t sql_length,
+    struct mylite_select_plan *plan,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_statement_callbacks *callbacks
+) {
     sqlite3_stmt *sqlite_stmt = NULL;
     mylite_stmt *stmt = NULL;
     char *scan_sql = NULL;
@@ -62,8 +99,14 @@ int mylite_select_prepare_custom_table_statement(
             return MYLITE_NOMEM;
         }
 
-        rc = sqlite3_prepare_v3(database->sqlite, scan_sql, -1, SQLITE_PREPARE_PERSISTENT,
-                                &sqlite_stmt, NULL);
+        rc = sqlite3_prepare_v3(
+            database->sqlite,
+            scan_sql,
+            -1,
+            SQLITE_PREPARE_PERSISTENT,
+            &sqlite_stmt,
+            NULL
+        );
         sqlite3_free(scan_sql);
         if (rc != SQLITE_OK) {
             return mylite_diagnostics_set_sqlite_error(database);
@@ -99,9 +142,10 @@ int mylite_select_prepare_custom_table_statement(
     return status;
 }
 
-int mylite_select_execute_table_statement(mylite_stmt *stmt,
-                                          const struct mylite_select_eval_callbacks *callbacks)
-{
+int mylite_select_execute_table_statement(
+    mylite_stmt *stmt,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     if (stmt->sqlite_stmt == NULL && mylite_select_plan_table_count(&stmt->select_plan) <= 1U) {
         return MYLITE_MISUSE;
     }
@@ -120,7 +164,10 @@ int mylite_select_execute_table_statement(mylite_stmt *stmt,
     }
 
     status = mylite_select_eval_set_current_row(
-        stmt, &stmt->select_result.rows[stmt->select_result.next_row], callbacks);
+        stmt,
+        &stmt->select_result.rows[stmt->select_result.next_row],
+        callbacks
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -128,8 +175,7 @@ int mylite_select_execute_table_statement(mylite_stmt *stmt,
     return MYLITE_ROW;
 }
 
-int mylite_select_clone_order_expressions(mylite_stmt *stmt, const char *sql, size_t sql_length)
-{
+int mylite_select_clone_order_expressions(mylite_stmt *stmt, const char *sql, size_t sql_length) {
     for (size_t index = 0U; index < stmt->select_plan.order_key_count; ++index) {
         struct mylite_sql_ast_node *clone = NULL;
         int status = MYLITE_OK;
@@ -138,7 +184,12 @@ int mylite_select_clone_order_expressions(mylite_stmt *stmt, const char *sql, si
             continue;
         }
         status = clone_table_select_expression_node(
-            stmt, stmt->select_plan.order_keys[index].expression, sql, sql_length, &clone);
+            stmt,
+            stmt->select_plan.order_keys[index].expression,
+            sql,
+            sql_length,
+            &clone
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -147,9 +198,9 @@ int mylite_select_clone_order_expressions(mylite_stmt *stmt, const char *sql, si
     return MYLITE_OK;
 }
 
-static bool
-select_statement_callbacks_are_valid(const struct mylite_select_statement_callbacks *callbacks)
-{
+static bool select_statement_callbacks_are_valid(
+    const struct mylite_select_statement_callbacks *callbacks
+) {
     if (callbacks == NULL || callbacks->aggregate_callbacks == NULL ||
         callbacks->metadata_callbacks == NULL) {
         return false;
@@ -157,11 +208,13 @@ select_statement_callbacks_are_valid(const struct mylite_select_statement_callba
     return true;
 }
 
-static int clone_table_select_expressions(mylite_stmt *stmt,
-                                          const struct mylite_sql_ast_node *where_clause,
-                                          const char *sql, size_t sql_length,
-                                          const struct mylite_select_statement_callbacks *callbacks)
-{
+static int clone_table_select_expressions(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *where_clause,
+    const char *sql,
+    size_t sql_length,
+    const struct mylite_select_statement_callbacks *callbacks
+) {
     int status = MYLITE_OK;
 
     stmt->select_sql_text = mylite_copy_span_text(sql, sql_length);
@@ -200,13 +253,20 @@ static int clone_table_select_expressions(mylite_stmt *stmt,
     return status;
 }
 
-static int clone_table_select_join_expressions(mylite_stmt *stmt, const char *sql,
-                                               size_t sql_length)
-{
+static int clone_table_select_join_expressions(
+    mylite_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+) {
     for (size_t index = 0U; index < stmt->select_plan.join_predicate_count; ++index) {
         struct mylite_sql_ast_node *clone = NULL;
         int status = clone_table_select_expression_node(
-            stmt, stmt->select_plan.join_predicates[index].expression, sql, sql_length, &clone);
+            stmt,
+            stmt->select_plan.join_predicates[index].expression,
+            sql,
+            sql_length,
+            &clone
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -216,9 +276,11 @@ static int clone_table_select_join_expressions(mylite_stmt *stmt, const char *sq
     return MYLITE_OK;
 }
 
-static int clone_table_select_output_expressions(mylite_stmt *stmt, const char *sql,
-                                                 size_t sql_length)
-{
+static int clone_table_select_output_expressions(
+    mylite_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+) {
     for (size_t index = 0U; index < stmt->select_plan.output_count; ++index) {
         struct mylite_sql_ast_node *clone = NULL;
         int status = MYLITE_OK;
@@ -227,7 +289,12 @@ static int clone_table_select_output_expressions(mylite_stmt *stmt, const char *
             continue;
         }
         status = clone_table_select_expression_node(
-            stmt, stmt->select_plan.outputs[index].expression, sql, sql_length, &clone);
+            stmt,
+            stmt->select_plan.outputs[index].expression,
+            sql,
+            sql_length,
+            &clone
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -236,9 +303,11 @@ static int clone_table_select_output_expressions(mylite_stmt *stmt, const char *
     return MYLITE_OK;
 }
 
-static int clone_table_select_group_expressions(mylite_stmt *stmt, const char *sql,
-                                                size_t sql_length)
-{
+static int clone_table_select_group_expressions(
+    mylite_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+) {
     for (size_t index = 0U; index < stmt->select_plan.group_key_count; ++index) {
         struct mylite_sql_ast_node *clone = NULL;
         int status = MYLITE_OK;
@@ -247,7 +316,12 @@ static int clone_table_select_group_expressions(mylite_stmt *stmt, const char *s
             continue;
         }
         status = clone_table_select_expression_node(
-            stmt, stmt->select_plan.group_keys[index].expression, sql, sql_length, &clone);
+            stmt,
+            stmt->select_plan.group_keys[index].expression,
+            sql,
+            sql_length,
+            &clone
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -256,13 +330,20 @@ static int clone_table_select_group_expressions(mylite_stmt *stmt, const char *s
     return MYLITE_OK;
 }
 
-static int clone_table_select_having_expression(mylite_stmt *stmt, const char *sql,
-                                                size_t sql_length)
-{
+static int clone_table_select_having_expression(
+    mylite_stmt *stmt,
+    const char *sql,
+    size_t sql_length
+) {
     if (stmt->select_plan.having_expression != NULL) {
         struct mylite_sql_ast_node *clone = NULL;
-        int status = clone_table_select_expression_node(stmt, stmt->select_plan.having_expression,
-                                                        sql, sql_length, &clone);
+        int status = clone_table_select_expression_node(
+            stmt,
+            stmt->select_plan.having_expression,
+            sql,
+            sql_length,
+            &clone
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -272,18 +353,21 @@ static int clone_table_select_having_expression(mylite_stmt *stmt, const char *s
     return MYLITE_OK;
 }
 
-static int
-collect_table_select_aggregate_bindings(mylite_stmt *stmt,
-                                        const struct mylite_select_statement_callbacks *callbacks)
-{
+static int collect_table_select_aggregate_bindings(
+    mylite_stmt *stmt,
+    const struct mylite_select_statement_callbacks *callbacks
+) {
     int status = MYLITE_OK;
 
     mylite_select_plan_clear_aggregate_bindings(&stmt->select_plan);
     status = collect_table_select_expression_aggregate_bindings(stmt, callbacks);
     if (status == MYLITE_OK && stmt->select_plan.having_expression != NULL) {
         status = mylite_select_collect_aggregate_bindings(
-            stmt->database, stmt->select_plan.having_expression, &stmt->select_plan,
-            callbacks->aggregate_callbacks);
+            stmt->database,
+            stmt->select_plan.having_expression,
+            &stmt->select_plan,
+            callbacks->aggregate_callbacks
+        );
     }
     if (status == MYLITE_OK) {
         status = collect_table_select_order_aggregate_bindings(stmt, callbacks);
@@ -292,8 +376,9 @@ collect_table_select_aggregate_bindings(mylite_stmt *stmt,
 }
 
 static int collect_table_select_expression_aggregate_bindings(
-    mylite_stmt *stmt, const struct mylite_select_statement_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    const struct mylite_select_statement_callbacks *callbacks
+) {
     for (size_t index = 0U; index < stmt->select_plan.output_count; ++index) {
         int status = MYLITE_OK;
 
@@ -301,8 +386,11 @@ static int collect_table_select_expression_aggregate_bindings(
             continue;
         }
         status = mylite_select_collect_aggregate_bindings(
-            stmt->database, stmt->select_plan.outputs[index].expression, &stmt->select_plan,
-            callbacks->aggregate_callbacks);
+            stmt->database,
+            stmt->select_plan.outputs[index].expression,
+            &stmt->select_plan,
+            callbacks->aggregate_callbacks
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -311,8 +399,9 @@ static int collect_table_select_expression_aggregate_bindings(
 }
 
 static int collect_table_select_order_aggregate_bindings(
-    mylite_stmt *stmt, const struct mylite_select_statement_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    const struct mylite_select_statement_callbacks *callbacks
+) {
     for (size_t index = 0U; index < stmt->select_plan.order_key_count; ++index) {
         int status = MYLITE_OK;
 
@@ -320,8 +409,11 @@ static int collect_table_select_order_aggregate_bindings(
             continue;
         }
         status = mylite_select_collect_aggregate_bindings(
-            stmt->database, stmt->select_plan.order_keys[index].expression, &stmt->select_plan,
-            callbacks->aggregate_callbacks);
+            stmt->database,
+            stmt->select_plan.order_keys[index].expression,
+            &stmt->select_plan,
+            callbacks->aggregate_callbacks
+        );
         if (status != MYLITE_OK) {
             return status;
         }
@@ -330,14 +422,21 @@ static int collect_table_select_order_aggregate_bindings(
     return MYLITE_OK;
 }
 
-static int clone_table_select_expression_node(mylite_stmt *stmt,
-                                              const struct mylite_sql_ast_node *expression,
-                                              const char *source_sql, size_t sql_length,
-                                              struct mylite_sql_ast_node **out_node)
-{
-    int status =
-        mylite_statement_ast_clone_subtree(&stmt->select_predicate_ast, expression, source_sql,
-                                           stmt->select_sql_text, sql_length, out_node);
+static int clone_table_select_expression_node(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const char *source_sql,
+    size_t sql_length,
+    struct mylite_sql_ast_node **out_node
+) {
+    int status = mylite_statement_ast_clone_subtree(
+        &stmt->select_predicate_ast,
+        expression,
+        source_sql,
+        stmt->select_sql_text,
+        sql_length,
+        out_node
+    );
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");

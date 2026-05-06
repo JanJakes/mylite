@@ -5,10 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-int mylite_select_resolve_column_reference(const struct mylite_select_table *table,
-                                           const struct mylite_sql_ast_node *expression,
-                                           size_t *out_index)
-{
+int mylite_select_resolve_column_reference(
+    const struct mylite_select_table *table,
+    const struct mylite_sql_ast_node *expression,
+    size_t *out_index
+) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     int status = mylite_copy_identifier_parts(expression, parts, &part_count);
@@ -29,9 +30,11 @@ int mylite_select_resolve_column_reference(const struct mylite_select_table *tab
     return MYLITE_OK;
 }
 
-bool mylite_select_reference_qualifiers_match(const struct mylite_select_table *table, char **parts,
-                                              size_t part_count)
-{
+bool mylite_select_reference_qualifiers_match(
+    const struct mylite_select_table *table,
+    char **parts,
+    size_t part_count
+) {
     if (part_count == 1U) {
         return true;
     }
@@ -52,8 +55,10 @@ bool mylite_select_reference_qualifiers_match(const struct mylite_select_table *
     return false;
 }
 
-size_t mylite_select_column_index(const struct mylite_select_table *table, const char *column_name)
-{
+size_t mylite_select_column_index(
+    const struct mylite_select_table *table,
+    const char *column_name
+) {
     for (size_t index = 0U; index < table->column_count; ++index) {
         if (mylite_ascii_case_equal(table->columns[index].name, column_name)) {
             return index;
@@ -62,8 +67,7 @@ size_t mylite_select_column_index(const struct mylite_select_table *table, const
     return table->column_count;
 }
 
-char *mylite_select_copy_reference_name(const struct mylite_sql_ast_node *identifier)
-{
+char *mylite_select_copy_reference_name(const struct mylite_sql_ast_node *identifier) {
     char *parts[3] = {0};
     size_t part_count = 0U;
     size_t length = 0U;
@@ -112,8 +116,7 @@ char *mylite_select_copy_reference_name(const struct mylite_sql_ast_node *identi
     return name;
 }
 
-char *mylite_select_copy_alias(const struct mylite_sql_ast_node *alias)
-{
+char *mylite_select_copy_alias(const struct mylite_sql_ast_node *alias) {
     if (alias == NULL) {
         return NULL;
     }

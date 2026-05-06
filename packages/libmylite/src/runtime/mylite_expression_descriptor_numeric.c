@@ -6,28 +6,47 @@
 #include "mylite_span.h"
 #include "sql/mylite_ast.h"
 
-static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name,
-                                          struct mylite_field_descriptor *out_descriptor);
-static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                struct mylite_field_descriptor *out_descriptor);
-static bool infer_power_function_descriptor(const struct mylite_sql_ast_node *name,
-                                            struct mylite_field_descriptor *out_descriptor);
-static bool infer_sqrt_function_descriptor(const struct mylite_sql_ast_node *name,
-                                           struct mylite_field_descriptor *out_descriptor);
-static bool infer_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                    struct mylite_field_descriptor *out_descriptor);
-static bool
-infer_inverse_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                struct mylite_field_descriptor *out_descriptor);
-static bool
-infer_angle_conversion_function_descriptor(const struct mylite_sql_ast_node *name,
-                                           bool result_nullable,
-                                           struct mylite_field_descriptor *out_descriptor);
+static bool infer_exp_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+);
+
+static bool infer_logarithm_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+);
+
+static bool infer_power_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+);
+
+static bool infer_sqrt_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+);
+
+static bool infer_trigonometric_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+);
+
+static bool infer_inverse_trigonometric_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+);
+
+static bool infer_angle_conversion_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor
+);
 
 bool mylite_expression_descriptor_infer_fixed_integer_function(
-    const struct mylite_sql_ast_node *name, bool result_nullable,
-    struct mylite_field_descriptor *out_descriptor)
-{
+    const struct mylite_sql_ast_node *name,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (mylite_function_name_has_length_result(name)) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(result_nullable);
         out_descriptor->length = mylite_mysql_length_function_display_length;
@@ -47,9 +66,10 @@ bool mylite_expression_descriptor_infer_fixed_integer_function(
 }
 
 bool mylite_expression_descriptor_infer_math_function(
-    const struct mylite_sql_ast_node *name, bool result_nullable,
-    struct mylite_field_descriptor *out_descriptor)
-{
+    const struct mylite_sql_ast_node *name,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (infer_exp_function_descriptor(name, out_descriptor)) {
         return true;
     }
@@ -72,9 +92,11 @@ bool mylite_expression_descriptor_infer_math_function(
 }
 
 bool mylite_expression_descriptor_infer_scalar_numeric_function(
-    const struct mylite_sql_ast_node *name, const struct mylite_expression_value *value,
-    bool result_nullable, struct mylite_field_descriptor *out_descriptor)
-{
+    const struct mylite_sql_ast_node *name,
+    const struct mylite_expression_value *value,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (name != NULL && mylite_span_equal_ci(name->span, "ISNULL")) {
         *out_descriptor = mylite_expression_descriptor_signed_longlong(false);
         out_descriptor->length = 1U;
@@ -119,9 +141,10 @@ bool mylite_expression_descriptor_infer_scalar_numeric_function(
     return false;
 }
 
-static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name,
-                                          struct mylite_field_descriptor *out_descriptor)
-{
+static bool infer_exp_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (!mylite_function_name_is_exp(name)) {
         return false;
     }
@@ -130,9 +153,10 @@ static bool infer_exp_function_descriptor(const struct mylite_sql_ast_node *name
     return true;
 }
 
-static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                struct mylite_field_descriptor *out_descriptor)
-{
+static bool infer_logarithm_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (!mylite_function_name_is_logarithm(name)) {
         return false;
     }
@@ -141,9 +165,10 @@ static bool infer_logarithm_function_descriptor(const struct mylite_sql_ast_node
     return true;
 }
 
-static bool infer_power_function_descriptor(const struct mylite_sql_ast_node *name,
-                                            struct mylite_field_descriptor *out_descriptor)
-{
+static bool infer_power_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (!mylite_function_name_is_power(name)) {
         return false;
     }
@@ -152,9 +177,10 @@ static bool infer_power_function_descriptor(const struct mylite_sql_ast_node *na
     return true;
 }
 
-static bool infer_sqrt_function_descriptor(const struct mylite_sql_ast_node *name,
-                                           struct mylite_field_descriptor *out_descriptor)
-{
+static bool infer_sqrt_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (!mylite_function_name_is_sqrt(name)) {
         return false;
     }
@@ -163,9 +189,10 @@ static bool infer_sqrt_function_descriptor(const struct mylite_sql_ast_node *nam
     return true;
 }
 
-static bool infer_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                    struct mylite_field_descriptor *out_descriptor)
-{
+static bool infer_trigonometric_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (!mylite_function_name_is_trigonometric(name)) {
         return false;
     }
@@ -174,10 +201,10 @@ static bool infer_trigonometric_function_descriptor(const struct mylite_sql_ast_
     return true;
 }
 
-static bool
-infer_inverse_trigonometric_function_descriptor(const struct mylite_sql_ast_node *name,
-                                                struct mylite_field_descriptor *out_descriptor)
-{
+static bool infer_inverse_trigonometric_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (!mylite_function_name_is_inverse_trigonometric(name)) {
         return false;
     }
@@ -186,11 +213,11 @@ infer_inverse_trigonometric_function_descriptor(const struct mylite_sql_ast_node
     return true;
 }
 
-static bool
-infer_angle_conversion_function_descriptor(const struct mylite_sql_ast_node *name,
-                                           bool result_nullable,
-                                           struct mylite_field_descriptor *out_descriptor)
-{
+static bool infer_angle_conversion_function_descriptor(
+    const struct mylite_sql_ast_node *name,
+    bool result_nullable,
+    struct mylite_field_descriptor *out_descriptor
+) {
     if (!mylite_function_name_is_angle_conversion(name)) {
         return false;
     }
@@ -199,8 +226,7 @@ infer_angle_conversion_function_descriptor(const struct mylite_sql_ast_node *nam
     return true;
 }
 
-struct mylite_field_descriptor mylite_expression_descriptor_numeric_double_function(bool nullable)
-{
+struct mylite_field_descriptor mylite_expression_descriptor_numeric_double_function(bool nullable) {
     struct mylite_field_descriptor descriptor = {
         .type = MYLITE_FIELD_TYPE_DOUBLE,
         .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,

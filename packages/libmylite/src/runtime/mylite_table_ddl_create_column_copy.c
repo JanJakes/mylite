@@ -6,15 +6,22 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int copy_create_table_column_type(const struct mylite_sql_ast_node *type_node,
-                                         struct mylite_create_table_column_type *type);
-static int copy_create_table_column_attributes(const struct mylite_sql_ast_node *attributes,
-                                               struct mylite_create_table_column *column);
+static int copy_create_table_column_type(
+    const struct mylite_sql_ast_node *type_node,
+    struct mylite_create_table_column_type *type
+);
+
+static int copy_create_table_column_attributes(
+    const struct mylite_sql_ast_node *attributes,
+    struct mylite_create_table_column *column
+);
+
 static char *copy_expression_text(const struct mylite_sql_ast_node *node);
 
-int mylite_table_ddl_copy_create_table_column(const struct mylite_sql_ast_node *column_node,
-                                              struct mylite_create_table_plan *plan)
-{
+int mylite_table_ddl_copy_create_table_column(
+    const struct mylite_sql_ast_node *column_node,
+    struct mylite_create_table_plan *plan
+) {
     struct mylite_create_table_column *columns = NULL;
     struct mylite_create_table_column column = {
         .nullable = true,
@@ -46,36 +53,38 @@ int mylite_table_ddl_copy_create_table_column(const struct mylite_sql_ast_node *
     return MYLITE_OK;
 }
 
-static int copy_create_table_column_type(const struct mylite_sql_ast_node *type_node,
-                                         struct mylite_create_table_column_type *type)
-{
+static int copy_create_table_column_type(
+    const struct mylite_sql_ast_node *type_node,
+    struct mylite_create_table_column_type *type
+) {
     if (type_node == NULL || type_node->kind != MYLITE_SQL_AST_COLUMN_TYPE) {
         return MYLITE_UNSUPPORTED;
     }
 
     *type = (struct mylite_create_table_column_type){
         .ast_type = type_node->column_type,
-        .attributes =
-            {
-                .display_width = type_node->column_display_width,
-                .length = type_node->column_length,
-                .precision = type_node->column_precision,
-                .scale = type_node->column_scale,
-                .has_display_width = type_node->has_column_display_width,
-                .has_signed = type_node->column_type_signed,
-                .has_unsigned = type_node->column_type_unsigned,
-                .has_length = type_node->has_column_length,
-                .has_precision = type_node->has_column_precision,
-                .has_scale = type_node->has_column_scale,
-                .has_binary_attribute = type_node->column_binary_attribute,
-                .has_byte_attribute = type_node->column_byte_attribute,
-                .has_zerofill_attribute = type_node->column_zerofill_attribute,
-                .is_national = type_node->column_national_attribute,
-            },
+        .attributes = {
+            .display_width = type_node->column_display_width,
+            .length = type_node->column_length,
+            .precision = type_node->column_precision,
+            .scale = type_node->column_scale,
+            .has_display_width = type_node->has_column_display_width,
+            .has_signed = type_node->column_type_signed,
+            .has_unsigned = type_node->column_type_unsigned,
+            .has_length = type_node->has_column_length,
+            .has_precision = type_node->has_column_precision,
+            .has_scale = type_node->has_column_scale,
+            .has_binary_attribute = type_node->column_binary_attribute,
+            .has_byte_attribute = type_node->column_byte_attribute,
+            .has_zerofill_attribute = type_node->column_zerofill_attribute,
+            .is_national = type_node->column_national_attribute,
+        },
     };
     if (type_node->has_column_character_set) {
-        type->character_set = mylite_copy_span_text(type_node->column_character_set.text,
-                                                    type_node->column_character_set.length);
+        type->character_set = mylite_copy_span_text(
+            type_node->column_character_set.text,
+            type_node->column_character_set.length
+        );
         if (type->character_set == NULL) {
             return MYLITE_NOMEM;
         }
@@ -84,8 +93,10 @@ static int copy_create_table_column_type(const struct mylite_sql_ast_node *type_
         type->attributes.character_set_length = strlen(type->character_set);
     }
     if (type_node->has_column_collation) {
-        type->collation = mylite_copy_span_text(type_node->column_collation.text,
-                                                type_node->column_collation.length);
+        type->collation = mylite_copy_span_text(
+            type_node->column_collation.text,
+            type_node->column_collation.length
+        );
         if (type->collation == NULL) {
             return MYLITE_NOMEM;
         }
@@ -96,9 +107,10 @@ static int copy_create_table_column_type(const struct mylite_sql_ast_node *type_
     return MYLITE_OK;
 }
 
-static int copy_create_table_column_attributes(const struct mylite_sql_ast_node *attributes,
-                                               struct mylite_create_table_column *column)
-{
+static int copy_create_table_column_attributes(
+    const struct mylite_sql_ast_node *attributes,
+    struct mylite_create_table_column *column
+) {
     const struct mylite_sql_ast_node *attribute = NULL;
 
     for (attribute = attributes == NULL ? NULL : attributes->first_child; attribute != NULL;
@@ -163,8 +175,7 @@ static int copy_create_table_column_attributes(const struct mylite_sql_ast_node 
     return MYLITE_OK;
 }
 
-static char *copy_expression_text(const struct mylite_sql_ast_node *node)
-{
+static char *copy_expression_text(const struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return NULL;
     }

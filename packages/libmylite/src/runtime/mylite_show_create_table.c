@@ -13,14 +13,17 @@
 
 #include <stdbool.h>
 
-static int show_create_table_sql(mylite_db *database,
-                                 const struct mylite_show_create_table_target *target,
-                                 char **out_sql);
+static int show_create_table_sql(
+    mylite_db *database,
+    const struct mylite_show_create_table_target *target,
+    char **out_sql
+);
 
-int mylite_show_prepare_create_table_statement(mylite_db *database,
-                                               const struct mylite_sql_ast_node *statement,
-                                               mylite_stmt **out_stmt)
-{
+int mylite_show_prepare_create_table_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
     struct mylite_show_create_table_target target = {0};
     char *sqlite_sql = NULL;
     int status = mylite_show_create_table_copy_target(database, statement, &target);
@@ -43,10 +46,11 @@ int mylite_show_prepare_create_table_statement(mylite_db *database,
     return status;
 }
 
-static int show_create_table_sql(mylite_db *database,
-                                 const struct mylite_show_create_table_target *target,
-                                 char **out_sql)
-{
+static int show_create_table_sql(
+    mylite_db *database,
+    const struct mylite_show_create_table_target *target,
+    char **out_sql
+) {
     struct mylite_show_create_table_info info = {0};
     sqlite3_str *create_sql = NULL;
     char *create_text = NULL;
@@ -64,8 +68,10 @@ static int show_create_table_sql(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    sqlite3_str_appendall(create_sql,
-                          target->temporary ? "CREATE TEMPORARY TABLE " : "CREATE TABLE ");
+    sqlite3_str_appendall(
+        create_sql,
+        target->temporary ? "CREATE TEMPORARY TABLE " : "CREATE TABLE "
+    );
     mylite_show_create_append_identifier(create_sql, target->table_name);
     sqlite3_str_appendall(create_sql, " (\n");
     status =
@@ -80,8 +86,11 @@ static int show_create_table_sql(mylite_db *database,
     create_text = sqlite3_str_finish(create_sql);
 
     if (status == MYLITE_OK && create_text != NULL) {
-        *out_sql = sqlite3_mprintf("SELECT %Q AS \"Table\", %Q AS \"Create Table\"",
-                                   target->table_name, create_text);
+        *out_sql = sqlite3_mprintf(
+            "SELECT %Q AS \"Table\", %Q AS \"Create Table\"",
+            target->table_name,
+            create_text
+        );
         if (*out_sql == NULL) {
             status = MYLITE_NOMEM;
         }

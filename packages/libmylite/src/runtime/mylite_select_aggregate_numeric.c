@@ -9,13 +9,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int append_aggregate_numeric_conversion_warning(struct mylite_expression_warnings *warnings,
-                                                       const char *text);
+static int append_aggregate_numeric_conversion_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text
+);
 
-int mylite_select_aggregate_value_to_double(struct mylite_expression_warnings *warnings,
-                                            const struct mylite_expression_value *value,
-                                            struct mylite_aggregate_numeric_value *out_value)
-{
+int mylite_select_aggregate_value_to_double(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_expression_value *value,
+    struct mylite_aggregate_numeric_value *out_value
+) {
     char *copy = NULL;
     char *start = NULL;
     char *end = NULL;
@@ -40,8 +43,10 @@ int mylite_select_aggregate_value_to_double(struct mylite_expression_warnings *w
         return MYLITE_OK;
     }
 
-    copy = mylite_copy_span_text(value->text_value == NULL ? "" : value->text_value,
-                                 value->text_value == NULL ? 0U : value->text_length);
+    copy = mylite_copy_span_text(
+        value->text_value == NULL ? "" : value->text_value,
+        value->text_value == NULL ? 0U : value->text_length
+    );
     if (copy == NULL) {
         return MYLITE_NOMEM;
     }
@@ -67,9 +72,9 @@ int mylite_select_aggregate_value_to_double(struct mylite_expression_warnings *w
     return MYLITE_OK;
 }
 
-int mylite_select_aggregate_format_double(double value, struct mylite_expression_value *out_value)
-{
+int mylite_select_aggregate_format_double(double value, struct mylite_expression_value *out_value) {
     enum { double_buffer_size = 64 };
+
     char buffer[double_buffer_size];
     int length = snprintf(buffer, sizeof(buffer), "%.16g", value);
 
@@ -82,22 +87,32 @@ int mylite_select_aggregate_format_double(double value, struct mylite_expression
     return out_value->text_value == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-static int append_aggregate_numeric_conversion_warning(struct mylite_expression_warnings *warnings,
-                                                       const char *text)
-{
+static int append_aggregate_numeric_conversion_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text
+) {
     enum {
         message_size = 256,
         excerpt_length = 128,
     };
+
     char message[message_size];
-    int length = snprintf(message, sizeof(message), "Truncated incorrect DOUBLE value: '%.*s'",
-                          excerpt_length, text == NULL ? "" : text);
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect DOUBLE value: '%.*s'",
+        excerpt_length,
+        text == NULL ? "" : text
+    );
 
     if (length < 0) {
         return MYLITE_NOMEM;
     }
-    return mylite_expression_warnings_append(warnings, MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE,
-                                             message) == 0
+    return mylite_expression_warnings_append(
+               warnings,
+               MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE,
+               message
+           ) == 0
                ? MYLITE_OK
                : MYLITE_NOMEM;
 }

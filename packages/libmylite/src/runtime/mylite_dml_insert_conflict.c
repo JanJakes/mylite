@@ -8,15 +8,20 @@
 
 #include <string.h>
 
-static char *build_insert_conflict_row_sql(mylite_db *database,
-                                           const struct mylite_insert_table *table);
+static char *build_insert_conflict_row_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table
+);
 
-int mylite_dml_validate_insert_unique_indexes(mylite_db *database, const char *table_name,
-                                              bool ignore, const struct mylite_insert_table *table,
-                                              const struct mylite_insert_bound_value *values,
-                                              struct mylite_insert_execution_state *state,
-                                              bool *out_ignored)
-{
+int mylite_dml_validate_insert_unique_indexes(
+    mylite_db *database,
+    const char *table_name,
+    bool ignore,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_execution_state *state,
+    bool *out_ignored
+) {
     if (database == NULL || table_name == NULL || table == NULL || values == NULL ||
         state == NULL || out_ignored == NULL) {
         return MYLITE_MISUSE;
@@ -26,7 +31,12 @@ int mylite_dml_validate_insert_unique_indexes(mylite_db *database, const char *t
     for (size_t index = 0U; index < table->unique_index_count; ++index) {
         bool conflicts = false;
         int status = mylite_dml_insert_unique_index_conflicts(
-            database, table, &table->unique_indexes[index], values, &conflicts);
+            database,
+            table,
+            &table->unique_indexes[index],
+            values,
+            &conflicts
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -36,20 +46,29 @@ int mylite_dml_validate_insert_unique_indexes(mylite_db *database, const char *t
                 ++state->duplicate_count;
                 *out_ignored = true;
                 return mylite_dml_insert_append_duplicate_entry_warning(
-                    database, table_name, &table->unique_indexes[index], values);
+                    database,
+                    table_name,
+                    &table->unique_indexes[index],
+                    values
+                );
             }
             return mylite_dml_insert_set_duplicate_entry_error(
-                database, table_name, &table->unique_indexes[index], values);
+                database,
+                table_name,
+                &table->unique_indexes[index],
+                values
+            );
         }
     }
     return MYLITE_OK;
 }
 
-int mylite_dml_find_insert_unique_conflict(mylite_db *database,
-                                           const struct mylite_insert_table *table,
-                                           const struct mylite_insert_bound_value *values,
-                                           struct mylite_insert_unique_conflict *out_conflict)
-{
+int mylite_dml_find_insert_unique_conflict(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_unique_conflict *out_conflict
+) {
     if (database == NULL || table == NULL || values == NULL || out_conflict == NULL) {
         return MYLITE_MISUSE;
     }
@@ -59,7 +78,15 @@ int mylite_dml_find_insert_unique_conflict(mylite_db *database,
         bool conflicts = false;
         sqlite3_int64 rowid = 0;
         int status = mylite_dml_insert_unique_index_conflict_rowid(
-            database, table, &table->unique_indexes[index], values, 0, false, &rowid, &conflicts);
+            database,
+            table,
+            &table->unique_indexes[index],
+            values,
+            0,
+            false,
+            &rowid,
+            &conflicts
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -76,12 +103,15 @@ int mylite_dml_find_insert_unique_conflict(mylite_db *database,
     return MYLITE_OK;
 }
 
-int mylite_dml_validate_insert_update_unique_indexes(mylite_db *database, const char *table_name,
-                                                     bool ignore,
-                                                     const struct mylite_insert_table *table,
-                                                     const struct mylite_insert_bound_value *values,
-                                                     sqlite3_int64 rowid, bool *out_conflicts)
-{
+int mylite_dml_validate_insert_update_unique_indexes(
+    mylite_db *database,
+    const char *table_name,
+    bool ignore,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    sqlite3_int64 rowid,
+    bool *out_conflicts
+) {
     if (database == NULL || table_name == NULL || table == NULL || values == NULL ||
         out_conflicts == NULL) {
         return MYLITE_MISUSE;
@@ -92,8 +122,15 @@ int mylite_dml_validate_insert_update_unique_indexes(mylite_db *database, const 
         bool conflicts = false;
         sqlite3_int64 conflict_rowid = 0;
         int status = mylite_dml_insert_unique_index_conflict_rowid(
-            database, table, &table->unique_indexes[index], values, rowid, true, &conflict_rowid,
-            &conflicts);
+            database,
+            table,
+            &table->unique_indexes[index],
+            values,
+            rowid,
+            true,
+            &conflict_rowid,
+            &conflicts
+        );
 
         (void)conflict_rowid;
         if (status != MYLITE_OK) {
@@ -103,20 +140,29 @@ int mylite_dml_validate_insert_update_unique_indexes(mylite_db *database, const 
             *out_conflicts = true;
             if (ignore) {
                 return mylite_dml_insert_append_duplicate_entry_warning(
-                    database, table_name, &table->unique_indexes[index], values);
+                    database,
+                    table_name,
+                    &table->unique_indexes[index],
+                    values
+                );
             }
             return mylite_dml_insert_set_duplicate_entry_error(
-                database, table_name, &table->unique_indexes[index], values);
+                database,
+                table_name,
+                &table->unique_indexes[index],
+                values
+            );
         }
     }
     return MYLITE_OK;
 }
 
-int mylite_dml_load_insert_conflict_row(mylite_db *database,
-                                        const struct mylite_insert_table *table,
-                                        sqlite3_int64 rowid,
-                                        struct mylite_insert_bound_value *values)
-{
+int mylite_dml_load_insert_conflict_row(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    sqlite3_int64 rowid,
+    struct mylite_insert_bound_value *values
+) {
     sqlite3_stmt *select = NULL;
     char *sql = NULL;
     int rc = SQLITE_OK;
@@ -156,8 +202,10 @@ int mylite_dml_load_insert_conflict_row(mylite_db *database,
         status =
             rc == SQLITE_DONE ? MYLITE_EXEC_ERROR : mylite_diagnostics_set_sqlite_error(database);
         if (status == MYLITE_EXEC_ERROR) {
-            (void)mylite_diagnostics_set_error_message(database,
-                                                       "Duplicate row disappeared during INSERT");
+            (void)mylite_diagnostics_set_error_message(
+                database,
+                "Duplicate row disappeared during INSERT"
+            );
         }
     }
 
@@ -165,9 +213,10 @@ int mylite_dml_load_insert_conflict_row(mylite_db *database,
     return status;
 }
 
-static char *build_insert_conflict_row_sql(mylite_db *database,
-                                           const struct mylite_insert_table *table)
-{
+static char *build_insert_conflict_row_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {

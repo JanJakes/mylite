@@ -6,14 +6,21 @@
 #include "mylite_prepared_statements_types.h"
 #include "sql/mylite_ast.h"
 
-int mylite_prepared_statement_prepare_prepare_statement(mylite_db *database,
-                                                        const struct mylite_sql_ast_node *statement,
-                                                        mylite_stmt **out_stmt);
-int mylite_prepared_statement_prepare_execute_statement(mylite_db *database,
-                                                        const struct mylite_sql_ast_node *statement,
-                                                        mylite_stmt **out_stmt);
+int mylite_prepared_statement_prepare_prepare_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+);
+int mylite_prepared_statement_prepare_execute_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+);
 int mylite_prepared_statement_prepare_deallocate_statement(
-    mylite_db *database, const struct mylite_sql_ast_node *statement, mylite_stmt **out_stmt);
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+);
 int mylite_prepared_statement_execute_prepare(mylite_stmt *stmt);
 int mylite_prepared_statement_execute_execute(mylite_stmt *stmt);
 int mylite_prepared_statement_execute_deallocate(mylite_stmt *stmt);

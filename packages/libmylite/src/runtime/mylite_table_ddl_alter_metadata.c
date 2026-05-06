@@ -6,14 +6,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *alter_table_column_key(const struct mylite_alter_table_model *model,
-                                          const char *column_name);
+static const char *alter_table_column_key(
+    const struct mylite_alter_table_model *model,
+    const char *column_name
+);
+
 static int refresh_alter_table_column_keys(struct mylite_alter_table_model *model);
+
 static int refresh_alter_table_index_nullability(struct mylite_alter_table_model *model);
 
-int mylite_table_ddl_refresh_alter_table_index_metadata(mylite_db *database,
-                                                        struct mylite_alter_table_model *model)
-{
+int mylite_table_ddl_refresh_alter_table_index_metadata(
+    mylite_db *database,
+    struct mylite_alter_table_model *model
+) {
     int status = MYLITE_OK;
 
     if (database == NULL || model == NULL) {
@@ -29,16 +34,19 @@ int mylite_table_ddl_refresh_alter_table_index_metadata(mylite_db *database,
     return status;
 }
 
-static const char *alter_table_column_key(const struct mylite_alter_table_model *model,
-                                          const char *column_name)
-{
+static const char *alter_table_column_key(
+    const struct mylite_alter_table_model *model,
+    const char *column_name
+) {
     bool indexed = false;
     bool unique = false;
 
     for (size_t index = 0U; index < model->index_count; ++index) {
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
-            if (!mylite_ascii_case_equal(model->indexes[index].parts[part].column_name,
-                                         column_name)) {
+            if (!mylite_ascii_case_equal(
+                    model->indexes[index].parts[part].column_name,
+                    column_name
+                )) {
                 continue;
             }
             indexed = true;
@@ -59,8 +67,7 @@ static const char *alter_table_column_key(const struct mylite_alter_table_model 
     return "";
 }
 
-static int refresh_alter_table_column_keys(struct mylite_alter_table_model *model)
-{
+static int refresh_alter_table_column_keys(struct mylite_alter_table_model *model) {
     for (size_t column = 0U; column < model->column_count; ++column) {
         const char *key = alter_table_column_key(model, model->columns[column].name);
         char *copy = mylite_copy_span_text(key, strlen(key));
@@ -74,8 +81,7 @@ static int refresh_alter_table_column_keys(struct mylite_alter_table_model *mode
     return MYLITE_OK;
 }
 
-static int refresh_alter_table_index_nullability(struct mylite_alter_table_model *model)
-{
+static int refresh_alter_table_index_nullability(struct mylite_alter_table_model *model) {
     for (size_t index = 0U; index < model->index_count; ++index) {
         for (size_t part = 0U; part < model->indexes[index].part_count; ++part) {
             struct mylite_alter_table_index_part *index_part = &model->indexes[index].parts[part];

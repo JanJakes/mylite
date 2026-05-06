@@ -14,33 +14,55 @@ static const uint64_t mylite_select_catalog_decimal_radix = 10U;
 
 static int apply_catalog_integer_column_descriptor(
     const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor);
+    struct mylite_field_descriptor *descriptor
+);
+
 static int apply_catalog_character_column_descriptor(
-    mylite_db *database, const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor);
-static int
-apply_catalog_binary_column_descriptor(const struct mylite_catalog_column_descriptor_source *source,
-                                       struct mylite_field_descriptor *descriptor);
+    mylite_db *database,
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+);
+
+static int apply_catalog_binary_column_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+);
+
 static int apply_catalog_numeric_column_descriptor(
     const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor);
+    struct mylite_field_descriptor *descriptor
+);
+
 static int apply_catalog_temporal_column_descriptor(
     const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor);
-static int field_descriptor_collation_id(mylite_db *database, const char *collation_name,
-                                         unsigned int *out_charset_id);
+    struct mylite_field_descriptor *descriptor
+);
+
+static int field_descriptor_collation_id(
+    mylite_db *database,
+    const char *collation_name,
+    unsigned int *out_charset_id
+);
+
 static uint64_t catalog_int64_or_zero(sqlite3_stmt *stmt, int column);
+
 static uint64_t catalog_text_type_length(const char *data_type);
-static uint64_t
-catalog_integer_type_length(const struct mylite_catalog_column_descriptor_source *source);
-static uint64_t
-catalog_integer_type_default_length(const struct mylite_catalog_column_descriptor_source *source);
+
+static uint64_t catalog_integer_type_length(
+    const struct mylite_catalog_column_descriptor_source *source
+);
+
+static uint64_t catalog_integer_type_default_length(
+    const struct mylite_catalog_column_descriptor_source *source
+);
+
 static uint64_t catalog_integer_display_width(const char *column_type);
 
 int mylite_select_catalog_apply_column_type_descriptor(
-    mylite_db *database, const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor)
-{
+    mylite_db *database,
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+) {
     int status = apply_catalog_integer_column_descriptor(source, descriptor);
 
     if (status != MYLITE_UNSUPPORTED) {
@@ -67,8 +89,8 @@ int mylite_select_catalog_apply_column_type_descriptor(
 
 static int apply_catalog_integer_column_descriptor(
     const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor)
-{
+    struct mylite_field_descriptor *descriptor
+) {
     const char *data_type = source->data_type;
 
     if (mylite_ascii_case_equal(data_type, "tinyint")) {
@@ -98,36 +120,48 @@ static int apply_catalog_integer_column_descriptor(
 }
 
 static int apply_catalog_character_column_descriptor(
-    mylite_db *database, const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor)
-{
+    mylite_db *database,
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+) {
     const char *data_type = source->data_type;
 
     if (mylite_ascii_case_equal(data_type, "char")) {
         descriptor->type = MYLITE_FIELD_TYPE_STRING;
         descriptor->length =
             catalog_int64_or_zero(source->select, source->character_octet_length_index);
-        if (field_descriptor_collation_id(database, source->collation_name,
-                                          &descriptor->charset_id) != MYLITE_OK) {
+        if (field_descriptor_collation_id(
+                database,
+                source->collation_name,
+                &descriptor->charset_id
+            ) != MYLITE_OK) {
             return MYLITE_EXEC_ERROR;
         }
     } else if (mylite_ascii_case_equal(data_type, "varchar")) {
         descriptor->type = MYLITE_FIELD_TYPE_VAR_STRING;
         descriptor->length =
             catalog_int64_or_zero(source->select, source->character_octet_length_index);
-        if (field_descriptor_collation_id(database, source->collation_name,
-                                          &descriptor->charset_id) != MYLITE_OK) {
+        if (field_descriptor_collation_id(
+                database,
+                source->collation_name,
+                &descriptor->charset_id
+            ) != MYLITE_OK) {
             return MYLITE_EXEC_ERROR;
         }
-    } else if (mylite_ascii_case_equal(data_type, "tinytext") ||
-               mylite_ascii_case_equal(data_type, "text") ||
-               mylite_ascii_case_equal(data_type, "mediumtext") ||
-               mylite_ascii_case_equal(data_type, "longtext")) {
+    } else if (
+        mylite_ascii_case_equal(data_type, "tinytext") ||
+        mylite_ascii_case_equal(data_type, "text") ||
+        mylite_ascii_case_equal(data_type, "mediumtext") ||
+        mylite_ascii_case_equal(data_type, "longtext")
+    ) {
         descriptor->type = MYLITE_FIELD_TYPE_BLOB;
         descriptor->flags |= MYLITE_FIELD_FLAG_BLOB;
         descriptor->length = catalog_text_type_length(data_type);
-        if (field_descriptor_collation_id(database, source->collation_name,
-                                          &descriptor->charset_id) != MYLITE_OK) {
+        if (field_descriptor_collation_id(
+                database,
+                source->collation_name,
+                &descriptor->charset_id
+            ) != MYLITE_OK) {
             return MYLITE_EXEC_ERROR;
         }
     } else {
@@ -136,10 +170,10 @@ static int apply_catalog_character_column_descriptor(
     return MYLITE_OK;
 }
 
-static int
-apply_catalog_binary_column_descriptor(const struct mylite_catalog_column_descriptor_source *source,
-                                       struct mylite_field_descriptor *descriptor)
-{
+static int apply_catalog_binary_column_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+) {
     const char *data_type = source->data_type;
 
     if (mylite_ascii_case_equal(data_type, "binary")) {
@@ -152,10 +186,12 @@ apply_catalog_binary_column_descriptor(const struct mylite_catalog_column_descri
         descriptor->length =
             catalog_int64_or_zero(source->select, source->character_octet_length_index);
         descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
-    } else if (mylite_ascii_case_equal(data_type, "tinyblob") ||
-               mylite_ascii_case_equal(data_type, "blob") ||
-               mylite_ascii_case_equal(data_type, "mediumblob") ||
-               mylite_ascii_case_equal(data_type, "longblob")) {
+    } else if (
+        mylite_ascii_case_equal(data_type, "tinyblob") ||
+        mylite_ascii_case_equal(data_type, "blob") ||
+        mylite_ascii_case_equal(data_type, "mediumblob") ||
+        mylite_ascii_case_equal(data_type, "longblob")
+    ) {
         descriptor->type = MYLITE_FIELD_TYPE_BLOB;
         descriptor->flags |= MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY;
         descriptor->length = catalog_text_type_length(data_type);
@@ -167,8 +203,8 @@ apply_catalog_binary_column_descriptor(const struct mylite_catalog_column_descri
 
 static int apply_catalog_numeric_column_descriptor(
     const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor)
-{
+    struct mylite_field_descriptor *descriptor
+) {
     const char *data_type = source->data_type;
 
     if (mylite_ascii_case_equal(data_type, "decimal")) {
@@ -214,8 +250,8 @@ static int apply_catalog_numeric_column_descriptor(
 
 static int apply_catalog_temporal_column_descriptor(
     const struct mylite_catalog_column_descriptor_source *source,
-    struct mylite_field_descriptor *descriptor)
-{
+    struct mylite_field_descriptor *descriptor
+) {
     const char *data_type = source->data_type;
 
     if (mylite_ascii_case_equal(data_type, "date")) {
@@ -266,9 +302,11 @@ static int apply_catalog_temporal_column_descriptor(
     return MYLITE_OK;
 }
 
-static int field_descriptor_collation_id(mylite_db *database, const char *collation_name,
-                                         unsigned int *out_charset_id)
-{
+static int field_descriptor_collation_id(
+    mylite_db *database,
+    const char *collation_name,
+    unsigned int *out_charset_id
+) {
     const struct mylite_collation *collation = NULL;
 
     if (out_charset_id == NULL) {
@@ -289,16 +327,14 @@ static int field_descriptor_collation_id(mylite_db *database, const char *collat
     return MYLITE_OK;
 }
 
-static uint64_t catalog_int64_or_zero(sqlite3_stmt *stmt, int column)
-{
+static uint64_t catalog_int64_or_zero(sqlite3_stmt *stmt, int column) {
     if (sqlite3_column_type(stmt, column) == SQLITE_NULL) {
         return 0U;
     }
     return (uint64_t)sqlite3_column_int64(stmt, column);
 }
 
-static uint64_t catalog_text_type_length(const char *data_type)
-{
+static uint64_t catalog_text_type_length(const char *data_type) {
     if (mylite_ascii_case_equal(data_type, "tinytext") ||
         mylite_ascii_case_equal(data_type, "tinyblob")) {
         return mylite_mysql_tiny_text_length;
@@ -314,9 +350,9 @@ static uint64_t catalog_text_type_length(const char *data_type)
     return mylite_mysql_text_length;
 }
 
-static uint64_t
-catalog_integer_type_length(const struct mylite_catalog_column_descriptor_source *source)
-{
+static uint64_t catalog_integer_type_length(
+    const struct mylite_catalog_column_descriptor_source *source
+) {
     uint64_t display_width = catalog_integer_display_width(source->column_type);
 
     if (display_width != 0U) {
@@ -325,9 +361,9 @@ catalog_integer_type_length(const struct mylite_catalog_column_descriptor_source
     return catalog_integer_type_default_length(source);
 }
 
-static uint64_t
-catalog_integer_type_default_length(const struct mylite_catalog_column_descriptor_source *source)
-{
+static uint64_t catalog_integer_type_default_length(
+    const struct mylite_catalog_column_descriptor_source *source
+) {
     const char *data_type = source->data_type;
 
     if (mylite_ascii_case_equal(data_type, "tinyint")) {
@@ -360,8 +396,7 @@ catalog_integer_type_default_length(const struct mylite_catalog_column_descripto
     return 0U;
 }
 
-static uint64_t catalog_integer_display_width(const char *column_type)
-{
+static uint64_t catalog_integer_display_width(const char *column_type) {
     const char *open = column_type == NULL ? NULL : strchr(column_type, '(');
     const char *close = open == NULL ? NULL : strchr(open, ')');
     uint64_t value = 0U;

@@ -10,18 +10,25 @@
 #include <string.h>
 
 static int append_index_hash_warning(mylite_db *database);
-static int append_index_duplicate_warning(mylite_db *database, const char *index_name);
-static int maybe_append_duplicate_index_warning(mylite_db *database,
-                                                const struct mylite_alter_table_model *model,
-                                                const struct mylite_create_table_index *index);
-static bool
-alter_table_index_matches_create_index(const struct mylite_alter_table_index *table_index,
-                                       const struct mylite_create_table_index *create_index);
 
-int mylite_table_ddl_append_create_index_warnings(mylite_db *database,
-                                                  const struct mylite_alter_table_model *model,
-                                                  const struct mylite_create_table_index *index)
-{
+static int append_index_duplicate_warning(mylite_db *database, const char *index_name);
+
+static int maybe_append_duplicate_index_warning(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+);
+
+static bool alter_table_index_matches_create_index(
+    const struct mylite_alter_table_index *table_index,
+    const struct mylite_create_table_index *create_index
+);
+
+int mylite_table_ddl_append_create_index_warnings(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+) {
     int status = MYLITE_OK;
 
     if (index->algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_HASH) {
@@ -33,19 +40,20 @@ int mylite_table_ddl_append_create_index_warnings(mylite_db *database,
     return status;
 }
 
-static int append_index_hash_warning(mylite_db *database)
-{
+static int append_index_hash_warning(mylite_db *database) {
     return mylite_diagnostics_append_warning(
-        database, MYLITE_MYSQL_ER_WARN_USING_OTHER_HANDLER,
-        "This storage engine does not support HASH indexes; using BTREE instead");
+        database,
+        MYLITE_MYSQL_ER_WARN_USING_OTHER_HANDLER,
+        "This storage engine does not support HASH indexes; using BTREE instead"
+    );
 }
 
-static int append_index_duplicate_warning(mylite_db *database, const char *index_name)
-{
+static int append_index_duplicate_warning(mylite_db *database, const char *index_name) {
     char *message = sqlite3_mprintf(
         "Duplicate index '%q' defined on the table. This is deprecated and will be disallowed in "
         "a future release.",
-        index_name);
+        index_name
+    );
     int status = MYLITE_OK;
 
     if (message == NULL) {
@@ -57,10 +65,11 @@ static int append_index_duplicate_warning(mylite_db *database, const char *index
     return status;
 }
 
-static int maybe_append_duplicate_index_warning(mylite_db *database,
-                                                const struct mylite_alter_table_model *model,
-                                                const struct mylite_create_table_index *index)
-{
+static int maybe_append_duplicate_index_warning(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+) {
     for (size_t table_index = 0U; table_index < model->index_count; ++table_index) {
         if (alter_table_index_matches_create_index(&model->indexes[table_index], index)) {
             return append_index_duplicate_warning(database, index->name);
@@ -69,10 +78,10 @@ static int maybe_append_duplicate_index_warning(mylite_db *database,
     return MYLITE_OK;
 }
 
-static bool
-alter_table_index_matches_create_index(const struct mylite_alter_table_index *table_index,
-                                       const struct mylite_create_table_index *create_index)
-{
+static bool alter_table_index_matches_create_index(
+    const struct mylite_alter_table_index *table_index,
+    const struct mylite_create_table_index *create_index
+) {
     int expected_non_unique = 1;
 
     if (create_index->is_unique) {
@@ -89,8 +98,10 @@ alter_table_index_matches_create_index(const struct mylite_alter_table_index *ta
         const struct mylite_create_table_key_part *create_part = &create_index->parts[part];
 
         if (!mylite_ascii_case_equal(table_part->column_name, create_part->column_name) ||
-            strcmp(table_part->collation == NULL ? "" : table_part->collation,
-                   mylite_table_ddl_index_collation_for_order(create_part->order)) != 0 ||
+            strcmp(
+                table_part->collation == NULL ? "" : table_part->collation,
+                mylite_table_ddl_index_collation_for_order(create_part->order)
+            ) != 0 ||
             table_part->has_sub_part != create_part->has_prefix_length ||
             (table_part->has_sub_part &&
              (uint64_t)table_part->sub_part != create_part->prefix_length)) {

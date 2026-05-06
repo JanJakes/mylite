@@ -3,9 +3,11 @@
 #include "mylite_statement_custom.h"
 
 int mylite_statement_prepare_schema_lifecycle_statement(
-    mylite_db *database, const struct mylite_sql_ast_node *statement, mylite_stmt **out_stmt,
-    const struct mylite_statement_prepare_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+) {
     enum mylite_stmt_kind kind = MYLITE_STMT_SQLITE;
 
     switch (statement->kind) {
@@ -178,14 +180,21 @@ int mylite_statement_prepare_schema_lifecycle_statement(
         return MYLITE_UNSUPPORTED;
     }
 
-    return mylite_statement_prepare_custom_statement(database, kind, statement, out_stmt,
-                                                     callbacks);
+    return mylite_statement_prepare_custom_statement(
+        database,
+        kind,
+        statement,
+        out_stmt,
+        callbacks
+    );
 }
 
 int mylite_statement_prepare_transaction_statement(
-    mylite_db *database, const struct mylite_sql_ast_node *statement, mylite_stmt **out_stmt,
-    const struct mylite_statement_prepare_callbacks *callbacks)
-{
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+) {
     enum mylite_stmt_kind kind = MYLITE_STMT_SQLITE;
 
     switch (statement->kind) {
@@ -364,14 +373,27 @@ int mylite_statement_prepare_transaction_statement(
         return MYLITE_UNSUPPORTED;
     }
 
-    return mylite_statement_prepare_custom_statement(database, kind, statement, out_stmt,
-                                                     callbacks);
+    return mylite_statement_prepare_custom_statement(
+        database,
+        kind,
+        statement,
+        out_stmt,
+        callbacks
+    );
 }
 
 int mylite_statement_prepare_custom_statement(
-    mylite_db *database, enum mylite_stmt_kind kind, const struct mylite_sql_ast_node *statement,
-    mylite_stmt **out_stmt, const struct mylite_statement_prepare_callbacks *callbacks)
-{
-    return mylite_statement_prepare_custom(database, kind, statement, callbacks->scalar_callbacks,
-                                           out_stmt);
+    mylite_db *database,
+    enum mylite_stmt_kind kind,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks
+) {
+    return mylite_statement_prepare_custom(
+        database,
+        kind,
+        statement,
+        callbacks->scalar_callbacks,
+        out_stmt
+    );
 }

@@ -2,9 +2,11 @@
 
 #include "mylite_span.h"
 
-int mylite_sqlite_copy_column_value(sqlite3_stmt *sqlite_stmt, size_t column_index,
-                                    struct mylite_expression_value *out_value)
-{
+int mylite_sqlite_copy_column_value(
+    sqlite3_stmt *sqlite_stmt,
+    size_t column_index,
+    struct mylite_expression_value *out_value
+) {
     int sqlite_type = SQLITE_NULL;
 
     if (sqlite_stmt == NULL) {
@@ -19,12 +21,14 @@ int mylite_sqlite_copy_column_value(sqlite3_stmt *sqlite_stmt, size_t column_ind
     case SQLITE_INTEGER:
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_INT64,
-            .int64_value = sqlite3_column_int64(sqlite_stmt, (int)column_index)};
+            .int64_value = sqlite3_column_int64(sqlite_stmt, (int)column_index)
+        };
         return 0;
     case SQLITE_FLOAT:
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_REAL,
-            .real_value = sqlite3_column_double(sqlite_stmt, (int)column_index)};
+            .real_value = sqlite3_column_double(sqlite_stmt, (int)column_index)
+        };
         return 0;
     case SQLITE_TEXT:
     case SQLITE_BLOB: {

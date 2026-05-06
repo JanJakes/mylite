@@ -4,8 +4,9 @@
 struct mylite_create_table_column;
 struct mylite_create_table_plan;
 
-const struct mylite_create_table_column *
-mylite_table_ddl_find_create_table_column(const struct mylite_create_table_plan *plan,
-                                          const char *name);
+const struct mylite_create_table_column *mylite_table_ddl_find_create_table_column(
+    const struct mylite_create_table_plan *plan,
+    const char *name
+);
 
 #endif

@@ -34,44 +34,96 @@ struct mylite_catalog_unique_index_part_row {
     bool has_prefix_length;
 };
 
-typedef int (*mylite_catalog_column_callback)(void *context,
-                                              const struct mylite_catalog_column_row *row);
+typedef int (*mylite_catalog_column_callback)(
+    void *context,
+    const struct mylite_catalog_column_row *row
+);
 typedef int (*mylite_catalog_unique_index_part_callback)(
-    void *context, const struct mylite_catalog_unique_index_part_row *row);
+    void *context,
+    const struct mylite_catalog_unique_index_part_row *row
+);
 
 int mylite_catalog_initialize(mylite_db *database);
-int mylite_catalog_update_auto_increment(mylite_db *database, const char *schema_name,
-                                         const char *table_name, uint64_t next_auto_increment);
-int mylite_catalog_delete_table_rows(mylite_db *database, const char *schema_name,
-                                     const char *table_name, unsigned int flags);
-int mylite_catalog_delete_temporary_table_rows(mylite_db *database, const char *schema_name,
-                                               const char *table_name, unsigned int flags);
-int mylite_catalog_selected_schema_default(mylite_db *database,
-                                           struct mylite_schema_default *out_default);
-int mylite_catalog_schema_exists(mylite_db *database, const char *schema_name,
-                                 struct mylite_schema_presence *out_presence);
-int mylite_catalog_table_exists(mylite_db *database, const char *schema_name,
-                                const char *table_name, bool *out_exists);
-int mylite_catalog_persistent_table_exists(mylite_db *database, const char *schema_name,
-                                           const char *table_name, bool *out_exists);
-int mylite_catalog_temporary_table_exists(mylite_db *database, const char *schema_name,
-                                          const char *table_name, bool *out_exists);
-int mylite_catalog_load_table_metadata(mylite_db *database, const char *schema_name,
-                                       const char *table_name,
-                                       struct mylite_catalog_table_metadata *out_metadata);
-int mylite_catalog_load_table_columns(mylite_db *database, const char *schema_name,
-                                      const char *table_name,
-                                      mylite_catalog_column_callback callback, void *context);
-int mylite_catalog_load_unique_index_parts(mylite_db *database, const char *schema_name,
-                                           const char *table_name,
-                                           mylite_catalog_unique_index_part_callback callback,
-                                           void *context);
-int mylite_catalog_schema_default_by_name(mylite_db *database, const char *schema_name,
-                                          struct mylite_schema_default *out_default);
-int mylite_catalog_insert_schema(mylite_db *database, const char *schema_name,
-                                 const struct mylite_schema_options *options);
-int mylite_catalog_update_schema(mylite_db *database, const char *schema_name,
-                                 const struct mylite_schema_options *options);
+int mylite_catalog_update_auto_increment(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    uint64_t next_auto_increment
+);
+int mylite_catalog_delete_table_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    unsigned int flags
+);
+int mylite_catalog_delete_temporary_table_rows(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    unsigned int flags
+);
+int mylite_catalog_selected_schema_default(
+    mylite_db *database,
+    struct mylite_schema_default *out_default
+);
+int mylite_catalog_schema_exists(
+    mylite_db *database,
+    const char *schema_name,
+    struct mylite_schema_presence *out_presence
+);
+int mylite_catalog_table_exists(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    bool *out_exists
+);
+int mylite_catalog_persistent_table_exists(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    bool *out_exists
+);
+int mylite_catalog_temporary_table_exists(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    bool *out_exists
+);
+int mylite_catalog_load_table_metadata(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    struct mylite_catalog_table_metadata *out_metadata
+);
+int mylite_catalog_load_table_columns(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    mylite_catalog_column_callback callback,
+    void *context
+);
+int mylite_catalog_load_unique_index_parts(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    mylite_catalog_unique_index_part_callback callback,
+    void *context
+);
+int mylite_catalog_schema_default_by_name(
+    mylite_db *database,
+    const char *schema_name,
+    struct mylite_schema_default *out_default
+);
+int mylite_catalog_insert_schema(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_options *options
+);
+int mylite_catalog_update_schema(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_schema_options *options
+);
 int mylite_catalog_delete_schema(mylite_db *database, const char *schema_name);
 const char *mylite_catalog_table_catalog_name(bool temporary);
 const char *mylite_catalog_column_catalog_name(bool temporary);

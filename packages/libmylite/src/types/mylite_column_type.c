@@ -103,97 +103,188 @@ static const uint64_t regular_capacity = 65535ULL;
 static const uint64_t medium_capacity = 16777215ULL;
 static const uint64_t long_capacity = 4294967295ULL;
 
-static const struct mylite_integer_type_info *
-lookup_integer_type_info(enum mylite_column_integer_type integer_type);
-static bool lookup_integer_alias(const char *type_name, size_t type_name_length,
-                                 enum mylite_column_integer_type *out_integer_type,
-                                 bool *out_is_boolean_alias);
-static bool lookup_string_binary_alias(const char *type_name, size_t type_name_length,
-                                       enum mylite_column_string_binary_type *out_type,
-                                       bool *out_is_alias);
-static bool lookup_numeric_alias(const char *type_name, size_t type_name_length,
-                                 enum mylite_column_numeric_type *out_type, bool *out_is_alias);
-static const struct mylite_temporal_type_info *lookup_temporal_type_info(const char *type_name,
-                                                                         size_t type_name_length);
-static const struct mylite_charset_info *
-effective_charset(struct mylite_column_type_attributes attributes,
-                  enum mylite_column_type_status *out_status);
-static const struct mylite_charset_info *lookup_charset(const char *name, size_t name_length);
-static const struct mylite_collation_info *lookup_collation(const char *name, size_t name_length);
-static enum mylite_column_type_status
-check_collation_matches_charset(const struct mylite_charset_info *charset,
-                                const struct mylite_collation_info *collation);
-static bool ascii_case_equal(const char *left, size_t left_length, const char *right);
-static char ascii_lower(unsigned char byte);
-static void fill_integer_descriptor(const struct mylite_integer_type_info *info, bool is_unsigned,
-                                    bool is_boolean_alias,
-                                    struct mylite_column_type_attributes attributes,
-                                    struct mylite_column_type_descriptor *out_descriptor);
-static void format_integer_column_type(const struct mylite_integer_type_info *info,
-                                       bool is_unsigned, bool is_boolean_alias,
-                                       struct mylite_column_type_attributes attributes,
-                                       char *out_column_type, size_t column_type_size);
-static enum mylite_column_type_status
-describe_decimal(struct mylite_column_type_attributes attributes, bool is_alias,
-                 struct mylite_column_type_descriptor *out_descriptor);
-static enum mylite_column_type_status
-describe_float(struct mylite_column_type_attributes attributes, bool is_alias,
-               struct mylite_column_type_descriptor *out_descriptor);
-static enum mylite_column_type_status
-describe_double(enum mylite_column_numeric_type requested_type,
-                struct mylite_column_type_attributes attributes, bool is_alias,
-                struct mylite_column_type_descriptor *out_descriptor);
-static enum mylite_column_type_status
-check_precision_scale(struct mylite_precision_scale value,
-                      struct mylite_precision_scale_limits limits);
-static bool numeric_attributes_are_unsigned(struct mylite_column_type_attributes attributes);
-static bool float_descriptor_is_alias(bool is_alias,
-                                      enum mylite_column_numeric_type effective_type);
-static bool numeric_type_is_approximate(enum mylite_column_numeric_type type);
-static void fill_numeric_descriptor(struct mylite_numeric_format format, bool is_alias,
-                                    struct mylite_column_type_descriptor *out_descriptor);
-static const char *name_for_numeric_type(enum mylite_column_numeric_type type);
-static void format_numeric_column_type(struct mylite_numeric_format format, char *out_column_type,
-                                       size_t column_type_size);
-static void fill_temporal_descriptor(const struct mylite_temporal_type_info *info,
-                                     struct mylite_column_type_attributes attributes,
-                                     struct mylite_column_type_descriptor *out_descriptor);
-static unsigned int fractional_storage_bytes(unsigned int precision);
-static void format_temporal_column_type(const struct mylite_temporal_type_info *info,
-                                        struct mylite_column_type_attributes attributes,
-                                        char *out_column_type, size_t column_type_size);
-static enum mylite_column_type_status
-describe_char_varchar(enum mylite_column_string_binary_type requested_type,
-                      struct mylite_column_type_attributes attributes,
-                      struct mylite_column_type_descriptor *out_descriptor);
-static enum mylite_column_type_status
-describe_text_blob(enum mylite_column_string_binary_type requested_type,
-                   struct mylite_column_type_attributes attributes,
-                   struct mylite_column_type_descriptor *out_descriptor);
-static enum mylite_column_type_status
-describe_binary_varbinary(enum mylite_column_string_binary_type requested_type,
-                          struct mylite_column_type_attributes attributes,
-                          struct mylite_column_type_descriptor *out_descriptor);
-static void fill_string_descriptor(enum mylite_column_string_binary_type type, uint64_t length,
-                                   const struct mylite_charset_info *charset,
-                                   const struct mylite_collation_info *collation,
-                                   bool is_deprecated_binary_attribute, bool is_alias,
-                                   struct mylite_column_type_descriptor *out_descriptor);
-static void fill_binary_descriptor(enum mylite_column_string_binary_type type, uint64_t length,
-                                   bool is_alias,
-                                   struct mylite_column_type_descriptor *out_descriptor);
-static enum mylite_column_string_binary_type text_family_for_capacity(uint64_t capacity);
-static enum mylite_column_string_binary_type blob_family_for_capacity(uint64_t capacity);
-static uint64_t capacity_for_string_binary_type(enum mylite_column_string_binary_type type);
-static const char *name_for_string_binary_type(enum mylite_column_string_binary_type type);
-static void format_string_binary_column_type(struct mylite_string_binary_column_type_format format,
-                                             char *out_column_type, size_t column_type_size);
+static const struct mylite_integer_type_info *lookup_integer_type_info(
+    enum mylite_column_integer_type integer_type
+);
 
-enum mylite_column_type_status
-mylite_column_type_describe_integer(const char *type_name, size_t type_name_length,
-                                    struct mylite_column_type_attributes attributes,
-                                    struct mylite_column_type_descriptor *out_descriptor)
-{
+static bool lookup_integer_alias(
+    const char *type_name,
+    size_t type_name_length,
+    enum mylite_column_integer_type *out_integer_type,
+    bool *out_is_boolean_alias
+);
+
+static bool lookup_string_binary_alias(
+    const char *type_name,
+    size_t type_name_length,
+    enum mylite_column_string_binary_type *out_type,
+    bool *out_is_alias
+);
+
+static bool lookup_numeric_alias(
+    const char *type_name,
+    size_t type_name_length,
+    enum mylite_column_numeric_type *out_type,
+    bool *out_is_alias
+);
+
+static const struct mylite_temporal_type_info *lookup_temporal_type_info(
+    const char *type_name,
+    size_t type_name_length
+);
+
+static const struct mylite_charset_info *effective_charset(
+    struct mylite_column_type_attributes attributes,
+    enum mylite_column_type_status *out_status
+);
+
+static const struct mylite_charset_info *lookup_charset(const char *name, size_t name_length);
+
+static const struct mylite_collation_info *lookup_collation(const char *name, size_t name_length);
+
+static enum mylite_column_type_status check_collation_matches_charset(
+    const struct mylite_charset_info *charset,
+    const struct mylite_collation_info *collation
+);
+
+static bool ascii_case_equal(const char *left, size_t left_length, const char *right);
+
+static char ascii_lower(unsigned char byte);
+
+static void fill_integer_descriptor(
+    const struct mylite_integer_type_info *info,
+    bool is_unsigned,
+    bool is_boolean_alias,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static void format_integer_column_type(
+    const struct mylite_integer_type_info *info,
+    bool is_unsigned,
+    bool is_boolean_alias,
+    struct mylite_column_type_attributes attributes,
+    char *out_column_type,
+    size_t column_type_size
+);
+
+static enum mylite_column_type_status describe_decimal(
+    struct mylite_column_type_attributes attributes,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static enum mylite_column_type_status describe_float(
+    struct mylite_column_type_attributes attributes,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static enum mylite_column_type_status describe_double(
+    enum mylite_column_numeric_type requested_type,
+    struct mylite_column_type_attributes attributes,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static enum mylite_column_type_status check_precision_scale(
+    struct mylite_precision_scale value,
+    struct mylite_precision_scale_limits limits
+);
+
+static bool numeric_attributes_are_unsigned(struct mylite_column_type_attributes attributes);
+
+static bool float_descriptor_is_alias(
+    bool is_alias,
+    enum mylite_column_numeric_type effective_type
+);
+
+static bool numeric_type_is_approximate(enum mylite_column_numeric_type type);
+
+static void fill_numeric_descriptor(
+    struct mylite_numeric_format format,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static const char *name_for_numeric_type(enum mylite_column_numeric_type type);
+
+static void format_numeric_column_type(
+    struct mylite_numeric_format format,
+    char *out_column_type,
+    size_t column_type_size
+);
+
+static void fill_temporal_descriptor(
+    const struct mylite_temporal_type_info *info,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static unsigned int fractional_storage_bytes(unsigned int precision);
+
+static void format_temporal_column_type(
+    const struct mylite_temporal_type_info *info,
+    struct mylite_column_type_attributes attributes,
+    char *out_column_type,
+    size_t column_type_size
+);
+
+static enum mylite_column_type_status describe_char_varchar(
+    enum mylite_column_string_binary_type requested_type,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static enum mylite_column_type_status describe_text_blob(
+    enum mylite_column_string_binary_type requested_type,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static enum mylite_column_type_status describe_binary_varbinary(
+    enum mylite_column_string_binary_type requested_type,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static void fill_string_descriptor(
+    enum mylite_column_string_binary_type type,
+    uint64_t length,
+    const struct mylite_charset_info *charset,
+    const struct mylite_collation_info *collation,
+    bool is_deprecated_binary_attribute,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static void fill_binary_descriptor(
+    enum mylite_column_string_binary_type type,
+    uint64_t length,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static enum mylite_column_string_binary_type text_family_for_capacity(uint64_t capacity);
+
+static enum mylite_column_string_binary_type blob_family_for_capacity(uint64_t capacity);
+
+static uint64_t capacity_for_string_binary_type(enum mylite_column_string_binary_type type);
+
+static const char *name_for_string_binary_type(enum mylite_column_string_binary_type type);
+
+static void format_string_binary_column_type(
+    struct mylite_string_binary_column_type_format format,
+    char *out_column_type,
+    size_t column_type_size
+);
+
+enum mylite_column_type_status mylite_column_type_describe_integer(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     const struct mylite_integer_type_info *info = NULL;
     enum mylite_column_integer_type integer_type = MYLITE_COLUMN_INTEGER_NONE;
     bool is_boolean_alias = false;
@@ -226,11 +317,12 @@ mylite_column_type_describe_integer(const char *type_name, size_t type_name_leng
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-enum mylite_column_type_status
-mylite_column_type_describe_string_binary(const char *type_name, size_t type_name_length,
-                                          struct mylite_column_type_attributes attributes,
-                                          struct mylite_column_type_descriptor *out_descriptor)
-{
+enum mylite_column_type_status mylite_column_type_describe_string_binary(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     enum mylite_column_string_binary_type requested_type = MYLITE_COLUMN_STRING_BINARY_NONE;
     bool is_alias = false;
 
@@ -275,11 +367,12 @@ mylite_column_type_describe_string_binary(const char *type_name, size_t type_nam
     return MYLITE_COLUMN_TYPE_UNKNOWN;
 }
 
-enum mylite_column_type_status
-mylite_column_type_describe_numeric(const char *type_name, size_t type_name_length,
-                                    struct mylite_column_type_attributes attributes,
-                                    struct mylite_column_type_descriptor *out_descriptor)
-{
+enum mylite_column_type_status mylite_column_type_describe_numeric(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     enum mylite_column_numeric_type requested_type = MYLITE_COLUMN_NUMERIC_NONE;
     bool is_alias = false;
 
@@ -307,11 +400,12 @@ mylite_column_type_describe_numeric(const char *type_name, size_t type_name_leng
     return MYLITE_COLUMN_TYPE_UNKNOWN;
 }
 
-enum mylite_column_type_status
-mylite_column_type_describe_temporal(const char *type_name, size_t type_name_length,
-                                     struct mylite_column_type_attributes attributes,
-                                     struct mylite_column_type_descriptor *out_descriptor)
-{
+enum mylite_column_type_status mylite_column_type_describe_temporal(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     const struct mylite_temporal_type_info *info = NULL;
 
     if (out_descriptor == NULL) {
@@ -347,8 +441,7 @@ mylite_column_type_describe_temporal(const char *type_name, size_t type_name_len
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-const char *mylite_column_type_status_name(enum mylite_column_type_status status)
-{
+const char *mylite_column_type_status_name(enum mylite_column_type_status status) {
     switch (status) {
     case MYLITE_COLUMN_TYPE_OK:
         return "ok";
@@ -377,9 +470,9 @@ const char *mylite_column_type_status_name(enum mylite_column_type_status status
     return "unknown";
 }
 
-static const struct mylite_integer_type_info *
-lookup_integer_type_info(enum mylite_column_integer_type integer_type)
-{
+static const struct mylite_integer_type_info *lookup_integer_type_info(
+    enum mylite_column_integer_type integer_type
+) {
     static const struct mylite_integer_type_info types[] = {
         {
             .canonical_type_name = "tinyint",
@@ -446,10 +539,12 @@ lookup_integer_type_info(enum mylite_column_integer_type integer_type)
     return NULL;
 }
 
-static bool lookup_integer_alias(const char *type_name, size_t type_name_length,
-                                 enum mylite_column_integer_type *out_integer_type,
-                                 bool *out_is_boolean_alias)
-{
+static bool lookup_integer_alias(
+    const char *type_name,
+    size_t type_name_length,
+    enum mylite_column_integer_type *out_integer_type,
+    bool *out_is_boolean_alias
+) {
     static const struct mylite_integer_alias aliases[] = {
         {"TINYINT", MYLITE_COLUMN_INTEGER_TINYINT, false},
         {"INT1", MYLITE_COLUMN_INTEGER_TINYINT, false},
@@ -481,10 +576,12 @@ static bool lookup_integer_alias(const char *type_name, size_t type_name_length,
     return false;
 }
 
-static bool lookup_string_binary_alias(const char *type_name, size_t type_name_length,
-                                       enum mylite_column_string_binary_type *out_type,
-                                       bool *out_is_alias)
-{
+static bool lookup_string_binary_alias(
+    const char *type_name,
+    size_t type_name_length,
+    enum mylite_column_string_binary_type *out_type,
+    bool *out_is_alias
+) {
     static const struct mylite_string_binary_alias aliases[] = {
         {"CHAR", MYLITE_COLUMN_STRING_BINARY_CHAR, false},
         {"CHARACTER", MYLITE_COLUMN_STRING_BINARY_CHAR, false},
@@ -523,9 +620,12 @@ static bool lookup_string_binary_alias(const char *type_name, size_t type_name_l
     return false;
 }
 
-static bool lookup_numeric_alias(const char *type_name, size_t type_name_length,
-                                 enum mylite_column_numeric_type *out_type, bool *out_is_alias)
-{
+static bool lookup_numeric_alias(
+    const char *type_name,
+    size_t type_name_length,
+    enum mylite_column_numeric_type *out_type,
+    bool *out_is_alias
+) {
     static const struct mylite_numeric_alias aliases[] = {
         {"DECIMAL", MYLITE_COLUMN_NUMERIC_DECIMAL, false},
         {"DEC", MYLITE_COLUMN_NUMERIC_DECIMAL, true},
@@ -553,9 +653,10 @@ static bool lookup_numeric_alias(const char *type_name, size_t type_name_length,
     return false;
 }
 
-static const struct mylite_temporal_type_info *lookup_temporal_type_info(const char *type_name,
-                                                                         size_t type_name_length)
-{
+static const struct mylite_temporal_type_info *lookup_temporal_type_info(
+    const char *type_name,
+    size_t type_name_length
+) {
     static const struct mylite_temporal_type_info types[] = {
         {
             .canonical_type_name = "date",
@@ -612,10 +713,10 @@ static const struct mylite_temporal_type_info *lookup_temporal_type_info(const c
     return NULL;
 }
 
-static const struct mylite_charset_info *
-effective_charset(struct mylite_column_type_attributes attributes,
-                  enum mylite_column_type_status *out_status)
-{
+static const struct mylite_charset_info *effective_charset(
+    struct mylite_column_type_attributes attributes,
+    enum mylite_column_type_status *out_status
+) {
     const struct mylite_charset_info *charset = NULL;
     const struct mylite_collation_info *collation = NULL;
 
@@ -641,8 +742,10 @@ effective_charset(struct mylite_column_type_attributes attributes,
             return NULL;
         }
         if (charset == NULL) {
-            charset = lookup_charset(collation->character_set_name,
-                                     strlen(collation->character_set_name));
+            charset = lookup_charset(
+                collation->character_set_name,
+                strlen(collation->character_set_name)
+            );
         }
     }
 
@@ -660,8 +763,7 @@ effective_charset(struct mylite_column_type_attributes attributes,
     return charset;
 }
 
-static const struct mylite_charset_info *lookup_charset(const char *name, size_t name_length)
-{
+static const struct mylite_charset_info *lookup_charset(const char *name, size_t name_length) {
     static const struct mylite_charset_info charsets[] = {
         {"utf8mb4", "utf8mb4_0900_ai_ci", "utf8mb4_bin", 4U, false},
         {"utf8mb3", "utf8mb3_general_ci", "utf8mb3_bin", 3U, false},
@@ -677,8 +779,7 @@ static const struct mylite_charset_info *lookup_charset(const char *name, size_t
     return NULL;
 }
 
-static const struct mylite_collation_info *lookup_collation(const char *name, size_t name_length)
-{
+static const struct mylite_collation_info *lookup_collation(const char *name, size_t name_length) {
     static const struct mylite_collation_info collations[] = {
         {"binary", "binary"},
         {"utf8mb4_0900_ai_ci", "utf8mb4"},
@@ -699,22 +800,24 @@ static const struct mylite_collation_info *lookup_collation(const char *name, si
     return NULL;
 }
 
-static enum mylite_column_type_status
-check_collation_matches_charset(const struct mylite_charset_info *charset,
-                                const struct mylite_collation_info *collation)
-{
+static enum mylite_column_type_status check_collation_matches_charset(
+    const struct mylite_charset_info *charset,
+    const struct mylite_collation_info *collation
+) {
     if (charset == NULL || collation == NULL) {
         return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
     }
-    if (!ascii_case_equal(collation->character_set_name, strlen(collation->character_set_name),
-                          charset->name)) {
+    if (!ascii_case_equal(
+            collation->character_set_name,
+            strlen(collation->character_set_name),
+            charset->name
+        )) {
         return MYLITE_COLUMN_TYPE_COLLATION_CHARACTER_SET_MISMATCH;
     }
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-static bool ascii_case_equal(const char *left, size_t left_length, const char *right)
-{
+static bool ascii_case_equal(const char *left, size_t left_length, const char *right) {
     size_t right_length = strlen(right);
 
     if (left == NULL || left_length != right_length) {
@@ -729,19 +832,20 @@ static bool ascii_case_equal(const char *left, size_t left_length, const char *r
     return true;
 }
 
-static char ascii_lower(unsigned char byte)
-{
+static char ascii_lower(unsigned char byte) {
     if (byte >= 'A' && byte <= 'Z') {
         return (char)(byte + ('a' - 'A'));
     }
     return (char)byte;
 }
 
-static void fill_integer_descriptor(const struct mylite_integer_type_info *info, bool is_unsigned,
-                                    bool is_boolean_alias,
-                                    struct mylite_column_type_attributes attributes,
-                                    struct mylite_column_type_descriptor *out_descriptor)
-{
+static void fill_integer_descriptor(
+    const struct mylite_integer_type_info *info,
+    bool is_unsigned,
+    bool is_boolean_alias,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     bool has_effective_display_width = attributes.has_display_width;
     unsigned int effective_display_width = attributes.display_width;
     unsigned int descriptor_display_width = 0U;
@@ -781,15 +885,24 @@ static void fill_integer_descriptor(const struct mylite_integer_type_info *info,
         .range_min = range_min,
         .range_max = range_max,
     };
-    format_integer_column_type(info, is_unsigned, is_boolean_alias, attributes,
-                               out_descriptor->column_type, sizeof(out_descriptor->column_type));
+    format_integer_column_type(
+        info,
+        is_unsigned,
+        is_boolean_alias,
+        attributes,
+        out_descriptor->column_type,
+        sizeof(out_descriptor->column_type)
+    );
 }
 
-static void format_integer_column_type(const struct mylite_integer_type_info *info,
-                                       bool is_unsigned, bool is_boolean_alias,
-                                       struct mylite_column_type_attributes attributes,
-                                       char *out_column_type, size_t column_type_size)
-{
+static void format_integer_column_type(
+    const struct mylite_integer_type_info *info,
+    bool is_unsigned,
+    bool is_boolean_alias,
+    struct mylite_column_type_attributes attributes,
+    char *out_column_type,
+    size_t column_type_size
+) {
     if (is_unsigned) {
         (void)snprintf(out_column_type, column_type_size, "%s unsigned", info->canonical_type_name);
         return;
@@ -803,10 +916,11 @@ static void format_integer_column_type(const struct mylite_integer_type_info *in
     (void)snprintf(out_column_type, column_type_size, "%s", info->canonical_type_name);
 }
 
-static enum mylite_column_type_status
-describe_decimal(struct mylite_column_type_attributes attributes, bool is_alias,
-                 struct mylite_column_type_descriptor *out_descriptor)
-{
+static enum mylite_column_type_status describe_decimal(
+    struct mylite_column_type_attributes attributes,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     uint64_t precision = decimal_default_precision;
     uint64_t scale = 0ULL;
     enum mylite_column_type_status status = MYLITE_COLUMN_TYPE_OK;
@@ -829,7 +943,8 @@ describe_decimal(struct mylite_column_type_attributes attributes, bool is_alias,
         (struct mylite_precision_scale_limits){
             .precision_max = decimal_precision_max,
             .scale_max = decimal_scale_max,
-        });
+        }
+    );
     if (status != MYLITE_COLUMN_TYPE_OK) {
         return status;
     }
@@ -843,14 +958,17 @@ describe_decimal(struct mylite_column_type_attributes attributes, bool is_alias,
             .is_unsigned = numeric_attributes_are_unsigned(attributes),
             .is_zerofill = attributes.has_zerofill_attribute,
         },
-        is_alias, out_descriptor);
+        is_alias,
+        out_descriptor
+    );
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-static enum mylite_column_type_status
-describe_float(struct mylite_column_type_attributes attributes, bool is_alias,
-               struct mylite_column_type_descriptor *out_descriptor)
-{
+static enum mylite_column_type_status describe_float(
+    struct mylite_column_type_attributes attributes,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     enum mylite_column_numeric_type effective_type = MYLITE_COLUMN_NUMERIC_FLOAT;
     uint64_t precision = float_default_precision;
     uint64_t scale = 0ULL;
@@ -879,7 +997,8 @@ describe_float(struct mylite_column_type_attributes attributes, bool is_alias,
             (struct mylite_precision_scale_limits){
                 .precision_max = approximate_display_width_max,
                 .scale_max = approximate_scale_max,
-            });
+            }
+        );
         if (status != MYLITE_COLUMN_TYPE_OK) {
             return status;
         }
@@ -894,15 +1013,18 @@ describe_float(struct mylite_column_type_attributes attributes, bool is_alias,
             .is_unsigned = numeric_attributes_are_unsigned(attributes),
             .is_zerofill = attributes.has_zerofill_attribute,
         },
-        float_descriptor_is_alias(is_alias, effective_type), out_descriptor);
+        float_descriptor_is_alias(is_alias, effective_type),
+        out_descriptor
+    );
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-static enum mylite_column_type_status
-describe_double(enum mylite_column_numeric_type requested_type,
-                struct mylite_column_type_attributes attributes, bool is_alias,
-                struct mylite_column_type_descriptor *out_descriptor)
-{
+static enum mylite_column_type_status describe_double(
+    enum mylite_column_numeric_type requested_type,
+    struct mylite_column_type_attributes attributes,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     uint64_t precision = double_default_precision;
     uint64_t scale = 0ULL;
     bool has_scale = attributes.has_scale;
@@ -927,7 +1049,8 @@ describe_double(enum mylite_column_numeric_type requested_type,
             (struct mylite_precision_scale_limits){
                 .precision_max = approximate_display_width_max,
                 .scale_max = approximate_scale_max,
-            });
+            }
+        );
         if (status != MYLITE_COLUMN_TYPE_OK) {
             return status;
         }
@@ -942,14 +1065,16 @@ describe_double(enum mylite_column_numeric_type requested_type,
             .is_unsigned = numeric_attributes_are_unsigned(attributes),
             .is_zerofill = attributes.has_zerofill_attribute,
         },
-        is_alias, out_descriptor);
+        is_alias,
+        out_descriptor
+    );
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-static enum mylite_column_type_status
-check_precision_scale(struct mylite_precision_scale value,
-                      struct mylite_precision_scale_limits limits)
-{
+static enum mylite_column_type_status check_precision_scale(
+    struct mylite_precision_scale value,
+    struct mylite_precision_scale_limits limits
+) {
     if (value.precision > limits.precision_max) {
         return MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE;
     }
@@ -962,33 +1087,35 @@ check_precision_scale(struct mylite_precision_scale value,
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-static bool numeric_attributes_are_unsigned(struct mylite_column_type_attributes attributes)
-{
+static bool numeric_attributes_are_unsigned(struct mylite_column_type_attributes attributes) {
     if (attributes.has_unsigned) {
         return true;
     }
     return attributes.has_zerofill_attribute;
 }
 
-static bool float_descriptor_is_alias(bool is_alias, enum mylite_column_numeric_type effective_type)
-{
+static bool float_descriptor_is_alias(
+    bool is_alias,
+    enum mylite_column_numeric_type effective_type
+) {
     if (is_alias) {
         return true;
     }
     return effective_type != MYLITE_COLUMN_NUMERIC_FLOAT;
 }
 
-static bool numeric_type_is_approximate(enum mylite_column_numeric_type type)
-{
+static bool numeric_type_is_approximate(enum mylite_column_numeric_type type) {
     if (type == MYLITE_COLUMN_NUMERIC_FLOAT) {
         return true;
     }
     return type == MYLITE_COLUMN_NUMERIC_DOUBLE;
 }
 
-static void fill_numeric_descriptor(struct mylite_numeric_format format, bool is_alias,
-                                    struct mylite_column_type_descriptor *out_descriptor)
-{
+static void fill_numeric_descriptor(
+    struct mylite_numeric_format format,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     const char *data_type = name_for_numeric_type(format.type);
 
     *out_descriptor = (struct mylite_column_type_descriptor){
@@ -1004,12 +1131,14 @@ static void fill_numeric_descriptor(struct mylite_numeric_format format, bool is
         .canonical_type_name = data_type,
         .data_type = data_type,
     };
-    format_numeric_column_type(format, out_descriptor->column_type,
-                               sizeof(out_descriptor->column_type));
+    format_numeric_column_type(
+        format,
+        out_descriptor->column_type,
+        sizeof(out_descriptor->column_type)
+    );
 }
 
-static const char *name_for_numeric_type(enum mylite_column_numeric_type type)
-{
+static const char *name_for_numeric_type(enum mylite_column_numeric_type type) {
     switch (type) {
     case MYLITE_COLUMN_NUMERIC_DECIMAL:
         return "decimal";
@@ -1023,9 +1152,11 @@ static const char *name_for_numeric_type(enum mylite_column_numeric_type type)
     return "unknown";
 }
 
-static void format_numeric_column_type(struct mylite_numeric_format format, char *out_column_type,
-                                       size_t column_type_size)
-{
+static void format_numeric_column_type(
+    struct mylite_numeric_format format,
+    char *out_column_type,
+    size_t column_type_size
+) {
     const char *name = name_for_numeric_type(format.type);
     char base[MYLITE_COLUMN_TYPE_TEXT_CAPACITY];
 
@@ -1044,10 +1175,11 @@ static void format_numeric_column_type(struct mylite_numeric_format format, char
     }
 }
 
-static void fill_temporal_descriptor(const struct mylite_temporal_type_info *info,
-                                     struct mylite_column_type_attributes attributes,
-                                     struct mylite_column_type_descriptor *out_descriptor)
-{
+static void fill_temporal_descriptor(
+    const struct mylite_temporal_type_info *info,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     unsigned int datetime_precision = 0U;
     unsigned int storage_bytes = info->base_storage_bytes;
     bool is_alias = false;
@@ -1073,12 +1205,15 @@ static void fill_temporal_descriptor(const struct mylite_temporal_type_info *inf
         .range_min = info->range_min,
         .range_max = info->range_max,
     };
-    format_temporal_column_type(info, attributes, out_descriptor->column_type,
-                                sizeof(out_descriptor->column_type));
+    format_temporal_column_type(
+        info,
+        attributes,
+        out_descriptor->column_type,
+        sizeof(out_descriptor->column_type)
+    );
 }
 
-static unsigned int fractional_storage_bytes(unsigned int precision)
-{
+static unsigned int fractional_storage_bytes(unsigned int precision) {
     if (precision == 0U) {
         return 0U;
     }
@@ -1091,24 +1226,31 @@ static unsigned int fractional_storage_bytes(unsigned int precision)
     return 3U;
 }
 
-static void format_temporal_column_type(const struct mylite_temporal_type_info *info,
-                                        struct mylite_column_type_attributes attributes,
-                                        char *out_column_type, size_t column_type_size)
-{
+static void format_temporal_column_type(
+    const struct mylite_temporal_type_info *info,
+    struct mylite_column_type_attributes attributes,
+    char *out_column_type,
+    size_t column_type_size
+) {
     if (info->permits_fractional_seconds && attributes.has_precision && attributes.precision > 0U) {
-        (void)snprintf(out_column_type, column_type_size, "%s(%u)", info->canonical_type_name,
-                       (unsigned int)attributes.precision);
+        (void)snprintf(
+            out_column_type,
+            column_type_size,
+            "%s(%u)",
+            info->canonical_type_name,
+            (unsigned int)attributes.precision
+        );
         return;
     }
 
     (void)snprintf(out_column_type, column_type_size, "%s", info->canonical_type_name);
 }
 
-static enum mylite_column_type_status
-describe_char_varchar(enum mylite_column_string_binary_type requested_type,
-                      struct mylite_column_type_attributes attributes,
-                      struct mylite_column_type_descriptor *out_descriptor)
-{
+static enum mylite_column_type_status describe_char_varchar(
+    enum mylite_column_string_binary_type requested_type,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     enum mylite_column_type_status status = MYLITE_COLUMN_TYPE_OK;
     const struct mylite_charset_info *charset = effective_charset(attributes, &status);
     const struct mylite_collation_info *collation = NULL;
@@ -1144,23 +1286,34 @@ describe_char_varchar(enum mylite_column_string_binary_type requested_type,
     }
 
     if (attributes.has_byte_attribute || charset->is_binary) {
-        fill_binary_descriptor(requested_type == MYLITE_COLUMN_STRING_BINARY_CHAR
-                                   ? MYLITE_COLUMN_STRING_BINARY_BINARY
-                                   : MYLITE_COLUMN_STRING_BINARY_VARBINARY,
-                               length, true, out_descriptor);
+        fill_binary_descriptor(
+            requested_type == MYLITE_COLUMN_STRING_BINARY_CHAR
+                ? MYLITE_COLUMN_STRING_BINARY_BINARY
+                : MYLITE_COLUMN_STRING_BINARY_VARBINARY,
+            length,
+            true,
+            out_descriptor
+        );
         return MYLITE_COLUMN_TYPE_OK;
     }
 
-    fill_string_descriptor(requested_type, length, charset, collation,
-                           attributes.has_binary_attribute, attributes.is_national, out_descriptor);
+    fill_string_descriptor(
+        requested_type,
+        length,
+        charset,
+        collation,
+        attributes.has_binary_attribute,
+        attributes.is_national,
+        out_descriptor
+    );
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-static enum mylite_column_type_status
-describe_text_blob(enum mylite_column_string_binary_type requested_type,
-                   struct mylite_column_type_attributes attributes,
-                   struct mylite_column_type_descriptor *out_descriptor)
-{
+static enum mylite_column_type_status describe_text_blob(
+    enum mylite_column_string_binary_type requested_type,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     enum mylite_column_type_status status = MYLITE_COLUMN_TYPE_OK;
     const struct mylite_charset_info *charset = NULL;
     const struct mylite_collation_info *collation = NULL;
@@ -1186,8 +1339,12 @@ describe_text_blob(enum mylite_column_string_binary_type requested_type,
         if (requested_type == MYLITE_COLUMN_STRING_BINARY_BLOB && attributes.has_length) {
             effective_type = blob_family_for_capacity(attributes.length);
         }
-        fill_binary_descriptor(effective_type, capacity_for_string_binary_type(effective_type),
-                               requested_type != effective_type, out_descriptor);
+        fill_binary_descriptor(
+            effective_type,
+            capacity_for_string_binary_type(effective_type),
+            requested_type != effective_type,
+            out_descriptor
+        );
         return MYLITE_COLUMN_TYPE_OK;
     }
 
@@ -1207,10 +1364,15 @@ describe_text_blob(enum mylite_column_string_binary_type requested_type,
         } else {
             effective_type = (enum mylite_column_string_binary_type)(
                 requested_type +
-                (MYLITE_COLUMN_STRING_BINARY_TINYBLOB - MYLITE_COLUMN_STRING_BINARY_TINYTEXT));
+                (MYLITE_COLUMN_STRING_BINARY_TINYBLOB - MYLITE_COLUMN_STRING_BINARY_TINYTEXT)
+            );
         }
-        fill_binary_descriptor(effective_type, capacity_for_string_binary_type(effective_type),
-                               true, out_descriptor);
+        fill_binary_descriptor(
+            effective_type,
+            capacity_for_string_binary_type(effective_type),
+            true,
+            out_descriptor
+        );
         return MYLITE_COLUMN_TYPE_OK;
     }
     if (requested_type == MYLITE_COLUMN_STRING_BINARY_TEXT && attributes.has_length) {
@@ -1218,17 +1380,23 @@ describe_text_blob(enum mylite_column_string_binary_type requested_type,
         effective_type = text_family_for_capacity(capacity);
     }
 
-    fill_string_descriptor(effective_type, capacity_for_string_binary_type(effective_type), charset,
-                           collation, attributes.has_binary_attribute,
-                           requested_type != effective_type, out_descriptor);
+    fill_string_descriptor(
+        effective_type,
+        capacity_for_string_binary_type(effective_type),
+        charset,
+        collation,
+        attributes.has_binary_attribute,
+        requested_type != effective_type,
+        out_descriptor
+    );
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-static enum mylite_column_type_status
-describe_binary_varbinary(enum mylite_column_string_binary_type requested_type,
-                          struct mylite_column_type_attributes attributes,
-                          struct mylite_column_type_descriptor *out_descriptor)
-{
+static enum mylite_column_type_status describe_binary_varbinary(
+    enum mylite_column_string_binary_type requested_type,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     uint64_t length = 1ULL;
 
     if (attributes.has_length) {
@@ -1253,12 +1421,15 @@ describe_binary_varbinary(enum mylite_column_string_binary_type requested_type,
     return MYLITE_COLUMN_TYPE_OK;
 }
 
-static void fill_string_descriptor(enum mylite_column_string_binary_type type, uint64_t length,
-                                   const struct mylite_charset_info *charset,
-                                   const struct mylite_collation_info *collation,
-                                   bool is_deprecated_binary_attribute, bool is_alias,
-                                   struct mylite_column_type_descriptor *out_descriptor)
-{
+static void fill_string_descriptor(
+    enum mylite_column_string_binary_type type,
+    uint64_t length,
+    const struct mylite_charset_info *charset,
+    const struct mylite_collation_info *collation,
+    bool is_deprecated_binary_attribute,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     const char *data_type = name_for_string_binary_type(type);
     const char *collation_name = collation == NULL ? charset->default_collation : collation->name;
 
@@ -1283,13 +1454,17 @@ static void fill_string_descriptor(enum mylite_column_string_binary_type type, u
             .type = type,
             .length = length,
         },
-        out_descriptor->column_type, sizeof(out_descriptor->column_type));
+        out_descriptor->column_type,
+        sizeof(out_descriptor->column_type)
+    );
 }
 
-static void fill_binary_descriptor(enum mylite_column_string_binary_type type, uint64_t length,
-                                   bool is_alias,
-                                   struct mylite_column_type_descriptor *out_descriptor)
-{
+static void fill_binary_descriptor(
+    enum mylite_column_string_binary_type type,
+    uint64_t length,
+    bool is_alias,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
     const char *data_type = name_for_string_binary_type(type);
 
     *out_descriptor = (struct mylite_column_type_descriptor){
@@ -1306,11 +1481,12 @@ static void fill_binary_descriptor(enum mylite_column_string_binary_type type, u
             .type = type,
             .length = length,
         },
-        out_descriptor->column_type, sizeof(out_descriptor->column_type));
+        out_descriptor->column_type,
+        sizeof(out_descriptor->column_type)
+    );
 }
 
-static enum mylite_column_string_binary_type text_family_for_capacity(uint64_t capacity)
-{
+static enum mylite_column_string_binary_type text_family_for_capacity(uint64_t capacity) {
     if (capacity <= tiny_capacity) {
         return MYLITE_COLUMN_STRING_BINARY_TINYTEXT;
     }
@@ -1323,8 +1499,7 @@ static enum mylite_column_string_binary_type text_family_for_capacity(uint64_t c
     return MYLITE_COLUMN_STRING_BINARY_LONGTEXT;
 }
 
-static enum mylite_column_string_binary_type blob_family_for_capacity(uint64_t capacity)
-{
+static enum mylite_column_string_binary_type blob_family_for_capacity(uint64_t capacity) {
     if (capacity <= tiny_capacity) {
         return MYLITE_COLUMN_STRING_BINARY_TINYBLOB;
     }
@@ -1337,8 +1512,7 @@ static enum mylite_column_string_binary_type blob_family_for_capacity(uint64_t c
     return MYLITE_COLUMN_STRING_BINARY_LONGBLOB;
 }
 
-static uint64_t capacity_for_string_binary_type(enum mylite_column_string_binary_type type)
-{
+static uint64_t capacity_for_string_binary_type(enum mylite_column_string_binary_type type) {
     switch (type) {
     case MYLITE_COLUMN_STRING_BINARY_TINYTEXT:
     case MYLITE_COLUMN_STRING_BINARY_TINYBLOB:
@@ -1362,8 +1536,7 @@ static uint64_t capacity_for_string_binary_type(enum mylite_column_string_binary
     return 0ULL;
 }
 
-static const char *name_for_string_binary_type(enum mylite_column_string_binary_type type)
-{
+static const char *name_for_string_binary_type(enum mylite_column_string_binary_type type) {
     switch (type) {
     case MYLITE_COLUMN_STRING_BINARY_CHAR:
         return "char";
@@ -1395,9 +1568,11 @@ static const char *name_for_string_binary_type(enum mylite_column_string_binary_
     return "unknown";
 }
 
-static void format_string_binary_column_type(struct mylite_string_binary_column_type_format format,
-                                             char *out_column_type, size_t column_type_size)
-{
+static void format_string_binary_column_type(
+    struct mylite_string_binary_column_type_format format,
+    char *out_column_type,
+    size_t column_type_size
+) {
     const char *name = name_for_string_binary_type(format.type);
 
     switch (format.type) {
@@ -1405,8 +1580,13 @@ static void format_string_binary_column_type(struct mylite_string_binary_column_
     case MYLITE_COLUMN_STRING_BINARY_VARCHAR:
     case MYLITE_COLUMN_STRING_BINARY_BINARY:
     case MYLITE_COLUMN_STRING_BINARY_VARBINARY:
-        (void)snprintf(out_column_type, column_type_size, "%s(%llu)", name,
-                       (unsigned long long)format.length);
+        (void)snprintf(
+            out_column_type,
+            column_type_size,
+            "%s(%llu)",
+            name,
+            (unsigned long long)format.length
+        );
         return;
     case MYLITE_COLUMN_STRING_BINARY_TINYTEXT:
     case MYLITE_COLUMN_STRING_BINARY_TEXT:

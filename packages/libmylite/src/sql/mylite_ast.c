@@ -2,8 +2,7 @@
 
 #include <stdlib.h>
 
-void mylite_sql_ast_init(struct mylite_sql_ast *ast)
-{
+void mylite_sql_ast_init(struct mylite_sql_ast *ast) {
     if (ast == NULL) {
         return;
     }
@@ -11,8 +10,7 @@ void mylite_sql_ast_init(struct mylite_sql_ast *ast)
     ast->first_allocated = NULL;
 }
 
-void mylite_sql_ast_deinit(struct mylite_sql_ast *ast)
-{
+void mylite_sql_ast_deinit(struct mylite_sql_ast *ast) {
     struct mylite_sql_ast_node *node = NULL;
 
     if (ast == NULL) {
@@ -28,10 +26,11 @@ void mylite_sql_ast_deinit(struct mylite_sql_ast *ast)
     ast->first_allocated = NULL;
 }
 
-struct mylite_sql_ast_node *mylite_sql_ast_new_node(struct mylite_sql_ast *ast,
-                                                    enum mylite_sql_ast_node_kind kind,
-                                                    struct mylite_sql_source_span span)
-{
+struct mylite_sql_ast_node *mylite_sql_ast_new_node(
+    struct mylite_sql_ast *ast,
+    enum mylite_sql_ast_node_kind kind,
+    struct mylite_sql_source_span span
+) {
     struct mylite_sql_ast_node *node = NULL;
 
     if (ast == NULL) {
@@ -50,9 +49,10 @@ struct mylite_sql_ast_node *mylite_sql_ast_new_node(struct mylite_sql_ast *ast,
     return node;
 }
 
-void mylite_sql_ast_node_append_child(struct mylite_sql_ast_node *parent,
-                                      struct mylite_sql_ast_node *child)
-{
+void mylite_sql_ast_node_append_child(
+    struct mylite_sql_ast_node *parent,
+    struct mylite_sql_ast_node *child
+) {
     if (parent == NULL || child == NULL) {
         return;
     }
@@ -66,9 +66,10 @@ void mylite_sql_ast_node_append_child(struct mylite_sql_ast_node *parent,
     parent->last_child = child;
 }
 
-void mylite_sql_ast_node_set_span(struct mylite_sql_ast_node *node,
-                                  struct mylite_sql_source_span span)
-{
+void mylite_sql_ast_node_set_span(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_source_span span
+) {
     if (node == NULL) {
         return;
     }
@@ -76,9 +77,10 @@ void mylite_sql_ast_node_set_span(struct mylite_sql_ast_node *node,
     node->span = span;
 }
 
-void mylite_sql_ast_node_set_literal_kind(struct mylite_sql_ast_node *node,
-                                          enum mylite_sql_ast_literal_kind literal_kind)
-{
+void mylite_sql_ast_node_set_literal_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_literal_kind literal_kind
+) {
     if (node == NULL) {
         return;
     }
@@ -86,9 +88,10 @@ void mylite_sql_ast_node_set_literal_kind(struct mylite_sql_ast_node *node,
     node->literal_kind = literal_kind;
 }
 
-void mylite_sql_ast_node_set_delete_form(struct mylite_sql_ast_node *node,
-                                         enum mylite_sql_ast_delete_form delete_form)
-{
+void mylite_sql_ast_node_set_delete_form(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_delete_form delete_form
+) {
     if (node == NULL) {
         return;
     }
@@ -96,9 +99,10 @@ void mylite_sql_ast_node_set_delete_form(struct mylite_sql_ast_node *node,
     node->delete_form = delete_form;
 }
 
-void mylite_sql_ast_node_set_operator(struct mylite_sql_ast_node *node,
-                                      enum mylite_sql_ast_operator operator_kind)
-{
+void mylite_sql_ast_node_set_operator(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_operator operator_kind
+) {
     if (node == NULL) {
         return;
     }
@@ -106,9 +110,10 @@ void mylite_sql_ast_node_set_operator(struct mylite_sql_ast_node *node,
     node->operator_kind = operator_kind;
 }
 
-void mylite_sql_ast_node_set_schema_option(struct mylite_sql_ast_node *node,
-                                           enum mylite_sql_ast_schema_option schema_option)
-{
+void mylite_sql_ast_node_set_schema_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_schema_option schema_option
+) {
     if (node == NULL) {
         return;
     }
@@ -116,9 +121,10 @@ void mylite_sql_ast_node_set_schema_option(struct mylite_sql_ast_node *node,
     node->schema_option = schema_option;
 }
 
-void mylite_sql_ast_node_set_column_type(struct mylite_sql_ast_node *node,
-                                         enum mylite_sql_ast_column_type column_type)
-{
+void mylite_sql_ast_node_set_column_type(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_type column_type
+) {
     if (node == NULL) {
         return;
     }
@@ -126,8 +132,7 @@ void mylite_sql_ast_node_set_column_type(struct mylite_sql_ast_node *node,
     node->column_type = column_type;
 }
 
-void mylite_sql_ast_node_set_column_type_signed(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_column_type_signed(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -135,8 +140,7 @@ void mylite_sql_ast_node_set_column_type_signed(struct mylite_sql_ast_node *node
     node->column_type_signed = true;
 }
 
-void mylite_sql_ast_node_set_column_type_unsigned(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_column_type_unsigned(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -144,9 +148,10 @@ void mylite_sql_ast_node_set_column_type_unsigned(struct mylite_sql_ast_node *no
     node->column_type_unsigned = true;
 }
 
-void mylite_sql_ast_node_set_column_display_width(struct mylite_sql_ast_node *node,
-                                                  unsigned int display_width)
-{
+void mylite_sql_ast_node_set_column_display_width(
+    struct mylite_sql_ast_node *node,
+    unsigned int display_width
+) {
     if (node == NULL) {
         return;
     }
@@ -155,8 +160,7 @@ void mylite_sql_ast_node_set_column_display_width(struct mylite_sql_ast_node *no
     node->column_display_width = display_width;
 }
 
-void mylite_sql_ast_node_set_column_length(struct mylite_sql_ast_node *node, uint64_t length)
-{
+void mylite_sql_ast_node_set_column_length(struct mylite_sql_ast_node *node, uint64_t length) {
     if (node == NULL) {
         return;
     }
@@ -165,8 +169,10 @@ void mylite_sql_ast_node_set_column_length(struct mylite_sql_ast_node *node, uin
     node->column_length = length;
 }
 
-void mylite_sql_ast_node_set_column_precision(struct mylite_sql_ast_node *node, uint64_t precision)
-{
+void mylite_sql_ast_node_set_column_precision(
+    struct mylite_sql_ast_node *node,
+    uint64_t precision
+) {
     if (node == NULL) {
         return;
     }
@@ -175,8 +181,7 @@ void mylite_sql_ast_node_set_column_precision(struct mylite_sql_ast_node *node, 
     node->column_precision = precision;
 }
 
-void mylite_sql_ast_node_set_column_scale(struct mylite_sql_ast_node *node, uint64_t scale)
-{
+void mylite_sql_ast_node_set_column_scale(struct mylite_sql_ast_node *node, uint64_t scale) {
     if (node == NULL) {
         return;
     }
@@ -185,9 +190,10 @@ void mylite_sql_ast_node_set_column_scale(struct mylite_sql_ast_node *node, uint
     node->column_scale = scale;
 }
 
-void mylite_sql_ast_node_set_column_character_set(struct mylite_sql_ast_node *node,
-                                                  struct mylite_sql_source_span span)
-{
+void mylite_sql_ast_node_set_column_character_set(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_source_span span
+) {
     if (node == NULL) {
         return;
     }
@@ -196,9 +202,10 @@ void mylite_sql_ast_node_set_column_character_set(struct mylite_sql_ast_node *no
     node->column_character_set = span;
 }
 
-void mylite_sql_ast_node_set_column_collation(struct mylite_sql_ast_node *node,
-                                              struct mylite_sql_source_span span)
-{
+void mylite_sql_ast_node_set_column_collation(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_source_span span
+) {
     if (node == NULL) {
         return;
     }
@@ -207,8 +214,7 @@ void mylite_sql_ast_node_set_column_collation(struct mylite_sql_ast_node *node,
     node->column_collation = span;
 }
 
-void mylite_sql_ast_node_set_column_binary_attribute(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_column_binary_attribute(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -216,8 +222,7 @@ void mylite_sql_ast_node_set_column_binary_attribute(struct mylite_sql_ast_node 
     node->column_binary_attribute = true;
 }
 
-void mylite_sql_ast_node_set_column_byte_attribute(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_column_byte_attribute(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -225,8 +230,7 @@ void mylite_sql_ast_node_set_column_byte_attribute(struct mylite_sql_ast_node *n
     node->column_byte_attribute = true;
 }
 
-void mylite_sql_ast_node_set_column_zerofill_attribute(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_column_zerofill_attribute(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -234,8 +238,7 @@ void mylite_sql_ast_node_set_column_zerofill_attribute(struct mylite_sql_ast_nod
     node->column_zerofill_attribute = true;
 }
 
-void mylite_sql_ast_node_set_column_national_attribute(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_column_national_attribute(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -243,9 +246,10 @@ void mylite_sql_ast_node_set_column_national_attribute(struct mylite_sql_ast_nod
     node->column_national_attribute = true;
 }
 
-void mylite_sql_ast_node_set_column_attribute(struct mylite_sql_ast_node *node,
-                                              enum mylite_sql_ast_column_attribute column_attribute)
-{
+void mylite_sql_ast_node_set_column_attribute(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_attribute column_attribute
+) {
     if (node == NULL) {
         return;
     }
@@ -253,9 +257,10 @@ void mylite_sql_ast_node_set_column_attribute(struct mylite_sql_ast_node *node,
     node->column_attribute = column_attribute;
 }
 
-void mylite_sql_ast_node_set_column_format(struct mylite_sql_ast_node *node,
-                                           enum mylite_sql_ast_column_format column_format)
-{
+void mylite_sql_ast_node_set_column_format(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_format column_format
+) {
     if (node == NULL) {
         return;
     }
@@ -263,9 +268,10 @@ void mylite_sql_ast_node_set_column_format(struct mylite_sql_ast_node *node,
     node->column_format = column_format;
 }
 
-void mylite_sql_ast_node_set_column_storage(struct mylite_sql_ast_node *node,
-                                            enum mylite_sql_ast_column_storage column_storage)
-{
+void mylite_sql_ast_node_set_column_storage(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_storage column_storage
+) {
     if (node == NULL) {
         return;
     }
@@ -273,9 +279,10 @@ void mylite_sql_ast_node_set_column_storage(struct mylite_sql_ast_node *node,
     node->column_storage = column_storage;
 }
 
-void mylite_sql_ast_node_set_key_part_order(struct mylite_sql_ast_node *node,
-                                            enum mylite_sql_ast_key_part_order order)
-{
+void mylite_sql_ast_node_set_key_part_order(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_key_part_order order
+) {
     if (node == NULL) {
         return;
     }
@@ -283,8 +290,7 @@ void mylite_sql_ast_node_set_key_part_order(struct mylite_sql_ast_node *node,
     node->key_part_order = order;
 }
 
-void mylite_sql_ast_node_set_limit_bound_value(struct mylite_sql_ast_node *node, uint64_t value)
-{
+void mylite_sql_ast_node_set_limit_bound_value(struct mylite_sql_ast_node *node, uint64_t value) {
     if (node == NULL) {
         return;
     }
@@ -293,9 +299,10 @@ void mylite_sql_ast_node_set_limit_bound_value(struct mylite_sql_ast_node *node,
     node->limit_bound_value = value;
 }
 
-void mylite_sql_ast_node_set_index_algorithm(struct mylite_sql_ast_node *node,
-                                             enum mylite_sql_ast_index_algorithm algorithm)
-{
+void mylite_sql_ast_node_set_index_algorithm(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_index_algorithm algorithm
+) {
     if (node == NULL) {
         return;
     }
@@ -303,9 +310,10 @@ void mylite_sql_ast_node_set_index_algorithm(struct mylite_sql_ast_node *node,
     node->index_algorithm = algorithm;
 }
 
-void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
-                                          enum mylite_sql_ast_index_option option)
-{
+void mylite_sql_ast_node_set_index_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_index_option option
+) {
     if (node == NULL) {
         return;
     }
@@ -313,9 +321,10 @@ void mylite_sql_ast_node_set_index_option(struct mylite_sql_ast_node *node,
     node->index_option = option;
 }
 
-void mylite_sql_ast_node_set_index_class(struct mylite_sql_ast_node *node,
-                                         enum mylite_sql_ast_index_class index_class)
-{
+void mylite_sql_ast_node_set_index_class(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_index_class index_class
+) {
     if (node == NULL) {
         return;
     }
@@ -323,9 +332,10 @@ void mylite_sql_ast_node_set_index_class(struct mylite_sql_ast_node *node,
     node->index_class = index_class;
 }
 
-void mylite_sql_ast_node_set_ddl_table_option(struct mylite_sql_ast_node *node,
-                                              enum mylite_sql_ast_ddl_table_option option)
-{
+void mylite_sql_ast_node_set_ddl_table_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_ddl_table_option option
+) {
     if (node == NULL) {
         return;
     }
@@ -333,9 +343,10 @@ void mylite_sql_ast_node_set_ddl_table_option(struct mylite_sql_ast_node *node,
     node->ddl_table_option = option;
 }
 
-void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
-                                          enum mylite_sql_ast_table_option option)
-{
+void mylite_sql_ast_node_set_table_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_table_option option
+) {
     if (node == NULL) {
         return;
     }
@@ -343,10 +354,11 @@ void mylite_sql_ast_node_set_table_option(struct mylite_sql_ast_node *node,
     node->table_option = option;
 }
 
-void mylite_sql_ast_node_set_alter_table_action(struct mylite_sql_ast_node *node,
-                                                enum mylite_sql_ast_alter_table_action action,
-                                                bool column_keyword)
-{
+void mylite_sql_ast_node_set_alter_table_action(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_table_action action,
+    bool column_keyword
+) {
     if (node == NULL) {
         return;
     }
@@ -356,8 +368,9 @@ void mylite_sql_ast_node_set_alter_table_action(struct mylite_sql_ast_node *node
 }
 
 void mylite_sql_ast_node_set_alter_table_column_position(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_column_position position)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_table_column_position position
+) {
     if (node == NULL) {
         return;
     }
@@ -366,8 +379,9 @@ void mylite_sql_ast_node_set_alter_table_column_position(
 }
 
 void mylite_sql_ast_node_set_alter_table_index_spelling(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_index_spelling spelling)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_table_index_spelling spelling
+) {
     if (node == NULL) {
         return;
     }
@@ -376,8 +390,9 @@ void mylite_sql_ast_node_set_alter_table_index_spelling(
 }
 
 void mylite_sql_ast_node_set_alter_table_constraint_spelling(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_alter_table_constraint_spelling spelling)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_alter_table_constraint_spelling spelling
+) {
     if (node == NULL) {
         return;
     }
@@ -386,8 +401,9 @@ void mylite_sql_ast_node_set_alter_table_constraint_spelling(
 }
 
 void mylite_sql_ast_node_set_constraint_enforcement(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_constraint_enforcement enforcement)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_constraint_enforcement enforcement
+) {
     if (node == NULL) {
         return;
     }
@@ -395,9 +411,10 @@ void mylite_sql_ast_node_set_constraint_enforcement(
     node->constraint_enforcement = enforcement;
 }
 
-void mylite_sql_ast_node_set_reference_option(struct mylite_sql_ast_node *node,
-                                              enum mylite_sql_ast_reference_option option)
-{
+void mylite_sql_ast_node_set_reference_option(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_reference_option option
+) {
     if (node == NULL) {
         return;
     }
@@ -405,9 +422,10 @@ void mylite_sql_ast_node_set_reference_option(struct mylite_sql_ast_node *node,
     node->reference_option = option;
 }
 
-void mylite_sql_ast_node_set_reference_action(struct mylite_sql_ast_node *node,
-                                              enum mylite_sql_ast_reference_action action)
-{
+void mylite_sql_ast_node_set_reference_action(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_reference_action action
+) {
     if (node == NULL) {
         return;
     }
@@ -415,9 +433,10 @@ void mylite_sql_ast_node_set_reference_action(struct mylite_sql_ast_node *node,
     node->reference_action = action;
 }
 
-void mylite_sql_ast_node_set_reference_match(struct mylite_sql_ast_node *node,
-                                             enum mylite_sql_ast_reference_match match)
-{
+void mylite_sql_ast_node_set_reference_match(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_reference_match match
+) {
     if (node == NULL) {
         return;
     }
@@ -425,8 +444,7 @@ void mylite_sql_ast_node_set_reference_match(struct mylite_sql_ast_node *node,
     node->reference_match = match;
 }
 
-void mylite_sql_ast_node_set_create_table_temporary(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_create_table_temporary(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -434,8 +452,7 @@ void mylite_sql_ast_node_set_create_table_temporary(struct mylite_sql_ast_node *
     node->create_table_temporary = true;
 }
 
-void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -443,8 +460,7 @@ void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *no
     node->drop_table_temporary = true;
 }
 
-void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -452,8 +468,7 @@ void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *nod
     node->drop_table_restrict = true;
 }
 
-void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -461,8 +476,7 @@ void mylite_sql_ast_node_set_drop_table_cascade(struct mylite_sql_ast_node *node
     node->drop_table_cascade = true;
 }
 
-void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -470,8 +484,7 @@ void mylite_sql_ast_node_set_insert_ignore(struct mylite_sql_ast_node *node)
     node->insert_ignore = true;
 }
 
-void mylite_sql_ast_node_set_replace_low_priority(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_replace_low_priority(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -479,8 +492,7 @@ void mylite_sql_ast_node_set_replace_low_priority(struct mylite_sql_ast_node *no
     node->replace_low_priority = true;
 }
 
-void mylite_sql_ast_node_set_replace_delayed(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_replace_delayed(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -489,8 +501,9 @@ void mylite_sql_ast_node_set_replace_delayed(struct mylite_sql_ast_node *node)
 }
 
 void mylite_sql_ast_node_set_transaction_access_mode(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_transaction_access_mode access_mode)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_transaction_access_mode access_mode
+) {
     if (node == NULL) {
         return;
     }
@@ -498,8 +511,7 @@ void mylite_sql_ast_node_set_transaction_access_mode(
     node->transaction_access_mode = access_mode;
 }
 
-void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -507,10 +519,11 @@ void mylite_sql_ast_node_set_transaction_consistent_snapshot(struct mylite_sql_a
     node->transaction_consistent_snapshot = true;
 }
 
-void mylite_sql_ast_node_set_transaction_completion(struct mylite_sql_ast_node *node,
-                                                    enum mylite_sql_ast_transaction_chain chain,
-                                                    enum mylite_sql_ast_transaction_release release)
-{
+void mylite_sql_ast_node_set_transaction_completion(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_transaction_chain chain,
+    enum mylite_sql_ast_transaction_release release
+) {
     if (node == NULL) {
         return;
     }
@@ -519,8 +532,7 @@ void mylite_sql_ast_node_set_transaction_completion(struct mylite_sql_ast_node *
     node->transaction_release = release;
 }
 
-void mylite_sql_ast_node_set_case_expression_simple(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_case_expression_simple(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -528,10 +540,11 @@ void mylite_sql_ast_node_set_case_expression_simple(struct mylite_sql_ast_node *
     node->case_expression_simple = true;
 }
 
-void mylite_sql_ast_node_set_aggregate(struct mylite_sql_ast_node *node,
-                                       enum mylite_sql_ast_aggregate_kind aggregate_kind,
-                                       enum mylite_sql_ast_aggregate_argument aggregate_argument)
-{
+void mylite_sql_ast_node_set_aggregate(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_aggregate_kind aggregate_kind,
+    enum mylite_sql_ast_aggregate_argument aggregate_argument
+) {
     if (node == NULL) {
         return;
     }
@@ -540,9 +553,10 @@ void mylite_sql_ast_node_set_aggregate(struct mylite_sql_ast_node *node,
     node->aggregate_argument = aggregate_argument;
 }
 
-void mylite_sql_ast_node_set_join_type(struct mylite_sql_ast_node *node,
-                                       enum mylite_sql_ast_join_type join_type)
-{
+void mylite_sql_ast_node_set_join_type(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_join_type join_type
+) {
     if (node == NULL) {
         return;
     }
@@ -551,8 +565,9 @@ void mylite_sql_ast_node_set_join_type(struct mylite_sql_ast_node *node,
 }
 
 void mylite_sql_ast_node_set_join_condition_type(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_join_condition_type condition_type)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_join_condition_type condition_type
+) {
     if (node == NULL) {
         return;
     }
@@ -561,10 +576,13 @@ void mylite_sql_ast_node_set_join_condition_type(
 }
 
 void mylite_sql_ast_node_set_select_duplicate_mode(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_select_duplicate_mode mode,
-    bool explicit_mode, bool conflict, size_t modifier_count,
-    struct mylite_sql_ast_select_duplicate_mode_spans spans)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_select_duplicate_mode mode,
+    bool explicit_mode,
+    bool conflict,
+    size_t modifier_count,
+    struct mylite_sql_ast_select_duplicate_mode_spans spans
+) {
     if (node == NULL) {
         return;
     }
@@ -578,8 +596,7 @@ void mylite_sql_ast_node_set_select_duplicate_mode(
     node->select_duplicate_conflict_span = spans.conflict;
 }
 
-void mylite_sql_ast_node_set_select_calc_found_rows(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_select_calc_found_rows(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -587,9 +604,10 @@ void mylite_sql_ast_node_set_select_calc_found_rows(struct mylite_sql_ast_node *
     node->select_calc_found_rows = true;
 }
 
-void mylite_sql_ast_node_set_set_duplicate_mode(struct mylite_sql_ast_node *node,
-                                                enum mylite_sql_ast_set_duplicate_mode mode)
-{
+void mylite_sql_ast_node_set_set_duplicate_mode(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_set_duplicate_mode mode
+) {
     if (node == NULL) {
         return;
     }
@@ -597,9 +615,10 @@ void mylite_sql_ast_node_set_set_duplicate_mode(struct mylite_sql_ast_node *node
     node->set_duplicate_mode = mode;
 }
 
-void mylite_sql_ast_node_set_set_operation(struct mylite_sql_ast_node *node,
-                                           enum mylite_sql_ast_set_operation operation)
-{
+void mylite_sql_ast_node_set_set_operation(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_set_operation operation
+) {
     if (node == NULL) {
         return;
     }
@@ -607,9 +626,10 @@ void mylite_sql_ast_node_set_set_operation(struct mylite_sql_ast_node *node,
     node->set_operation = operation;
 }
 
-void mylite_sql_ast_node_set_window_function(struct mylite_sql_ast_node *node,
-                                             enum mylite_sql_ast_window_function_kind function_kind)
-{
+void mylite_sql_ast_node_set_window_function(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_function_kind function_kind
+) {
     if (node == NULL) {
         return;
     }
@@ -617,9 +637,10 @@ void mylite_sql_ast_node_set_window_function(struct mylite_sql_ast_node *node,
     node->window_function_kind = function_kind;
 }
 
-void mylite_sql_ast_node_set_window_frame_unit(struct mylite_sql_ast_node *node,
-                                               enum mylite_sql_ast_window_frame_unit unit)
-{
+void mylite_sql_ast_node_set_window_frame_unit(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_frame_unit unit
+) {
     if (node == NULL) {
         return;
     }
@@ -628,8 +649,9 @@ void mylite_sql_ast_node_set_window_frame_unit(struct mylite_sql_ast_node *node,
 }
 
 void mylite_sql_ast_node_set_window_frame_bound(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_frame_bound_kind bound_kind)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_frame_bound_kind bound_kind
+) {
     if (node == NULL) {
         return;
     }
@@ -638,8 +660,9 @@ void mylite_sql_ast_node_set_window_frame_bound(
 }
 
 void mylite_sql_ast_node_set_window_null_treatment(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_window_null_treatment treatment)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_null_treatment treatment
+) {
     if (node == NULL) {
         return;
     }
@@ -647,9 +670,10 @@ void mylite_sql_ast_node_set_window_null_treatment(
     node->window_null_treatment = treatment;
 }
 
-void mylite_sql_ast_node_set_subquery_quantifier(struct mylite_sql_ast_node *node,
-                                                 enum mylite_sql_ast_subquery_quantifier quantifier)
-{
+void mylite_sql_ast_node_set_subquery_quantifier(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_subquery_quantifier quantifier
+) {
     if (node == NULL) {
         return;
     }
@@ -657,9 +681,10 @@ void mylite_sql_ast_node_set_subquery_quantifier(struct mylite_sql_ast_node *nod
     node->subquery_quantifier = quantifier;
 }
 
-void mylite_sql_ast_node_set_trim_spec(struct mylite_sql_ast_node *node,
-                                       enum mylite_sql_ast_trim_direction direction)
-{
+void mylite_sql_ast_node_set_trim_spec(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_trim_direction direction
+) {
     if (node == NULL) {
         return;
     }
@@ -668,9 +693,10 @@ void mylite_sql_ast_node_set_trim_spec(struct mylite_sql_ast_node *node,
     node->trim_direction = direction;
 }
 
-void mylite_sql_ast_node_set_interval_spec(struct mylite_sql_ast_node *node,
-                                           enum mylite_sql_ast_interval_unit unit)
-{
+void mylite_sql_ast_node_set_interval_spec(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_interval_unit unit
+) {
     if (node == NULL) {
         return;
     }
@@ -680,8 +706,9 @@ void mylite_sql_ast_node_set_interval_spec(struct mylite_sql_ast_node *node,
 }
 
 void mylite_sql_ast_node_set_placeholder_statement_kind(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_placeholder_statement_kind kind)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_placeholder_statement_kind kind
+) {
     if (node == NULL) {
         return;
     }
@@ -689,8 +716,7 @@ void mylite_sql_ast_node_set_placeholder_statement_kind(
     node->placeholder_statement_kind = kind;
 }
 
-void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -698,8 +724,7 @@ void mylite_sql_ast_node_set_show_tables_extended(struct mylite_sql_ast_node *no
     node->show_tables_extended = true;
 }
 
-void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -707,8 +732,7 @@ void mylite_sql_ast_node_set_show_tables_full(struct mylite_sql_ast_node *node)
     node->show_tables_full = true;
 }
 
-void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -716,8 +740,7 @@ void mylite_sql_ast_node_set_show_columns_extended(struct mylite_sql_ast_node *n
     node->show_columns_extended = true;
 }
 
-void mylite_sql_ast_node_set_show_columns_full(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_show_columns_full(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -725,8 +748,7 @@ void mylite_sql_ast_node_set_show_columns_full(struct mylite_sql_ast_node *node)
     node->show_columns_full = true;
 }
 
-void mylite_sql_ast_node_set_show_index_extended(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_show_index_extended(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -734,8 +756,7 @@ void mylite_sql_ast_node_set_show_index_extended(struct mylite_sql_ast_node *nod
     node->show_index_extended = true;
 }
 
-void mylite_sql_ast_node_set_show_create_schema_if_not_exists(struct mylite_sql_ast_node *node)
-{
+void mylite_sql_ast_node_set_show_create_schema_if_not_exists(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;
     }
@@ -743,9 +764,10 @@ void mylite_sql_ast_node_set_show_create_schema_if_not_exists(struct mylite_sql_
     node->show_create_schema_if_not_exists = true;
 }
 
-void mylite_sql_ast_node_set_show_diagnostics_kind(struct mylite_sql_ast_node *node,
-                                                   enum mylite_sql_ast_show_diagnostics_kind kind)
-{
+void mylite_sql_ast_node_set_show_diagnostics_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_show_diagnostics_kind kind
+) {
     if (node == NULL) {
         return;
     }
@@ -753,9 +775,10 @@ void mylite_sql_ast_node_set_show_diagnostics_kind(struct mylite_sql_ast_node *n
     node->show_diagnostics_kind = kind;
 }
 
-void mylite_sql_ast_node_set_show_variables_scope(struct mylite_sql_ast_node *node,
-                                                  enum mylite_sql_ast_show_variables_scope scope)
-{
+void mylite_sql_ast_node_set_show_variables_scope(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_show_variables_scope scope
+) {
     if (node == NULL) {
         return;
     }
@@ -763,9 +786,10 @@ void mylite_sql_ast_node_set_show_variables_scope(struct mylite_sql_ast_node *no
     node->show_variables_scope = scope;
 }
 
-void mylite_sql_ast_node_set_show_status_scope(struct mylite_sql_ast_node *node,
-                                               enum mylite_sql_ast_show_status_scope scope)
-{
+void mylite_sql_ast_node_set_show_status_scope(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_show_status_scope scope
+) {
     if (node == NULL) {
         return;
     }
@@ -774,8 +798,9 @@ void mylite_sql_ast_node_set_show_status_scope(struct mylite_sql_ast_node *node,
 }
 
 void mylite_sql_ast_node_set_system_variable_scope(
-    struct mylite_sql_ast_node *node, enum mylite_sql_ast_set_system_variable_scope scope)
-{
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_set_system_variable_scope scope
+) {
     if (node == NULL) {
         return;
     }
@@ -783,17 +808,16 @@ void mylite_sql_ast_node_set_system_variable_scope(
     node->set_system_variable_scope = scope;
 }
 
-const struct mylite_sql_ast_node *
-mylite_sql_ast_unwrap_parenthesized_expression(const struct mylite_sql_ast_node *expression)
-{
+const struct mylite_sql_ast_node *mylite_sql_ast_unwrap_parenthesized_expression(
+    const struct mylite_sql_ast_node *expression
+) {
     while (expression != NULL && expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
         expression = expression->first_child;
     }
     return expression;
 }
 
-size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
-{
+size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *child = NULL;
     size_t count = 0U;
 
@@ -809,8 +833,7 @@ size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node)
     return count;
 }
 
-const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
-{
+const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
     switch (kind) {
     case MYLITE_SQL_AST_SCRIPT:
         return "script";
@@ -1133,8 +1156,7 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind)
     return "unknown";
 }
 
-const char *mylite_sql_ast_schema_option_name(enum mylite_sql_ast_schema_option schema_option)
-{
+const char *mylite_sql_ast_schema_option_name(enum mylite_sql_ast_schema_option schema_option) {
     switch (schema_option) {
     case MYLITE_SQL_AST_SCHEMA_OPTION_NONE:
         return "none";
@@ -1151,8 +1173,7 @@ const char *mylite_sql_ast_schema_option_name(enum mylite_sql_ast_schema_option 
     return "unknown";
 }
 
-const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type column_type)
-{
+const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type column_type) {
     switch (column_type) {
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
         return "none";
@@ -1215,9 +1236,9 @@ const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type colu
     return "unknown";
 }
 
-const char *
-mylite_sql_ast_column_attribute_name(enum mylite_sql_ast_column_attribute column_attribute)
-{
+const char *mylite_sql_ast_column_attribute_name(
+    enum mylite_sql_ast_column_attribute column_attribute
+) {
     switch (column_attribute) {
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NONE:
         return "none";
@@ -1250,8 +1271,7 @@ mylite_sql_ast_column_attribute_name(enum mylite_sql_ast_column_attribute column
     return "unknown";
 }
 
-const char *mylite_sql_ast_column_format_name(enum mylite_sql_ast_column_format column_format)
-{
+const char *mylite_sql_ast_column_format_name(enum mylite_sql_ast_column_format column_format) {
     switch (column_format) {
     case MYLITE_SQL_AST_COLUMN_FORMAT_NONE:
         return "none";
@@ -1266,8 +1286,7 @@ const char *mylite_sql_ast_column_format_name(enum mylite_sql_ast_column_format 
     return "unknown";
 }
 
-const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storage column_storage)
-{
+const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storage column_storage) {
     switch (column_storage) {
     case MYLITE_SQL_AST_COLUMN_STORAGE_NONE:
         return "none";
@@ -1282,8 +1301,7 @@ const char *mylite_sql_ast_column_storage_name(enum mylite_sql_ast_column_storag
     return "unknown";
 }
 
-const char *mylite_sql_ast_key_part_order_name(enum mylite_sql_ast_key_part_order order)
-{
+const char *mylite_sql_ast_key_part_order_name(enum mylite_sql_ast_key_part_order order) {
     switch (order) {
     case MYLITE_SQL_AST_KEY_PART_ORDER_NONE:
         return "none";
@@ -1296,8 +1314,7 @@ const char *mylite_sql_ast_key_part_order_name(enum mylite_sql_ast_key_part_orde
     return "unknown";
 }
 
-const char *mylite_sql_ast_index_algorithm_name(enum mylite_sql_ast_index_algorithm algorithm)
-{
+const char *mylite_sql_ast_index_algorithm_name(enum mylite_sql_ast_index_algorithm algorithm) {
     switch (algorithm) {
     case MYLITE_SQL_AST_INDEX_ALGORITHM_NONE:
         return "none";
@@ -1310,8 +1327,7 @@ const char *mylite_sql_ast_index_algorithm_name(enum mylite_sql_ast_index_algori
     return "unknown";
 }
 
-const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option option)
-{
+const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option option) {
     switch (option) {
     case MYLITE_SQL_AST_INDEX_OPTION_NONE:
         return "none";
@@ -1336,8 +1352,7 @@ const char *mylite_sql_ast_index_option_name(enum mylite_sql_ast_index_option op
     return "unknown";
 }
 
-const char *mylite_sql_ast_index_class_name(enum mylite_sql_ast_index_class index_class)
-{
+const char *mylite_sql_ast_index_class_name(enum mylite_sql_ast_index_class index_class) {
     switch (index_class) {
     case MYLITE_SQL_AST_INDEX_CLASS_ORDINARY:
         return "ordinary";
@@ -1352,8 +1367,7 @@ const char *mylite_sql_ast_index_class_name(enum mylite_sql_ast_index_class inde
     return "unknown";
 }
 
-const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_option option)
-{
+const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_option option) {
     switch (option) {
     case MYLITE_SQL_AST_DDL_TABLE_OPTION_NONE:
         return "none";
@@ -1366,8 +1380,7 @@ const char *mylite_sql_ast_ddl_table_option_name(enum mylite_sql_ast_ddl_table_o
     return "unknown";
 }
 
-const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_table_action action)
-{
+const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_table_action action) {
     switch (action) {
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_NONE:
         return "none";
@@ -1417,8 +1430,8 @@ const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_tab
 }
 
 const char *mylite_sql_ast_alter_table_index_spelling_name(
-    enum mylite_sql_ast_alter_table_index_spelling spelling)
-{
+    enum mylite_sql_ast_alter_table_index_spelling spelling
+) {
     switch (spelling) {
     case MYLITE_SQL_AST_ALTER_TABLE_INDEX_SPELLING_NONE:
         return "none";
@@ -1432,8 +1445,8 @@ const char *mylite_sql_ast_alter_table_index_spelling_name(
 }
 
 const char *mylite_sql_ast_alter_table_constraint_spelling_name(
-    enum mylite_sql_ast_alter_table_constraint_spelling spelling)
-{
+    enum mylite_sql_ast_alter_table_constraint_spelling spelling
+) {
     switch (spelling) {
     case MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_NONE:
         return "none";
@@ -1446,9 +1459,9 @@ const char *mylite_sql_ast_alter_table_constraint_spelling_name(
     return "unknown";
 }
 
-const char *
-mylite_sql_ast_constraint_enforcement_name(enum mylite_sql_ast_constraint_enforcement enforcement)
-{
+const char *mylite_sql_ast_constraint_enforcement_name(
+    enum mylite_sql_ast_constraint_enforcement enforcement
+) {
     switch (enforcement) {
     case MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_DEFAULT:
         return "default";
@@ -1461,8 +1474,7 @@ mylite_sql_ast_constraint_enforcement_name(enum mylite_sql_ast_constraint_enforc
     return "unknown";
 }
 
-const char *mylite_sql_ast_reference_option_name(enum mylite_sql_ast_reference_option option)
-{
+const char *mylite_sql_ast_reference_option_name(enum mylite_sql_ast_reference_option option) {
     switch (option) {
     case MYLITE_SQL_AST_REFERENCE_OPTION_NONE:
         return "none";
@@ -1477,8 +1489,7 @@ const char *mylite_sql_ast_reference_option_name(enum mylite_sql_ast_reference_o
     return "unknown";
 }
 
-const char *mylite_sql_ast_reference_action_name(enum mylite_sql_ast_reference_action action)
-{
+const char *mylite_sql_ast_reference_action_name(enum mylite_sql_ast_reference_action action) {
     switch (action) {
     case MYLITE_SQL_AST_REFERENCE_ACTION_NONE:
         return "none";
@@ -1497,8 +1508,7 @@ const char *mylite_sql_ast_reference_action_name(enum mylite_sql_ast_reference_a
     return "unknown";
 }
 
-const char *mylite_sql_ast_reference_match_name(enum mylite_sql_ast_reference_match match)
-{
+const char *mylite_sql_ast_reference_match_name(enum mylite_sql_ast_reference_match match) {
     switch (match) {
     case MYLITE_SQL_AST_REFERENCE_MATCH_NONE:
         return "none";
@@ -1514,8 +1524,8 @@ const char *mylite_sql_ast_reference_match_name(enum mylite_sql_ast_reference_ma
 }
 
 const char *mylite_sql_ast_alter_table_column_position_name(
-    enum mylite_sql_ast_alter_table_column_position position)
-{
+    enum mylite_sql_ast_alter_table_column_position position
+) {
     switch (position) {
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_POSITION_NONE:
         return "none";
@@ -1528,8 +1538,7 @@ const char *mylite_sql_ast_alter_table_column_position_name(
     return "unknown";
 }
 
-const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kind aggregate_kind)
-{
+const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kind aggregate_kind) {
     switch (aggregate_kind) {
     case MYLITE_SQL_AST_AGGREGATE_NONE:
         return "none";
@@ -1550,9 +1559,9 @@ const char *mylite_sql_ast_aggregate_kind_name(enum mylite_sql_ast_aggregate_kin
     return "unknown";
 }
 
-const char *
-mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument aggregate_argument)
-{
+const char *mylite_sql_ast_aggregate_argument_name(
+    enum mylite_sql_ast_aggregate_argument aggregate_argument
+) {
     switch (aggregate_argument) {
     case MYLITE_SQL_AST_AGGREGATE_ARGUMENT_NONE:
         return "none";
@@ -1569,8 +1578,7 @@ mylite_sql_ast_aggregate_argument_name(enum mylite_sql_ast_aggregate_argument ag
     return "unknown";
 }
 
-const char *mylite_sql_ast_join_type_name(enum mylite_sql_ast_join_type join_type)
-{
+const char *mylite_sql_ast_join_type_name(enum mylite_sql_ast_join_type join_type) {
     switch (join_type) {
     case MYLITE_SQL_AST_JOIN_NONE:
         return "none";
@@ -1589,9 +1597,9 @@ const char *mylite_sql_ast_join_type_name(enum mylite_sql_ast_join_type join_typ
     return "unknown";
 }
 
-const char *
-mylite_sql_ast_join_condition_type_name(enum mylite_sql_ast_join_condition_type condition_type)
-{
+const char *mylite_sql_ast_join_condition_type_name(
+    enum mylite_sql_ast_join_condition_type condition_type
+) {
     switch (condition_type) {
     case MYLITE_SQL_AST_JOIN_CONDITION_NONE:
         return "none";
@@ -1604,9 +1612,9 @@ mylite_sql_ast_join_condition_type_name(enum mylite_sql_ast_join_condition_type 
     return "unknown";
 }
 
-const char *
-mylite_sql_ast_select_duplicate_mode_name(enum mylite_sql_ast_select_duplicate_mode mode)
-{
+const char *mylite_sql_ast_select_duplicate_mode_name(
+    enum mylite_sql_ast_select_duplicate_mode mode
+) {
     switch (mode) {
     case MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL:
         return "implicit_all";
@@ -1619,8 +1627,7 @@ mylite_sql_ast_select_duplicate_mode_name(enum mylite_sql_ast_select_duplicate_m
     return "unknown";
 }
 
-const char *mylite_sql_ast_set_duplicate_mode_name(enum mylite_sql_ast_set_duplicate_mode mode)
-{
+const char *mylite_sql_ast_set_duplicate_mode_name(enum mylite_sql_ast_set_duplicate_mode mode) {
     switch (mode) {
     case MYLITE_SQL_AST_SET_DUPLICATES_DISTINCT:
         return "distinct";
@@ -1631,8 +1638,7 @@ const char *mylite_sql_ast_set_duplicate_mode_name(enum mylite_sql_ast_set_dupli
     return "unknown";
 }
 
-const char *mylite_sql_ast_set_operation_name(enum mylite_sql_ast_set_operation operation)
-{
+const char *mylite_sql_ast_set_operation_name(enum mylite_sql_ast_set_operation operation) {
     switch (operation) {
     case MYLITE_SQL_AST_SET_OPERATION_UNION:
         return "union";
@@ -1645,9 +1651,9 @@ const char *mylite_sql_ast_set_operation_name(enum mylite_sql_ast_set_operation 
     return "unknown";
 }
 
-const char *
-mylite_sql_ast_subquery_quantifier_name(enum mylite_sql_ast_subquery_quantifier quantifier)
-{
+const char *mylite_sql_ast_subquery_quantifier_name(
+    enum mylite_sql_ast_subquery_quantifier quantifier
+) {
     switch (quantifier) {
     case MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_NONE:
         return "none";
@@ -1662,8 +1668,7 @@ mylite_sql_ast_subquery_quantifier_name(enum mylite_sql_ast_subquery_quantifier 
     return "unknown";
 }
 
-const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind kind)
-{
+const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind kind) {
     switch (kind) {
     case MYLITE_SQL_AST_LITERAL_NONE:
         return "none";
@@ -1692,8 +1697,7 @@ const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind ki
     return "unknown";
 }
 
-const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind)
-{
+const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_NONE:
         return "none";

@@ -10,26 +10,39 @@
 #include "mylite_statement_strcmp.h"
 
 static int evaluate_charset_collation_function(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_select_table *table,
     const struct mylite_expression_collation_callbacks *collation_callbacks,
-    struct mylite_expression_value *out_value);
-static int set_charset_collation_function_result(mylite_db *database,
-                                                 const struct mylite_sql_ast_node *name,
-                                                 const struct mylite_charset_collation_info *info,
-                                                 struct mylite_expression_value *out_value);
+    struct mylite_expression_value *out_value
+);
+
+static int set_charset_collation_function_result(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *name,
+    const struct mylite_charset_collation_info *info,
+    struct mylite_expression_value *out_value
+);
 
 int mylite_statement_evaluate_session_function(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_select_table *table,
     const struct mylite_expression_collation_callbacks *collation_callbacks,
-    struct mylite_expression_value *out_value)
-{
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *name = NULL;
-    int status = mylite_session_evaluate_core_function(stmt, function_call, expression_context,
-                                                       warnings, out_value);
+    int status = mylite_session_evaluate_core_function(
+        stmt,
+        function_call,
+        expression_context,
+        warnings,
+        out_value
+    );
 
     if (status != -1) {
         return status;
@@ -39,24 +52,39 @@ int mylite_statement_evaluate_session_function(
         return -1;
     }
     if (mylite_function_name_is_strcmp(name)) {
-        return mylite_statement_evaluate_strcmp_function(stmt, function_call, expression_context,
-                                                         warnings, table, collation_callbacks,
-                                                         out_value);
+        return mylite_statement_evaluate_strcmp_function(
+            stmt,
+            function_call,
+            expression_context,
+            warnings,
+            table,
+            collation_callbacks,
+            out_value
+        );
     }
     if (mylite_function_name_is_charset_collation_introspection(name)) {
-        return evaluate_charset_collation_function(stmt, function_call, expression_context,
-                                                   warnings, table, collation_callbacks, out_value);
+        return evaluate_charset_collation_function(
+            stmt,
+            function_call,
+            expression_context,
+            warnings,
+            table,
+            collation_callbacks,
+            out_value
+        );
     }
     return -1;
 }
 
 static int evaluate_charset_collation_function(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *function_call,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
-    struct mylite_expression_warnings *warnings, const struct mylite_select_table *table,
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_select_table *table,
     const struct mylite_expression_collation_callbacks *collation_callbacks,
-    struct mylite_expression_value *out_value)
-{
+    struct mylite_expression_value *out_value
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(function_call, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     const struct mylite_sql_ast_node *argument = mylite_ast_child_at(arguments, 0U);
@@ -73,8 +101,13 @@ static int evaluate_charset_collation_function(
         return -1;
     }
 
-    status = mylite_expression_infer_collation_info(stmt->database, &collation_context, argument,
-                                                    collation_callbacks, &info);
+    status = mylite_expression_infer_collation_info(
+        stmt->database,
+        &collation_context,
+        argument,
+        collation_callbacks,
+        &info
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -87,11 +120,12 @@ static int evaluate_charset_collation_function(
     return set_charset_collation_function_result(stmt->database, name, &info, out_value);
 }
 
-static int set_charset_collation_function_result(mylite_db *database,
-                                                 const struct mylite_sql_ast_node *name,
-                                                 const struct mylite_charset_collation_info *info,
-                                                 struct mylite_expression_value *out_value)
-{
+static int set_charset_collation_function_result(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *name,
+    const struct mylite_charset_collation_info *info,
+    struct mylite_expression_value *out_value
+) {
     if (mylite_function_name_is_charset(name)) {
         return mylite_session_set_text_function_value(database, info->character_set, out_value);
     }

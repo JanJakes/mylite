@@ -6,20 +6,34 @@
 #include <stdlib.h>
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int merge_sort_table_select_rows(struct mylite_table_select_row *rows,
-                                        struct mylite_table_select_row *scratch, size_t first,
-                                        size_t last, const struct mylite_select_plan *plan);
-static void merge_table_select_rows(struct mylite_table_select_row *rows,
-                                    struct mylite_table_select_row *scratch, size_t first,
-                                    size_t middle, size_t last,
-                                    const struct mylite_select_plan *plan);
-static int compare_table_select_rows(const struct mylite_table_select_row *left,
-                                     const struct mylite_table_select_row *right,
-                                     const struct mylite_select_plan *plan);
+static int merge_sort_table_select_rows(
+    struct mylite_table_select_row *rows,
+    struct mylite_table_select_row *scratch,
+    size_t first,
+    size_t last,
+    const struct mylite_select_plan *plan
+);
 
-int mylite_select_result_sort_rows(mylite_db *database, struct mylite_table_select_result *result,
-                                   const struct mylite_select_plan *plan)
-{
+static void merge_table_select_rows(
+    struct mylite_table_select_row *rows,
+    struct mylite_table_select_row *scratch,
+    size_t first,
+    size_t middle,
+    size_t last,
+    const struct mylite_select_plan *plan
+);
+
+static int compare_table_select_rows(
+    const struct mylite_table_select_row *left,
+    const struct mylite_table_select_row *right,
+    const struct mylite_select_plan *plan
+);
+
+int mylite_select_result_sort_rows(
+    mylite_db *database,
+    struct mylite_table_select_result *result,
+    const struct mylite_select_plan *plan
+) {
     size_t row_count = result->row_count;
     struct mylite_table_select_row *scratch = NULL;
     int status = MYLITE_OK;
@@ -39,10 +53,13 @@ int mylite_select_result_sort_rows(mylite_db *database, struct mylite_table_sele
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int merge_sort_table_select_rows(struct mylite_table_select_row *rows,
-                                        struct mylite_table_select_row *scratch, size_t first,
-                                        size_t last, const struct mylite_select_plan *plan)
-{
+static int merge_sort_table_select_rows(
+    struct mylite_table_select_row *rows,
+    struct mylite_table_select_row *scratch,
+    size_t first,
+    size_t last,
+    const struct mylite_select_plan *plan
+) {
     size_t count = last - first;
     size_t middle = first + (count / 2U);
 
@@ -61,11 +78,14 @@ static int merge_sort_table_select_rows(struct mylite_table_select_row *rows,
     return status;
 }
 
-static void merge_table_select_rows(struct mylite_table_select_row *rows,
-                                    struct mylite_table_select_row *scratch, size_t first,
-                                    size_t middle, size_t last,
-                                    const struct mylite_select_plan *plan)
-{
+static void merge_table_select_rows(
+    struct mylite_table_select_row *rows,
+    struct mylite_table_select_row *scratch,
+    size_t first,
+    size_t middle,
+    size_t last,
+    const struct mylite_select_plan *plan
+) {
     size_t left = first;
     size_t right = middle;
     size_t output = first;
@@ -88,10 +108,11 @@ static void merge_table_select_rows(struct mylite_table_select_row *rows,
     }
 }
 
-static int compare_table_select_rows(const struct mylite_table_select_row *left,
-                                     const struct mylite_table_select_row *right,
-                                     const struct mylite_select_plan *plan)
-{
+static int compare_table_select_rows(
+    const struct mylite_table_select_row *left,
+    const struct mylite_table_select_row *right,
+    const struct mylite_select_plan *plan
+) {
     for (size_t index = 0U; index < plan->order_key_count; ++index) {
         int comparison =
             mylite_select_compare_values(&left->order_values[index], &right->order_values[index]);

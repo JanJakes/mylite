@@ -3,18 +3,25 @@
 #include "mylite_select.h"
 #include "mylite_span.h"
 
-static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_node *node,
-                                                    struct mylite_sql_source_span name);
-static const struct mylite_sql_ast_node *
-qualified_identifier_first_part(const struct mylite_sql_ast_node *identifier);
-static const struct mylite_sql_ast_node *
-qualified_identifier_last_part(const struct mylite_sql_ast_node *identifier);
+static bool select_statement_has_visible_table_span(
+    const struct mylite_sql_ast_node *node,
+    struct mylite_sql_source_span name
+);
+
+static const struct mylite_sql_ast_node *qualified_identifier_first_part(
+    const struct mylite_sql_ast_node *identifier
+);
+
+static const struct mylite_sql_ast_node *qualified_identifier_last_part(
+    const struct mylite_sql_ast_node *identifier
+);
 
 // NOLINTNEXTLINE(misc-no-recursion)
 bool mylite_select_subquery_references_outer_plan(
-    const struct mylite_sql_ast_node *node, const struct mylite_select_plan *outer_plan,
-    const struct mylite_sql_ast_node *select_statement)
-{
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_select_plan *outer_plan,
+    const struct mylite_sql_ast_node *select_statement
+) {
     const struct mylite_sql_ast_node *first = NULL;
 
     if (node == NULL || outer_plan == NULL) {
@@ -47,7 +54,9 @@ bool mylite_select_subquery_has_unqualified_outer_column_reference( // NOLINT(mi
     }
     if (node->kind == MYLITE_SQL_AST_SELECT_ITEM) {
         return mylite_select_subquery_has_unqualified_outer_column_reference(
-            mylite_ast_child_at(node, 0U), outer_plan);
+            mylite_ast_child_at(node, 0U),
+            outer_plan
+        );
     }
     if (node->kind == MYLITE_SQL_AST_IDENTIFIER &&
         mylite_select_plan_has_column_span(outer_plan, node->span)) {
@@ -66,9 +75,10 @@ bool mylite_select_subquery_has_unqualified_outer_column_reference( // NOLINT(mi
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_node *node,
-                                                    struct mylite_sql_source_span name)
-{
+static bool select_statement_has_visible_table_span(
+    const struct mylite_sql_ast_node *node,
+    struct mylite_sql_source_span name
+) {
     if (node == NULL) {
         return false;
     }
@@ -92,9 +102,9 @@ static bool select_statement_has_visible_table_span(const struct mylite_sql_ast_
     return false;
 }
 
-static const struct mylite_sql_ast_node *
-qualified_identifier_first_part(const struct mylite_sql_ast_node *identifier)
-{
+static const struct mylite_sql_ast_node *qualified_identifier_first_part(
+    const struct mylite_sql_ast_node *identifier
+) {
     const struct mylite_sql_ast_node *current = identifier;
 
     while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
@@ -103,9 +113,9 @@ qualified_identifier_first_part(const struct mylite_sql_ast_node *identifier)
     return current != NULL && current->kind == MYLITE_SQL_AST_IDENTIFIER ? current : NULL;
 }
 
-static const struct mylite_sql_ast_node *
-qualified_identifier_last_part(const struct mylite_sql_ast_node *identifier)
-{
+static const struct mylite_sql_ast_node *qualified_identifier_last_part(
+    const struct mylite_sql_ast_node *identifier
+) {
     const struct mylite_sql_ast_node *current = identifier;
 
     while (current != NULL && current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {

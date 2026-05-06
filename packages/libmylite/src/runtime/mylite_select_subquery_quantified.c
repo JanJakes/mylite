@@ -7,34 +7,52 @@
 #include <stdint.h>
 
 static int evaluate_quantified_subquery_expression_inner(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value,
-    const struct mylite_select_subquery_eval_callbacks *callbacks);
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+);
+
 static int prepare_quantified_subquery_statement(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-    mylite_stmt **out_subquery_stmt, size_t *out_order_key_count, bool *out_restore_order_keys,
-    const struct mylite_select_subquery_eval_callbacks *callbacks);
-static int
-scan_quantified_subquery_statement(const struct mylite_quantified_subquery_scan_context *context,
-                                   struct mylite_quantified_subquery_scan_state *state);
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    mylite_stmt **out_subquery_stmt,
+    size_t *out_order_key_count,
+    bool *out_restore_order_keys,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+);
+
+static int scan_quantified_subquery_statement(
+    const struct mylite_quantified_subquery_scan_context *context,
+    struct mylite_quantified_subquery_scan_state *state
+);
+
 static int scan_quantified_subquery_statement_row(
     const struct mylite_quantified_subquery_scan_context *context,
-    struct mylite_quantified_subquery_scan_state *state);
-static int
-finish_quantified_subquery_expression(enum mylite_sql_ast_subquery_quantifier quantifier,
-                                      const struct mylite_quantified_subquery_scan_state *scan,
-                                      struct mylite_expression_value *out_value);
-static bool
-quantified_comparison_result(const struct mylite_quantified_subquery_scan_context *context,
-                             int comparison);
+    struct mylite_quantified_subquery_scan_state *state
+);
+
+static int finish_quantified_subquery_expression(
+    enum mylite_sql_ast_subquery_quantifier quantifier,
+    const struct mylite_quantified_subquery_scan_state *scan,
+    struct mylite_expression_value *out_value
+);
+
+static bool quantified_comparison_result(
+    const struct mylite_quantified_subquery_scan_context *context,
+    int comparison
+);
 
 int mylite_select_subquery_eval_quantified(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value,
-    const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     struct mylite_expression_warnings saved_warnings = {0};
     struct mylite_expression_warnings subquery_warnings = {0};
     int status = MYLITE_UNSUPPORTED;
@@ -47,8 +65,14 @@ int mylite_select_subquery_eval_quantified(
     saved_warnings = stmt->database->warnings;
     stmt->database->warnings = (struct mylite_expression_warnings){0};
 
-    status = evaluate_quantified_subquery_expression_inner(stmt, expression, left, warnings,
-                                                           out_value, callbacks);
+    status = evaluate_quantified_subquery_expression_inner(
+        stmt,
+        expression,
+        left,
+        warnings,
+        out_value,
+        callbacks
+    );
 
     subquery_warnings = stmt->database->warnings;
     stmt->database->warnings = saved_warnings;
@@ -62,11 +86,13 @@ int mylite_select_subquery_eval_quantified(
 }
 
 static int evaluate_quantified_subquery_expression_inner(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-    const struct mylite_expression_value *left, struct mylite_expression_warnings *warnings,
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *left,
+    struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value,
-    const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     mylite_stmt *subquery_stmt = NULL;
     size_t order_key_count = 0U;
     bool restore_order_keys = false;
@@ -79,7 +105,13 @@ static int evaluate_quantified_subquery_expression_inner(
     int status = MYLITE_OK;
 
     status = prepare_quantified_subquery_statement(
-        stmt, expression, &subquery_stmt, &order_key_count, &restore_order_keys, callbacks);
+        stmt,
+        expression,
+        &subquery_stmt,
+        &order_key_count,
+        &restore_order_keys,
+        callbacks
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -105,10 +137,13 @@ static int evaluate_quantified_subquery_expression_inner(
 }
 
 static int prepare_quantified_subquery_statement(
-    mylite_stmt *stmt, const struct mylite_sql_ast_node *expression,
-    mylite_stmt **out_subquery_stmt, size_t *out_order_key_count, bool *out_restore_order_keys,
-    const struct mylite_select_subquery_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *expression,
+    mylite_stmt **out_subquery_stmt,
+    size_t *out_order_key_count,
+    bool *out_restore_order_keys,
+    const struct mylite_select_subquery_eval_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_statement = mylite_ast_child_at(expression, 1U);
     mylite_stmt *subquery_stmt = NULL;
     int status = MYLITE_OK;
@@ -149,10 +184,10 @@ static int prepare_quantified_subquery_statement(
     return MYLITE_OK;
 }
 
-static int
-scan_quantified_subquery_statement(const struct mylite_quantified_subquery_scan_context *context,
-                                   struct mylite_quantified_subquery_scan_state *state)
-{
+static int scan_quantified_subquery_statement(
+    const struct mylite_quantified_subquery_scan_context *context,
+    struct mylite_quantified_subquery_scan_state *state
+) {
     for (;;) {
         int status = mylite_step(context->subquery_stmt);
 
@@ -172,8 +207,8 @@ scan_quantified_subquery_statement(const struct mylite_quantified_subquery_scan_
 
 static int scan_quantified_subquery_statement_row(
     const struct mylite_quantified_subquery_scan_context *context,
-    struct mylite_quantified_subquery_scan_state *state)
-{
+    struct mylite_quantified_subquery_scan_state *state
+) {
     struct mylite_expression_value right = {0};
     int comparison = 0;
     int status = MYLITE_OK;
@@ -188,8 +223,10 @@ static int scan_quantified_subquery_statement_row(
     if (status != MYLITE_OK) {
         mylite_expression_value_deinit(&right);
         if (status == MYLITE_NOMEM) {
-            (void)mylite_diagnostics_set_error_message(context->outer_stmt->database,
-                                                       "out of memory");
+            (void)mylite_diagnostics_set_error_message(
+                context->outer_stmt->database,
+                "out of memory"
+            );
         }
         return status;
     }
@@ -219,20 +256,23 @@ static int scan_quantified_subquery_statement_row(
     return MYLITE_OK;
 }
 
-static int
-finish_quantified_subquery_expression(enum mylite_sql_ast_subquery_quantifier quantifier,
-                                      const struct mylite_quantified_subquery_scan_state *scan,
-                                      struct mylite_expression_value *out_value)
-{
+static int finish_quantified_subquery_expression(
+    enum mylite_sql_ast_subquery_quantifier quantifier,
+    const struct mylite_quantified_subquery_scan_state *scan,
+    struct mylite_expression_value *out_value
+) {
     if (!scan->has_row) {
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_INT64,
-            .int64_value = quantifier == MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL ? 1 : 0};
+            .int64_value = quantifier == MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL ? 1 : 0
+        };
         return MYLITE_OK;
     }
     if (scan->decided) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_INT64,
-                                                      .int64_value = (int64_t)scan->result};
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = (int64_t)scan->result
+        };
         return MYLITE_OK;
     }
     if (scan->saw_unknown) {
@@ -241,14 +281,15 @@ finish_quantified_subquery_expression(enum mylite_sql_ast_subquery_quantifier qu
     }
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_INT64,
-        .int64_value = quantifier == MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL ? 1 : 0};
+        .int64_value = quantifier == MYLITE_SQL_AST_SUBQUERY_QUANTIFIER_ALL ? 1 : 0
+    };
     return MYLITE_OK;
 }
 
-static bool
-quantified_comparison_result(const struct mylite_quantified_subquery_scan_context *context,
-                             int comparison)
-{
+static bool quantified_comparison_result(
+    const struct mylite_quantified_subquery_scan_context *context,
+    int comparison
+) {
     switch (context->operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
         return comparison == 0;

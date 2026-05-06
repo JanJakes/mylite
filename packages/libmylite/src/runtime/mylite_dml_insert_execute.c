@@ -9,19 +9,28 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void record_insert_row_auto_increment_id(const struct mylite_insert_table *table,
-                                                const struct mylite_insert_bound_value *values,
-                                                struct mylite_insert_execution_state *state);
-static char *build_insert_update_physical_sql(mylite_db *database,
-                                              const struct mylite_insert_table *table);
-static bool insert_bound_values_equal(const struct mylite_insert_bound_value *left,
-                                      const struct mylite_insert_bound_value *right);
+static void record_insert_row_auto_increment_id(
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_execution_state *state
+);
 
-int mylite_dml_initialize_insert_ignore_warning_state(mylite_db *database,
-                                                      const struct mylite_insert_values_plan *plan,
-                                                      const struct mylite_insert_table *table,
-                                                      struct mylite_insert_execution_state *state)
-{
+static char *build_insert_update_physical_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table
+);
+
+static bool insert_bound_values_equal(
+    const struct mylite_insert_bound_value *left,
+    const struct mylite_insert_bound_value *right
+);
+
+int mylite_dml_initialize_insert_ignore_warning_state(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    struct mylite_insert_execution_state *state
+) {
     if (database == NULL || plan == NULL || table == NULL || state == NULL) {
         return MYLITE_MISUSE;
     }
@@ -40,8 +49,7 @@ int mylite_dml_initialize_insert_ignore_warning_state(mylite_db *database,
     return MYLITE_OK;
 }
 
-void mylite_dml_insert_execution_state_deinit(struct mylite_insert_execution_state *state)
-{
+void mylite_dml_insert_execution_state_deinit(struct mylite_insert_execution_state *state) {
     if (state == NULL) {
         return;
     }
@@ -52,9 +60,10 @@ void mylite_dml_insert_execution_state_deinit(struct mylite_insert_execution_sta
     state->warned_null_columns = NULL;
 }
 
-char *mylite_dml_build_insert_physical_sql(mylite_db *database,
-                                           const struct mylite_insert_table *table)
-{
+char *mylite_dml_build_insert_physical_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table
+) {
     sqlite3_str *sql = NULL;
 
     if (database == NULL || table == NULL) {
@@ -84,9 +93,10 @@ char *mylite_dml_build_insert_physical_sql(mylite_db *database,
     return sqlite3_str_finish(sql);
 }
 
-char *mylite_dml_build_replace_delete_sql(mylite_db *database,
-                                          const struct mylite_insert_table *table)
-{
+char *mylite_dml_build_replace_delete_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table
+) {
     sqlite3_str *sql = NULL;
 
     if (database == NULL || table == NULL) {
@@ -102,11 +112,13 @@ char *mylite_dml_build_replace_delete_sql(mylite_db *database,
     return sqlite3_str_finish(sql);
 }
 
-int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *insert,
-                                          const struct mylite_insert_table *table,
-                                          const struct mylite_insert_bound_value *values,
-                                          struct mylite_insert_execution_state *state)
-{
+int mylite_dml_write_insert_candidate_row(
+    mylite_db *database,
+    sqlite3_stmt *insert,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_execution_state *state
+) {
     int status = MYLITE_OK;
     int rc = SQLITE_OK;
 
@@ -131,13 +143,17 @@ int mylite_dml_write_insert_candidate_row(mylite_db *database, sqlite3_stmt *ins
     return status;
 }
 
-int mylite_dml_execute_insert_row(mylite_db *database, const struct mylite_insert_values_plan *plan,
-                                  const char *schema_name, sqlite3_stmt *insert,
-                                  const struct mylite_insert_table *table,
-                                  const struct mylite_insert_row_column_indexes *column_indexes,
-                                  struct mylite_insert_execution_state *state, size_t row_index,
-                                  const struct mylite_dml_expression_callbacks *callbacks)
-{
+int mylite_dml_execute_insert_row(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const char *schema_name,
+    sqlite3_stmt *insert,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_row_column_indexes *column_indexes,
+    struct mylite_insert_execution_state *state,
+    size_t row_index,
+    const struct mylite_dml_expression_callbacks *callbacks
+) {
     struct mylite_insert_bound_value *values = NULL;
     bool ignored = false;
     int status = MYLITE_OK;
@@ -157,12 +173,28 @@ int mylite_dml_execute_insert_row(mylite_db *database, const struct mylite_inser
         return MYLITE_NOMEM;
     }
 
-    status = mylite_dml_resolve_insert_row_values(database, plan, schema_name, table,
-                                                  column_indexes->insert_columns, plan->row_count,
-                                                  state, row_index, values, callbacks);
+    status = mylite_dml_resolve_insert_row_values(
+        database,
+        plan,
+        schema_name,
+        table,
+        column_indexes->insert_columns,
+        plan->row_count,
+        state,
+        row_index,
+        values,
+        callbacks
+    );
     if (status == MYLITE_OK) {
-        status = mylite_dml_validate_insert_unique_indexes(database, plan->table_name, plan->ignore,
-                                                           table, values, state, &ignored);
+        status = mylite_dml_validate_insert_unique_indexes(
+            database,
+            plan->table_name,
+            plan->ignore,
+            table,
+            values,
+            state,
+            &ignored
+        );
     }
     if (status == MYLITE_OK && !ignored) {
         status = mylite_dml_write_insert_candidate_row(database, insert, table, values, state);
@@ -172,16 +204,20 @@ int mylite_dml_execute_insert_row(mylite_db *database, const struct mylite_inser
     return status;
 }
 
-int mylite_dml_execute_insert_set_row(mylite_db *database, const char *schema_name,
-                                      const struct mylite_insert_values_plan *values_plan,
-                                      const struct mylite_insert_set_plan *set_plan,
-                                      sqlite3_stmt *insert, const struct mylite_insert_table *table,
-                                      const size_t *column_indexes, size_t column_index_count,
-                                      struct mylite_insert_execution_state *state,
-                                      struct mylite_insert_bound_value *values,
-                                      struct mylite_insert_set_row_state *row_state,
-                                      const struct mylite_dml_expression_callbacks *callbacks)
-{
+int mylite_dml_execute_insert_set_row(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_insert_values_plan *values_plan,
+    const struct mylite_insert_set_plan *set_plan,
+    sqlite3_stmt *insert,
+    const struct mylite_insert_table *table,
+    const size_t *column_indexes,
+    size_t column_index_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *values,
+    struct mylite_insert_set_row_state *row_state,
+    const struct mylite_dml_expression_callbacks *callbacks
+) {
     bool ignored = false;
     int status = MYLITE_OK;
 
@@ -190,12 +226,30 @@ int mylite_dml_execute_insert_set_row(mylite_db *database, const char *schema_na
         return MYLITE_MISUSE;
     }
 
-    status = mylite_dml_resolve_insert_set_row_values(database, schema_name, values_plan, set_plan,
-                                                      table, column_indexes, column_index_count, 1U,
-                                                      state, values, row_state, callbacks);
+    status = mylite_dml_resolve_insert_set_row_values(
+        database,
+        schema_name,
+        values_plan,
+        set_plan,
+        table,
+        column_indexes,
+        column_index_count,
+        1U,
+        state,
+        values,
+        row_state,
+        callbacks
+    );
     if (status == MYLITE_OK) {
         status = mylite_dml_validate_insert_unique_indexes(
-            database, values_plan->table_name, values_plan->ignore, table, values, state, &ignored);
+            database,
+            values_plan->table_name,
+            values_plan->ignore,
+            table,
+            values,
+            state,
+            &ignored
+        );
     }
     if (status != MYLITE_OK || ignored) {
         return status;
@@ -204,12 +258,13 @@ int mylite_dml_execute_insert_set_row(mylite_db *database, const char *schema_na
     return mylite_dml_write_insert_candidate_row(database, insert, table, values, state);
 }
 
-int mylite_dml_write_insert_update_candidate(mylite_db *database,
-                                             const struct mylite_insert_table *table,
-                                             sqlite3_int64 rowid,
-                                             const struct mylite_insert_bound_value *values,
-                                             struct mylite_insert_execution_state *state)
-{
+int mylite_dml_write_insert_update_candidate(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    sqlite3_int64 rowid,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_execution_state *state
+) {
     sqlite3_stmt *update = NULL;
     char *sql = NULL;
     int rc = SQLITE_OK;
@@ -251,10 +306,11 @@ int mylite_dml_write_insert_update_candidate(mylite_db *database,
     return status;
 }
 
-bool mylite_dml_insert_update_row_changed(const struct mylite_insert_bound_value *stored,
-                                          const struct mylite_insert_bound_value *candidate,
-                                          size_t value_count)
-{
+bool mylite_dml_insert_update_row_changed(
+    const struct mylite_insert_bound_value *stored,
+    const struct mylite_insert_bound_value *candidate,
+    size_t value_count
+) {
     for (size_t index = 0U; index < value_count; ++index) {
         if (!insert_bound_values_equal(&stored[index], &candidate[index])) {
             return true;
@@ -263,10 +319,11 @@ bool mylite_dml_insert_update_row_changed(const struct mylite_insert_bound_value
     return false;
 }
 
-int mylite_dml_advance_insert_row_auto_increment(const struct mylite_insert_table *table,
-                                                 const struct mylite_insert_bound_value *values,
-                                                 struct mylite_insert_execution_state *state)
-{
+int mylite_dml_advance_insert_row_auto_increment(
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_execution_state *state
+) {
     const struct mylite_insert_bound_value *auto_value = NULL;
 
     if (table == NULL || values == NULL || state == NULL) {
@@ -284,9 +341,10 @@ int mylite_dml_advance_insert_row_auto_increment(const struct mylite_insert_tabl
     return MYLITE_OK;
 }
 
-static char *build_insert_update_physical_sql(mylite_db *database,
-                                              const struct mylite_insert_table *table)
-{
+static char *build_insert_update_physical_sql(
+    mylite_db *database,
+    const struct mylite_insert_table *table
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {
@@ -304,9 +362,10 @@ static char *build_insert_update_physical_sql(mylite_db *database,
     return sqlite3_str_finish(sql);
 }
 
-static bool insert_bound_values_equal(const struct mylite_insert_bound_value *left,
-                                      const struct mylite_insert_bound_value *right)
-{
+static bool insert_bound_values_equal(
+    const struct mylite_insert_bound_value *left,
+    const struct mylite_insert_bound_value *right
+) {
     if (left->kind != right->kind) {
         return false;
     }
@@ -326,10 +385,11 @@ static bool insert_bound_values_equal(const struct mylite_insert_bound_value *le
     return false;
 }
 
-static void record_insert_row_auto_increment_id(const struct mylite_insert_table *table,
-                                                const struct mylite_insert_bound_value *values,
-                                                struct mylite_insert_execution_state *state)
-{
+static void record_insert_row_auto_increment_id(
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    struct mylite_insert_execution_state *state
+) {
     const struct mylite_insert_bound_value *auto_value = NULL;
 
     if (!table->has_auto_increment || state->generated_insert_id) {

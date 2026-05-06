@@ -2,19 +2,27 @@
 
 #include "mylite_metadata_constants.h"
 
-static bool
-union_field_descriptor_has_text_result(const struct mylite_field_descriptor *descriptor);
-static bool
-union_field_descriptor_uses_binary_text(const struct mylite_field_descriptor *descriptor);
-static bool
-union_field_descriptor_has_decimal_result(const struct mylite_field_descriptor *descriptor);
-static bool
-union_field_descriptor_has_double_result(const struct mylite_field_descriptor *descriptor);
+static bool union_field_descriptor_has_text_result(
+    const struct mylite_field_descriptor *descriptor
+);
 
-void mylite_expression_descriptor_merge_union_operand(const mylite_db *database,
-                                                      struct mylite_field_descriptor *descriptor,
-                                                      const struct mylite_field_descriptor *operand)
-{
+static bool union_field_descriptor_uses_binary_text(
+    const struct mylite_field_descriptor *descriptor
+);
+
+static bool union_field_descriptor_has_decimal_result(
+    const struct mylite_field_descriptor *descriptor
+);
+
+static bool union_field_descriptor_has_double_result(
+    const struct mylite_field_descriptor *descriptor
+);
+
+void mylite_expression_descriptor_merge_union_operand(
+    const mylite_db *database,
+    struct mylite_field_descriptor *descriptor,
+    const struct mylite_field_descriptor *operand
+) {
     bool nullable = false;
 
     if (descriptor == NULL || operand == NULL) {
@@ -57,34 +65,39 @@ void mylite_expression_descriptor_merge_union_operand(const mylite_db *database,
             .charset_id = mylite_expression_descriptor_connection_charset_id(database),
             .nullable = nullable,
         };
-    } else if (union_field_descriptor_has_double_result(descriptor) ||
-               union_field_descriptor_has_double_result(operand)) {
+    } else if (
+        union_field_descriptor_has_double_result(descriptor) ||
+        union_field_descriptor_has_double_result(operand)
+    ) {
         *descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_DOUBLE,
             .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
             .length = mylite_expression_descriptor_max_u64(
                 mylite_expression_descriptor_max_u64(descriptor->length, operand->length),
-                mylite_mysql_double_display_length),
+                mylite_mysql_double_display_length
+            ),
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = mylite_mysql_binary_charset_id,
             .nullable = nullable,
         };
-    } else if (union_field_descriptor_has_decimal_result(descriptor) ||
-               union_field_descriptor_has_decimal_result(operand)) {
+    } else if (
+        union_field_descriptor_has_decimal_result(descriptor) ||
+        union_field_descriptor_has_decimal_result(operand)
+    ) {
         *descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_NEWDECIMAL,
             .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
             .length = mylite_expression_descriptor_max_u64(descriptor->length, operand->length),
-            .decimals = (unsigned int)mylite_expression_descriptor_max_u64(descriptor->decimals,
-                                                                           operand->decimals),
+            .decimals = (unsigned int)
+                mylite_expression_descriptor_max_u64(descriptor->decimals, operand->decimals),
             .charset_id = mylite_mysql_binary_charset_id,
             .nullable = nullable,
         };
     } else {
         descriptor->length =
             mylite_expression_descriptor_max_u64(descriptor->length, operand->length);
-        descriptor->decimals = (unsigned int)mylite_expression_descriptor_max_u64(
-            descriptor->decimals, operand->decimals);
+        descriptor->decimals = (unsigned int)
+            mylite_expression_descriptor_max_u64(descriptor->decimals, operand->decimals);
         descriptor->flags |= operand->flags & MYLITE_FIELD_FLAG_UNSIGNED;
         descriptor->flags |= MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM;
         descriptor->charset_id = mylite_mysql_binary_charset_id;
@@ -93,8 +106,9 @@ void mylite_expression_descriptor_merge_union_operand(const mylite_db *database,
     mylite_field_descriptor_set_nullable(descriptor, nullable);
 }
 
-static bool union_field_descriptor_has_text_result(const struct mylite_field_descriptor *descriptor)
-{
+static bool union_field_descriptor_has_text_result(
+    const struct mylite_field_descriptor *descriptor
+) {
     if (descriptor == NULL) {
         return false;
     }
@@ -109,9 +123,9 @@ static bool union_field_descriptor_has_text_result(const struct mylite_field_des
     }
 }
 
-static bool
-union_field_descriptor_uses_binary_text(const struct mylite_field_descriptor *descriptor)
-{
+static bool union_field_descriptor_uses_binary_text(
+    const struct mylite_field_descriptor *descriptor
+) {
     if (descriptor == NULL) {
         return false;
     }
@@ -128,14 +142,14 @@ union_field_descriptor_uses_binary_text(const struct mylite_field_descriptor *de
     }
 }
 
-static bool
-union_field_descriptor_has_decimal_result(const struct mylite_field_descriptor *descriptor)
-{
+static bool union_field_descriptor_has_decimal_result(
+    const struct mylite_field_descriptor *descriptor
+) {
     return mylite_expression_descriptor_has_decimal_result(descriptor);
 }
 
-static bool
-union_field_descriptor_has_double_result(const struct mylite_field_descriptor *descriptor)
-{
+static bool union_field_descriptor_has_double_result(
+    const struct mylite_field_descriptor *descriptor
+) {
     return mylite_expression_descriptor_has_double_result(descriptor);
 }

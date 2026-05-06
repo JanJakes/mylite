@@ -22,50 +22,85 @@
 
 #include <stdbool.h>
 
-static int validate_select_duplicate_mode(mylite_db *database,
-                                          const struct mylite_sql_ast_node *statement);
-static bool select_statement_uses_windowing(const struct mylite_sql_ast_node *node);
-static int prepare_table_select_statement(mylite_db *database,
-                                          const struct mylite_sql_ast_node *statement,
-                                          const char *sql, size_t sql_length,
-                                          mylite_stmt **out_stmt,
-                                          const struct mylite_select_prepare_callbacks *callbacks);
-static int
-prepare_table_select_sqlite_statement(mylite_db *database, const struct mylite_select_plan *plan,
-                                      mylite_stmt **out_stmt,
-                                      const struct mylite_select_prepare_callbacks *callbacks);
-static int prepare_scalar_select_statement(mylite_db *database,
-                                           const struct mylite_sql_ast_node *statement,
-                                           mylite_stmt **out_stmt,
-                                           const struct mylite_select_prepare_callbacks *callbacks);
-static int bind_table_select_clauses(mylite_db *database,
-                                     const struct mylite_select_clause_nodes *clauses,
-                                     struct mylite_select_plan *plan,
-                                     const struct mylite_select_prepare_callbacks *callbacks);
-static int bind_select_where_clause(mylite_db *database,
-                                    const struct mylite_sql_ast_node *where_clause,
-                                    const struct mylite_select_plan *plan,
-                                    const struct mylite_select_prepare_callbacks *callbacks);
-static int bind_select_join_predicates(mylite_db *database, const struct mylite_select_plan *plan,
-                                       const struct mylite_select_prepare_callbacks *callbacks);
-static int bind_select_group_by_clause(mylite_db *database,
-                                       const struct mylite_sql_ast_node *group_by_clause,
-                                       struct mylite_select_plan *plan,
-                                       const struct mylite_select_prepare_callbacks *callbacks);
-static int bind_select_having_clause(mylite_db *database,
-                                     const struct mylite_sql_ast_node *having_clause,
-                                     struct mylite_select_plan *plan,
-                                     const struct mylite_select_prepare_callbacks *callbacks);
-static int bind_select_order_by_clause(mylite_db *database,
-                                       const struct mylite_sql_ast_node *order_by_clause,
-                                       struct mylite_select_plan *plan,
-                                       const struct mylite_select_prepare_callbacks *callbacks);
+static int validate_select_duplicate_mode(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
 
-int mylite_select_prepare_statement(mylite_db *database,
-                                    const struct mylite_sql_ast_node *statement, const char *sql,
-                                    size_t sql_length, mylite_stmt **out_stmt,
-                                    const struct mylite_select_prepare_callbacks *callbacks)
-{
+static bool select_statement_uses_windowing(const struct mylite_sql_ast_node *node);
+
+static int prepare_table_select_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+
+static int prepare_table_select_sqlite_statement(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+
+static int prepare_scalar_select_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+
+static int bind_table_select_clauses(
+    mylite_db *database,
+    const struct mylite_select_clause_nodes *clauses,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+
+static int bind_select_where_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+
+static int bind_select_join_predicates(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+
+static int bind_select_group_by_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *group_by_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+
+static int bind_select_having_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *having_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+
+static int bind_select_order_by_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+);
+
+int mylite_select_prepare_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
     int status = validate_select_duplicate_mode(database, statement);
 
     if (status != MYLITE_OK) {
@@ -90,23 +125,32 @@ int mylite_select_prepare_statement(mylite_db *database,
     return MYLITE_UNSUPPORTED;
 }
 
-int mylite_select_prepare_subquery(mylite_db *database, const struct mylite_sql_ast_node *statement,
-                                   mylite_stmt **out_stmt,
-                                   const struct mylite_select_prepare_callbacks *callbacks)
-{
+int mylite_select_prepare_subquery(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
     const char *sql = statement == NULL ? NULL : statement->span.text;
     size_t sql_length = statement == NULL ? 0U : statement->span.length;
 
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
         return MYLITE_UNSUPPORTED;
     }
-    return mylite_select_prepare_statement(database, statement, sql, sql_length, out_stmt,
-                                           callbacks);
+    return mylite_select_prepare_statement(
+        database,
+        statement,
+        sql,
+        sql_length,
+        out_stmt,
+        callbacks
+    );
 }
 
-static int validate_select_duplicate_mode(mylite_db *database,
-                                          const struct mylite_sql_ast_node *statement)
-{
+static int validate_select_duplicate_mode(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
         return MYLITE_OK;
     }
@@ -117,8 +161,7 @@ static int validate_select_duplicate_mode(mylite_db *database,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static bool select_statement_uses_windowing(const struct mylite_sql_ast_node *node)
-{
+static bool select_statement_uses_windowing(const struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return false;
     }
@@ -136,12 +179,14 @@ static bool select_statement_uses_windowing(const struct mylite_sql_ast_node *no
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int prepare_table_select_statement(mylite_db *database,
-                                          const struct mylite_sql_ast_node *statement,
-                                          const char *sql, size_t sql_length,
-                                          mylite_stmt **out_stmt,
-                                          const struct mylite_select_prepare_callbacks *callbacks)
-{
+static int prepare_table_select_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *where_clause =
@@ -177,8 +222,13 @@ static int prepare_table_select_statement(mylite_db *database,
         status = bind_select_join_predicates(database, &plan, callbacks);
     }
     if (status == MYLITE_OK) {
-        status = mylite_select_build_outputs(database, select_list, true, &plan,
-                                             callbacks->projection_callbacks);
+        status = mylite_select_build_outputs(
+            database,
+            select_list,
+            true,
+            &plan,
+            callbacks->projection_callbacks
+        );
     }
     if (status == MYLITE_OK) {
         custom_runtime = mylite_select_plan_requires_custom_runtime(&plan, &clauses);
@@ -187,9 +237,15 @@ static int prepare_table_select_statement(mylite_db *database,
         status = bind_table_select_clauses(database, &clauses, &plan, callbacks);
     }
     if (status == MYLITE_OK && custom_runtime) {
-        status = mylite_select_prepare_custom_table_statement(database, where_clause, sql,
-                                                              sql_length, &plan, out_stmt,
-                                                              callbacks->statement_callbacks);
+        status = mylite_select_prepare_custom_table_statement(
+            database,
+            where_clause,
+            sql,
+            sql_length,
+            &plan,
+            out_stmt,
+            callbacks->statement_callbacks
+        );
     }
     if (status == MYLITE_OK && !custom_runtime) {
         status = prepare_table_select_sqlite_statement(database, &plan, out_stmt, callbacks);
@@ -200,11 +256,12 @@ static int prepare_table_select_statement(mylite_db *database,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int
-prepare_table_select_sqlite_statement(mylite_db *database, const struct mylite_select_plan *plan,
-                                      mylite_stmt **out_stmt,
-                                      const struct mylite_select_prepare_callbacks *callbacks)
-{
+static int prepare_table_select_sqlite_statement(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
     char *sqlite_sql = mylite_select_build_physical_sql(database, plan);
     int status = MYLITE_OK;
 
@@ -227,11 +284,12 @@ prepare_table_select_sqlite_statement(mylite_db *database, const struct mylite_s
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int prepare_scalar_select_statement(mylite_db *database,
-                                           const struct mylite_sql_ast_node *statement,
-                                           mylite_stmt **out_stmt,
-                                           const struct mylite_select_prepare_callbacks *callbacks)
-{
+static int prepare_scalar_select_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
     const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = mylite_ast_child_at(statement, 1U);
 
@@ -249,16 +307,22 @@ static int prepare_scalar_select_statement(mylite_db *database,
             return MYLITE_UNSUPPORTED;
         }
     }
-    return mylite_statement_prepare_custom(database, MYLITE_STMT_SCALAR_SELECT, statement,
-                                           callbacks->scalar_callbacks, out_stmt);
+    return mylite_statement_prepare_custom(
+        database,
+        MYLITE_STMT_SCALAR_SELECT,
+        statement,
+        callbacks->scalar_callbacks,
+        out_stmt
+    );
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int bind_table_select_clauses(mylite_db *database,
-                                     const struct mylite_select_clause_nodes *clauses,
-                                     struct mylite_select_plan *plan,
-                                     const struct mylite_select_prepare_callbacks *callbacks)
-{
+static int bind_table_select_clauses(
+    mylite_db *database,
+    const struct mylite_select_clause_nodes *clauses,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
     int status = MYLITE_OK;
 
     if (clauses->where != NULL) {
@@ -283,48 +347,70 @@ static int bind_table_select_clauses(mylite_db *database,
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_where_clause(mylite_db *database,
-                                    const struct mylite_sql_ast_node *where_clause,
-                                    const struct mylite_select_plan *plan,
-                                    const struct mylite_select_prepare_callbacks *callbacks)
-{
-    return mylite_select_bind_where_clause(database, where_clause, plan,
-                                           callbacks->predicate_callbacks);
+static int bind_select_where_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
+    return mylite_select_bind_where_clause(
+        database,
+        where_clause,
+        plan,
+        callbacks->predicate_callbacks
+    );
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_join_predicates(mylite_db *database, const struct mylite_select_plan *plan,
-                                       const struct mylite_select_prepare_callbacks *callbacks)
-{
+static int bind_select_join_predicates(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
     return mylite_select_bind_join_predicates(database, plan, callbacks->predicate_callbacks);
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_group_by_clause(mylite_db *database,
-                                       const struct mylite_sql_ast_node *group_by_clause,
-                                       struct mylite_select_plan *plan,
-                                       const struct mylite_select_prepare_callbacks *callbacks)
-{
-    return mylite_select_bind_group_by_clause(database, group_by_clause, plan,
-                                              callbacks->group_callbacks);
+static int bind_select_group_by_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *group_by_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
+    return mylite_select_bind_group_by_clause(
+        database,
+        group_by_clause,
+        plan,
+        callbacks->group_callbacks
+    );
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_having_clause(mylite_db *database,
-                                     const struct mylite_sql_ast_node *having_clause,
-                                     struct mylite_select_plan *plan,
-                                     const struct mylite_select_prepare_callbacks *callbacks)
-{
-    return mylite_select_bind_having_clause(database, having_clause, plan,
-                                            callbacks->group_callbacks);
+static int bind_select_having_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *having_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
+    return mylite_select_bind_having_clause(
+        database,
+        having_clause,
+        plan,
+        callbacks->group_callbacks
+    );
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static int bind_select_order_by_clause(mylite_db *database,
-                                       const struct mylite_sql_ast_node *order_by_clause,
-                                       struct mylite_select_plan *plan,
-                                       const struct mylite_select_prepare_callbacks *callbacks)
-{
-    return mylite_select_bind_order_by_clause(database, order_by_clause, plan,
-                                              callbacks->order_callbacks);
+static int bind_select_order_by_clause(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *order_by_clause,
+    struct mylite_select_plan *plan,
+    const struct mylite_select_prepare_callbacks *callbacks
+) {
+    return mylite_select_bind_order_by_clause(
+        database,
+        order_by_clause,
+        plan,
+        callbacks->order_callbacks
+    );
 }

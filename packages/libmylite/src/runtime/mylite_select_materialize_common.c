@@ -7,14 +7,18 @@
 #include "mylite_select_rowset.h"
 #include "mylite_select_rowset_distinct.h"
 
-static int
-append_finalized_table_select_group(mylite_stmt *stmt, struct mylite_table_select_group *group,
-                                    const struct mylite_select_eval_callbacks *callbacks);
+static int append_finalized_table_select_group(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group *group,
+    const struct mylite_select_eval_callbacks *callbacks
+);
 
 int mylite_select_materialize_append_finalized_groups(
-    mylite_stmt *stmt, struct mylite_table_select_group *groups, size_t group_count,
-    const struct mylite_select_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    struct mylite_table_select_group *groups,
+    size_t group_count,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     for (size_t index = 0U; index < group_count; ++index) {
         int status = append_finalized_table_select_group(stmt, &groups[index], callbacks);
 
@@ -26,9 +30,11 @@ int mylite_select_materialize_append_finalized_groups(
 }
 
 int mylite_select_materialize_check_distinct_duplicate(
-    mylite_stmt *stmt, struct mylite_table_select_row *row, bool *out_duplicate,
-    const struct mylite_select_eval_callbacks *callbacks)
-{
+    mylite_stmt *stmt,
+    struct mylite_table_select_row *row,
+    bool *out_duplicate,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     int status = mylite_select_eval_materialize_output_values(stmt, row, callbacks);
 
     *out_duplicate = false;
@@ -36,14 +42,19 @@ int mylite_select_materialize_check_distinct_duplicate(
         return status;
     }
     *out_duplicate = mylite_select_result_distinct_row_exists(
-        &stmt->select_result, &stmt->select_plan, &stmt->result_metadata, row);
+        &stmt->select_result,
+        &stmt->select_plan,
+        &stmt->result_metadata,
+        row
+    );
     return MYLITE_OK;
 }
 
-static int append_finalized_table_select_group(mylite_stmt *stmt,
-                                               struct mylite_table_select_group *group,
-                                               const struct mylite_select_eval_callbacks *callbacks)
-{
+static int append_finalized_table_select_group(
+    mylite_stmt *stmt,
+    struct mylite_table_select_group *group,
+    const struct mylite_select_eval_callbacks *callbacks
+) {
     struct mylite_table_select_row row = {0};
     bool having_matches = true;
     bool duplicate = false;

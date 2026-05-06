@@ -6,18 +6,29 @@
 #include "mylite_transactions.h"
 #include "sqlite3.h"
 
-static char *build_delete_physical_sql(mylite_db *database,
-                                       const struct mylite_select_table *table);
-static int execute_delete_rowset(mylite_db *database, const struct mylite_select_table *table,
-                                 const struct mylite_update_rowset *rowset, int64_t *affected_rows);
-static size_t multi_delete_row_count(const struct mylite_update_rowset *rowsets,
-                                     size_t rowset_count);
+static char *build_delete_physical_sql(
+    mylite_db *database,
+    const struct mylite_select_table *table
+);
 
-int mylite_dml_execute_delete_rows_transaction(mylite_db *database,
-                                               const struct mylite_select_table *table,
-                                               const struct mylite_update_rowset *rowset,
-                                               int64_t *out_affected_rows)
-{
+static int execute_delete_rowset(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_rowset *rowset,
+    int64_t *affected_rows
+);
+
+static size_t multi_delete_row_count(
+    const struct mylite_update_rowset *rowsets,
+    size_t rowset_count
+);
+
+int mylite_dml_execute_delete_rows_transaction(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_rowset *rowset,
+    int64_t *out_affected_rows
+) {
     sqlite3_stmt *delete_stmt = NULL;
     char *delete_sql = NULL;
     struct mylite_statement_atomicity atomicity = {0};
@@ -46,8 +57,14 @@ int mylite_dml_execute_delete_rows_transaction(mylite_db *database,
         return MYLITE_NOMEM;
     }
 
-    rc = sqlite3_prepare_v3(database->sqlite, delete_sql, -1, SQLITE_PREPARE_PERSISTENT,
-                            &delete_stmt, NULL);
+    rc = sqlite3_prepare_v3(
+        database->sqlite,
+        delete_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &delete_stmt,
+        NULL
+    );
     sqlite3_free(delete_sql);
     if (rc != SQLITE_OK) {
         mylite_transaction_rollback_statement_atomicity(database, &atomicity);
@@ -82,9 +99,13 @@ int mylite_dml_execute_delete_rows_transaction(mylite_db *database,
 }
 
 int mylite_dml_execute_multi_delete_rows_transaction(
-    mylite_db *database, const struct mylite_select_plan *plan, const size_t *target_table_indexes,
-    const struct mylite_update_rowset *rowsets, size_t target_count, int64_t *out_affected_rows)
-{
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const size_t *target_table_indexes,
+    const struct mylite_update_rowset *rowsets,
+    size_t target_count,
+    int64_t *out_affected_rows
+) {
     struct mylite_statement_atomicity atomicity = {0};
     int64_t affected_rows = 0;
     int status = MYLITE_OK;
@@ -127,9 +148,12 @@ int mylite_dml_execute_multi_delete_rows_transaction(
     return status;
 }
 
-static int execute_delete_rowset(mylite_db *database, const struct mylite_select_table *table,
-                                 const struct mylite_update_rowset *rowset, int64_t *affected_rows)
-{
+static int execute_delete_rowset(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_update_rowset *rowset,
+    int64_t *affected_rows
+) {
     sqlite3_stmt *delete_stmt = NULL;
     char *delete_sql = build_delete_physical_sql(database, table);
     int rc = SQLITE_OK;
@@ -140,8 +164,14 @@ static int execute_delete_rowset(mylite_db *database, const struct mylite_select
         return MYLITE_NOMEM;
     }
 
-    rc = sqlite3_prepare_v3(database->sqlite, delete_sql, -1, SQLITE_PREPARE_PERSISTENT,
-                            &delete_stmt, NULL);
+    rc = sqlite3_prepare_v3(
+        database->sqlite,
+        delete_sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &delete_stmt,
+        NULL
+    );
     sqlite3_free(delete_sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
@@ -164,9 +194,10 @@ static int execute_delete_rowset(mylite_db *database, const struct mylite_select
     return status;
 }
 
-static size_t multi_delete_row_count(const struct mylite_update_rowset *rowsets,
-                                     size_t rowset_count)
-{
+static size_t multi_delete_row_count(
+    const struct mylite_update_rowset *rowsets,
+    size_t rowset_count
+) {
     size_t row_count = 0U;
 
     for (size_t index = 0U; index < rowset_count; ++index) {
@@ -175,8 +206,10 @@ static size_t multi_delete_row_count(const struct mylite_update_rowset *rowsets,
     return row_count;
 }
 
-static char *build_delete_physical_sql(mylite_db *database, const struct mylite_select_table *table)
-{
+static char *build_delete_physical_sql(
+    mylite_db *database,
+    const struct mylite_select_table *table
+) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
 
     if (sql == NULL) {

@@ -5,7 +5,9 @@
 
 #include "mylite_select_types.h"
 
-int mylite_select_validate_distinct_order(mylite_db *database,
-                                          const struct mylite_select_plan *plan);
+int mylite_select_validate_distinct_order(
+    mylite_db *database,
+    const struct mylite_select_plan *plan
+);
 
 #endif

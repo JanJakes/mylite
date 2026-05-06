@@ -12,19 +12,31 @@
 #include <string.h>
 
 static int set_savepoint_does_not_exist_error(mylite_db *database, const char *name);
+
 static int reserve_user_savepoint_capacity(mylite_db *database, size_t required_capacity);
+
 static char *make_sqlite_savepoint_name(mylite_db *database);
-static int exec_sqlite_savepoint_command(mylite_db *database, const char *command,
-                                         const char *sqlite_name);
+
+static int exec_sqlite_savepoint_command(
+    mylite_db *database,
+    const char *command,
+    const char *sqlite_name
+);
+
 static void remove_user_savepoint_at(mylite_db *database, size_t index);
+
 static void remove_user_savepoints_from(mylite_db *database, size_t first);
+
 static int append_user_savepoint(mylite_db *database, struct mylite_savepoint savepoint);
+
 static void savepoint_deinit(struct mylite_savepoint *savepoint);
+
 static char *copy_normalized_savepoint_name(const char *name);
 
-int mylite_transaction_copy_savepoint_statement(const struct mylite_sql_ast_node *statement,
-                                                mylite_stmt *stmt)
-{
+int mylite_transaction_copy_savepoint_statement(
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt *stmt
+) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(statement, 0U);
 
     if (name == NULL || name->kind != MYLITE_SQL_AST_IDENTIFIER) {
@@ -39,8 +51,7 @@ int mylite_transaction_copy_savepoint_statement(const struct mylite_sql_ast_node
     return stmt->savepoint.normalized_name == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
-void mylite_transaction_savepoint_plan_deinit(struct mylite_savepoint_plan *plan)
-{
+void mylite_transaction_savepoint_plan_deinit(struct mylite_savepoint_plan *plan) {
     if (plan == NULL) {
         return;
     }
@@ -50,8 +61,7 @@ void mylite_transaction_savepoint_plan_deinit(struct mylite_savepoint_plan *plan
     *plan = (struct mylite_savepoint_plan){0};
 }
 
-int mylite_transaction_execute_savepoint_statement(mylite_stmt *stmt)
-{
+int mylite_transaction_execute_savepoint_statement(mylite_stmt *stmt) {
     int status = MYLITE_OK;
 
     if (!stmt->database->transaction_active) {
@@ -59,14 +69,16 @@ int mylite_transaction_execute_savepoint_statement(mylite_stmt *stmt)
         return MYLITE_OK;
     }
 
-    status = mylite_transaction_create_savepoint(stmt->database, stmt->savepoint.name,
-                                                 stmt->savepoint.normalized_name);
+    status = mylite_transaction_create_savepoint(
+        stmt->database,
+        stmt->savepoint.name,
+        stmt->savepoint.normalized_name
+    );
     stmt->affected_rows = status == MYLITE_OK ? 0 : -1;
     return status;
 }
 
-int mylite_transaction_execute_rollback_to_savepoint_statement(mylite_stmt *stmt)
-{
+int mylite_transaction_execute_rollback_to_savepoint_statement(mylite_stmt *stmt) {
     size_t index =
         mylite_transaction_find_savepoint(stmt->database, stmt->savepoint.normalized_name);
     int status = MYLITE_OK;
@@ -81,8 +93,7 @@ int mylite_transaction_execute_rollback_to_savepoint_statement(mylite_stmt *stmt
     return status;
 }
 
-int mylite_transaction_execute_release_savepoint_statement(mylite_stmt *stmt)
-{
+int mylite_transaction_execute_release_savepoint_statement(mylite_stmt *stmt) {
     size_t index =
         mylite_transaction_find_savepoint(stmt->database, stmt->savepoint.normalized_name);
     int status = MYLITE_OK;
@@ -97,9 +108,11 @@ int mylite_transaction_execute_release_savepoint_statement(mylite_stmt *stmt)
     return status;
 }
 
-int mylite_transaction_create_savepoint(mylite_db *database, const char *name,
-                                        const char *normalized_name)
-{
+int mylite_transaction_create_savepoint(
+    mylite_db *database,
+    const char *name,
+    const char *normalized_name
+) {
     struct mylite_savepoint savepoint = {0};
     int status = MYLITE_OK;
 
@@ -132,8 +145,7 @@ int mylite_transaction_create_savepoint(mylite_db *database, const char *name,
     return status;
 }
 
-size_t mylite_transaction_find_savepoint(const mylite_db *database, const char *normalized_name)
-{
+size_t mylite_transaction_find_savepoint(const mylite_db *database, const char *normalized_name) {
     for (size_t index = database->savepoints.count; index > 0U; --index) {
         const struct mylite_savepoint *savepoint = &database->savepoints.items[index - 1U];
 
@@ -145,10 +157,12 @@ size_t mylite_transaction_find_savepoint(const mylite_db *database, const char *
     return SIZE_MAX;
 }
 
-int mylite_transaction_rollback_to_savepoint(mylite_db *database, size_t index)
-{
-    int status = exec_sqlite_savepoint_command(database, "ROLLBACK TO SAVEPOINT",
-                                               database->savepoints.items[index].sqlite_name);
+int mylite_transaction_rollback_to_savepoint(mylite_db *database, size_t index) {
+    int status = exec_sqlite_savepoint_command(
+        database,
+        "ROLLBACK TO SAVEPOINT",
+        database->savepoints.items[index].sqlite_name
+    );
 
     if (status != MYLITE_OK) {
         return status;
@@ -158,10 +172,12 @@ int mylite_transaction_rollback_to_savepoint(mylite_db *database, size_t index)
     return mylite_transaction_reapply_pending_auto_increments(database);
 }
 
-int mylite_transaction_release_savepoint(mylite_db *database, size_t index)
-{
-    int status = exec_sqlite_savepoint_command(database, "RELEASE SAVEPOINT",
-                                               database->savepoints.items[index].sqlite_name);
+int mylite_transaction_release_savepoint(mylite_db *database, size_t index) {
+    int status = exec_sqlite_savepoint_command(
+        database,
+        "RELEASE SAVEPOINT",
+        database->savepoints.items[index].sqlite_name
+    );
 
     if (status == MYLITE_OK) {
         remove_user_savepoints_from(database, index);
@@ -169,8 +185,7 @@ int mylite_transaction_release_savepoint(mylite_db *database, size_t index)
     return status;
 }
 
-void mylite_transaction_savepoint_state_deinit(struct mylite_savepoint_state *state)
-{
+void mylite_transaction_savepoint_state_deinit(struct mylite_savepoint_state *state) {
     if (state == NULL) {
         return;
     }
@@ -182,8 +197,7 @@ void mylite_transaction_savepoint_state_deinit(struct mylite_savepoint_state *st
     *state = (struct mylite_savepoint_state){0};
 }
 
-static int set_savepoint_does_not_exist_error(mylite_db *database, const char *name)
-{
+static int set_savepoint_does_not_exist_error(mylite_db *database, const char *name) {
     char *message = sqlite3_mprintf("SAVEPOINT %q does not exist", name);
     int status = MYLITE_OK;
 
@@ -197,18 +211,19 @@ static int set_savepoint_does_not_exist_error(mylite_db *database, const char *n
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_SP_DOES_NOT_EXIST,
-                                             mylite_error_message(database));
+    status = mylite_diagnostics_append_error(
+        database,
+        MYLITE_MYSQL_ER_SP_DOES_NOT_EXIST,
+        mylite_error_message(database)
+    );
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-void mylite_transaction_clear_user_savepoints(mylite_db *database)
-{
+void mylite_transaction_clear_user_savepoints(mylite_db *database) {
     remove_user_savepoints_from(database, 0U);
 }
 
-static int reserve_user_savepoint_capacity(mylite_db *database, size_t required_capacity)
-{
+static int reserve_user_savepoint_capacity(mylite_db *database, size_t required_capacity) {
     struct mylite_savepoint *items = NULL;
     size_t capacity = database->savepoints.capacity == 0U ? 4U : database->savepoints.capacity;
 
@@ -235,8 +250,7 @@ static int reserve_user_savepoint_capacity(mylite_db *database, size_t required_
     return MYLITE_OK;
 }
 
-static char *make_sqlite_savepoint_name(mylite_db *database)
-{
+static char *make_sqlite_savepoint_name(mylite_db *database) {
     uint64_t next_id = database->savepoints.next_sqlite_id + 1U;
     int length = 0;
     char *name = NULL;
@@ -256,15 +270,21 @@ static char *make_sqlite_savepoint_name(mylite_db *database)
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return NULL;
     }
-    (void)snprintf(name, (size_t)length + 1U, "mylite_user_savepoint_%llu",
-                   (unsigned long long)next_id);
+    (void)snprintf(
+        name,
+        (size_t)length + 1U,
+        "mylite_user_savepoint_%llu",
+        (unsigned long long)next_id
+    );
     database->savepoints.next_sqlite_id = next_id;
     return name;
 }
 
-static int exec_sqlite_savepoint_command(mylite_db *database, const char *command,
-                                         const char *sqlite_name)
-{
+static int exec_sqlite_savepoint_command(
+    mylite_db *database,
+    const char *command,
+    const char *sqlite_name
+) {
     char *sql = sqlite3_mprintf("%s \"%w\"", command, sqlite_name);
     int rc = SQLITE_OK;
 
@@ -278,8 +298,7 @@ static int exec_sqlite_savepoint_command(mylite_db *database, const char *comman
     return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
-static void remove_user_savepoint_at(mylite_db *database, size_t index)
-{
+static void remove_user_savepoint_at(mylite_db *database, size_t index) {
     if (index >= database->savepoints.count) {
         return;
     }
@@ -292,8 +311,7 @@ static void remove_user_savepoint_at(mylite_db *database, size_t index)
     database->savepoints.items[database->savepoints.count] = (struct mylite_savepoint){0};
 }
 
-static void remove_user_savepoints_from(mylite_db *database, size_t first)
-{
+static void remove_user_savepoints_from(mylite_db *database, size_t first) {
     if (first > database->savepoints.count) {
         return;
     }
@@ -303,8 +321,7 @@ static void remove_user_savepoints_from(mylite_db *database, size_t first)
     database->savepoints.count = first;
 }
 
-static int append_user_savepoint(mylite_db *database, struct mylite_savepoint savepoint)
-{
+static int append_user_savepoint(mylite_db *database, struct mylite_savepoint savepoint) {
     if (database->savepoints.count >= database->savepoints.capacity) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -314,8 +331,7 @@ static int append_user_savepoint(mylite_db *database, struct mylite_savepoint sa
     return MYLITE_OK;
 }
 
-static void savepoint_deinit(struct mylite_savepoint *savepoint)
-{
+static void savepoint_deinit(struct mylite_savepoint *savepoint) {
     if (savepoint == NULL) {
         return;
     }
@@ -326,8 +342,7 @@ static void savepoint_deinit(struct mylite_savepoint *savepoint)
     *savepoint = (struct mylite_savepoint){0};
 }
 
-static char *copy_normalized_savepoint_name(const char *name)
-{
+static char *copy_normalized_savepoint_name(const char *name) {
     char *copy = mylite_copy_span_text(name, name == NULL ? 0U : strlen(name));
 
     if (copy == NULL) {

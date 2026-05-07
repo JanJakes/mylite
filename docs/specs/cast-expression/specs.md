@@ -108,8 +108,12 @@ warning. Negative string inputs wrap and also emit warning 1105.
 
 Decimal casts default to precision 10 and scale 0. `DECIMAL(M)` uses scale 0,
 and `DECIMAL(M,D)` uses the supplied scale. Values are rounded to the target
-scale. Invalid or truncated string inputs emit warning 1292 with a decimal
-message and produce a zero value formatted at the target scale.
+scale. When the rounded result does not fit the requested precision and scale,
+the value is clipped to the nearest representable endpoint and warning 1264 is
+emitted. Invalid, non-finite, or truncated string inputs emit warning 1292 with
+a decimal message. Invalid and non-finite strings produce a zero value formatted
+at the target scale; truncated strings keep their parsed numeric prefix before
+range validation.
 
 | SQL | Result | Warnings |
 | --- | --- | --- |
@@ -117,6 +121,10 @@ message and produce a zero value formatted at the target scale.
 | `CAST(12.345 AS DECIMAL(5))` | `12` | none |
 | `CAST(12.345 AS DECIMAL(5,2))` | `12.35` | none |
 | `CAST('x' AS DECIMAL(5,2))` | `0.00` | 1292 truncated decimal |
+| `CAST(999999 AS DECIMAL(5,2))` | `999.99` | 1264 out of range |
+| `CAST(999.995 AS DECIMAL(5,2))` | `999.99` | 1264 out of range |
+| `CAST('999999x' AS DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |
+| `CAST('nan' AS DECIMAL(5,2))` | `0.00` | 1292 truncated decimal |
 
 Character casts produce variable-length character-string metadata. `CHAR(N)`
 limits the result to at most `N` characters and emits warning 1292 when
@@ -308,9 +316,13 @@ deferred to the broader decimal type task.
 - missing precision means `(10,0)`
 - missing scale means `0`
 - values round to the target scale
+- values that do not fit the requested precision after rounding are clipped to
+  the signed target endpoint and emit warning 1264 using the cast expression as
+  the diagnostic column text
 - invalid or truncated strings emit warning 1292 using
   `Truncated incorrect DECIMAL value: '<value>'`
-- invalid strings return zero formatted at the target scale
+- invalid and non-finite strings return zero formatted at the target scale;
+  truncated strings keep their parsed numeric prefix before range validation
 
 ### Floating point
 

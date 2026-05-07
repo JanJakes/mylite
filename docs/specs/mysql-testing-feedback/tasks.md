@@ -210,7 +210,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       are now covered for strict and non-strict `INSERT ... VALUES`,
       `INSERT IGNORE`, strict single-table `UPDATE`, and single-table
       `UPDATE IGNORE`, including UTF-8 boundary truncation for `TINYTEXT` and
-      `TEXT`.
+      `TEXT`. Scalar `CAST`/`CONVERT` to `DECIMAL(M,D)` now covers target-scale
+      rounding, out-of-range endpoint clipping with warning 1264, truncated
+      decimal strings with warning 1292 before range warning 1264, and
+      non-finite decimal strings returning formatted zero with warning 1292.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719, FLOAT/DOUBLE target casts, and DATE/TIME/DATETIME

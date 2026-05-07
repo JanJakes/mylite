@@ -88,6 +88,8 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT('12.5', SIGNED)` | `12` | 1292 truncated integer |
 | `CONVERT('-1', UNSIGNED)` | `18446744073709551615` | 1105 negative-to-unsigned |
 | `CONVERT('12.345', DECIMAL(5,2))` | `12.35` | none |
+| `CONVERT(999999, DECIMAL(5,2))` | `999.99` | 1264 out of range |
+| `CONVERT('999999x', DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |
 | `CONVERT('abcdef', CHAR(3))` | `abc` | 1292 truncated char |
 | `CONVERT('abc', BINARY)` | `abc` | none |
 | `CONVERT('1.23456789', FLOAT)` | `1.23457` | none |

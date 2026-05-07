@@ -24,6 +24,7 @@ enum {
     MYLITE_WARNING_UNKNOWN = 1105,
     MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS = 1210,
     MYLITE_WARNING_INCORRECT_REGEXP_ARGUMENTS = 1210,
+    MYLITE_WARNING_WARN_DATA_OUT_OF_RANGE = 1264,
     MYLITE_WARNING_WARN_DEPRECATED_SYNTAX = 1287,
     MYLITE_WARNING_TRUNCATED_WRONG_VALUE = 1292,
     MYLITE_WARNING_INVALID_CHARACTER_STRING = 1300,
@@ -853,6 +854,7 @@ static int eval_unsigned_cast(
 );
 
 static int eval_decimal_cast(
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
@@ -3809,6 +3811,8 @@ static int64_t signed_integer_from_uint64(uint64_t value);
 
 static uint64_t unsigned_complement_from_magnitude(uint64_t magnitude);
 
+static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target);
+
 static int cast_value_to_decimal_double(
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
@@ -3819,6 +3823,35 @@ static int cast_string_to_decimal_double(
     const char *text,
     struct mylite_expression_warnings *warnings,
     double *out_number
+);
+
+static bool decimal_cast_result_exceeds_precision(
+    const char *text,
+    unsigned int precision,
+    unsigned int scale
+);
+
+static bool decimal_cast_value_rounds_out_of_range(
+    double value,
+    unsigned int precision,
+    unsigned int scale
+);
+
+static long double decimal_cast_abs_bound(unsigned int precision, unsigned int scale);
+
+static long double decimal_scale_factor(unsigned int scale);
+
+static int set_decimal_cast_limit_text(
+    char *buffer,
+    size_t buffer_size,
+    bool negative,
+    unsigned int precision,
+    unsigned int scale
+);
+
+static int append_decimal_cast_out_of_range_warning(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *expression
 );
 
 static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text);
@@ -5179,7 +5212,7 @@ static int eval_cast_expression(
         }
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL:
-        status = eval_decimal_cast(target, &value, warnings, out_value);
+        status = eval_decimal_cast(node, target, &value, warnings, out_value);
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
     case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
@@ -5287,23 +5320,43 @@ static int eval_unsigned_cast(
 }
 
 static int eval_decimal_cast(
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 ) {
     char buffer[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
+    unsigned int precision = cast_decimal_precision(target);
     unsigned int scale = cast_decimal_scale(target);
     double number = 0.0;
+    bool range_warning = false;
     int length = 0;
     int status = cast_value_to_decimal_double(value, warnings, &number);
 
     if (status != 0) {
         return status;
     }
+    range_warning = decimal_cast_value_rounds_out_of_range(number, precision, scale);
     length = snprintf(buffer, sizeof(buffer), "%.*f", (int)scale, number);
     if (length < 0 || (size_t)length >= sizeof(buffer)) {
         return -1;
+    }
+    if (range_warning || decimal_cast_result_exceeds_precision(buffer, precision, scale)) {
+        status = append_decimal_cast_out_of_range_warning(warnings, expression);
+        if (status != 0) {
+            return status;
+        }
+        length = set_decimal_cast_limit_text(
+            buffer,
+            sizeof(buffer),
+            number < 0.0 || buffer[0] == '-',
+            precision,
+            scale
+        );
+        if (length < 0) {
+            return -1;
+        }
     }
     return set_text_value(buffer, (size_t)length, out_value);
 }
@@ -23446,6 +23499,13 @@ static uint64_t unsigned_complement_from_magnitude(uint64_t magnitude) {
     return (UINT64_MAX - magnitude) + 1U;
 }
 
+static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target) {
+    if (target != NULL && target->has_column_precision) {
+        return (unsigned int)target->column_precision;
+    }
+    return 10U;
+}
+
 static int cast_value_to_decimal_double(
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
@@ -23506,8 +23566,159 @@ static int cast_string_to_decimal_double(
         free(copy);
         return status;
     }
+    if (!isfinite(*out_number)) {
+        int status = append_cast_truncation_warning(warnings, "DECIMAL", text);
+
+        *out_number = 0.0;
+        free(copy);
+        return status;
+    }
     free(copy);
     return 0;
+}
+
+static bool decimal_cast_result_exceeds_precision(
+    const char *text,
+    unsigned int precision,
+    unsigned int scale
+) {
+    unsigned int integer_digit_limit = precision > scale ? precision - scale : 0U;
+    unsigned int significant_integer_digits = 0U;
+    bool significant = false;
+    bool saw_digit = false;
+    const char *cursor = text == NULL ? "" : text;
+
+    if (*cursor == '-' || *cursor == '+') {
+        ++cursor;
+    }
+    while (isdigit((unsigned char)*cursor)) {
+        saw_digit = true;
+        if (*cursor != '0' || significant) {
+            significant = true;
+            ++significant_integer_digits;
+        }
+        ++cursor;
+    }
+    if (!saw_digit) {
+        return true;
+    }
+    return significant_integer_digits > integer_digit_limit;
+}
+
+static bool decimal_cast_value_rounds_out_of_range(
+    double value,
+    unsigned int precision,
+    unsigned int scale
+) {
+    long double magnitude = 0.0L;
+    long double rounding_threshold = 0.0L;
+
+    if (!isfinite(value)) {
+        return true;
+    }
+    magnitude = fabsl((long double)value);
+    rounding_threshold =
+        decimal_cast_abs_bound(precision, scale) + (decimal_scale_factor(scale) / 2.0L);
+    return magnitude >= rounding_threshold;
+}
+
+static long double decimal_cast_abs_bound(unsigned int precision, unsigned int scale) {
+    unsigned int integer_digits = precision > scale ? precision - scale : 0U;
+    long double bound = 0.0L;
+    long double factor = 0.1L;
+
+    for (unsigned int index = 0U; index < integer_digits; ++index) {
+        bound = (bound * 10.0L) + 9.0L;
+    }
+    for (unsigned int index = 0U; index < scale; ++index) {
+        bound += 9.0L * factor;
+        factor /= 10.0L;
+    }
+    return bound;
+}
+
+static long double decimal_scale_factor(unsigned int scale) {
+    long double factor = 1.0L;
+
+    for (unsigned int index = 0U; index < scale; ++index) {
+        factor /= 10.0L;
+    }
+    return factor;
+}
+
+static int set_decimal_cast_limit_text(
+    char *buffer,
+    size_t buffer_size,
+    bool negative,
+    unsigned int precision,
+    unsigned int scale
+) {
+    unsigned int integer_digits = precision > scale ? precision - scale : 0U;
+    size_t cursor = 0U;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return -1;
+    }
+    if (negative) {
+        if (cursor + 1U >= buffer_size) {
+            return -1;
+        }
+        buffer[cursor++] = '-';
+    }
+    if (integer_digits == 0U) {
+        if (cursor + 1U >= buffer_size) {
+            return -1;
+        }
+        buffer[cursor++] = '0';
+    } else {
+        for (unsigned int index = 0U; index < integer_digits; ++index) {
+            if (cursor + 1U >= buffer_size) {
+                return -1;
+            }
+            buffer[cursor++] = '9';
+        }
+    }
+    if (scale > 0U) {
+        if (cursor + 1U >= buffer_size) {
+            return -1;
+        }
+        buffer[cursor++] = '.';
+        for (unsigned int index = 0U; index < scale; ++index) {
+            if (cursor + 1U >= buffer_size) {
+                return -1;
+            }
+            buffer[cursor++] = '9';
+        }
+    }
+    buffer[cursor] = '\0';
+    return (int)cursor;
+}
+
+static int append_decimal_cast_out_of_range_warning(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *expression
+) {
+    const char *text =
+        expression == NULL || expression->span.text == NULL ? "cast()" : expression->span.text;
+    size_t text_length = expression == NULL || expression->span.text == NULL
+                             ? strlen(text)
+                             : expression->span.length;
+    int preview_length = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             : (int)text_length;
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Out of range value for column '%.*s' at row 1",
+        preview_length,
+        text
+    );
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_WARN_DATA_OUT_OF_RANGE, message);
 }
 
 static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text) {

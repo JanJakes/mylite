@@ -33781,6 +33781,10 @@ static int test_cast_expression_execution(void) {
     static const char *const n_7[] = {"7"};
     static const char *const ids_2_3[] = {"2", "3"};
     static const char *const id_3[] = {"3"};
+    static const char *const decimal_range_columns[] = {"d1", "d2", "s2", "n1"};
+    static const char *const decimal_range_values[] = {"999.99", "999.99", "999.99", "-0.99"};
+    static const char *const decimal_nonfinite_columns[] = {"nan_value", "inf_value"};
+    static const char *const decimal_nonfinite_values[] = {"0.00", "0.00"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -34156,6 +34160,77 @@ static int test_cast_expression_execution(void) {
         "DECIMAL",
         "CAST bad decimal warning message"
     );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('nan' AS DECIMAL(5,2)) AS nan_value, "
+        "CAST('inf' AS DECIMAL(5,2)) AS inf_value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_column_names(stmt, decimal_nonfinite_columns, 2, "CAST nonfinite decimal columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST nonfinite decimal row");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_string(
+            mylite_column_text(stmt, index),
+            decimal_nonfinite_values[index],
+            "CAST nonfinite decimal value"
+        );
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_truncated_wrong_value,
+            "CAST nonfinite decimal warning code"
+        );
+    }
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "CAST nonfinite decimal warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST nonfinite decimal done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST(999999 AS DECIMAL(5,2)) AS d1, "
+        "CAST(999.995 AS DECIMAL(5,2)) AS d2, "
+        "CAST('999999x' AS DECIMAL(5,2)) AS s2, "
+        "CAST(-0.995 AS DECIMAL(2,2)) AS n1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(stmt, decimal_range_columns, 4, "CAST decimal range columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST decimal range row");
+    for (int index = 0; index < 4; ++index) {
+        failures += expect_string(
+            mylite_column_text(stmt, index),
+            decimal_range_values[index],
+            "CAST decimal range value"
+        );
+    }
+    failures += expect_int(mylite_warning_count(database), 5, "CAST decimal range warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "CAST decimal range first warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "CAST(999999 AS DECIMAL(5,2))",
+        "CAST decimal range first warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_truncated_wrong_value,
+        "CAST decimal range truncation warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_data_out_of_range,
+        "CAST decimal range string warning code"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST decimal range done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -34695,6 +34770,8 @@ static int test_convert_expression_execution(void) {
     static const char *const n_13[] = {"13"};
     static const char *const n_7[] = {"7"};
     static const char *const id_3[] = {"3"};
+    static const char *const decimal_range_columns[] = {"d1", "d2", "s2", "n1"};
+    static const char *const decimal_range_values[] = {"999.99", "999.99", "999.99", "-0.99"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -34754,6 +34831,51 @@ static int test_convert_expression_execution(void) {
         "CHAR(3)",
         "CONVERT char warning message"
     );
+
+    failures += prepare_sql(
+        database,
+        "SELECT CONVERT(999999, DECIMAL(5,2)) AS d1, "
+        "CONVERT(999.995, DECIMAL(5,2)) AS d2, "
+        "CONVERT('999999x', DECIMAL(5,2)) AS s2, "
+        "CONVERT(-0.995, DECIMAL(2,2)) AS n1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_column_names(stmt, decimal_range_columns, 4, "CONVERT decimal range columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT decimal range row");
+    for (int index = 0; index < 4; ++index) {
+        failures += expect_string(
+            mylite_column_text(stmt, index),
+            decimal_range_values[index],
+            "CONVERT decimal range value"
+        );
+    }
+    failures +=
+        expect_int(mylite_warning_count(database), 5, "CONVERT decimal range warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "CONVERT decimal range first warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "CONVERT(999999, DECIMAL(5,2))",
+        "CONVERT decimal range first warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT decimal range truncation warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_data_out_of_range,
+        "CONVERT decimal range string warning code"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT decimal range done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += prepare_sql(
         database,

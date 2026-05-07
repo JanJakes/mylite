@@ -3,27 +3,32 @@
 ## Status
 
 This slice adds the first structured diagnostics bridge from MyLite-owned
-SQLite-fork bytecode to the public MyLite diagnostics area. It is intentionally
-small: fork opcodes can publish a MySQL condition for the most recent
-fork-owned VDBE failure, and MyLite consumes that condition when mapping the
-SQLite error back to its own warning/error list.
+SQLite-fork bytecode and configured scalar callbacks to the public MyLite
+diagnostics area. It is intentionally small: fork code can publish one MySQL
+condition for the most recent fork-owned error or warning, and MyLite consumes
+that condition when mapping covered SQLite errors back to its own warning/error
+list.
 
 Implemented scope:
 
 - connection-local fork condition storage on the private SQLite handle
-- public fork APIs to read and clear the most recent fork condition
+- public fork APIs to read, clear, and publish the most recent fork condition
 - `OP_MyliteTypeCheck` publishes MySQL condition codes and SQLSTATE values for
   the first strict assignment failures
 - SQLite-native `NOT NULL`, `UNIQUE`, `PRIMARY KEY`, `CHECK`, and immediate
   foreign-key constraint failures publish MySQL condition codes and SQLSTATE
   values through the same bridge
+- configured scalar callbacks can publish successful-statement warning
+  conditions; implemented first for `IF()` numeric-condition truncation warning
+  `1292`
 - MyLite's SQLite-error mapping consumes the fork condition and appends a MySQL
   error condition instead of falling back to generic error 1105
 - direct fork and public MyLite tests cover out-of-range integer, over-length
   `VARCHAR`, invalid `DOUBLE`, over-length binary string, invalid decimal,
   out-of-range decimal, invalid temporal, datetime overflow, invalid `YEAR`,
-  out-of-range `YEAR` assignment conditions, and native `NOT NULL`, `UNIQUE`,
-  `PRIMARY KEY`, `CHECK`, and foreign-key constraint conditions
+  out-of-range `YEAR` assignment conditions, native `NOT NULL`, `UNIQUE`,
+  `PRIMARY KEY`, `CHECK`, and foreign-key constraint conditions, and direct
+  scalar warning readback after successful `IF()` calls
 
 Deferred scope:
 
@@ -70,6 +75,10 @@ SHOW WARNINGS: Error 1406
 INSERT INTO t(d DOUBLE NOT NULL) VALUES ('bad')
 ERROR 1265 (01000): Data truncated for column 'd' at row 1
 SHOW WARNINGS: Error 1265
+
+SELECT IF('abc','yes','no')
+returns 'no'
+SHOW WARNINGS: Warning 1292, truncated incorrect DOUBLE value
 ```
 
 ## Design
@@ -83,6 +92,8 @@ The fork therefore owns a small connection-local condition slot:
 
 - `mylite_sqlite_fork_last_condition()` copies the most recent fork condition.
 - `mylite_sqlite_fork_clear_condition()` clears it after the caller consumes it.
+- `mylite_sqlite_fork_set_condition()` lets configured fork callbacks publish
+  a warning or error condition when no VDBE opcode is raising a SQLite error.
 - internal fork code calls `sqlite3MyliteSetCondition()` immediately before
   raising the SQLite error.
 
@@ -113,6 +124,7 @@ multiple warnings without aborting execution.
 | native `CHECK` constraint failure | 3819 | `HY000` |
 | native child-side foreign-key insert/update failure | 1452 | `23000` |
 | native parent-side foreign-key delete/update failure | 1451 | `23000` |
+| `IF()` condition text truncated during numeric conversion | 1292 | `22007` |
 | invalid internal MyLite descriptor | 1105 | `HY000` |
 
 MyLite still uses SQLite's error message as the public text in this slice. The
@@ -129,11 +141,13 @@ The executable tests must cover:
   type-check failures
 - direct fork condition readback after native `NOT NULL`, `UNIQUE`,
   `PRIMARY KEY`, `CHECK`, and immediate foreign-key constraint failures
+- direct fork warning readback after successful scalar callback evaluation
 - existing type-coercion success and failure behavior continuing to pass
 
 ## Compatibility Status
 
 This feature is `🟡` because the first structured bridge exists for fork-owned
-type-check failures and common native constraint failures, but the full MySQL
-diagnostics area, warning demotion, exact message rendering, and wire-protocol
-condition metadata remain incomplete.
+type-check failures, common native constraint failures, and the first scalar
+callback warning, but the full MySQL diagnostics area, warning demotion, exact
+message rendering, multi-warning collection, and wire-protocol condition
+metadata remain incomplete.

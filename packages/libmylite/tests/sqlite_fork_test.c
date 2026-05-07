@@ -101,6 +101,18 @@ static int expect_sqlite_exec_error(sqlite3 *database, struct expected_sqlite_er
 
 static int expect_fork_condition(sqlite3 *database, struct expected_fork_condition expectation);
 
+static int expect_fork_warning_condition(
+    sqlite3 *database,
+    struct expected_fork_condition expectation
+);
+
+static int expect_fork_condition_level(
+    sqlite3 *database,
+    struct expected_fork_condition expectation,
+    enum mylite_sqlite_fork_condition_level level,
+    const char *level_name
+);
+
 static int expect_text(sqlite3 *database, struct expected_text_row expectation);
 
 static int expect_mylite_rows(mylite_db *database, struct expected_mylite_rows expectation);
@@ -180,6 +192,7 @@ int main(void) {
 
 static int test_registered_functions(void) {
     enum {
+        mysql_truncated_wrong_value = 1292,
         utf8_z_caron_bit_length = 16,
         numeric_123_bit_length = 24,
     };
@@ -240,6 +253,86 @@ static int test_registered_functions(void) {
             .sql = "SELECT CONCAT_WS(',')",
             .message_fragment = "CONCAT_WS requires at least 2 arguments",
             .context = "CONCAT_WS rejects missing value arguments",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF(1, 'yes', 'no')",
+            .expected = "yes",
+            .context = "IF returns true branch for nonzero values",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF(0, 'yes', 'no')",
+            .expected = "no",
+            .context = "IF returns false branch for zero",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF(NULL, 'yes', 'no')",
+            .expected = "no",
+            .context = "IF treats NULL condition as false",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF('2', 'yes', 'no')",
+            .expected = "yes",
+            .context = "IF coerces numeric text conditions",
+        }
+    );
+    failures += expect_int64(
+        database,
+        "SELECT IF(1, NULL, 'no') IS NULL",
+        1,
+        "IF preserves NULL branch values"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear condition before IF truncation warning"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF('abc', 'yes', 'no')",
+            .expected = "no",
+            .context = "IF treats nonnumeric text conditions as zero",
+        }
+    );
+    failures += expect_fork_warning_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "IF nonnumeric condition publishes truncation warning",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear IF nonnumeric warning"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF('2x', 'yes', 'no')",
+            .expected = "yes",
+            .context = "IF uses leading numeric text before truncation",
+        }
+    );
+    failures += expect_fork_warning_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "IF trailing text publishes truncation warning",
         }
     );
     failures += expect_int64(
@@ -5441,6 +5534,32 @@ static int expect_sqlite_exec_error(sqlite3 *database, struct expected_sqlite_er
 }
 
 static int expect_fork_condition(sqlite3 *database, struct expected_fork_condition expectation) {
+    return expect_fork_condition_level(
+        database,
+        expectation,
+        MYLITE_SQLITE_FORK_CONDITION_ERROR,
+        "error"
+    );
+}
+
+static int expect_fork_warning_condition(
+    sqlite3 *database,
+    struct expected_fork_condition expectation
+) {
+    return expect_fork_condition_level(
+        database,
+        expectation,
+        MYLITE_SQLITE_FORK_CONDITION_WARNING,
+        "warning"
+    );
+}
+
+static int expect_fork_condition_level(
+    sqlite3 *database,
+    struct expected_fork_condition expectation,
+    enum mylite_sqlite_fork_condition_level level,
+    const char *level_name
+) {
     struct mylite_sqlite_fork_condition condition = {0};
     int failures = expect_sqlite_ok(
         mylite_sqlite_fork_last_condition(database, &condition),
@@ -5451,8 +5570,8 @@ static int expect_fork_condition(sqlite3 *database, struct expected_fork_conditi
     if (failures != 0) {
         return failures;
     }
-    if (condition.level != MYLITE_SQLITE_FORK_CONDITION_ERROR) {
-        fprintf(stderr, "%s: expected fork error condition\n", expectation.context);
+    if (condition.level != level) {
+        fprintf(stderr, "%s: expected fork %s condition\n", expectation.context, level_name);
         ++failures;
     }
     if (condition.mysql_errno != expectation.mysql_errno) {

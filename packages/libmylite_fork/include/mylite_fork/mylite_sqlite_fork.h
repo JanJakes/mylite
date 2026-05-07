@@ -85,6 +85,12 @@ int mylite_sqlite_fork_last_condition(
     struct mylite_sqlite_fork_condition *out_condition
 );
 int mylite_sqlite_fork_clear_condition(sqlite3 *database);
+int mylite_sqlite_fork_set_condition(
+    sqlite3 *database,
+    enum mylite_sqlite_fork_condition_level level,
+    unsigned int mysql_errno,
+    const char *sqlstate
+);
 int mylite_sqlite_fork_set_column_type(
     sqlite3 *database,
     const char *schema_name,

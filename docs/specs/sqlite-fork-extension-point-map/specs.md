@@ -40,6 +40,8 @@ Implemented fork points:
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
 - structured fork diagnostics for native `NOT NULL`, `UNIQUE`, `PRIMARY KEY`,
   `CHECK`, and immediate foreign-key constraint failures
+- structured fork warning publication from configured scalar callbacks,
+  beginning with `IF()` condition conversion warnings
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before
@@ -224,6 +226,9 @@ Required fork direction:
   `UNIQUE`, `PRIMARY KEY`, and `CHECK`
 - foreign-key counter bytecode carries child-side or parent-side context so the
   statement-level immediate FK error can publish MySQL's `1452` or `1451`
+- scalar callbacks can publish a single successful-statement warning through
+  the fork condition slot; a statement-owned multi-warning collector is still
+  needed for complete MySQL diagnostics
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
 

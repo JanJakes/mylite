@@ -3,6 +3,7 @@
 #include "mylite_fork_charset.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -26,6 +27,10 @@ enum mylite_sqlite_utf8_byte_masks {
 
 enum mylite_sqlite_byte_units {
     mylite_sqlite_bits_per_byte = 8,
+};
+
+enum mylite_sqlite_mysql_conditions {
+    mylite_sqlite_mysql_truncated_wrong_value = 1292,
 };
 
 struct mylite_sqlite_pad_trim_request {
@@ -66,6 +71,8 @@ static void mysql_concat_ws(
     int argument_count,
     sqlite3_value **arguments
 );
+
+static void mysql_if(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
 static void mysql_bit_length(
     sqlite3_context *context,
@@ -121,7 +128,11 @@ static bool double_to_rounded_int64(
 
 static bool coerce_value_to_double(sqlite3_value *value, double *out_value);
 
+static bool coerce_value_to_mysql_bool(sqlite3_context *context, sqlite3_value *value);
+
 static bool parse_complete_double(sqlite3_value *value, double *out_value);
+
+static bool text_has_non_space_tail(const char *cursor, const char *end);
 
 static void result_coercion_error(sqlite3_context *context, const char *message);
 
@@ -249,6 +260,9 @@ static int register_mysql_functions(sqlite3 *database) {
 
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "CONCAT_WS", -1, mysql_concat_ws);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function(database, "IF", 3, mysql_if);
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "BIT_LENGTH", 1, mysql_bit_length);
@@ -415,6 +429,16 @@ static void mysql_concat_ws(
         return;
     }
     sqlite3_result_text(context, text, -1, sqlite3_free);
+}
+
+static void mysql_if(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {
+    int result_index = 2;
+
+    (void)argument_count;
+    if (coerce_value_to_mysql_bool(context, arguments[0])) {
+        result_index = 1;
+    }
+    sqlite3_result_value(context, arguments[result_index]);
 }
 
 static void mysql_bit_length(
@@ -703,6 +727,53 @@ static bool coerce_value_to_double(sqlite3_value *value, double *out_value) {
     return parse_complete_double(value, out_value);
 }
 
+static bool coerce_value_to_mysql_bool(sqlite3_context *context, sqlite3_value *value) {
+    static const char truncated_sqlstate[] = "22007";
+    int type = sqlite3_value_type(value);
+    const unsigned char *text = NULL;
+    int bytes = 0;
+    const char *start = NULL;
+    const char *end = NULL;
+    char *cursor = NULL;
+    double number = 0.0;
+    bool truncated = false;
+
+    if (type == SQLITE_NULL) {
+        return false;
+    }
+    if (type == SQLITE_INTEGER || type == SQLITE_FLOAT) {
+        return sqlite3_value_double(value) != 0.0;
+    }
+
+    text = sqlite3_value_text(value);
+    bytes = sqlite3_value_bytes(value);
+    if (text == NULL) {
+        return false;
+    }
+
+    start = (const char *)text;
+    end = start + bytes;
+    while (start < end && isspace((unsigned char)*start)) {
+        ++start;
+    }
+
+    errno = 0;
+    number = strtod(start, &cursor);
+    truncated = cursor == start;
+    if (errno == ERANGE || text_has_non_space_tail(cursor, end)) {
+        truncated = true;
+    }
+    if (truncated) {
+        (void)mylite_sqlite_fork_set_condition(
+            sqlite3_context_db_handle(context),
+            MYLITE_SQLITE_FORK_CONDITION_WARNING,
+            mylite_sqlite_mysql_truncated_wrong_value,
+            truncated_sqlstate
+        );
+    }
+    return number != 0.0;
+}
+
 static bool parse_complete_double(sqlite3_value *value, double *out_value) {
     const unsigned char *text = sqlite3_value_text(value);
     int bytes = sqlite3_value_bytes(value);
@@ -736,6 +807,16 @@ static bool parse_complete_double(sqlite3_value *value, double *out_value) {
 
     *out_value = number;
     return true;
+}
+
+static bool text_has_non_space_tail(const char *cursor, const char *end) {
+    while (cursor < end) {
+        if (!isspace((unsigned char)*cursor)) {
+            return true;
+        }
+        ++cursor;
+    }
+    return false;
 }
 
 static void result_coercion_error(sqlite3_context *context, const char *message) {

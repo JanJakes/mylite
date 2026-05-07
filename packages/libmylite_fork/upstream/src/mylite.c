@@ -132,6 +132,24 @@ int mylite_sqlite_fork_clear_condition(sqlite3 *db){
   return SQLITE_OK;
 }
 
+int mylite_sqlite_fork_set_condition(
+  sqlite3 *db,
+  enum mylite_sqlite_fork_condition_level eLevel,
+  unsigned int iMyErrno,
+  const char *zSqlState
+){
+  if( db==0 ) return SQLITE_MISUSE;
+  if( eLevel<MYLITE_SQLITE_FORK_CONDITION_NONE
+   || eLevel>MYLITE_SQLITE_FORK_CONDITION_WARNING
+  ){
+    return SQLITE_MISUSE;
+  }
+  sqlite3_mutex_enter(db->mutex);
+  sqlite3MyliteSetCondition(db, (u8)eLevel, iMyErrno, zSqlState);
+  sqlite3_mutex_leave(db->mutex);
+  return SQLITE_OK;
+}
+
 void sqlite3MyliteSetCondition(
   sqlite3 *db,
   u8 eLevel,

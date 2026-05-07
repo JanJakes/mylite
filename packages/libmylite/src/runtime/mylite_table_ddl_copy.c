@@ -19,6 +19,16 @@ static int add_drop_table_target(
     struct mylite_drop_table_target target
 );
 
+static int copy_lock_table_target(
+    const struct mylite_sql_ast_node *table_name,
+    struct mylite_lock_table_target *target
+);
+
+static int add_lock_table_target(
+    struct mylite_lock_tables_plan *plan,
+    struct mylite_lock_table_target target
+);
+
 static int copy_rename_table_pair(
     const struct mylite_sql_ast_node *pair,
     struct mylite_rename_table_target *target
@@ -185,6 +195,58 @@ static int add_drop_table_target(
     struct mylite_drop_table_target target
 ) {
     struct mylite_drop_table_target *targets =
+        realloc(plan->targets, sizeof(*plan->targets) * (plan->target_count + 1U));
+
+    if (targets == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->targets = targets;
+    plan->targets[plan->target_count] = target;
+    ++plan->target_count;
+    return MYLITE_OK;
+}
+
+int mylite_table_ddl_copy_lock_tables_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_lock_tables_plan *plan
+) {
+    const struct mylite_sql_ast_node *table_names = mylite_ast_child_at(statement, 0U);
+
+    for (const struct mylite_sql_ast_node *table_name =
+             table_names == NULL ? NULL : table_names->first_child;
+         table_name != NULL;
+         table_name = table_name->next_sibling) {
+        struct mylite_lock_table_target target = {0};
+        int status = copy_lock_table_target(table_name, &target);
+
+        if (status == MYLITE_OK) {
+            status = add_lock_table_target(plan, target);
+        }
+        if (status != MYLITE_OK) {
+            mylite_table_ddl_lock_table_target_deinit(&target);
+            return status;
+        }
+    }
+    return plan->target_count == 0U ? MYLITE_UNSUPPORTED : MYLITE_OK;
+}
+
+static int copy_lock_table_target(
+    const struct mylite_sql_ast_node *table_name,
+    struct mylite_lock_table_target *target
+) {
+    return mylite_table_ddl_copy_table_name_parts(
+        table_name,
+        &target->schema_name,
+        &target->table_name
+    );
+}
+
+static int add_lock_table_target(
+    struct mylite_lock_tables_plan *plan,
+    struct mylite_lock_table_target target
+) {
+    struct mylite_lock_table_target *targets =
         realloc(plan->targets, sizeof(*plan->targets) * (plan->target_count + 1U));
 
     if (targets == NULL) {

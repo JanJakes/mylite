@@ -134,6 +134,16 @@ struct mylite_drop_table_plan {
     bool cascade_mode;
 };
 
+struct mylite_lock_table_target {
+    char *schema_name;
+    char *table_name;
+};
+
+struct mylite_lock_tables_plan {
+    struct mylite_lock_table_target *targets;
+    size_t target_count;
+};
+
 struct mylite_rename_table_target {
     char *source_schema_name;
     char *source_table_name;

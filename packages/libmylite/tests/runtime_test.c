@@ -675,6 +675,14 @@ static int expect_parser_placeholder_execution(
     const char *context
 );
 
+static int expect_lock_tables_validation_error(
+    mylite_db *database,
+    const char *sql,
+    const char *error_fragment,
+    unsigned int expected_code,
+    const char *context
+);
+
 static int execute_sql_expect_done_affected(
     mylite_db *database,
     const char *sql,
@@ -37459,6 +37467,38 @@ static int test_table_lock_placeholder_execution(void) {
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open table lock database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_table_locks", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE mylite_table_locks.t (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE mylite_table_locks.u (id INT)", MYLITE_DONE);
+    failures += expect_lock_tables_validation_error(
+        database,
+        "LOCK TABLES t READ",
+        "No database selected",
+        mysql_warning_no_database,
+        "LOCK TABLES no selected schema"
+    );
+    failures += expect_lock_tables_validation_error(
+        database,
+        "LOCK TABLES missing_lock_schema.t READ",
+        "Unknown database 'missing_lock_schema'",
+        mysql_warning_bad_db,
+        "LOCK TABLES missing explicit schema"
+    );
+    failures += expect_lock_tables_validation_error(
+        database,
+        "LOCK TABLES information_schema.TABLES READ",
+        "Access denied",
+        mysql_warning_dbaccess_denied,
+        "LOCK TABLES information schema"
+    );
+    failures += execute_sql(database, "USE mylite_table_locks", MYLITE_DONE);
+    failures += expect_lock_tables_validation_error(
+        database,
+        "LOCK TABLES missing READ",
+        "Table 'mylite_table_locks.missing' doesn't exist",
+        mysql_warning_no_such_table,
+        "LOCK TABLES missing selected-schema table"
+    );
     failures += expect_parser_placeholder_execution(
         database,
         "LOCK TABLES t READ",
@@ -37467,7 +37507,7 @@ static int test_table_lock_placeholder_execution(void) {
     );
     failures += expect_parser_placeholder_execution(
         database,
-        "LOCK TABLES app.t AS tt WRITE, u READ LOCAL",
+        "LOCK TABLES mylite_table_locks.t AS tt WRITE, u READ LOCAL",
         "LOCK TABLES",
         "LOCK TABLES multi placeholder"
     );
@@ -71543,6 +71583,30 @@ static int expect_parser_placeholder_execution(
             context
         );
         failures += expect_contains(mylite_warning_message(database, 0), warning_fragment, context);
+    }
+    mylite_finalize(stmt);
+    return failures;
+}
+
+static int expect_lock_tables_validation_error(
+    mylite_db *database,
+    const char *sql,
+    const char *error_fragment,
+    unsigned int expected_code,
+    const char *context
+) {
+    mylite_stmt *stmt = NULL;
+    int failures = prepare_sql(database, sql, MYLITE_OK, &stmt);
+
+    if (failures == 0) {
+        failures += expect_int(mylite_column_count(stmt), 0, context);
+        failures += expect_int(mylite_warning_count(database), 0, context);
+        failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, context);
+        failures += expect_int64(mylite_affected_rows(stmt), -1, context);
+        failures += expect_contains(mylite_error_message(database), error_fragment, context);
+        failures += expect_int(mylite_warning_count(database), 1, context);
+        failures += expect_int((int)mylite_warning_code(database, 0), (int)expected_code, context);
+        failures += expect_contains(mylite_warning_message(database, 0), error_fragment, context);
     }
     mylite_finalize(stmt);
     return failures;

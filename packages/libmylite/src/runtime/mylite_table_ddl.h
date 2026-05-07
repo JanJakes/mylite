@@ -87,6 +87,10 @@ int mylite_table_ddl_copy_drop_table_statement(
     const struct mylite_sql_ast_node *statement,
     struct mylite_drop_table_plan *plan
 );
+int mylite_table_ddl_copy_lock_tables_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_lock_tables_plan *plan
+);
 int mylite_table_ddl_copy_rename_table_statement(
     const struct mylite_sql_ast_node *statement,
     struct mylite_rename_table_plan *plan
@@ -131,12 +135,14 @@ int mylite_table_ddl_insert_foreign_key_catalog_rows(
 char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned int suffix);
 void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *plan);
 void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan);
+void mylite_table_ddl_lock_tables_plan_deinit(struct mylite_lock_tables_plan *plan);
 void mylite_table_ddl_rename_table_plan_deinit(struct mylite_rename_table_plan *plan);
 void mylite_table_ddl_truncate_table_plan_deinit(struct mylite_truncate_table_plan *plan);
 void mylite_table_ddl_alter_table_plan_deinit(struct mylite_alter_table_plan *plan);
 void mylite_table_ddl_alter_table_action_deinit(struct mylite_alter_table_action *action);
 void mylite_table_ddl_index_ddl_plan_deinit(struct mylite_index_ddl_plan *plan);
 void mylite_table_ddl_drop_table_target_deinit(struct mylite_drop_table_target *target);
+void mylite_table_ddl_lock_table_target_deinit(struct mylite_lock_table_target *target);
 void mylite_table_ddl_rename_table_target_deinit(struct mylite_rename_table_target *target);
 void mylite_table_ddl_alter_table_model_deinit(struct mylite_alter_table_model *model);
 void mylite_table_ddl_alter_table_column_deinit(struct mylite_alter_table_column *column);

@@ -47,6 +47,18 @@ void mylite_table_ddl_drop_table_plan_deinit(struct mylite_drop_table_plan *plan
     *plan = (struct mylite_drop_table_plan){0};
 }
 
+void mylite_table_ddl_lock_tables_plan_deinit(struct mylite_lock_tables_plan *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < plan->target_count; ++index) {
+        mylite_table_ddl_lock_table_target_deinit(&plan->targets[index]);
+    }
+    free(plan->targets);
+    *plan = (struct mylite_lock_tables_plan){0};
+}
+
 void mylite_table_ddl_rename_table_plan_deinit(struct mylite_rename_table_plan *plan) {
     if (plan == NULL) {
         return;
@@ -105,6 +117,16 @@ void mylite_table_ddl_drop_table_target_deinit(struct mylite_drop_table_target *
     free(target->schema_name);
     free(target->table_name);
     *target = (struct mylite_drop_table_target){0};
+}
+
+void mylite_table_ddl_lock_table_target_deinit(struct mylite_lock_table_target *target) {
+    if (target == NULL) {
+        return;
+    }
+
+    free(target->schema_name);
+    free(target->table_name);
+    *target = (struct mylite_lock_table_target){0};
 }
 
 void mylite_table_ddl_rename_table_target_deinit(struct mylite_rename_table_target *target) {

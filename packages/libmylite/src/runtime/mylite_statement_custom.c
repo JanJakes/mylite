@@ -78,8 +78,10 @@ int mylite_statement_prepare_custom(
     case MYLITE_STMT_SHOW_PRIVILEGES_PLACEHOLDER:
     case MYLITE_STMT_TABLE_PARTITIONING_PLACEHOLDER:
     case MYLITE_STMT_CTE_PLACEHOLDER:
-    case MYLITE_STMT_LOCK_TABLES_PLACEHOLDER:
     case MYLITE_STMT_UNLOCK_TABLES_PLACEHOLDER:
+        break;
+    case MYLITE_STMT_LOCK_TABLES_PLACEHOLDER:
+        status = mylite_table_ddl_copy_lock_tables_statement(statement, &stmt->lock_tables);
         break;
     case MYLITE_STMT_CREATE_TABLE:
         status = mylite_table_ddl_copy_create_table_statement(statement, &stmt->create_table);

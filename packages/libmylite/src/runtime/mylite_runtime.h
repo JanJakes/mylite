@@ -111,6 +111,7 @@ struct mylite_stmt {
     struct mylite_deallocate_prepare_plan deallocate_prepare;
     struct mylite_create_table_plan create_table;
     struct mylite_drop_table_plan drop_table;
+    struct mylite_lock_tables_plan lock_tables;
     struct mylite_rename_table_plan rename_table;
     struct mylite_truncate_table_plan truncate_table;
     struct mylite_alter_table_plan alter_table;

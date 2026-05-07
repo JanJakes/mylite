@@ -221,6 +221,7 @@ void mylite_finalize(mylite_stmt *stmt) {
     mylite_prepared_statement_deallocate_plan_deinit(&stmt->deallocate_prepare);
     mylite_table_ddl_create_table_plan_deinit(&stmt->create_table);
     mylite_table_ddl_drop_table_plan_deinit(&stmt->drop_table);
+    mylite_table_ddl_lock_tables_plan_deinit(&stmt->lock_tables);
     mylite_table_ddl_rename_table_plan_deinit(&stmt->rename_table);
     mylite_table_ddl_truncate_table_plan_deinit(&stmt->truncate_table);
     mylite_table_ddl_alter_table_plan_deinit(&stmt->alter_table);

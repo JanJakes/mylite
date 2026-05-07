@@ -42,9 +42,14 @@ placeholders. Execution:
 - exposes zero result columns
 - reports zero affected rows
 - appends warning `1235` (`ER_NOT_SUPPORTED_YET`)
+- validates `LOCK TABLES` targets before the placeholder warning:
+  - unqualified names require a selected schema and otherwise fail with error
+    `1046` (`ER_NO_DB_ERROR`)
+  - explicit unknown schemas fail with error `1049` (`ER_BAD_DB_ERROR`)
+  - system schemas fail with error `1044` (`ER_DBACCESS_DENIED_ERROR`)
+  - missing tables fail with error `1146` (`ER_NO_SUCH_TABLE`)
 - does not acquire or release any runtime lock
 - does not change transaction state
-- does not validate whether the named tables exist
 
 This is intentionally conservative. Rejecting these statements breaks common
 MySQL imports, while silently pretending to enforce table locks would be
@@ -74,8 +79,8 @@ opt_local ::= LOCAL.
 ```
 
 The table list is retained only for source-span and future analysis use; lock
-types and aliases are currently accepted and ignored. The AST uses dedicated
-placeholder kinds:
+types and aliases are currently accepted and ignored after target validation.
+The AST uses dedicated placeholder kinds:
 
 - `MYLITE_SQL_AST_PLACEHOLDER_LOCK_TABLES`
 - `MYLITE_SQL_AST_PLACEHOLDER_UNLOCK_TABLES`
@@ -95,4 +100,5 @@ Parser tests cover representative table lists, aliases, lock types, and syntax
 errors for missing table names or missing `TABLES`.
 
 Runtime tests cover placeholder execution diagnostics for `LOCK TABLES` and
-`UNLOCK TABLES`.
+`UNLOCK TABLES`, including MySQL-compatible `LOCK TABLES` errors for no selected
+schema, unknown explicit schemas, system schemas, and missing tables.

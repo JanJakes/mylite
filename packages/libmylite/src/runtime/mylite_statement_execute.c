@@ -1,5 +1,6 @@
 #include "mylite_statement_execute.h"
 
+#include "mylite_catalog.h"
 #include "mylite_connection.h"
 #include "mylite_connection_statement.h"
 #include "mylite_diagnostics.h"
@@ -10,6 +11,7 @@
 #include "mylite_schema.h"
 #include "mylite_select_context.h"
 #include "mylite_select_union.h"
+#include "mylite_span.h"
 #include "mylite_statement.h"
 #include "mylite_table_ddl.h"
 #include "mylite_table_ddl_statement.h"
@@ -18,6 +20,15 @@
 #include "mylite_values_query.h"
 
 static int execute_parser_placeholder_statement(mylite_stmt *stmt);
+
+static int validate_lock_tables_placeholder_targets(mylite_stmt *stmt);
+
+static int validate_lock_tables_placeholder_target(
+    mylite_stmt *stmt,
+    struct mylite_lock_table_target *target
+);
+
+static int set_lock_tables_unknown_database_error(mylite_db *database, const char *schema_name);
 
 static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind);
 
@@ -235,11 +246,104 @@ int mylite_statement_execute_custom_with_callbacks(
 }
 
 static int execute_parser_placeholder_statement(mylite_stmt *stmt) {
+    int status = MYLITE_OK;
+
+    if (stmt->kind == MYLITE_STMT_LOCK_TABLES_PLACEHOLDER) {
+        status = validate_lock_tables_placeholder_targets(stmt);
+        if (status != MYLITE_OK) {
+            stmt->affected_rows = -1;
+            return status;
+        }
+    }
+
     return mylite_diagnostics_append_warning(
         stmt->database,
         MYLITE_MYSQL_ER_NOT_SUPPORTED_YET,
         parser_placeholder_warning_message(stmt->kind)
     );
+}
+
+static int validate_lock_tables_placeholder_targets(mylite_stmt *stmt) {
+    for (size_t index = 0U; index < stmt->lock_tables.target_count; ++index) {
+        int status =
+            validate_lock_tables_placeholder_target(stmt, &stmt->lock_tables.targets[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int validate_lock_tables_placeholder_target(
+    mylite_stmt *stmt,
+    struct mylite_lock_table_target *target
+) {
+    struct mylite_schema_presence presence = {0};
+    bool exists = false;
+    int status = MYLITE_OK;
+
+    if (target->schema_name == NULL) {
+        if (stmt->database->selected_schema == NULL || stmt->database->selected_schema[0] == '\0') {
+            (void)mylite_diagnostics_set_error_message(stmt->database, "No database selected");
+            return MYLITE_EXEC_ERROR;
+        }
+        target->schema_name = mylite_copy_nonempty_cstring(stmt->database->selected_schema);
+        if (target->schema_name == NULL) {
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+
+    status = mylite_catalog_schema_exists(stmt->database, target->schema_name, &presence);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (presence.is_system) {
+        return mylite_diagnostics_set_schema_access_denied_error(
+            stmt->database,
+            target->schema_name
+        );
+    }
+    if (!presence.exists) {
+        return set_lock_tables_unknown_database_error(stmt->database, target->schema_name);
+    }
+
+    status = mylite_catalog_table_exists(
+        stmt->database,
+        target->schema_name,
+        target->table_name,
+        &exists
+    );
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!exists) {
+        return mylite_diagnostics_set_table_doesnt_exist_error(
+            stmt->database,
+            target->schema_name,
+            target->table_name
+        );
+    }
+    return MYLITE_OK;
+}
+
+static int set_lock_tables_unknown_database_error(mylite_db *database, const char *schema_name) {
+    int status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Unknown database '",
+        schema_name,
+        "'"
+    );
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_BAD_DB_ERROR,
+            mylite_error_message(database)
+        );
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind) {

@@ -15,8 +15,8 @@ The current implementation supports the application-facing CAST slice:
 - `CAST(expr AS CHAR)`, `CHAR(N)`, `NCHAR`, and `NCHAR(N)`
 - `CAST(expr AS CHAR CHARACTER SET charset_name)` and the `CHARSET` shorthand
   for the initial MyLite charset registry
-- `CAST(expr AS BINARY)` as a binary-string metadata cast without fixed-length
-  zero padding
+- `CAST(expr AS BINARY)` and `CAST(expr AS BINARY(N))`, including fixed-length
+  byte padding and truncation
 - `CAST(expr AS FLOAT)`, `FLOAT(p)`, `FLOAT4`, and `FLOAT4(p)`, where
   precision `p` from `0` through `24` returns `FLOAT` metadata and precision
   `25` through `53` returns `DOUBLE` metadata
@@ -38,9 +38,6 @@ subset works:
 
 The following behavior is deferred:
 
-- fixed-length binary padding/truncation fidelity for `CAST(... AS BINARY(N))`
-  beyond preserving the byte sequence for the currently supported binary
-  metadata cast
 - exhaustive binary-string operator semantics for `BINARY expr`; the prefix
   operator is specified in
   `docs/specs/expression-operator-foundation/specs.md`
@@ -140,6 +137,9 @@ binary-string metadata.
 | `CAST('abc' AS CHAR CHARACTER SET binary)` | `abc` | none |
 | `HEX(CAST('a\\0b' AS BINARY))` | `610062` | none |
 | `LENGTH(CAST('a\\0b' AS BINARY))` | `3` | none |
+| `HEX(CAST('a' AS BINARY(3)))` | `610000` | none |
+| `HEX(CAST('abcdef' AS BINARY(3)))` | `616263` | 1292 truncated binary |
+| `LENGTH(CAST('x' AS BINARY(0)))` | `0` | 1292 truncated binary |
 | `HEX(CAST('a\\0b' AS CHAR))` | `610062` | none |
 
 Floating-point casts parse values through MySQL's DOUBLE conversion path.
@@ -207,6 +207,7 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CAST('abc' AS CHAR)` | `VAR_STRING` | source length times charset maxlen | `31` | connection dependent | none |
 | `CAST('abc' AS CHAR(3))` | `VAR_STRING` | `3` times charset maxlen | `31` | connection dependent | none |
 | `CAST('abc' AS BINARY)` | `VAR_STRING` | source length times connection charset maxlen | `31` | `binary` | `BINARY` |
+| `CAST('abc' AS BINARY(3))` | `VAR_STRING` | `3` | `31` | `binary` | `BINARY` |
 | `CAST(NULL AS CHAR)` | `VAR_STRING` | `0` | `31` | connection dependent | nullable |
 | `CAST('1.25' AS FLOAT)` | `FLOAT` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
 | `CAST('1.25' AS FLOAT(25))` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
@@ -242,7 +243,7 @@ cast_target_type ::= REAL.
 cast_target_type ::= FLOAT8.
 cast_target_type ::= CHAR opt_column_length opt_cast_character_set.
 cast_target_type ::= NCHAR opt_column_length.
-cast_target_type ::= BINARY.
+cast_target_type ::= BINARY opt_column_length.
 cast_target_type ::= DATE.
 cast_target_type ::= TIME opt_temporal_fsp.
 cast_target_type ::= DATETIME opt_temporal_fsp.

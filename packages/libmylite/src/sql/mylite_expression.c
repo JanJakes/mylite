@@ -877,7 +877,9 @@ static int eval_char_cast(
 );
 
 static int eval_binary_cast(
+    const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 );
 
@@ -3960,6 +3962,12 @@ static int append_char_truncation_warning(
     const char *text
 );
 
+static int append_binary_truncation_warning(
+    struct mylite_expression_warnings *warnings,
+    uint64_t length,
+    const char *text
+);
+
 static int append_signed_complement_warning(struct mylite_expression_warnings *warnings);
 
 static int append_unsigned_complement_warning(struct mylite_expression_warnings *warnings);
@@ -4029,11 +4037,20 @@ static bool is_null(const struct mylite_expression_value *value);
 
 static bool is_numeric_kind(enum mylite_expression_value_kind kind);
 
-static bool like_match(const char *value, const char *pattern, char escape, bool case_sensitive);
+static bool like_match(
+    const char *value,
+    size_t value_length,
+    const char *pattern,
+    size_t pattern_length,
+    char escape,
+    bool case_sensitive
+);
 
 static bool like_match_here(
     const char *value,
+    size_t value_length,
     const char *pattern,
+    size_t pattern_length,
     char escape,
     bool case_sensitive
 );
@@ -5228,7 +5245,7 @@ static int eval_cast_expression(
         status = eval_char_cast(target, &value, warnings, out_value);
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
-        status = eval_binary_cast(&value, out_value);
+        status = eval_binary_cast(target, &value, warnings, out_value);
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
         status = eval_date_cast(&value, warnings, out_value);
@@ -5280,7 +5297,7 @@ static int eval_binary_prefix_cast(
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         return 0;
     }
-    return eval_binary_cast(value, out_value);
+    return eval_binary_cast(NULL, value, warnings, out_value);
 }
 
 static int eval_signed_cast(
@@ -5429,13 +5446,41 @@ static int eval_char_cast(
 }
 
 static int eval_binary_cast(
+    const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 ) {
     char *text = NULL;
     size_t text_length = 0U;
     int status = cast_value_to_string_with_length(value, &text, &text_length);
 
+    if (status == 0 && target != NULL && target->has_column_length) {
+        uint64_t target_length = target->column_length;
+        char *fixed = NULL;
+
+        if (target_length > (uint64_t)SIZE_MAX - 1U) {
+            free(text);
+            return -1;
+        }
+        if (text_length > target_length) {
+            status = append_binary_truncation_warning(warnings, target_length, text);
+            text_length = (size_t)target_length;
+        }
+        if (status == 0 && text_length < target_length) {
+            fixed = calloc((size_t)target_length + 1U, 1U);
+            if (fixed == NULL) {
+                free(text);
+                return -1;
+            }
+            if (text_length > 0U) {
+                memcpy(fixed, text, text_length);
+            }
+            free(text);
+            text = fixed;
+            text_length = (size_t)target_length;
+        }
+    }
     if (status == 0) {
         status = set_text_value(text, text_length, out_value);
     }
@@ -21384,6 +21429,9 @@ static int eval_like(
     char *value_text = NULL;
     char *pattern_text = NULL;
     char *escape_text = NULL;
+    size_t value_length = 0U;
+    size_t pattern_length = 0U;
+    size_t escape_length = 0U;
     char escape = node->no_backslash_escapes ? '\0' : '\\';
     bool case_sensitive = expression_is_binary_string_modifier(child_at(node, 0U)) ||
                           expression_is_binary_string_modifier(child_at(node, 1U));
@@ -21404,13 +21452,13 @@ static int eval_like(
         goto cleanup;
     }
 
-    status = value_to_string(&value, &value_text);
+    status = value_to_string_with_length(&value, &value_text, &value_length);
     if (status == 0) {
-        status = value_to_string(&pattern, &pattern_text);
+        status = value_to_string_with_length(&pattern, &pattern_text, &pattern_length);
     }
     if (status == 0 && child_at(node, 2U) != NULL) {
-        status = value_to_string(&escape_value, &escape_text);
-        if (status == 0 && strlen(escape_text) != 1U) {
+        status = value_to_string_with_length(&escape_value, &escape_text, &escape_length);
+        if (status == 0 && escape_length != 1U) {
             status = append_warning(
                 warnings,
                 MYLITE_WARNING_INCORRECT_ESCAPE_ARGUMENTS,
@@ -21425,7 +21473,14 @@ static int eval_like(
         }
     }
     if (status == 0) {
-        bool result = like_match(value_text, pattern_text, escape, case_sensitive);
+        bool result = like_match(
+            value_text,
+            value_length,
+            pattern_text,
+            pattern_length,
+            escape,
+            case_sensitive
+        );
         if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE) {
             result = !result;
         }
@@ -24255,6 +24310,27 @@ static int append_char_truncation_warning(
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
 }
 
+static int append_binary_truncation_warning(
+    struct mylite_expression_warnings *warnings,
+    uint64_t length,
+    const char *text
+) {
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect BINARY(%llu) value: '%.*s'",
+        (unsigned long long)length,
+        MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW,
+        text == NULL ? "" : text
+    );
+
+    if (written < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
 static int append_signed_complement_warning(struct mylite_expression_warnings *warnings) {
     return append_warning(
         warnings,
@@ -24819,10 +24895,19 @@ static bool is_numeric_kind(enum mylite_expression_value_kind kind) {
            kind == MYLITE_EXPRESSION_VALUE_REAL;
 }
 
-static bool like_match(const char *value, const char *pattern, char escape, bool case_sensitive) {
+static bool like_match(
+    const char *value,
+    size_t value_length,
+    const char *pattern,
+    size_t pattern_length,
+    char escape,
+    bool case_sensitive
+) {
     return like_match_here(
         value == NULL ? "" : value,
+        value == NULL ? 0U : value_length,
         pattern == NULL ? "" : pattern,
+        pattern == NULL ? 0U : pattern_length,
         escape,
         case_sensitive
     );
@@ -24830,30 +24915,66 @@ static bool like_match(const char *value, const char *pattern, char escape, bool
 
 static bool like_match_here(
     const char *value,
+    size_t value_length,
     const char *pattern,
+    size_t pattern_length,
     char escape,
     bool case_sensitive
 ) {
-    if (*pattern == '\0') {
-        return *value == '\0';
+    if (pattern_length == 0U) {
+        return value_length == 0U;
     }
     if (*pattern == '%') {
-        do {
-            if (like_match_here(value, pattern + 1, escape, case_sensitive)) {
+        const char *next_pattern = pattern + 1U;
+        size_t next_pattern_length = pattern_length - 1U;
+
+        if (next_pattern_length == 0U) {
+            return true;
+        }
+        for (size_t offset = 0U; offset <= value_length; ++offset) {
+            if (like_match_here(
+                    value + offset,
+                    value_length - offset,
+                    next_pattern,
+                    next_pattern_length,
+                    escape,
+                    case_sensitive
+                )) {
                 return true;
             }
-        } while (*value++ != '\0');
+        }
         return false;
     }
-    if (*pattern == escape && pattern[1] != '\0') {
-        return *value != '\0' && like_char_equal(*value, pattern[1], case_sensitive) &&
-               like_match_here(value + 1, pattern + 2, escape, case_sensitive);
+    if (escape != '\0' && *pattern == escape && pattern_length > 1U) {
+        return value_length > 0U && like_char_equal(*value, pattern[1], case_sensitive) &&
+               like_match_here(
+                   value + 1U,
+                   value_length - 1U,
+                   pattern + 2U,
+                   pattern_length - 2U,
+                   escape,
+                   case_sensitive
+               );
     }
     if (*pattern == '_') {
-        return *value != '\0' && like_match_here(value + 1, pattern + 1, escape, case_sensitive);
+        return value_length > 0U && like_match_here(
+                                        value + 1U,
+                                        value_length - 1U,
+                                        pattern + 1U,
+                                        pattern_length - 1U,
+                                        escape,
+                                        case_sensitive
+                                    );
     }
-    return *value != '\0' && like_char_equal(*value, *pattern, case_sensitive) &&
-           like_match_here(value + 1, pattern + 1, escape, case_sensitive);
+    return value_length > 0U && like_char_equal(*value, *pattern, case_sensitive) &&
+           like_match_here(
+               value + 1U,
+               value_length - 1U,
+               pattern + 1U,
+               pattern_length - 1U,
+               escape,
+               case_sensitive
+           );
 }
 
 static bool like_char_equal(char value, char pattern, bool case_sensitive) {

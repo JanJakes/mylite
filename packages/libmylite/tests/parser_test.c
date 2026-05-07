@@ -11312,7 +11312,8 @@ static int test_cast_expression_syntax(void) {
     failures += parse_sql(
         "SELECT CAST('abcdef' AS CHAR(3) CHARACTER SET 'utf8mb4'), "
         "CAST('abc' AS CHAR CHARSET binary), "
-        "CAST('abc' AS NCHAR(4)), CAST('abc' AS BINARY);",
+        "CAST('abc' AS NCHAR(4)), CAST('abc' AS BINARY), "
+        "CAST('abc' AS BINARY(3));",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -11349,6 +11350,14 @@ static int test_cast_expression_syntax(void) {
         MYLITE_SQL_AST_COLUMN_TYPE_BINARY,
         "BINARY CAST target"
     );
+    cast_expression = child_at(child_at(select_list, 4U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_BINARY, "BINARY(3) CAST target");
+    if (target != NULL && (!target->has_column_length || target->column_length != 3U)) {
+        fprintf(stderr, "BINARY(3) CAST did not record length\n");
+        failures = 1;
+    }
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -11515,8 +11524,6 @@ static int test_cast_expression_syntax(void) {
         &result
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT CAST('x' AS BINARY(3))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT CAST('x' AS TIME(7))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT CAST('x' AS TIMESTAMP)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -11553,7 +11560,8 @@ static int test_convert_expression_syntax(void) {
         "CONVERT('12.34', DECIMAL(6,2)), "
         "CONVERT('abc', CHAR CHARACTER SET latin1), "
         "CONVERT('abc', NCHAR(4)), "
-        "CONVERT('abc', BINARY);",
+        "CONVERT('abc', BINARY), "
+        "CONVERT('abc', BINARY(3));",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -11601,6 +11609,14 @@ static int test_convert_expression_syntax(void) {
         MYLITE_SQL_AST_COLUMN_TYPE_BINARY,
         "BINARY CONVERT target"
     );
+    cast_expression = child_at(child_at(select_list, 5U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_BINARY, "BINARY(3) CONVERT target");
+    if (target != NULL && (!target->has_column_length || target->column_length != 3U)) {
+        fprintf(stderr, "BINARY(3) CONVERT did not record length\n");
+        failures = 1;
+    }
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

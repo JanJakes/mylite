@@ -5427,7 +5427,9 @@ static int test_expression_operator_foundation(void) {
         "'abc' LIKE 'a%', 'abc' LIKE 'A%', 'abc' LIKE 'a\\_c', "
         "'a_c' LIKE 'a\\_c', 'abc' LIKE 'a\\%c', "
         "'a%c' LIKE 'a\\%c', 'abc' NOT LIKE 'a%', 2 IN (1,2,3), "
-        "4 IN (1,2,NULL), 4 NOT IN (1,2,NULL)",
+        "4 IN (1,2,NULL), 4 NOT IN (1,2,NULL), "
+        "HEX('a\\0b'), LENGTH('a\\0b'), 'a\\0b' LIKE 'a', "
+        "'a\\0b' LIKE 'a%', 'a\\0b' LIKE 'a_b'",
         MYLITE_OK,
         &stmt
     );
@@ -5448,6 +5450,11 @@ static int test_expression_operator_foundation(void) {
     failures += expect_string(mylite_column_text(stmt, 13), "1", "in match");
     failures += expect_null_text(mylite_column_text(stmt, 14), "in null miss");
     failures += expect_null_text(mylite_column_text(stmt, 15), "not in null miss");
+    failures += expect_string(mylite_column_text(stmt, 16), "610062", "nul literal hex");
+    failures += expect_string(mylite_column_text(stmt, 17), "3", "nul literal length");
+    failures += expect_string(mylite_column_text(stmt, 18), "0", "nul like exact miss");
+    failures += expect_string(mylite_column_text(stmt, 19), "1", "nul like prefix");
+    failures += expect_string(mylite_column_text(stmt, 20), "1", "nul like underscore");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "range pattern done");
     mylite_finalize(stmt);
     stmt = NULL;
@@ -33714,6 +33721,73 @@ static int test_cast_expression_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
          1},
     };
+    static const struct expected_result_metadata binary_length_metadata[] = {
+        {"bpad",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"btrunc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"cpad",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"nb",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"b0",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         0U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+    };
     static const struct expected_result_metadata real_as_float_metadata[] = {
         {"real_cast",
          NULL,
@@ -33839,6 +33913,8 @@ static int test_cast_expression_execution(void) {
     static const char *const decimal_range_values[] = {"999.99", "999.99", "999.99", "-0.99"};
     static const char *const decimal_nonfinite_columns[] = {"nan_value", "inf_value"};
     static const char *const decimal_nonfinite_values[] = {"0.00", "0.00"};
+    static const unsigned char binary_padded[] = {'a', '\0', '\0'};
+    static const unsigned char binary_truncated[] = {'a', 'b', 'c'};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -33912,6 +33988,68 @@ static int test_cast_expression_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('a' AS BINARY(3)) AS bpad, "
+        "CAST('abcdef' AS BINARY(3)) AS btrunc, "
+        "CONVERT('a', BINARY(3)) AS cpad, "
+        "CAST(NULL AS BINARY(3)) AS nb, "
+        "CAST('x' AS BINARY(0)) AS b0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        binary_length_metadata,
+        (int)(sizeof(binary_length_metadata) / sizeof(binary_length_metadata[0])),
+        "CAST BINARY length metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST BINARY length row");
+    failures +=
+        expect_int64((int64_t)mylite_column_bytes(stmt, 0), 3, "CAST BINARY padded byte count");
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 0),
+        binary_padded,
+        sizeof(binary_padded),
+        "CAST BINARY padded bytes"
+    );
+    failures +=
+        expect_int64((int64_t)mylite_column_bytes(stmt, 1), 3, "CAST BINARY truncated byte count");
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 1),
+        binary_truncated,
+        sizeof(binary_truncated),
+        "CAST BINARY truncated bytes"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 2),
+        binary_padded,
+        sizeof(binary_padded),
+        "CONVERT BINARY padded bytes"
+    );
+    failures += expect_null_text(mylite_column_text(stmt, 3), "CAST null BINARY length value");
+    failures +=
+        expect_int64((int64_t)mylite_column_bytes(stmt, 4), 0, "CAST BINARY zero byte count");
+    failures += expect_int(mylite_warning_count(database), 2, "CAST BINARY length warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CAST BINARY truncate warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "BINARY(3)",
+        "CAST BINARY truncate warning message"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 1),
+        "BINARY(0)",
+        "CAST BINARY zero warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST BINARY length done");
     mylite_finalize(stmt);
     stmt = NULL;
 

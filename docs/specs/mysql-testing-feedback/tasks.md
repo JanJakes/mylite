@@ -143,7 +143,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Fix binary literal evaluation such as `SELECT 0b000000001`.
 - [x] Preserve string values containing null bytes instead of truncating at
       `\0`. Scalar `SELECT` literals and DML storage/update paths now preserve
-      embedded NUL byte lengths.
+      embedded NUL byte lengths, and scalar `LIKE` matching is length-aware for
+      decoded NUL bytes in values and patterns.
 - [x] Make `FROM_BASE64(TO_BASE64('binary\\0data'))` preserve binary null
       bytes.
 - [x] Align invalid and zero-date coercion/rejection with MySQL in strict and

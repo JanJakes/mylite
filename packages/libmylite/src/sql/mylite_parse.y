@@ -5101,8 +5101,11 @@ cast_target_type(A) ::= NCHAR(T) opt_column_length(B). {
                        B)),
         T);
 }
-cast_target_type(A) ::= BINARY(T). {
-    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BINARY);
+cast_target_type(A) ::= BINARY(T) opt_column_length(B). {
+    A = mylite_sql_parser_set_column_length(
+        state,
+        mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BINARY),
+        B);
 }
 cast_target_type(A) ::= DATE(T). {
     A = mylite_sql_parser_validate_column_type(

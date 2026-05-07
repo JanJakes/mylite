@@ -217,6 +217,9 @@ Representative runtime results:
 | `SELECT 'a_c' LIKE 'a\\_c'` | `1` |
 | `SELECT 'a\\c' LIKE 'a\\\\c'` | `1` |
 | `SELECT 'abc' NOT LIKE 'a%'` | `0` |
+| `SELECT 'a\\0b' LIKE 'a'` | `0` |
+| `SELECT 'a\\0b' LIKE 'a%'` | `1` |
+| `SELECT 'a\\0b' LIKE 'a_b'` | `1` |
 | `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT HEX('a\\0b')` | `615C3062` |
 | `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a_c' LIKE 'a\\_c'` | `0` |
 | `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a\\_c' LIKE 'a\\_c'` | `1` |
@@ -225,7 +228,8 @@ Representative runtime results:
 Task 16 should implement `%`, `_`, default backslash escaping, and
 `LIKE ... ESCAPE` for ASCII-compatible strings under the current default
 connection collation. It must preserve `NULL` propagation when either operand
-is `NULL`.
+is `NULL`. Decoded NUL bytes are ordinary bytes for this slice's matcher:
+they do not terminate the value or pattern.
 
 When `NO_BACKSLASH_ESCAPES` is active, backslash remains ordinary string
 content and `LIKE` does not use a default backslash escape. Explicit
@@ -621,6 +625,9 @@ these cases.
 | `SELECT 'abc' LIKE 'A%'` | `1` |
 | `SELECT 'a_c' LIKE 'a\\_c'` | `1` |
 | `SELECT 'abc' NOT LIKE 'a%'` | `0` |
+| `SELECT 'a\\0b' LIKE 'a'` | `0` |
+| `SELECT 'a\\0b' LIKE 'a%'` | `1` |
+| `SELECT 'a\\0b' LIKE 'a_b'` | `1` |
 | `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT HEX('a\\0b')` | `615C3062` |
 | `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a_c' LIKE 'a\\_c'` | `0` |
 | `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'a\\_c' LIKE 'a\\_c'` | `1` |

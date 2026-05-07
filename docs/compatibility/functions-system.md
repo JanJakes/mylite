@@ -30,6 +30,6 @@ miscellaneous system helpers.
 | `SYSTEM_USER()` | ❌ | Synonym for USER() |
 | `UpdateXML()` | ❌ | Return replaced XML fragment |
 | `USER()` | 🟡 | Limited one-row scalar select returns MyLite's embedded client identity `root@%`; no authentication, host matching, privileges, or table-backed evaluation |
-| `VERSION()` | ❌ | Return a string that indicates the MySQL server version |
+| `VERSION()` | 🟡 | Limited one-row scalar `SELECT VERSION()` with optional `FROM DUAL`; returns MyLite's engine version string, not an impersonated MySQL server version; no `@@version`, aliases, table-backed evaluation, clauses, or protocol handshake version reporting |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

@@ -297,6 +297,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "user_function";
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
         return "current_user_function";
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+        return "version_function";
+    case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
+        return "version_argument_count_error";
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
+        return "function_argument_list";
     }
 
     return "unknown";

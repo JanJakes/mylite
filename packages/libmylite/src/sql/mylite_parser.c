@@ -1022,6 +1022,60 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_zero_argument_function(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_count_error(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind error_kind,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *error = NULL;
+
+    error = make_node(
+        state,
+        error_kind,
+        span_join(span_from_token(&function_token), span_from_token(&right_paren))
+    );
+    if (error == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(error, arguments);
+    return error;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *argument
+) {
+    struct mylite_sql_source_span span =
+        argument == NULL ? (struct mylite_sql_source_span){0} : argument->span;
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, argument);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_function_argument(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *argument
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, argument);
+    if (argument != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, argument->span));
+    }
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_keyword(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token current_user_token
@@ -1402,6 +1456,7 @@ static bool map_keyword_token(
         {"NULL", MYLITE_SQL_PARSE_NULL},
         {"DUAL", MYLITE_SQL_PARSE_DUAL},
         {"USER", MYLITE_SQL_PARSE_USER},
+        {"VERSION", MYLITE_SQL_PARSE_VERSION},
     };
 
     if (previous_token_was_dot) {

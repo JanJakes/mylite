@@ -961,6 +961,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"VARIABLES", 0U},
         {"VARYING", MYLITE_SQL_KEYWORD_RESERVED},
         {"VCPU", 0U},
+        {"VERSION", 0U},
         {"VIEW", 0U},
         {"VIRTUAL", MYLITE_SQL_KEYWORD_RESERVED},
         {"VISIBLE", 0U},

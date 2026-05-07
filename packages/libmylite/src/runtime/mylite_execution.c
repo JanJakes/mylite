@@ -26,6 +26,7 @@ enum {
     mysql_error_unknown_database = 1049,
     mysql_error_table_exists = 1050,
     mysql_error_unknown_column = 1054,
+    mysql_error_incorrect_parameter_count = 1582,
     mysql_error_unknown_table = 1051,
     mysql_error_identifier_too_long = 1059,
     mysql_error_duplicate_column = 1060,
@@ -43,6 +44,7 @@ enum {
     decimal_base = 10,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
+    ast_scan_initial_capacity = 16,
 };
 
 struct table_name_resolution {
@@ -370,6 +372,21 @@ static int execute_session_scalar_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
+);
+static int select_statement_has_version_argument_count_error(
+    const struct mylite_sql_ast_node *statement,
+    bool *out_has_error
+);
+static int ast_node_contains_kind(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_node_kind kind,
+    bool *out_contains
+);
+static int ast_scan_push_node(
+    const struct mylite_sql_ast_node ***stack,
+    size_t *count,
+    size_t *capacity,
+    const struct mylite_sql_ast_node *node
 );
 static const char *session_scalar_value(
     const struct mylite_db *database,
@@ -801,6 +818,10 @@ static void set_parse_error(
     const struct mylite_sql_parse_result *parse_result
 );
 static void set_unsupported_error(struct mylite_db *database, const char *message);
+static void set_native_function_parameter_count_error(
+    struct mylite_db *database,
+    const char *function_name
+);
 static void set_no_database_error(struct mylite_db *database);
 static void set_database_exists_error(struct mylite_db *database, const char *schema_name);
 static void set_cant_drop_database_error(struct mylite_db *database, const char *schema_name);
@@ -994,6 +1015,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
         break;
     }
 
@@ -1334,8 +1358,21 @@ static int execute_select_statement(
     mylite_result **out_result
 ) {
     struct planned_select plan = {0};
+    bool has_version_argument_count_error = false;
     int rc = MYLITE_OK;
 
+    rc = select_statement_has_version_argument_count_error(
+        statement,
+        &has_version_argument_count_error
+    );
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (has_version_argument_count_error) {
+        set_native_function_parameter_count_error(database, "VERSION");
+        return MYLITE_ERROR;
+    }
     if (select_statement_is_session_scalar(statement)) {
         return execute_session_scalar_select_statement(database, statement, out_result);
     }
@@ -2578,6 +2615,110 @@ static int execute_session_scalar_select_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int select_statement_has_version_argument_count_error(
+    const struct mylite_sql_ast_node *statement,
+    bool *out_has_error
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_has_error == NULL) {
+        return MYLITE_ERROR;
+    }
+    *out_has_error = false;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        return MYLITE_OK;
+    }
+
+    select_item = child_at(select_list, 0U);
+    while (rc == MYLITE_OK && select_item != NULL && !*out_has_error) {
+        const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+
+        if (expression != NULL && expression->kind == MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR) {
+            *out_has_error = true;
+            break;
+        }
+        if (expression != NULL && expression->first_child != NULL) {
+            rc = ast_node_contains_kind(
+                expression,
+                MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR,
+                out_has_error
+            );
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return rc;
+}
+
+static int ast_node_contains_kind(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_node_kind kind,
+    bool *out_contains
+) {
+    const struct mylite_sql_ast_node **stack = NULL;
+    size_t count = 0U;
+    size_t capacity = 0U;
+    const struct mylite_sql_ast_node *child = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_contains == NULL) {
+        return MYLITE_ERROR;
+    }
+    *out_contains = false;
+
+    rc = ast_scan_push_node(&stack, &count, &capacity, node);
+    while (rc == MYLITE_OK && count != 0U) {
+        const struct mylite_sql_ast_node *current = stack[--count];
+
+        if (current == NULL) {
+            continue;
+        }
+        if (current->kind == kind) {
+            *out_contains = true;
+            break;
+        }
+
+        child = current->first_child;
+        while (rc == MYLITE_OK && child != NULL) {
+            rc = ast_scan_push_node(&stack, &count, &capacity, child);
+            child = child->next_sibling;
+        }
+    }
+
+    free((void *)stack);
+    return rc;
+}
+
+static int ast_scan_push_node(
+    const struct mylite_sql_ast_node ***stack,
+    size_t *count,
+    size_t *capacity,
+    const struct mylite_sql_ast_node *node
+) {
+    if (*count == *capacity) {
+        size_t new_capacity = *capacity == 0U ? ast_scan_initial_capacity : *capacity * 2U;
+        const struct mylite_sql_ast_node **new_stack = NULL;
+
+        if (new_capacity < *capacity || new_capacity > SIZE_MAX / sizeof(**stack)) {
+            return MYLITE_NOMEM;
+        }
+        new_stack = (const struct mylite_sql_ast_node **)
+            realloc((void *)*stack, new_capacity * sizeof(**stack));
+        if (new_stack == NULL) {
+            return MYLITE_NOMEM;
+        }
+        *stack = new_stack;
+        *capacity = new_capacity;
+    }
+
+    (*stack)[*count] = node;
+    *count += 1U;
+    return MYLITE_OK;
+}
+
 static const char *session_scalar_value(
     const struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
@@ -2598,6 +2739,8 @@ static const char *session_scalar_value(
         return database->session.client_user_identity;
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
         return database->session.current_user_identity;
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+        return mylite_version();
     default:
         return NULL;
     }
@@ -2619,6 +2762,9 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_VERSION_FUNCTION) {
         return true;
     }
 
@@ -5552,6 +5698,30 @@ static void set_unsupported_error(struct mylite_db *database, const char *messag
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_parse,
+        "42000",
+        message
+    );
+}
+
+static void set_native_function_parameter_count_error(
+    struct mylite_db *database,
+    const char *function_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect parameter count in the call to native function '%s'",
+        function_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_parameter_count,
         "42000",
         message
     );

@@ -9,6 +9,7 @@ static int test_use_statements(void);
 static int test_select_expression_list(void);
 static int test_current_database_functions(void);
 static int test_current_user_identity_functions(void);
+static int test_version_function(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -85,6 +86,7 @@ int main(void) {
     failures += test_select_expression_list();
     failures += test_current_database_functions();
     failures += test_current_user_identity_functions();
+    failures += test_version_function();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -335,6 +337,113 @@ static int test_current_user_identity_functions(void) {
     first_expression = child_at(child_at(select_list, 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare user identifier");
     failures += expect_span_text(first_expression, "USER", "bare user span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_version_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT VERSION(), Version(), version() FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_VERSION_FUNCTION, "version function");
+    failures += expect_span_text(first_expression, "VERSION()", "version function span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_VERSION_FUNCTION,
+        "mixed-case version function"
+    );
+    failures += expect_span_text(second_expression, "Version()", "mixed-case version span");
+    failures +=
+        expect_node(third_expression, MYLITE_SQL_AST_VERSION_FUNCTION, "lower version function");
+    failures += expect_span_text(third_expression, "version()", "lower version span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "version from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT VERSION (), (VERSION());", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_VERSION_FUNCTION, "spaced version function");
+    failures += expect_span_text(first_expression, "VERSION ()", "spaced version span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized version function"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_VERSION_FUNCTION,
+        "wrapped version function"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT VERSION(1), VERSION(NULL), VERSION(1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR,
+        "version integer argument error"
+    );
+    failures += expect_span_text(first_expression, "VERSION(1)", "version integer argument span");
+    arguments = child_at(first_expression, 0U);
+    failures +=
+        expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "version argument list");
+    failures += expect_child_count(arguments, 1U, "version one argument count");
+    failures += expect_literal(
+        child_at(arguments, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "version integer argument"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR,
+        "version null argument error"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR,
+        "version multiple argument error"
+    );
+    arguments = child_at(third_expression, 0U);
+    failures += expect_child_count(arguments, 2U, "version multiple argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE version (version INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "version identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT VERSION;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare version identifier");
+    failures += expect_span_text(first_expression, "VERSION", "bare version span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT VERSION() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

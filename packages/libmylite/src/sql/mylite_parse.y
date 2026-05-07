@@ -421,6 +421,14 @@ expression(A) ::= CURRENT_USER(T) LPAREN RPAREN(R). {
 expression(A) ::= CURRENT_USER(T). {
     A = mylite_sql_parser_make_current_user_keyword(state, T);
 }
+expression(A) ::= VERSION(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_VERSION_FUNCTION, R);
+}
+expression(A) ::= VERSION(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR, B, R);
+}
 expression(A) ::= PLUS(T) expression(B). [UPLUS] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);
@@ -477,6 +485,13 @@ literal(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
 
+function_argument_list(A) ::= expression(B). {
+    A = mylite_sql_parser_make_function_argument_list(state, B);
+}
+function_argument_list(A) ::= function_argument_list(B) COMMA expression(C). {
+    A = mylite_sql_parser_append_function_argument(state, B, C);
+}
+
 qualified_identifier(A) ::= identifier(B). {
     A = B;
 }
@@ -498,6 +513,9 @@ identifier(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= USER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= VERSION(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

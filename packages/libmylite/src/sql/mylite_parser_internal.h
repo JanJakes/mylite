@@ -238,6 +238,22 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_zero_argument_function(
     enum mylite_sql_ast_node_kind function_kind,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_count_error(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind error_kind,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *argument
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_function_argument(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *argument
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_keyword(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token current_user_token

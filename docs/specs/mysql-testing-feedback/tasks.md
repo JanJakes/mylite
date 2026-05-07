@@ -312,6 +312,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       widths from the source expression and replacement expression, including
       same-width text replacements, widened text replacements, dynamic text
       replacements, and `NULL` replacements.
+      Dynamic `SPACE()` arguments now report MySQL-shaped nullable `LONG_BLOB`
+      descriptors with connection-character-set collation and the
+      MySQL-observed dynamic width.
       Table-backed `LPAD()` / `RPAD()` expressions with nonnegative literal
       target lengths and `REPEAT()` expressions with nonnegative literal counts
       now infer MySQL-shaped connection-character-set string widths.

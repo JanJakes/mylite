@@ -33,6 +33,13 @@ static int infer_make_set_function_descriptor(
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
+static int infer_space_function_descriptor(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor
+);
+
 static uint64_t insert_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -140,6 +147,24 @@ static bool function_name_is_left_right(const struct mylite_sql_ast_node *name);
 
 static bool function_name_is_replace(const struct mylite_sql_ast_node *name);
 
+static bool function_name_is_space(const struct mylite_sql_ast_node *name);
+
+static struct mylite_field_descriptor space_function_descriptor(
+    mylite_db *database,
+    uint64_t length,
+    bool long_blob
+);
+
+static bool space_function_constant_result_length(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    uint64_t *out_length
+);
+
+static uint64_t space_function_constant_max_length(mylite_db *database);
+
+static uint64_t space_function_dynamic_length(mylite_db *database);
+
 static uint64_t replace_function_replacement_multiplier(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -210,6 +235,11 @@ int mylite_expression_descriptor_infer_slice_string_function(
             out_descriptor,
             callbacks
         );
+    }
+    if (function_name_is_space(name)) {
+        (void)plan;
+        (void)nullable;
+        return infer_space_function_descriptor(database, expression, value, out_descriptor);
     }
 
     *out_descriptor = (struct mylite_field_descriptor){
@@ -346,6 +376,31 @@ static int infer_make_set_function_descriptor(
         .nullable = nullable,
     };
     mylite_field_descriptor_set_nullable(out_descriptor, nullable);
+    return MYLITE_OK;
+}
+
+static int infer_space_function_descriptor(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    struct mylite_field_descriptor *out_descriptor
+) {
+    uint64_t length = 0U;
+
+    if (value != NULL) {
+        if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+            length = mylite_expression_descriptor_string_length(database, value, NULL);
+        }
+        *out_descriptor = space_function_descriptor(database, length, false);
+        return MYLITE_OK;
+    }
+    if (space_function_constant_result_length(database, expression, &length)) {
+        *out_descriptor =
+            space_function_descriptor(database, length, length > mylite_mysql_medium_text_length);
+        return MYLITE_OK;
+    }
+    *out_descriptor =
+        space_function_descriptor(database, space_function_dynamic_length(database), true);
     return MYLITE_OK;
 }
 
@@ -751,6 +806,82 @@ static bool function_name_is_left_right(const struct mylite_sql_ast_node *name) 
 
 static bool function_name_is_replace(const struct mylite_sql_ast_node *name) {
     return name != NULL && mylite_span_equal_ci(name->span, "REPLACE");
+}
+
+static bool function_name_is_space(const struct mylite_sql_ast_node *name) {
+    return name != NULL && mylite_span_equal_ci(name->span, "SPACE");
+}
+
+static struct mylite_field_descriptor space_function_descriptor(
+    mylite_db *database,
+    uint64_t length,
+    bool long_blob
+) {
+    struct mylite_field_descriptor descriptor = {
+        .type = long_blob ? MYLITE_FIELD_TYPE_LONG_BLOB : MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static bool space_function_constant_result_length(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    uint64_t *out_length
+) {
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *count = mylite_ast_child_at(arguments, 0U);
+    struct integer_constant_value count_value = {0};
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t length = 0U;
+    uint64_t maximum_length = space_function_constant_max_length(database);
+
+    if (out_length == NULL) {
+        return false;
+    }
+    if (count != NULL && count->kind == MYLITE_SQL_AST_LITERAL &&
+        count->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_length = 0U;
+        return true;
+    }
+    if (!integer_constant_value(count, &count_value)) {
+        return false;
+    }
+    if (!count_value.is_unsigned && count_value.signed_value < 0) {
+        *out_length = 0U;
+        return true;
+    }
+    length = multiply_text_display_length(
+        count_value.is_unsigned ? count_value.unsigned_value : (uint64_t)count_value.signed_value,
+        max_bytes_per_character
+    );
+    *out_length = minimum_text_display_length(length, maximum_length);
+    return true;
+}
+
+static uint64_t space_function_constant_max_length(mylite_db *database) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t character_length = mylite_mysql_medium_text_length + 1U;
+
+    return multiply_text_display_length(character_length, max_bytes_per_character);
+}
+
+static uint64_t space_function_dynamic_length(mylite_db *database) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    return multiply_text_display_length(
+        space_function_constant_max_length(database),
+        max_bytes_per_character
+    );
 }
 
 static uint64_t replace_function_replacement_multiplier(

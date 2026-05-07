@@ -71005,6 +71005,19 @@ static int test_result_metadata_expression_labels_execution(void) {
          0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
          1},
+        {"space_n",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         268435456U,
+         MYLITE_FIELD_TYPE_LONG_BLOB,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         1},
         {"lpad_s",
          NULL,
          NULL,
@@ -71524,6 +71537,7 @@ static int test_result_metadata_expression_labels_execution(void) {
         "REPLACE(s, 'a', 'xyz') AS replace_wide, "
         "REPLACE(s, 'a', c) AS replace_dynamic, "
         "REPLACE(s, 'a', NULL) AS replace_null, "
+        "SPACE(n) AS space_n, "
         "LPAD(s, 7, '.') AS lpad_s, RPAD(s, 7, '.') AS rpad_s, "
         "REPEAT(s, 3) AS repeat_s "
         "FROM t LIMIT 0",

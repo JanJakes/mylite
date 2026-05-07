@@ -9,7 +9,7 @@ miscellaneous system helpers.
 | `CONNECTION_ID()` | ❌ | Return connection ID (thread ID) for the connection |
 | `CURRENT_ROLE()` | ❌ | Return current active roles |
 | `CURRENT_USER(), CURRENT_USER` | ❌ | The authenticated user name and host name |
-| `DATABASE()` | ❌ | Return default (current) database name |
+| `DATABASE()` | 🟡 | Limited one-row scalar `SELECT DATABASE()` with optional `FROM DUAL`; returns selected MyLite catalog schema or `NULL`; no aliases, table-backed evaluation, clauses, or general expression support |
 | `ExtractValue()` | ❌ | Extract a value from an XML string using XPath notation |
 | `FOUND_ROWS()` | ❌ | Rows before LIMIT |
 | `GET_LOCK()` | ❌ | Get a named lock |
@@ -24,7 +24,7 @@ miscellaneous system helpers.
 | `RELEASE_ALL_LOCKS()` | ❌ | Release all current named locks |
 | `RELEASE_LOCK()` | ❌ | Release the named lock |
 | `ROW_COUNT()` | ❌ | The number of rows updated |
-| `SCHEMA()` | ❌ | Synonym for DATABASE() |
+| `SCHEMA()` | 🟡 | Limited synonym for `DATABASE()` in the same scalar-select slice |
 | `SESSION_USER()` | ❌ | Synonym for USER() |
 | `SLEEP()` | ❌ | Sleep for a number of seconds |
 | `SYSTEM_USER()` | ❌ | Synonym for USER() |

@@ -24,7 +24,7 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| Dynamic current database | 🟡 | `USE` selects catalog schemas and dropping the selected schema clears the selection; `DATABASE()` remains unsupported. | [SQL schemas](docs/compatibility/sql-schemas.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md), [system functions](docs/compatibility/functions-system.md) |
+| Dynamic current database | 🟡 | `USE` selects catalog schemas; `DATABASE()` / `SCHEMA()` return the selected schema or `NULL` in the limited scalar-select slice; dropping the selected schema clears the selection. | [SQL schemas](docs/compatibility/sql-schemas.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md), [system functions](docs/compatibility/functions-system.md) |
 | Database listing baseline | 🟡 | Descriptor-driven `SHOW DATABASES` / `SHOW SCHEMAS` for MyLite catalog schemas only; no system schemas, filters, or privileges. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
 | Current user identity | ❌ | Exposes `root@%`. | [SQL users, roles, and privileges](docs/compatibility/sql-users-privileges.md), [system functions](docs/compatibility/functions-system.md) |
 | SQLSTATE values | ❌ | MySQL-compatible SQLSTATEs. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
@@ -427,8 +427,8 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `DATABASE()` | ❌ | Current database name. | [system functions](docs/compatibility/functions-system.md) |
-| `SCHEMA()` | ❌ | Synonym for `DATABASE()`. | [system functions](docs/compatibility/functions-system.md) |
+| `DATABASE()` | 🟡 | Limited one-row scalar `SELECT DATABASE()` with optional `FROM DUAL`; returns connection-local selected schema or `NULL`. | [system functions](docs/compatibility/functions-system.md) |
+| `SCHEMA()` | 🟡 | Limited synonym for `DATABASE()` in the same scalar-select slice. | [system functions](docs/compatibility/functions-system.md) |
 | `FOUND_ROWS()` | ❌ | Rows before LIMIT. | [system functions](docs/compatibility/functions-system.md) |
 | `CURRENT_USER()` / `CURRENT_USER` | ❌ | Current authenticated user. | [system functions](docs/compatibility/functions-system.md) |
 | `LAST_INSERT_ID()` | ❌ | Last auto-increment value. | [system functions](docs/compatibility/functions-system.md) |

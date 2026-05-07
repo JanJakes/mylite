@@ -50,7 +50,7 @@ schema state.
    - Cover no selected schema, selected schema, `SCHEMA()` synonym behavior,
      `FROM DUAL`, column names, drop-clears-current-schema behavior,
      close/reopen, same-file independent handles, unsupported syntax, and
-     unsupported admitted scalar-select shapes.
+     unsupported wider scalar-select shapes.
    - Keep tests deterministic and avoid a new test framework.
 
 6. Build integration
@@ -74,4 +74,3 @@ schema state.
   evaluation, `LIMIT`, general scalar expressions, other system functions,
   stored routine semantics, SQLite function registration, arbitrary SQLite
   pass-through, and SQLite fork patches.
-

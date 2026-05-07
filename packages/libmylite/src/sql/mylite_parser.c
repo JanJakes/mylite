@@ -1009,6 +1009,19 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     return parenthesized;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_database_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_token right_paren
+) {
+    return make_node(
+        state,
+        function_kind,
+        span_join(span_from_token(&function_token), span_from_token(&right_paren))
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column

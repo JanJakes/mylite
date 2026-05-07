@@ -187,10 +187,11 @@ The supported function calls do not produce warnings.
 Unsupported syntax that is not admitted by the grammar fails with the existing
 parse error, MySQL error `1064`, SQLSTATE `42000`.
 
-The analyzer rejects admitted but unsupported scalar-select shapes with the
-existing unsupported-statement diagnostic class. Examples include mixed
-non-function expressions, table-backed function evaluation, aliases, and
-clauses not admitted by this scalar function slice.
+Unsupported scalar-select shapes may fail either at parse time or with the
+existing unsupported-statement diagnostic class, depending on whether the
+current MyLite grammar admits the wider form for another feature. Examples
+include mixed non-function expressions, table-backed function evaluation,
+aliases, and clauses not admitted by this scalar function slice.
 
 Allocation failures return `MYLITE_NOMEM` and set the existing out-of-memory
 diagnostic. Public API misuse behavior is unchanged.
@@ -222,4 +223,3 @@ Fast C tests must cover:
 The MySQL expectation script must verify the supported result values, column
 names, zero warning count, and syntax errors against MySQL 8.4.9. A missing
 MySQL 8.4.9 runtime blocks implementation.
-

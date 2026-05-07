@@ -129,6 +129,16 @@ expect_output_with_headers \
     "$expected_spaced_headers" \
     "USE ${DATABASE}; SELECT DATABASE (), SCHEMA ();"
 
+expected_parenthesized_headers=$(cat <<EOF
+(DATABASE())
+${DATABASE}
+EOF
+)
+expect_output_with_headers \
+    "parenthesized function name remains result label" \
+    "$expected_parenthesized_headers" \
+    "USE ${DATABASE}; SELECT (DATABASE());"
+
 expect_output \
     "from dual returns selected database" \
     "${DATABASE}" \

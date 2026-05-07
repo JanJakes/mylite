@@ -289,6 +289,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "drop_schema_statement";
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return "show_databases_statement";
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+        return "database_function";
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+        return "schema_function";
     }
 
     return "unknown";

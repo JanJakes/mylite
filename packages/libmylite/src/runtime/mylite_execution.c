@@ -365,6 +365,21 @@ static int execute_select_from_plan(
     const struct planned_select *plan,
     mylite_result **out_result
 );
+static bool select_statement_is_current_schema_scalar(const struct mylite_sql_ast_node *statement);
+static int execute_current_schema_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_current_schema_expression(const struct mylite_sql_ast_node *expression);
+static int copy_source_span_text(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char **out_text
+);
 
 static int plan_delete(
     struct mylite_db *database,
@@ -971,6 +986,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
         break;
     }
 
@@ -1311,8 +1328,13 @@ static int execute_select_statement(
     mylite_result **out_result
 ) {
     struct planned_select plan = {0};
-    int rc = plan_select(database, statement, &plan);
+    int rc = MYLITE_OK;
 
+    if (select_statement_is_current_schema_scalar(statement)) {
+        return execute_current_schema_select_statement(database, statement, out_result);
+    }
+
+    rc = plan_select(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = execute_select_from_plan(database, &plan, out_result);
     }
@@ -2456,6 +2478,156 @@ static int execute_select_from_plan(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static bool select_statement_is_current_schema_scalar(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        return false;
+    }
+    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
+        return false;
+    }
+    if (child_at(statement, 2U) != NULL) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    if (select_item == NULL) {
+        return false;
+    }
+    while (select_item != NULL) {
+        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
+            !is_current_schema_expression(child_at(select_item, 0U))) {
+            return false;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return true;
+}
+
+static int execute_current_schema_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
+    const char **values = NULL;
+    mylite_result *result = NULL;
+    size_t column_count = mylite_sql_ast_node_child_count(select_list);
+    size_t column_index = 0U;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (column_count > SIZE_MAX / sizeof(*values)) {
+        mylite_result_free(result);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = (const char **)calloc(column_count, sizeof(*values));
+    if (values == NULL) {
+        mylite_result_free(result);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    while (rc == MYLITE_OK && select_item != NULL) {
+        const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+        char *column_name = NULL;
+
+        rc = copy_source_span_text(database, &expression->span, &column_name);
+        if (rc == MYLITE_OK) {
+            rc = mylite_result_append_column(result, column_name);
+            if (rc != MYLITE_OK) {
+                set_nomem_error(database);
+            }
+        }
+        free(column_name);
+        if (rc == MYLITE_OK && database->session.has_selected_schema) {
+            values[column_index] = database->session.selected_schema;
+        }
+        ++column_index;
+        select_item = select_item->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    free((void *)values);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static bool is_current_schema_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_DATABASE_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION) {
+        return true;
+    }
+
+    return false;
+}
+
+static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    while (expression != NULL && expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        expression = child_at(expression, 0U);
+    }
+
+    return expression;
+}
+
+static int copy_source_span_text(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char **out_text
+) {
+    char *text = NULL;
+
+    if (out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    if (span == NULL || span->text == NULL || span->length == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (span->length == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    text = (char *)malloc(span->length + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(text, span->text, span->length);
+    text[span->length] = '\0';
+    *out_text = text;
+
+    return MYLITE_OK;
 }
 
 static int plan_delete(

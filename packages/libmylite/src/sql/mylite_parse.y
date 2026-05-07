@@ -402,6 +402,14 @@ expression(A) ::= qualified_identifier(B). {
 expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
+expression(A) ::= DATABASE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_current_database_function(
+        state, T, MYLITE_SQL_AST_DATABASE_FUNCTION, R);
+}
+expression(A) ::= SCHEMA(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_current_database_function(
+        state, T, MYLITE_SQL_AST_SCHEMA_FUNCTION, R);
+}
 expression(A) ::= PLUS(T) expression(B). [UPLUS] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);

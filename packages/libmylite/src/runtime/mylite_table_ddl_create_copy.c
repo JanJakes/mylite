@@ -95,6 +95,14 @@ int mylite_table_ddl_copy_create_table_statement(
     if (status != MYLITE_OK) {
         return status;
     }
+    if (statement->create_table_like) {
+        plan->like = true;
+        return mylite_table_ddl_copy_table_name_parts(
+            elements,
+            &plan->source_schema_name,
+            &plan->source_table_name
+        );
+    }
     status = copy_create_table_elements(elements, plan);
     if (status != MYLITE_OK) {
         return status;

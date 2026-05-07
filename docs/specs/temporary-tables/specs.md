@@ -21,7 +21,7 @@ In scope:
 
 Out of scope:
 
-- `CREATE TEMPORARY TABLE ... LIKE ...` and CTAS forms
+- CTAS forms
 - temporary views
 - temporary table privilege checks
 - implicit-commit differences between temporary and persistent DDL
@@ -115,6 +115,8 @@ MyLite.
 - allows shadowing an existing persistent table
 - inserts only temporary catalog rows
 - creates a SQLite TEMP physical table
+- supports `CREATE TEMPORARY TABLE ... LIKE` through the catalog-backed clone
+  path described in `docs/specs/create-table-like/specs.md`
 
 `DROP TEMPORARY TABLE`:
 

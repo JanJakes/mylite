@@ -351,7 +351,7 @@ level application surfaces.
        variables, parameter-marker substitution from user variables, delegated
        result metadata after execution, and MySQL-compatible diagnostics for the
        covered paths; binary protocol prepared statements remain unfinished.
-43. [ ] `CREATE TABLE ... LIKE`: metadata cloning, indexes, defaults, generated
+43. [x] `CREATE TABLE ... LIKE`: metadata cloning, indexes, defaults, generated
        columns, temporary tables, and atomicity.
 44. [ ] `CREATE TABLE ... SELECT` and `INSERT ... SELECT`: type inference,
        metadata, defaults, locking, warnings, and atomicity.

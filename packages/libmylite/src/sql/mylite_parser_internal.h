@@ -1265,6 +1265,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_ast_node *options
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_like_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_token temporary_token,
+    struct mylite_sql_ast_node *if_not_exists,
+    struct mylite_sql_ast_node *target_table,
+    struct mylite_sql_ast_node *source_table
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_create_index_tokens tokens,

@@ -32,6 +32,8 @@ static int test_create_table_foreign_key_syntax(void);
 
 static int test_create_table_base_execution_syntax(void);
 
+static int test_create_table_like_syntax(void);
+
 static int test_create_drop_index_syntax(void);
 
 static int test_alter_table_column_operations_syntax(void);
@@ -398,6 +400,7 @@ int main(void) {
     failures += test_create_table_check_syntax();
     failures += test_create_table_foreign_key_syntax();
     failures += test_create_table_base_execution_syntax();
+    failures += test_create_table_like_syntax();
     failures += test_create_drop_index_syntax();
     failures += test_alter_table_column_operations_syntax();
     failures += test_alter_table_key_constraint_operations_syntax();
@@ -3697,6 +3700,76 @@ static int test_create_table_base_execution_syntax(void) {
 
     failures += parse_sql(
         "CREATE TABLE bad_unknown_option (a INT) ROW_FORMAT = DYNAMIC;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_like_syntax(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("CREATE TABLE IF NOT EXISTS app.clone LIKE src;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "create table like statement"
+    );
+    if (!statement->create_table_like) {
+        fprintf(stderr, "CREATE TABLE ... LIKE did not record like mode\n");
+        failures = 1;
+    }
+    failures += expect_node(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "create table like target"
+    );
+    failures += expect_span_text(
+        child_at(child_at(statement, 0U), 0U),
+        "app",
+        "create table like target schema"
+    );
+    failures += expect_span_text(
+        child_at(child_at(statement, 0U), 1U),
+        "clone",
+        "create table like target table"
+    );
+    failures += expect_span_text(child_at(statement, 1U), "src", "create table like source");
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_IF_NOT_EXISTS,
+        "create table like if not exists"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TEMPORARY TABLE tmp_clone LIKE app.src;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "create temporary table like statement"
+    );
+    if (!statement->create_table_like || !statement->create_table_temporary) {
+        fprintf(stderr, "CREATE TEMPORARY TABLE ... LIKE did not record flags\n");
+        failures = 1;
+    }
+    failures += expect_span_text(child_at(statement, 0U), "tmp_clone", "temporary like target");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "temporary like source"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_like_options LIKE src ENGINE=InnoDB;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

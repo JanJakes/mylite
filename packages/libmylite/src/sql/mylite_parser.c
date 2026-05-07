@@ -4251,6 +4251,42 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_like_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_token temporary_token,
+    struct mylite_sql_ast_node *if_not_exists,
+    struct mylite_sql_ast_node *target_table,
+    struct mylite_sql_ast_node *source_table
+) {
+    struct mylite_sql_source_span span = span_from_token(&create_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (temporary_token.text != NULL) {
+        span = span_join(span, span_from_token(&temporary_token));
+    }
+    if (target_table != NULL) {
+        span = span_join(span, target_table->span);
+    }
+    if (source_table != NULL) {
+        span = span_join(span, source_table->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_set_create_table_like(statement);
+    if (temporary_token.text != NULL) {
+        mylite_sql_ast_node_set_create_table_temporary(statement);
+    }
+
+    mylite_sql_ast_node_append_child(statement, target_table);
+    mylite_sql_ast_node_append_child(statement, source_table);
+    mylite_sql_ast_node_append_child(statement, if_not_exists);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_index_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_create_index_tokens tokens,

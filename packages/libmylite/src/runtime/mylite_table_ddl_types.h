@@ -86,6 +86,8 @@ struct mylite_create_table_foreign_key {
 struct mylite_create_table_plan {
     char *schema_name;
     char *table_name;
+    char *source_schema_name;
+    char *source_table_name;
     struct mylite_create_table_options options;
     struct mylite_create_table_column *columns;
     size_t column_count;
@@ -95,6 +97,7 @@ struct mylite_create_table_plan {
     size_t check_count;
     struct mylite_create_table_foreign_key *foreign_keys;
     size_t foreign_key_count;
+    bool like;
     bool temporary;
 };
 

@@ -34,8 +34,7 @@ Out of scope:
 - row insertion, default expression evaluation, auto-increment allocation, and
   write-time constraint enforcement
 - standalone `CREATE INDEX`
-- `CREATE TEMPORARY TABLE`, `CREATE TABLE ... LIKE`, and
-  `CREATE TABLE ... SELECT`
+- `CREATE TABLE ... SELECT`
 - temporary-table transaction exceptions
 - full engine-specific validation, prefix-length suitability, functional key
   parts, generated-column runtime evaluation, executable references,
@@ -338,3 +337,6 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
     inline, named, unnamed, prefix, order, visibility, and comments where the
     current AST has enough information
   - atomic rollback when a later catalog/index validation fails
+
+`CREATE TABLE ... LIKE` is implemented separately in
+`docs/specs/create-table-like/specs.md`.

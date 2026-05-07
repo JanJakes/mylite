@@ -699,6 +699,7 @@ struct mylite_sql_ast_node {
     bool column_zerofill_attribute;
     bool column_national_attribute;
     bool case_expression_simple;
+    bool create_table_like;
     bool create_table_temporary;
     bool drop_table_temporary;
     bool drop_table_restrict;
@@ -857,6 +858,7 @@ void mylite_sql_ast_node_set_reference_match(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_reference_match match
 );
+void mylite_sql_ast_node_set_create_table_like(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_create_table_temporary(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_temporary(struct mylite_sql_ast_node *node);
 void mylite_sql_ast_node_set_drop_table_restrict(struct mylite_sql_ast_node *node);

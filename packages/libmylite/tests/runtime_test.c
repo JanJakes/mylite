@@ -463,6 +463,8 @@ static int test_window_function_placeholder_execution(void);
 
 static int test_create_table_base_execution(void);
 
+static int test_create_table_like_execution(void);
+
 static int test_create_table_prepare_has_no_side_effects(void);
 
 static int test_drop_table_base_execution(void);
@@ -981,6 +983,7 @@ int main(void) {
     failures += test_cte_query_expression_placeholder_execution();
     failures += test_window_function_placeholder_execution();
     failures += test_create_table_base_execution();
+    failures += test_create_table_like_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
     failures += test_temporary_table_execution();
@@ -34799,6 +34802,417 @@ static int test_create_table_base_execution(void) {
     }
 
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_create_table_like_execution(void) {
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const count_columns[] = {"c"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const one_count[] = {"1"};
+    static const char *const table_columns[] = {
+        "TABLE_NAME",
+        "AUTO_INCREMENT",
+        "TABLE_COLLATION",
+        "TABLE_COMMENT",
+    };
+    static const char *const table_values[] = {
+        "like_clone",
+        "1",
+        "utf8mb4_bin",
+        "src table",
+    };
+    static const char *const column_columns[] = {
+        "COLUMN_NAME",
+        "COLUMN_DEFAULT",
+        "IS_NULLABLE",
+        "DATA_TYPE",
+        "COLUMN_TYPE",
+        "COLUMN_KEY",
+        "EXTRA",
+        "COLUMN_COMMENT",
+    };
+    static const char *const column_values[] = {
+        "id",
+        NULL,
+        "NO",
+        "int",
+        "int",
+        "PRI",
+        "auto_increment",
+        "",
+        "parent_id",
+        NULL,
+        "YES",
+        "int",
+        "int",
+        "MUL",
+        "",
+        "",
+        "name",
+        "x",
+        "YES",
+        "varchar",
+        "varchar(20)",
+        "UNI",
+        "",
+        "name col",
+        "amount",
+        "3.14",
+        "YES",
+        "decimal",
+        "decimal(10,2)",
+        "MUL",
+        "",
+        "",
+    };
+    static const char *const index_columns[] = {
+        "INDEX_NAME",
+        "NON_UNIQUE",
+        "COLUMN_NAME",
+        "COLLATION",
+        "INDEX_COMMENT",
+    };
+    static const char *const amount_index_values[] = {
+        "amount_idx",
+        "1",
+        "amount",
+        "D",
+        "amount idx",
+    };
+    static const char *const fk_index_values[] = {
+        "fk_like_parent",
+        "1",
+        "parent_id",
+        "A",
+        "",
+    };
+    static const char *const check_columns[] = {"CONSTRAINT_NAME", "CHECK_CLAUSE"};
+    static const char *const check_values[] = {"like_clone_chk_1", "(`amount` > 0)"};
+    static const char *const constraint_columns[] = {"CONSTRAINT_NAME", "CONSTRAINT_TYPE"};
+    static const char *const constraint_values[] = {
+        "PRIMARY",
+        "PRIMARY KEY",
+        "like_clone_chk_1",
+        "CHECK",
+        "uq_name",
+        "UNIQUE",
+    };
+    static const char *const temp_column_values[] =
+        {"id", "int", "NO", "PRI", NULL, "auto_increment"};
+    static const char *const temp_source_column_values[] = {"tmp", "int"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open create table like database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_create_like", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE DATABASE mylite_create_like_other", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mylite_create_like.src_no_default (id INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mylite_create_like_other.src_no_default_clone "
+        "LIKE mylite_create_like.src_no_default",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE mylite_create_like.source_without_default LIKE src_no_default",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create table like unqualified source requires default schema"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "No database selected",
+        "create table like unqualified source requires default schema"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE target_without_default LIKE mylite_create_like.src_no_default",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create table like unqualified target requires default schema"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "No database selected",
+        "create table like unqualified target requires default schema"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "USE mylite_create_like", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE parent_like (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO parent_like VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE like_src ("
+        "id INT NOT NULL AUTO_INCREMENT, "
+        "parent_id INT, "
+        "name VARCHAR(20) DEFAULT 'x' COMMENT 'name col', "
+        "amount DECIMAL(10,2) DEFAULT 3.14, "
+        "CONSTRAINT chk_amount CHECK (amount > 0), "
+        "PRIMARY KEY (id), "
+        "UNIQUE KEY uq_name (name), "
+        "KEY amount_idx (amount DESC) COMMENT 'amount idx', "
+        "CONSTRAINT fk_like_parent FOREIGN KEY (parent_id) REFERENCES parent_like(id)) "
+        "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin "
+        "COMMENT='src table' AUTO_INCREMENT=100",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO like_src (parent_id, name, amount) VALUES (1, 'first', 5.50)",
+        MYLITE_DONE
+    );
+
+    failures += execute_sql(database, "CREATE TABLE like_clone LIKE like_src", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM like_clone",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "create table like clone is empty"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT TABLE_NAME, AUTO_INCREMENT, TABLE_COLLATION, TABLE_COMMENT "
+        "FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'mylite_create_like' "
+        "AND TABLE_NAME = 'like_clone'",
+        table_columns,
+        4,
+        table_values,
+        1,
+        "create table like table metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, COLUMN_TYPE, "
+        "COLUMN_KEY, EXTRA, COLUMN_COMMENT FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_create_like' AND TABLE_NAME = 'like_clone' "
+        "ORDER BY ORDINAL_POSITION",
+        column_columns,
+        8,
+        column_values,
+        4,
+        "create table like column metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, INDEX_COMMENT "
+        "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'mylite_create_like' "
+        "AND TABLE_NAME = 'like_clone' AND INDEX_NAME = 'amount_idx'",
+        index_columns,
+        5,
+        amount_index_values,
+        1,
+        "create table like secondary index metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME, COLLATION, INDEX_COMMENT "
+        "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'mylite_create_like' "
+        "AND TABLE_NAME = 'like_clone' AND INDEX_NAME = 'fk_like_parent'",
+        index_columns,
+        5,
+        fk_index_values,
+        1,
+        "create table like keeps foreign-key supporting index"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, CHECK_CLAUSE FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_create_like' "
+        "AND CONSTRAINT_NAME = 'like_clone_chk_1'",
+        check_columns,
+        2,
+        check_values,
+        1,
+        "create table like regenerates check name"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+        "WHERE TABLE_SCHEMA = 'mylite_create_like' AND TABLE_NAME = 'like_clone' "
+        "ORDER BY CASE CONSTRAINT_NAME WHEN 'PRIMARY' THEN 1 "
+        "WHEN 'like_clone_chk_1' THEN 2 ELSE 3 END",
+        constraint_columns,
+        2,
+        constraint_values,
+        3,
+        "create table like table constraints omit foreign key"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_create_like' AND TABLE_NAME = 'like_clone'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "create table like omits referential constraint rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_create_like' AND TABLE_NAME = 'like_clone' "
+        "AND REFERENCED_TABLE_NAME IS NOT NULL",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "create table like omits foreign-key key-column rows"
+    );
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE IF NOT EXISTS like_clone LIKE like_src",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_DONE,
+        "create table like if not exists skips existing target"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "create table like if not exists warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_table_exists,
+        "create table like if not exists warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE IF NOT EXISTS like_clone LIKE missing_like_source",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create table like validates source before if not exists"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "missing_like_source",
+        "create table like validates source before if not exists"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "CREATE TABLE like_src LIKE like_src", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create table like rejects same-schema alias"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Not unique table/alias",
+        "create table like rejects same-schema alias"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_nonunique_table,
+        "create table like same-schema alias code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mylite_create_like_other.like_src LIKE mylite_create_like.like_src",
+        MYLITE_DONE
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TEMPORARY TABLE temp_like_src (tmp INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE persistent_from_temp LIKE temp_like_src", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_create_like' AND TABLE_NAME = 'persistent_from_temp'",
+        (const char *[]){"COLUMN_NAME", "DATA_TYPE"},
+        2,
+        temp_source_column_values,
+        1,
+        "create table like persistent clone from temporary source"
+    );
+    failures +=
+        execute_sql(database, "CREATE TEMPORARY TABLE temp_like_clone LIKE like_src", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW COLUMNS FROM temp_like_clone WHERE Field = 'id'",
+        (const char *[]){"Field", "Type", "Null", "Key", "Default", "Extra"},
+        6,
+        temp_column_values,
+        1,
+        "create temporary table like exposes temporary columns"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = 'mylite_create_like' AND TABLE_NAME = 'temp_like_clone'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "create temporary table like is hidden from information schema tables"
+    );
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO parent_like VALUES (20)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE tx_like_clone LIKE like_src", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO tx_like_clone (parent_id, name, amount) VALUES (NULL, 'after', 9.00)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM parent_like WHERE id = 20",
+        count_columns,
+        1,
+        one_count,
+        1,
+        "create table like commits earlier transaction work"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM tx_like_clone",
+        count_columns,
+        1,
+        one_count,
+        1,
+        "create table like leaves later autocommit work"
+    );
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

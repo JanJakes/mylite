@@ -3720,6 +3720,27 @@ static int compare_values(
     int *out_compare
 );
 
+static int compare_temporal_date_values(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    bool *out_compared,
+    int *out_compare
+);
+
+static bool value_has_temporal_date_type(const struct mylite_expression_value *value);
+
+static bool temporal_compare_date_from_value(
+    const struct mylite_expression_value *value,
+    struct temporal_date_value *out_date
+);
+
+static int compare_temporal_date_components(
+    const struct temporal_date_value *left,
+    const struct temporal_date_value *right
+);
+
+static int compare_temporal_component(int left, int right);
+
 static int value_to_numeric(
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
@@ -22885,6 +22906,15 @@ static int compare_values(
     struct mylite_expression_warnings *warnings,
     int *out_compare
 ) {
+    bool temporal_compared = false;
+
+    if (compare_temporal_date_values(left, right, &temporal_compared, out_compare) != 0) {
+        return -1;
+    }
+    if (temporal_compared) {
+        return 0;
+    }
+
     if (is_numeric_kind(left->kind) || is_numeric_kind(right->kind)) {
         struct numeric_value left_number = {0};
         struct numeric_value right_number = {0};
@@ -22948,6 +22978,97 @@ static int compare_values(
     free(left_text);
     free(right_text);
     return status;
+}
+
+static int compare_temporal_date_values(
+    const struct mylite_expression_value *left,
+    const struct mylite_expression_value *right,
+    bool *out_compared,
+    int *out_compare
+) {
+    struct temporal_date_value left_date = {0};
+    struct temporal_date_value right_date = {0};
+
+    if (out_compared == NULL || out_compare == NULL) {
+        return -1;
+    }
+    *out_compared = false;
+    if (!value_has_temporal_date_type(left) && !value_has_temporal_date_type(right)) {
+        return 0;
+    }
+    if (!temporal_compare_date_from_value(left, &left_date) ||
+        !temporal_compare_date_from_value(right, &right_date)) {
+        return 0;
+    }
+
+    *out_compare = compare_temporal_date_components(&left_date, &right_date);
+    *out_compared = true;
+    return 0;
+}
+
+static bool value_has_temporal_date_type(const struct mylite_expression_value *value) {
+    if (value == NULL) {
+        return false;
+    }
+    return value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_DATE ||
+           value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_DATETIME ||
+           value->temporal_type == MYLITE_EXPRESSION_TEMPORAL_TIMESTAMP;
+}
+
+static bool temporal_compare_date_from_value(
+    const struct mylite_expression_value *value,
+    struct temporal_date_value *out_date
+) {
+    struct temporal_date_source source = {0};
+
+    if (value == NULL || out_date == NULL) {
+        return false;
+    }
+    *out_date = (struct temporal_date_value){0};
+    if (temporal_date_source_from_value(value, &source) != 0) {
+        return false;
+    }
+    return parse_temporal_date_source(&source, false, false, out_date);
+}
+
+static int compare_temporal_date_components(
+    const struct temporal_date_value *left,
+    const struct temporal_date_value *right
+) {
+    int comparison = 0;
+
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+    comparison = compare_temporal_component(left->year, right->year);
+    if (comparison != 0) {
+        return comparison;
+    }
+    comparison = compare_temporal_component(left->month, right->month);
+    if (comparison != 0) {
+        return comparison;
+    }
+    comparison = compare_temporal_component(left->day, right->day);
+    if (comparison != 0) {
+        return comparison;
+    }
+    comparison = compare_temporal_component(left->hour, right->hour);
+    if (comparison != 0) {
+        return comparison;
+    }
+    comparison = compare_temporal_component(left->minute, right->minute);
+    if (comparison != 0) {
+        return comparison;
+    }
+    comparison = compare_temporal_component(left->second, right->second);
+    if (comparison != 0) {
+        return comparison;
+    }
+    return compare_temporal_component(left->microsecond, right->microsecond);
+}
+
+static int compare_temporal_component(int left, int right) {
+    return (left > right) - (left < right);
 }
 
 static int value_to_numeric(

@@ -167,6 +167,23 @@ whose truthiness is inspected.
 `NULL`, `0` when exactly one operand is `NULL`, and otherwise compares like
 `=`.
 
+### Temporal comparisons
+
+When at least one operand is a typed `DATE`, `DATETIME`, or `TIMESTAMP` value,
+MySQL compares valid date-compatible operands in the temporal domain rather
+than as raw strings. A `DATE` value compares as midnight on that date. Plain
+string-vs-string comparisons continue to use string ordering.
+
+Representative runtime results:
+
+| SQL | Result |
+| --- | --- |
+| `SELECT DATE '2024-02-29' = '2024-02-29 00:00:00'` | `1` |
+| `SELECT DATE '2024-02-29' < '2024-02-29 12:00:00'` | `1` |
+| `SELECT TIMESTAMP '2024-02-29 12:34:56.123456' > '2024-02-29 12:34:56.123455'` | `1` |
+| `SELECT '2024-02-29' = '2024-02-29 00:00:00'` | `0` |
+| `SELECT '2024-02-29' < '2024-02-29 00:00:00'` | `1` |
+
 ### `BETWEEN`
 
 Representative runtime results:
@@ -300,8 +317,8 @@ Task 16 must introduce a reusable value model that can represent at least:
 
 Numeric conversion of strings should preserve MySQL's prefix-number behavior
 and warning records for truncated nonnumeric suffixes. Full range clipping,
-temporal comparison conversions, JSON comparison order, hexadecimal and bit
-literal contextual typing, and complete decimal precision math are deferred
+invalid temporal comparison diagnostics, JSON comparison order, hexadecimal and
+bit literal contextual typing, and complete decimal precision math are deferred
 unless directly needed by the verified Task 16 tests.
 
 ### SQL modes

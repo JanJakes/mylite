@@ -338,6 +338,8 @@ static int test_hex_bit_literal_execution(void);
 
 static int test_temporal_literal_execution(void);
 
+static int test_temporal_comparison_execution(void);
+
 static int test_current_temporal_functions_execution(void);
 
 static int test_date_and_datediff_functions_execution(void);
@@ -964,6 +966,7 @@ int main(void) {
     failures += test_scalar_builtin_functions_execution();
     failures += test_hex_bit_literal_execution();
     failures += test_temporal_literal_execution();
+    failures += test_temporal_comparison_execution();
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
     failures += test_last_day_function_execution();
@@ -13372,6 +13375,97 @@ static int test_temporal_literal_execution(void) {
         1,
         "temporal literal stored values"
     );
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
+    return failures;
+}
+
+static int test_temporal_comparison_execution(void) {
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const scalar_columns[] = {
+        "date_literal_eq_midnight",
+        "date_literal_lt_noon",
+        "timestamp_literal_gt_fraction",
+        "plain_string_eq",
+        "plain_string_lt",
+    };
+    static const char *const scalar_values[] = {"1", "1", "1", "0", "1"};
+    static const char *const table_columns[] = {
+        "d_eq_midnight",
+        "d_eq_noon",
+        "d_lt_noon",
+        "d_gt_prev",
+        "dt_eq_full",
+        "dt_gt_fraction",
+        "dt_lt_date",
+        "dt_eq_date",
+        "ts_eq_full",
+    };
+    static const char *const table_values[] = {"1", "0", "1", "1", "1", "1", "1", "0", "1"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_status(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open temporal comparison database"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT DATE '2024-02-29' = '2024-02-29 00:00:00' AS date_literal_eq_midnight, "
+        "DATE '2024-02-29' < '2024-02-29 12:00:00' AS date_literal_lt_noon, "
+        "TIMESTAMP '2024-02-29 12:34:56.123456' > '2024-02-29 12:34:56.123455' "
+        "AS timestamp_literal_gt_fraction, "
+        "'2024-02-29' = '2024-02-29 00:00:00' AS plain_string_eq, "
+        "'2024-02-29' < '2024-02-29 00:00:00' AS plain_string_lt",
+        scalar_columns,
+        (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])),
+        scalar_values,
+        1,
+        "temporal scalar comparisons"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "temporal scalar warning count");
+
+    failures += execute_sql(database, "CREATE DATABASE temporal_comparison_schema", MYLITE_DONE);
+    failures += execute_sql(database, "USE temporal_comparison_schema", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE temporal_comparison_target ("
+        "id INT PRIMARY KEY,"
+        "d DATE,"
+        "dt DATETIME(6),"
+        "ts TIMESTAMP(6) NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO temporal_comparison_target VALUES ("
+        "1,"
+        "'2024-02-29',"
+        "'2024-02-29 12:34:56.123456',"
+        "'2024-02-29 12:34:56.123456')",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT d = '2024-02-29 00:00:00' AS d_eq_midnight, "
+        "d = '2024-02-29 12:00:00' AS d_eq_noon, "
+        "d < '2024-02-29 12:00:00' AS d_lt_noon, "
+        "d > '2024-02-28 23:59:59' AS d_gt_prev, "
+        "dt = '2024-02-29 12:34:56.123456' AS dt_eq_full, "
+        "dt > '2024-02-29 12:34:56.123455' AS dt_gt_fraction, "
+        "dt < '2024-03-01' AS dt_lt_date, "
+        "dt = '2024-02-29' AS dt_eq_date, "
+        "ts = '2024-02-29T12:34:56.123456' AS ts_eq_full "
+        "FROM temporal_comparison_target",
+        table_columns,
+        (int)(sizeof(table_columns) / sizeof(table_columns[0])),
+        table_values,
+        1,
+        "temporal table comparisons"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "temporal table warning count");
 
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)

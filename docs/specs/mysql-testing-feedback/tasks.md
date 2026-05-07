@@ -205,7 +205,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719, FLOAT/DOUBLE target casts, and DATE/TIME/DATETIME
       temporal target casts.
-- [x] Complete `SELECT DATE(...)` and date-function predicates.
+- [x] Complete `SELECT DATE(...)`, date-function predicates, and typed
+      DATE/DATETIME/TIMESTAMP comparisons against ISO date/datetime strings.
 - [x] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
       Covered behavior includes duplicate output-label diagnostics in the
       correct clause context, table-column-vs-alias warning behavior, and

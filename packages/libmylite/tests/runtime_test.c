@@ -6523,13 +6523,13 @@ static int test_regexp_scalar_functions_execution(void) {
          NULL,
          NULL,
          NULL,
-         16777215U,
-         MYLITE_FIELD_TYPE_VAR_STRING,
+         67108864U,
+         MYLITE_FIELD_TYPE_LONG_BLOB,
          31U,
          255U,
-         MYLITE_FIELD_FLAG_NOT_NULL,
          0U,
-         0},
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
     };
     static const char *const id_columns[] = {"id"};
     static const char *const matching_ids[] = {"1", "2"};

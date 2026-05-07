@@ -83,8 +83,10 @@ Additional runtime observations:
   display length `21`, decimals `0`, and numeric/binary flags.
 - Metadata for `REGEXP_SUBSTR()` is a nullable character string using the input
   expression's character semantics and source length where known.
-- Metadata for `REGEXP_REPLACE()` is a nullable character result with a large
-  result length because replacements can grow the input.
+- Under the default `utf8mb4` result character set, `REGEXP_REPLACE()` reports
+  `LONG_BLOB`, collation `utf8mb4_0900_ai_ci` (`255`), length `67108864`,
+  decimals `31`, no flags, and nullable metadata. Replacements can grow the
+  input, so the descriptor is wider than the source expression descriptor.
 
 ## Syntax
 
@@ -173,11 +175,12 @@ implemented surface unless a broader MySQL replacement-token rule is added.
 
 `REGEXP_REPLACE()`:
 
-- field type: character string
-- charset/collation: connection or source-compatible charset used by current
-  expression descriptor rules
-- length: large text length, because replacements can expand the value
-- nullable if any supplied argument may be nullable
+- field type: `LONG_BLOB` for the covered `utf8mb4` result-character-set path
+- charset/collation: current connection result character set/collation
+- length: `67108864` bytes under `utf8mb4`
+- decimals: `31`
+- flags: none for the covered `utf8mb4` path
+- nullable: yes
 
 ## Errors And Warnings
 

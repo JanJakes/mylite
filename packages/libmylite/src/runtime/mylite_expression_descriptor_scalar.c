@@ -49,6 +49,10 @@ static bool sha2_literal_hash_length(
 
 static uint64_t sha2_result_chars_from_bits(uint64_t bits);
 
+static struct mylite_field_descriptor regexp_replace_descriptor(mylite_db *database);
+
+static uint64_t regexp_replace_result_length(mylite_db *database);
+
 bool mylite_expression_descriptor_function_result_nullable(
     bool arguments_nullable,
     const struct mylite_expression_value *value
@@ -192,7 +196,8 @@ bool mylite_expression_descriptor_infer_regexp_scalar_function(
             nullable = true;
         }
         if (mylite_function_name_is_regexp_replace(name)) {
-            length = mylite_mysql_medium_text_length;
+            *out_descriptor = regexp_replace_descriptor(database);
+            return true;
         }
 
         *out_descriptor = (struct mylite_field_descriptor){
@@ -207,6 +212,31 @@ bool mylite_expression_descriptor_infer_regexp_scalar_function(
         return true;
     }
     return false;
+}
+
+static struct mylite_field_descriptor regexp_replace_descriptor(mylite_db *database) {
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_LONG_BLOB,
+        .flags = 0U,
+        .length = regexp_replace_result_length(database),
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static uint64_t regexp_replace_result_length(mylite_db *database) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t character_length = mylite_mysql_medium_text_length + 1U;
+
+    if (max_bytes_per_character > UINT64_MAX / character_length) {
+        return mylite_mysql_long_text_length;
+    }
+    return character_length * max_bytes_per_character;
 }
 
 bool mylite_expression_descriptor_infer_uuid_function(

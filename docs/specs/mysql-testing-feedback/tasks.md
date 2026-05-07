@@ -8,7 +8,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
 
 - [x] Implement non-temporary DDL implicit-commit behavior inside explicit
       transactions, starting with `START TRANSACTION; CREATE TABLE ...` and
-      ordinary `DROP TABLE` / `TRUNCATE TABLE` success/failure boundaries.
+      ordinary `DROP TABLE` / `TRUNCATE TABLE` / standalone `CREATE INDEX` /
+      `DROP INDEX` success/failure boundaries.
 - [x] Support MyLite file-backed lock probes that use SQLite-style
       `BEGIN IMMEDIATE` without treating this as a MySQL SQL surface.
 

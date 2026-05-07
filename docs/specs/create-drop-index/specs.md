@@ -538,11 +538,11 @@ savepoint for catalog and optional physical-index updates. If validation or a
 physical operation fails, no partial catalog rows or SQLite indexes should
 survive.
 
-Implicit commit behavior should be documented but may be deferred consistently
-with current MyLite DDL implicit-commit gaps. When implemented, standalone
-index DDL should commit any active explicit transaction before execution and
-commit its own DDL transaction after success or failure according to the MySQL
-DDL boundary model.
+Standalone index DDL commits any active explicit transaction before validation
+and execution. Successful mutations run in their own statement transaction and
+leave no explicit transaction active. Validation failures after the pre-DDL
+commit also leave the session outside the explicit transaction; later writes
+therefore autocommit unless the client starts a new transaction.
 
 ### Implementation status
 
@@ -561,6 +561,9 @@ The first executable slice is implemented for supported base tables:
   checks, including prefix-length comparisons and nullable unique-key behavior.
 - `DROP INDEX name ON table` removes metadata rows and removes the index from
   later unique-conflict checks.
+- standalone `CREATE INDEX` and `DROP INDEX` apply MySQL-compatible
+  implicit-commit behavior before validation and execution, including failing
+  validation paths and read-only transaction boundaries.
 - `DROP INDEX` rejects child supporting indexes and parent primary/unique
   indexes required by foreign-key catalog rows with error 1553, even while
   `foreign_key_checks=0`.
@@ -630,6 +633,12 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `CREATE INDEX idx ON t (a) LOCK=NONE ALGORITHM=INPLACE` | Same as above; option order accepted. |
 | `DROP INDEX idx ON t ALGORITHM=INPLACE LOCK=NONE` | Succeeds when index exists. |
 | `DROP INDEX missing_idx ON t` | Error 1091; no mutation. |
+| `START TRANSACTION; INSERT; CREATE INDEX idx ON t (a); INSERT; ROLLBACK` | Both inserts and the index creation survive because standalone index DDL commits before execution. |
+| `START TRANSACTION; INSERT; CREATE INDEX idx ON t (missing); INSERT; ROLLBACK` | Both inserts survive because the failed index creation commits before validation and leaves the session outside the explicit transaction after the error. |
+| `START TRANSACTION; INSERT; DROP INDEX idx ON t; INSERT; ROLLBACK` | Both inserts and the index drop survive because standalone index DDL commits before execution. |
+| `START TRANSACTION; INSERT; DROP INDEX missing_idx ON t; INSERT; ROLLBACK` | Both inserts survive because the failed index drop commits before validation and leaves the session outside the explicit transaction after the error. |
+| `START TRANSACTION READ ONLY; CREATE INDEX idx ON t (a); ROLLBACK` | Index creation succeeds because the read-only transaction is committed first. |
+| `START TRANSACTION READ ONLY; DROP INDEX idx ON t; ROLLBACK` | Index removal succeeds because the read-only transaction is committed first. |
 | `DROP INDEX IF EXISTS idx ON t` | Syntax error. |
 | `DROP KEY idx ON t` | Syntax error. |
 | `DROP INDEX PRIMARY ON t` | Syntax error unless `PRIMARY` is quoted. |
@@ -662,6 +671,8 @@ Runtime tests for the first executable slice:
   schema-qualified schemas
 - no selected schema, missing table, system schema, missing column, duplicate
   name, duplicate existing unique values, and missing index diagnostics
+- implicit commits for successful and failing `CREATE INDEX` / `DROP INDEX`,
+  including read-only transaction boundaries
 - duplicate redundant-index warning 1831
 - `USING HASH` note 3502 under the InnoDB-compatible table model
 - metadata rows in `INFORMATION_SCHEMA.STATISTICS` for nonunique, unique,

@@ -1,10 +1,12 @@
 #include "mylite_table_ddl.h"
 
+#include "mylite_runtime.h"
 #include "mylite_table_ddl_alter_index.h"
 #include "mylite_table_ddl_alter_index_model.h"
 #include "mylite_table_ddl_index_catalog.h"
 #include "mylite_table_ddl_index_validate.h"
 #include "mylite_table_ddl_index_warnings.h"
+#include "mylite_transactions.h"
 
 #include <mylite/mylite.h>
 
@@ -23,6 +25,8 @@ static int apply_drop_index_to_model(
     struct mylite_alter_table_model *model
 );
 
+static int commit_index_ddl_implicit_transaction(mylite_db *database);
+
 int mylite_table_ddl_execute_create_index_statement(
     mylite_db *database,
     const char *selected_schema,
@@ -36,7 +40,11 @@ int mylite_table_ddl_execute_create_index_statement(
         return MYLITE_MISUSE;
     }
 
-    status = mylite_table_ddl_validate_create_index_plan(database, selected_schema, plan, &model);
+    status = commit_index_ddl_implicit_transaction(database);
+    if (status == MYLITE_OK) {
+        status =
+            mylite_table_ddl_validate_create_index_plan(database, selected_schema, plan, &model);
+    }
     if (status == MYLITE_OK) {
         status = mylite_table_ddl_validate_create_index_columns(database, &model, &plan->index);
     }
@@ -73,7 +81,10 @@ int mylite_table_ddl_execute_drop_index_statement(
         return MYLITE_MISUSE;
     }
 
-    status = mylite_table_ddl_validate_drop_index_plan(database, selected_schema, plan, &model);
+    status = commit_index_ddl_implicit_transaction(database);
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_validate_drop_index_plan(database, selected_schema, plan, &model);
+    }
     if (status == MYLITE_OK) {
         status = apply_drop_index_to_model(database, plan, &model);
     }
@@ -83,6 +94,14 @@ int mylite_table_ddl_execute_drop_index_statement(
 
     mylite_table_ddl_alter_table_model_deinit(&model);
     return status;
+}
+
+static int commit_index_ddl_implicit_transaction(mylite_db *database) {
+    if (!database->transaction_active) {
+        return MYLITE_OK;
+    }
+
+    return mylite_transaction_commit_explicit(database);
 }
 
 static int apply_create_index_to_model(

@@ -38719,6 +38719,8 @@ static int test_temporary_table_execution(void) {
 }
 
 static int test_create_drop_index_execution(void) {
+    static const char *const count_column[] = {"c"};
+    static const char *const id_column[] = {"id"};
     static const char *const idx_base_columns[] = {"id", "a", "b", "c"};
     static const char *const idx_base_after_update_values[] = {"1", "10", "abcdef", NULL};
     static const char *const idx_base_after_drop_values[] =
@@ -38727,6 +38729,12 @@ static int test_create_drop_index_execution(void) {
     static const char *const idx_odku_values[] = {"1", "9", "2", "0"};
     static const char *const idx_replace_columns[] = {"id", "a", "b"};
     static const char *const idx_replace_values[] = {"3", "1", "1"};
+    static const char *const successful_create_implicit_values[] = {"1", "2"};
+    static const char *const failed_create_implicit_values[] = {"1", "2", "3", "4"};
+    static const char *const successful_drop_implicit_values[] = {"1", "2", "3", "4", "5", "6"};
+    static const char *const failed_drop_implicit_values[] =
+        {"1", "2", "3", "4", "5", "6", "7", "8"};
+    static const char *const zero_count[] = {"0"};
     mylite_db *database = NULL;
     mylite_db *no_schema_database = NULL;
     mylite_stmt *stmt = NULL;
@@ -38735,6 +38743,147 @@ static int test_create_drop_index_execution(void) {
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open index database");
     failures += execute_sql(database, "CREATE DATABASE mylite_idx", MYLITE_DONE);
     failures += execute_sql(database, "USE mylite_idx", MYLITE_DONE);
+
+    failures += execute_sql(database, "CREATE TABLE idx_tx_keep (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE idx_tx_target (id INT PRIMARY KEY, a INT, b INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO idx_tx_keep VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE INDEX idx_tx_a ON idx_tx_target (a)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO idx_tx_keep VALUES (2)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM idx_tx_keep ORDER BY id",
+        id_column,
+        1,
+        successful_create_implicit_values,
+        2,
+        "create index commits active transaction"
+    );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "idx_tx_target",
+            .index_name = "idx_tx_a",
+            .seq_in_index = 1,
+            .column_name = "a",
+            .non_unique = 1,
+            .collation = "A",
+            .sub_part = NULL,
+            .index_comment = "",
+            .visible = "YES",
+        }
+    );
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO idx_tx_keep VALUES (3)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "CREATE INDEX idx_tx_missing ON idx_tx_target (missing)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Key column",
+        "failed create index commits active transaction"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO idx_tx_keep VALUES (4)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM idx_tx_keep ORDER BY id",
+        id_column,
+        1,
+        failed_create_implicit_values,
+        4,
+        "failed create index leaves later work autocommitted"
+    );
+    failures += expect_no_information_schema_statistics_index_row(
+        database,
+        "idx_tx_target",
+        "idx_tx_missing"
+    );
+    failures +=
+        execute_sql(database, "CREATE UNIQUE INDEX idx_tx_b ON idx_tx_target (b)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO idx_tx_keep VALUES (5)", MYLITE_DONE);
+    failures += execute_sql(database, "DROP INDEX idx_tx_b ON idx_tx_target", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO idx_tx_keep VALUES (6)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM idx_tx_keep ORDER BY id",
+        id_column,
+        1,
+        successful_drop_implicit_values,
+        (int)(sizeof(successful_drop_implicit_values) / sizeof(successful_drop_implicit_values[0])),
+        "drop index commits active transaction"
+    );
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_tx_target", "idx_tx_b");
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO idx_tx_keep VALUES (7)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "DROP INDEX idx_tx_missing_drop ON idx_tx_target", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Can't DROP",
+        "failed drop index commits active transaction"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO idx_tx_keep VALUES (8)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM idx_tx_keep ORDER BY id",
+        id_column,
+        1,
+        failed_drop_implicit_values,
+        (int)(sizeof(failed_drop_implicit_values) / sizeof(failed_drop_implicit_values[0])),
+        "failed drop index leaves later work autocommitted"
+    );
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE INDEX idx_tx_read_only ON idx_tx_target (b)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "idx_tx_target",
+            .index_name = "idx_tx_read_only",
+            .seq_in_index = 1,
+            .column_name = "b",
+            .non_unique = 1,
+            .collation = "A",
+            .sub_part = NULL,
+            .index_comment = "",
+            .visible = "YES",
+        }
+    );
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures += execute_sql(database, "DROP INDEX idx_tx_read_only ON idx_tx_target", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.STATISTICS "
+        "WHERE TABLE_SCHEMA = 'mylite_idx' AND TABLE_NAME = 'idx_tx_target' "
+        "AND INDEX_NAME = 'idx_tx_read_only'",
+        count_column,
+        1,
+        zero_count,
+        1,
+        "drop index read-only transaction commits before execution"
+    );
+    failures += execute_sql(database, "DROP TABLE idx_tx_keep, idx_tx_target", MYLITE_DONE);
 
     failures += execute_sql(
         database,

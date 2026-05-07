@@ -428,6 +428,7 @@ static void applyAffinity(
 }
 
 #ifdef SQLITE_ENABLE_MYLITE
+static void myliteSetConstraintCondition(sqlite3 *db, int rc, u8 eConstraint);
 static int myliteApplyColumnType(
   Mem *pMem,
   const Column *pCol,
@@ -780,6 +781,23 @@ static int myliteBitValueFromBytes(
 );
 static int myliteBitValueFits(u64 value, u8 nBits);
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
+
+static void myliteSetConstraintCondition(sqlite3 *db, int rc, u8 eConstraint){
+  u32 iMyErrno = 0;
+
+  if( (rc & 0xff)!=SQLITE_CONSTRAINT ) return;
+  switch( eConstraint ){
+    case P5_ConstraintNotNull:
+      iMyErrno = 1048;
+      break;
+    case P5_ConstraintUnique:
+      iMyErrno = 1062;
+      break;
+    default:
+      return;
+  }
+  sqlite3MyliteSetCondition(db, MYLITE_CONDITION_ERROR, iMyErrno, "23000");
+}
 
 static int myliteApplyColumnType(
   Mem *pMem,
@@ -3663,6 +3681,9 @@ case OP_Halt: {
   p->errorAction = (u8)pOp->p2;
   assert( pOp->p5<=4 );
   if( p->rc ){
+#ifdef SQLITE_ENABLE_MYLITE
+    myliteSetConstraintCondition(db, p->rc, pOp->p5);
+#endif
     if( pOp->p3>0 && pOp->p4type==P4_NOTUSED ){
       const char *zErr;
       assert( pOp->p3<=(p->nMem + 1 - p->nCursor) );

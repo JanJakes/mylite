@@ -37,6 +37,8 @@ static int test_registered_functions(void);
 
 static int test_mysql_collations(void);
 
+static int test_native_constraint_diagnostics(void);
+
 static int test_native_type_coercion(void);
 
 static int test_native_binary_type_coercion(void);
@@ -145,6 +147,7 @@ int main(void) {
 
     failures += test_registered_functions();
     failures += test_mysql_collations();
+    failures += test_native_constraint_diagnostics();
     failures += test_native_type_coercion();
     failures += test_native_binary_type_coercion();
     failures += test_native_text_blob_family_coercion();
@@ -343,6 +346,172 @@ static int test_mysql_collations(void) {
         "SELECT COUNT(*) FROM collation_prefix_bin",
         2,
         "SQLite expression indexes keep binary prefix collation byte-sensitive"
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_constraint_diagnostics(void) {
+    enum {
+        not_null_error = 1048,
+        duplicate_error = 1062,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE constraint_diag("
+        "id INT NOT NULL,"
+        "slug TEXT NOT NULL UNIQUE,"
+        "title TEXT NOT NULL,"
+        "PRIMARY KEY(id)"
+        ")",
+        "create direct constraint diagnostics fixture"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO constraint_diag VALUES (1, 'home', 'Home')",
+        "insert direct constraint diagnostics seed"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO constraint_diag VALUES (2, NULL, 'Missing slug')",
+            .message_fragment = "NOT NULL constraint failed",
+            .context = "direct NOT NULL constraint fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = not_null_error,
+            .sqlstate = "23000",
+            .context = "direct NOT NULL constraint publishes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear NOT NULL constraint condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO constraint_diag VALUES (1, 'about', 'Duplicate primary')",
+            .message_fragment = "UNIQUE constraint failed",
+            .context = "direct primary key constraint fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = duplicate_error,
+            .sqlstate = "23000",
+            .context = "direct primary key constraint publishes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear primary key constraint condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO constraint_diag VALUES (2, 'home', 'Duplicate slug')",
+            .message_fragment = "UNIQUE constraint failed",
+            .context = "direct unique constraint fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = duplicate_error,
+            .sqlstate = "23000",
+            .context = "direct unique constraint publishes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear unique constraint condition"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO constraint_diag VALUES (2, 'about', 'About')",
+        "insert direct constraint diagnostics update seed"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "UPDATE constraint_diag SET slug = NULL WHERE id = 2",
+            .message_fragment = "NOT NULL constraint failed",
+            .context = "direct update NOT NULL constraint fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = not_null_error,
+            .sqlstate = "23000",
+            .context = "direct update NOT NULL publishes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear update NOT NULL constraint condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "UPDATE constraint_diag SET slug = 'home' WHERE id = 2",
+            .message_fragment = "UNIQUE constraint failed",
+            .context = "direct update unique constraint fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = duplicate_error,
+            .sqlstate = "23000",
+            .context = "direct update unique publishes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear update unique constraint condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "UPDATE constraint_diag SET id = 1 WHERE slug = 'about'",
+            .message_fragment = "UNIQUE constraint failed",
+            .context = "direct update primary key constraint fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = duplicate_error,
+            .sqlstate = "23000",
+            .context = "direct update primary key publishes MySQL condition",
+        }
+    );
+    failures += expect_int64(
+        database,
+        "SELECT COUNT(*) FROM constraint_diag",
+        2,
+        "failed native constraint writes preserve stored rows"
     );
 
     sqlite3_close(database);

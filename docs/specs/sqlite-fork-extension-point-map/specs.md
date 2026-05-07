@@ -37,6 +37,8 @@ Implemented fork points:
   backed by SQLite's JSON parser
 - update-mask-aware descriptor checking for SQLite `UPDATE` record creation
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
+- structured fork diagnostics for native `NOT NULL`, `UNIQUE`, and
+  `PRIMARY KEY` VDBE constraint halts
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before
@@ -96,6 +98,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-timestamp-column-descriptors/specs.md`
 - SQLite fork SELECT descriptor hydration:
   `docs/specs/sqlite-fork-select-descriptor-hydration/specs.md`
+- SQLite fork constraint diagnostics:
+  `docs/specs/sqlite-fork-constraint-diagnostics/specs.md`
 - SQLite collation prefix uniqueness:
   `docs/specs/sqlite-collation-prefix-unique/specs.md`
 
@@ -213,6 +217,9 @@ Required fork direction:
 
 - conversion opcodes report structured MySQL conditions, not only SQLite text;
   implemented first for `OP_MyliteTypeCheck`
+- native constraint halts report structured MySQL conditions where SQLite's
+  constraint class maps cleanly to MySQL; implemented first for `NOT NULL`,
+  `UNIQUE`, and `PRIMARY KEY`
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
 

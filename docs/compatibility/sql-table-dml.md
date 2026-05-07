@@ -5,7 +5,7 @@ statements.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `DELETE` (single-table) | ❌ | Aliases, partitions, LIMIT, modifiers |
+| `DELETE` (single-table) | 🟡 | Limited persistent base-table `DELETE FROM table` with optional baseline integer/`NULL` `WHERE` predicate, one unqualified descriptor `ORDER BY` column, optional `ASC`/`DESC`, exact affected rows, and `LIMIT row_count` using unsigned decimal literals in signed 64-bit range; no aliases, partitions, modifiers, joined deletes, `USING`, full ordering, offset forms, triggers, cascades, foreign keys, or privilege semantics |
 | `DELETE` (multi-table) | ❌ | Multi-table forms and affected rows |
 | `HANDLER` | ❌ | HANDLER OPEN, READ, and CLOSE cursor-like table access |
 | `INSERT ... VALUES` | 🟡 | Limited single- and multi-row inserts into persistent base tables with optional unqualified column lists, integer/`NULL` values, descriptor-driven assignment, strict range/nullability diagnostics, affected rows, and all-or-nothing statement behavior; no defaults, keys, warnings, insert ids, `IGNORE`, `ON DUPLICATE KEY UPDATE`, `SET`, or `SELECT` form |

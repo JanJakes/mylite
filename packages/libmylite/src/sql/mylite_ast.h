@@ -38,6 +38,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_ORDER_BY_CLAUSE = 29,
     MYLITE_SQL_AST_ORDER_DIRECTION = 30,
     MYLITE_SQL_AST_LIMIT_CLAUSE = 31,
+    MYLITE_SQL_AST_DELETE_STATEMENT = 32,
 };
 
 enum mylite_sql_ast_literal_kind {

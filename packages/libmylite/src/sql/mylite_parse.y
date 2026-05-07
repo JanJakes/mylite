@@ -71,6 +71,9 @@ statement(A) ::= rename_table_statement(B). {
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
+statement(A) ::= delete_statement(B). {
+    A = B;
+}
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
@@ -101,6 +104,11 @@ rename_table_statement(A) ::= RENAME(R) TABLE table_name(S) TO table_name(T). {
 insert_values_statement(A) ::=
     INSERT(I) INTO table_name(T) insert_column_list_opt(C) VALUES insert_row_list(R). {
     A = mylite_sql_parser_make_insert_statement(state, I, T, C, R);
+}
+
+delete_statement(A) ::=
+    DELETE(D) FROM table_name(T) where_clause_opt(W) order_clause_opt(O) delete_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
 }
 
 insert_column_list_opt(A) ::= . {
@@ -277,6 +285,13 @@ limit_clause_opt(A) ::= LIMIT(L) limit_integer(C) OFFSET limit_integer(O). {
 }
 limit_clause_opt(A) ::= LIMIT(L) limit_integer(O) COMMA limit_integer(C). {
     A = mylite_sql_parser_make_limit_clause(state, L, C, O);
+}
+
+delete_limit_clause_opt(A) ::= . {
+    A = NULL;
+}
+delete_limit_clause_opt(A) ::= LIMIT(L) limit_integer(C). {
+    A = mylite_sql_parser_make_limit_clause(state, L, C, NULL);
 }
 
 limit_integer(A) ::= INTEGER(T). {

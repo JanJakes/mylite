@@ -208,6 +208,13 @@ expect_output \
 
 reset_numbers
 expect_output \
+    "exact unordered limit row count" \
+    "2	0	2" \
+    "DELETE FROM numbers LIMIT 2; SELECT ROW_COUNT(), @@warning_count, COUNT(*) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
     "limit larger than match count" \
     "4	0	0" \
     "DELETE FROM numbers LIMIT 10; SELECT ROW_COUNT(), @@warning_count, COUNT(*) FROM numbers;" \
@@ -223,9 +230,25 @@ expect_output \
 
 reset_numbers
 expect_output \
+    "bigint unsigned maximum supported predicate" \
+    "1	0	1,2,4" \
+    "DELETE FROM numbers WHERE bu = 9223372036854775807; "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
     "maximum supported MyLite limit is accepted upstream" \
     "4	0	0" \
     "DELETE FROM numbers ORDER BY id LIMIT 9223372036854775807; "\
+"SELECT ROW_COUNT(), @@warning_count, COUNT(*) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
+    "mysql accepts signed64 overflow delete limit upstream" \
+    "4	0	0" \
+    "DELETE FROM numbers ORDER BY id LIMIT 9223372036854775808; "\
 "SELECT ROW_COUNT(), @@warning_count, COUNT(*) FROM numbers;" \
     "$DATABASE"
 
@@ -388,6 +411,26 @@ expect_output \
     "2	0	2" \
     "DELETE FROM numbers ORDER BY n, id LIMIT 2; "\
 "SELECT ROW_COUNT(), @@warning_count, COUNT(*) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
+    "mysql accepts function predicate upstream" \
+    "1	0	3" \
+    "DELETE FROM numbers WHERE ABS(id) = 1; "\
+"SELECT ROW_COUNT(), @@warning_count, COUNT(*) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
+    "mysql accepts joined delete upstream" \
+    "1	0	3" \
+    "DROP TABLE IF EXISTS other_numbers; "\
+"CREATE TABLE other_numbers (id INT NOT NULL); "\
+"INSERT INTO other_numbers VALUES (1); "\
+"DELETE numbers FROM numbers JOIN other_numbers ON numbers.id = other_numbers.id; "\
+"SELECT ROW_COUNT(), @@warning_count, COUNT(*) FROM numbers; "\
+"DROP TABLE other_numbers;" \
     "$DATABASE"
 
 reset_numbers

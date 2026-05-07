@@ -371,6 +371,12 @@ not MySQL-visible metadata. If future table DDL adds `WITHOUT ROWID` physical
 tables or helper storage, this delete lowering must be revisited before those
 descriptors can use ordered or limited delete.
 
+SQLite exposes the hidden rowid through the unquoted aliases `rowid`,
+`_rowid_`, and `oid` unless user columns shadow those names. MyLite chooses an
+unshadowed alias for limited deletes. If all three aliases are shadowed by
+descriptor columns, limited delete is rejected with a deterministic unsupported
+diagnostic rather than risking deletion by a user column value.
+
 `ORDER BY` without `LIMIT` may be lowered to the simple delete shape because
 there is no visible row-order side effect in this slice. A future trigger,
 cascade, lock, replication, or row-by-row diagnostics slice must re-evaluate
@@ -420,6 +426,7 @@ are stored on the database handle.
 | Unsupported order expression | `MYLITE_ERROR` | `1064`, `42000`, deterministic unsupported message |
 | Unsupported limit expression or literal | `MYLITE_ERROR` | `1064`, `42000`, deterministic syntax or unsupported message |
 | Limit outside the supported signed 64-bit binding range | `MYLITE_ERROR` | `1064`, `42000`, `LIMIT literal is outside the supported range` |
+| All SQLite rowid aliases shadowed for limited delete | `MYLITE_ERROR` | `1064`, `42000`, `DELETE LIMIT requires an unshadowed SQLite rowid alias` |
 | Predicate literal outside supported descriptor range | `MYLITE_ERROR` | `1264`, `22003`, `Out of range value for column '<column>' in WHERE` |
 | Unsupported object kind | `MYLITE_ERROR` | `1064`, `42000`, deterministic unsupported message |
 | Physical SQLite failure | `MYLITE_ERROR` | `1105`, `HY000`, deterministic internal row-operation message |

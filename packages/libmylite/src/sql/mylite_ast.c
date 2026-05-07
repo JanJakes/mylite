@@ -273,6 +273,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "order_direction";
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
         return "limit_clause";
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+        return "delete_statement";
     }
 
     return "unknown";

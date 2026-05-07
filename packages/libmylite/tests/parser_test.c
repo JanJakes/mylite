@@ -13,6 +13,7 @@ static int test_qualified_identifier_keyword_part(void);
 static int test_table_lifecycle_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
+static int test_delete_statement(void);
 static int test_comments_are_skipped(void);
 static int test_syntax_errors(void);
 static int test_lexer_errors(void);
@@ -84,6 +85,7 @@ int main(void) {
     failures += test_table_lifecycle_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
+    failures += test_delete_statement();
     failures += test_comments_are_skipped();
     failures += test_syntax_errors();
     failures += test_lexer_errors();
@@ -672,6 +674,73 @@ static int test_select_order_limit_clauses(void) {
     return failures;
 }
 
+static int test_delete_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql("DELETE FROM app.simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DELETE_STATEMENT, "delete statement");
+    failures += expect_child_count(statement, 1U, "delete statement target only");
+    failures += expect_span_text(child_at(statement, 0U), "app.simple_lifecycle", "delete target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DELETE FROM simple_lifecycle WHERE id = +1 ORDER BY nn DESC LIMIT 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 1U);
+    order_clause = child_at(statement, 2U);
+    limit_clause = child_at(statement, 3U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DELETE_STATEMENT, "qualified delete");
+    failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "delete where");
+    failures += expect_operator(
+        child_at(where_clause, 0U),
+        MYLITE_SQL_AST_OPERATOR_EQUAL,
+        "delete where operator"
+    );
+    failures += expect_node(order_clause, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "delete order");
+    failures += expect_span_text(child_at(order_clause, 0U), "nn", "delete order key");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "delete order direction"
+    );
+    failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "delete limit");
+    failures += expect_span_text(child_at(limit_clause, 0U), "2", "delete limit row count");
+    failures += expect_true(child_at(limit_clause, 1U) == NULL, "delete limit has no offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DELETE FROM simple_lifecycle ORDER BY simple_lifecycle.id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    failures += expect_node(
+        child_at(order_clause, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "delete qualified order key"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM simple_lifecycle LIMIT 0;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "delete simple limit");
+    failures += expect_span_text(child_at(limit_clause, 0U), "0", "delete simple limit row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_comments_are_skipped(void) {
     struct mylite_sql_parse_result result;
     int failures = 0;
@@ -820,6 +889,22 @@ static int test_syntax_errors(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT +1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DELETE FROM t LIMIT 1 OFFSET 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT 1, 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t ORDER BY id, nn;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE LOW_PRIORITY FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

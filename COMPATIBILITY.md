@@ -119,8 +119,8 @@ tests.
 | `TINYINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `SMALLINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `MEDIUMINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
-| `INT` / `INTEGER` | 🟡 | Limited DDL descriptors, integer/`NULL` assignment, text readback, descriptor-driven filtered-select predicate conversion, and single-column sort support; no general expression semantics, display width, or protocol-grade result metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
-| `BIGINT` | 🟡 | Limited DDL descriptors, integer/`NULL` assignment, text readback, descriptor-driven filtered-select predicate conversion, and single-column sort support; `BIGINT UNSIGNED` is capped at the signed 64-bit SQLite integer range in this slice. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `INT` / `INTEGER` | 🟡 | Limited DDL descriptors, integer/`NULL` assignment, text readback, descriptor-driven filtered `SELECT`/`DELETE` predicate conversion, and single-column sort support; no general expression semantics, display width, or protocol-grade result metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BIGINT` | 🟡 | Limited DDL descriptors, integer/`NULL` assignment, text readback, descriptor-driven filtered `SELECT`/`DELETE` predicate conversion, and single-column sort support; `BIGINT UNSIGNED` is capped at the signed 64-bit SQLite integer range in this slice. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Integer type aliases | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `DECIMAL` / `NUMERIC` | ❌ | Exact math and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `FIXED` | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
@@ -156,11 +156,11 @@ tests.
 | `ENUM` | ❌ | Indexing, sorting, invalid values. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `SET` | ❌ | Bitmap membership metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `JSON` | ❌ | Validation and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
-| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES` inputs and supported filtered-select predicate right operands; unsigned decimal integer literals for supported `LIMIT`/`OFFSET`; no expression-level numeric semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES` inputs and supported filtered `SELECT`/`DELETE` predicate right operands; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE LIMIT`; no expression-level numeric semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | String literals | ❌ | Escapes, introducers, SQL modes. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP syntax. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | JSON path literals | ❌ | Path grammar and errors. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
-| Type conversion | 🟡 | Limited strict assignment conversion for inserted integer/`NULL` values, descriptor-driven integer predicate conversion, and unsigned signed-64 range conversion for supported `LIMIT`/`OFFSET` literals only. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Type conversion | 🟡 | Limited strict assignment conversion for inserted integer/`NULL` values, descriptor-driven integer predicate conversion for `SELECT`/`DELETE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE LIMIT` literals only. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Collation coercibility | ❌ | Coercibility and diagnostics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [collations](docs/compatibility/collations.md) |
 
 ### Character Sets, Collations, and SET
@@ -203,14 +203,14 @@ tests.
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
 | `&` | ❌ | Bitwise AND. | [operators](docs/compatibility/operators.md) |
-| `>` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `>` | 🟡 | Descriptor-driven filtered table `SELECT` and `DELETE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
 | `>>` | ❌ | Right shift. | [operators](docs/compatibility/operators.md) |
-| `>=` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
-| `<` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
-| `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `>=` | 🟡 | Descriptor-driven filtered table `SELECT` and `DELETE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `<` | 🟡 | Descriptor-driven filtered table `SELECT` and `DELETE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT` and `DELETE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
 | `<<` | ❌ | Left shift. | [operators](docs/compatibility/operators.md) |
-| `<=` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
-| `<=>` | 🟡 | Descriptor-driven filtered table `SELECT` predicates with non-`NULL` integer right operands only. | [operators](docs/compatibility/operators.md) |
+| `<=` | 🟡 | Descriptor-driven filtered table `SELECT` and `DELETE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `<=>` | 🟡 | Descriptor-driven filtered table `SELECT` and `DELETE` predicates with non-`NULL` integer right operands only. | [operators](docs/compatibility/operators.md) |
 | `%, MOD` | ❌ | Modulo. | [operators](docs/compatibility/operators.md), [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
 | `*` | ❌ | Multiplication. | [operators](docs/compatibility/operators.md) |
 | `+` | ❌ | Addition. | [operators](docs/compatibility/operators.md) |
@@ -219,7 +219,7 @@ tests.
 | `/` | ❌ | Division. | [operators](docs/compatibility/operators.md) |
 | `:=` | ❌ | Assignment expression. | [operators](docs/compatibility/operators.md), [SQL SET statements](docs/compatibility/sql-set-statements.md) |
 | `=` (assignment) | ❌ | SET and UPDATE assignment. | [operators](docs/compatibility/operators.md), [SQL SET statements](docs/compatibility/sql-set-statements.md) |
-| `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT` predicates with non-`NULL` integer right operands only. | [operators](docs/compatibility/operators.md) |
+| `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT` and `DELETE` predicates with non-`NULL` integer right operands only. | [operators](docs/compatibility/operators.md) |
 | `^` | ❌ | Bitwise XOR. | [operators](docs/compatibility/operators.md) |
 | `AND`, `&&` | ❌ | Logical AND. | [operators](docs/compatibility/operators.md) |
 | `BETWEEN ... AND ...` | ❌ | Range test. | [operators](docs/compatibility/operators.md) |
@@ -230,8 +230,8 @@ tests.
 | `IN()` | ❌ | Set membership. | [operators](docs/compatibility/operators.md) |
 | `IS` | ❌ | Boolean/null test. | [operators](docs/compatibility/operators.md) |
 | `IS NOT` | ❌ | Negated boolean/null test. | [operators](docs/compatibility/operators.md) |
-| `IS NOT NULL` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only. | [operators](docs/compatibility/operators.md) |
-| `IS NULL` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only. | [operators](docs/compatibility/operators.md) |
+| `IS NOT NULL` | 🟡 | Descriptor-driven filtered table `SELECT` and `DELETE` predicates only. | [operators](docs/compatibility/operators.md) |
+| `IS NULL` | 🟡 | Descriptor-driven filtered table `SELECT` and `DELETE` predicates only. | [operators](docs/compatibility/operators.md) |
 | `LIKE` | ❌ | Simple pattern matching. | [operators](docs/compatibility/operators.md) |
 | `NOT`, `!` | ❌ | Logical negation. | [operators](docs/compatibility/operators.md) |
 | `NOT BETWEEN ... AND ...` | ❌ | Negated range test. | [operators](docs/compatibility/operators.md) |
@@ -260,7 +260,7 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `DELETE` (single-table) | ❌ | Aliases, partitions, LIMIT, modifiers. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `DELETE` (single-table) | 🟡 | Limited persistent base-table `DELETE FROM table` with optional baseline `WHERE`, one unqualified descriptor `ORDER BY` column, and signed-64-range `LIMIT row_count`; no aliases, partitions, modifiers, joined deletes, full ordering, or offset forms. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `DELETE` (multi-table) | ❌ | Multi-table forms. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `DELETE` with joins | ❌ | Joined delete target semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md), [SQL joins](docs/compatibility/sql-joins.md) |
 | `INSERT ... VALUES` | 🟡 | Limited single- and multi-row inserts into persistent base tables with integer/`NULL` values, descriptor column resolution, strict range checks, affected rows, and statement atomicity; no defaults, keys, generated values, or insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |

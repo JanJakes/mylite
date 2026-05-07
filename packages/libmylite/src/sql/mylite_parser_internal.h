@@ -39,7 +39,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token select_token,
     struct mylite_sql_ast_node *select_list,
-    struct mylite_sql_ast_node *from_clause
+    struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
     struct mylite_sql_parser_state *state,
@@ -103,6 +104,25 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token from_token,
     struct mylite_sql_ast_node *table_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_where_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token where_token,
+    struct mylite_sql_ast_node *predicate
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_comparison_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_ast_node *right
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token is_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_token null_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
     struct mylite_sql_parser_state *state,

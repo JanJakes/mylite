@@ -149,7 +149,9 @@ enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
 
 enum mylite_sql_ast_operator mylite_sql_ast_node_operator(const struct mylite_sql_ast_node *node) {
     if (node == NULL || (node->kind != MYLITE_SQL_AST_UNARY_EXPRESSION &&
-                         node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION)) {
+                         node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION &&
+                         node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
+                         node->kind != MYLITE_SQL_AST_IS_NULL_PREDICATE)) {
         return MYLITE_SQL_AST_OPERATOR_NONE;
     }
 
@@ -238,6 +240,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "insert_row";
     case MYLITE_SQL_AST_FROM_TABLE:
         return "from_table";
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
+        return "where_clause";
+    case MYLITE_SQL_AST_COMPARISON_PREDICATE:
+        return "comparison_predicate";
+    case MYLITE_SQL_AST_IS_NULL_PREDICATE:
+        return "is_null_predicate";
     }
 
     return "unknown";
@@ -288,6 +296,24 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "multiply";
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
         return "divide";
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+        return "equal";
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+        return "null_safe_equal";
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return "not_equal";
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        return "less";
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        return "less_equal";
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        return "greater";
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return "greater_equal";
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+        return "is_null";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+        return "is_not_null";
     }
 
     return "unknown";

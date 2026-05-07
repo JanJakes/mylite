@@ -71,6 +71,11 @@ struct planned_value {
     int64_t integer;
 };
 
+struct integer_column_range {
+    uint64_t positive_max;
+    uint64_t negative_abs_max;
+};
+
 struct planned_insert_row {
     struct planned_value *values;
 };
@@ -84,11 +89,25 @@ struct planned_insert {
     size_t row_count;
 };
 
+enum planned_select_predicate_kind {
+    PLANNED_SELECT_PREDICATE_NONE = 0,
+    PLANNED_SELECT_PREDICATE_COMPARISON = 1,
+    PLANNED_SELECT_PREDICATE_IS_NULL = 2,
+};
+
+struct planned_select_predicate {
+    enum planned_select_predicate_kind kind;
+    enum mylite_sql_ast_operator operator_kind;
+    struct mylite_catalog_column_descriptor column;
+    struct planned_value value;
+};
+
 struct planned_select {
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
+    struct planned_select_predicate predicate;
 };
 
 struct dynamic_string {
@@ -368,6 +387,60 @@ static int plan_select_columns(
     size_t table_column_count,
     struct planned_select *out_plan
 );
+static int plan_select_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+);
+static int plan_select_predicate_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+);
+static int plan_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+);
+static int plan_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+);
+static int resolve_predicate_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int convert_predicate_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int convert_integer_for_predicate(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    int64_t *out_value
+);
+static int integer_range_for_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *unsupported_message,
+    struct integer_column_range *out_range
+);
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
 static int append_select_column(
     struct planned_select *plan,
@@ -395,6 +468,11 @@ static int append_insert_column_names(
 static int append_insert_parameters(struct dynamic_string *string, size_t column_count);
 static int append_numbered_parameter(struct dynamic_string *string, size_t parameter_index);
 static int build_select_sql(const struct planned_select *plan, char **out_sql);
+static int append_select_predicate_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate
+);
+static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind);
 static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql);
 static int execute_sqlite_control_sql(const struct mylite_db *database, const char *sql);
 static int prepare_sqlite_statement(
@@ -405,6 +483,10 @@ static int prepare_sqlite_statement(
 static int finalize_sqlite_statement(sqlite3_stmt *statement, int rc);
 static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert *plan, size_t row);
 static int step_insert_row(sqlite3_stmt *statement);
+static int bind_select_predicate(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate *predicate
+);
 static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *result);
 
 static void dynamic_string_init(struct dynamic_string *string);
@@ -429,6 +511,7 @@ static void set_no_database_error(struct mylite_db *database);
 static void set_unknown_database_error(struct mylite_db *database, const char *schema_name);
 static void set_table_exists_error(struct mylite_db *database, const char *table_name);
 static void set_unknown_column_error(struct mylite_db *database, const char *column_name);
+static void set_unknown_where_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_table_error(
     struct mylite_db *database,
     const char *schema_name,
@@ -449,6 +532,7 @@ static void set_out_of_range_error(
     const char *column_name,
     size_t row_number
 );
+static void set_predicate_out_of_range_error(struct mylite_db *database, const char *column_name);
 static void set_identifier_too_long_error(struct mylite_db *database, const char *kind);
 static void set_reserved_name_error(struct mylite_db *database, const char *kind, const char *name);
 static void set_nomem_error(struct mylite_db *database);
@@ -588,6 +672,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
     case MYLITE_SQL_AST_FROM_TABLE:
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
+    case MYLITE_SQL_AST_COMPARISON_PREDICATE:
+    case MYLITE_SQL_AST_IS_NULL_PREDICATE:
         break;
     }
 
@@ -1274,6 +1361,7 @@ static int plan_select(
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *where_clause = child_at(statement, 2U);
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
@@ -1303,6 +1391,15 @@ static int plan_select(
     if (rc == MYLITE_OK) {
         rc =
             plan_select_columns(database, select_list, table_columns, table_column_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_predicate(
+            database,
+            where_clause,
+            table_columns,
+            table_column_count,
+            &out_plan->predicate
+        );
     }
 
     free(table_columns);
@@ -1350,6 +1447,9 @@ static int execute_select_from_plan(
     }
     if (rc == MYLITE_OK) {
         rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate(statement, &plan->predicate);
     }
     while (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_step(statement);
@@ -2183,33 +2283,21 @@ static int convert_integer_for_column(
     size_t row_number,
     int64_t *out_value
 ) {
-    const uint64_t int_signed_positive_max = 2147483647ULL;
-    const uint64_t int_signed_negative_abs_max = 2147483648ULL;
-    const uint64_t int_unsigned_max = 4294967295ULL;
-    const uint64_t bigint_signed_positive_max = 9223372036854775807ULL;
     const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
-    uint64_t positive_max = 0U;
-    uint64_t negative_abs_max = 0U;
+    struct integer_column_range range = {0};
+    int rc = integer_range_for_column(
+        database,
+        column,
+        "INSERT supports only baseline integer columns",
+        &range
+    );
 
-    if (strcmp(column->logical_type, "INT") == 0) {
-        positive_max = int_signed_positive_max;
-        negative_abs_max = int_signed_negative_abs_max;
-    } else if (strcmp(column->logical_type, "INT UNSIGNED") == 0) {
-        positive_max = int_unsigned_max;
-        negative_abs_max = 0U;
-    } else if (strcmp(column->logical_type, "BIGINT") == 0) {
-        positive_max = bigint_signed_positive_max;
-        negative_abs_max = bigint_signed_negative_abs_max;
-    } else if (strcmp(column->logical_type, "BIGINT UNSIGNED") == 0) {
-        positive_max = bigint_signed_positive_max;
-        negative_abs_max = 0U;
-    } else {
-        set_unsupported_error(database, "INSERT supports only baseline integer columns");
-        return MYLITE_ERROR;
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-
     if (is_negative) {
-        if ((negative_abs_max == 0U && magnitude != 0U) || magnitude > negative_abs_max) {
+        if ((range.negative_abs_max == 0U && magnitude != 0U) ||
+            magnitude > range.negative_abs_max) {
             set_out_of_range_error(database, column->name, row_number);
             return MYLITE_ERROR;
         }
@@ -2221,7 +2309,7 @@ static int convert_integer_for_column(
         return MYLITE_OK;
     }
 
-    if (magnitude > positive_max) {
+    if (magnitude > range.positive_max) {
         set_out_of_range_error(database, column->name, row_number);
         return MYLITE_ERROR;
     }
@@ -2336,6 +2424,298 @@ static int is_unqualified_identifier_select_item(
     *out_identifier = expression;
 
     return MYLITE_OK;
+}
+
+static int plan_select_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *where_clause,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+) {
+    *out_predicate = (struct planned_select_predicate){0};
+    if (where_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
+        set_unsupported_error(database, "SELECT supports only one descriptor column predicate");
+        return MYLITE_ERROR;
+    }
+
+    return plan_select_predicate_node(
+        database,
+        child_at(where_clause, 0U),
+        table_columns,
+        table_column_count,
+        out_predicate
+    );
+}
+
+static int plan_select_predicate_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+) {
+    const struct mylite_sql_ast_node *current = predicate_node;
+
+    while (current != NULL && current->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        current = child_at(current, 0U);
+    }
+    if (current == NULL) {
+        set_unsupported_error(database, "SELECT supports only one descriptor column predicate");
+        return MYLITE_ERROR;
+    }
+    if (current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        return plan_comparison_predicate(
+            database,
+            current,
+            table_columns,
+            table_column_count,
+            out_predicate
+        );
+    }
+    if (current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+        return plan_is_null_predicate(
+            database,
+            current,
+            table_columns,
+            table_column_count,
+            out_predicate
+        );
+    }
+
+    set_unsupported_error(database, "SELECT supports only one descriptor column predicate");
+    return MYLITE_ERROR;
+}
+
+static int plan_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+) {
+    int rc = resolve_predicate_column(
+        database,
+        child_at(predicate_node, 0U),
+        table_columns,
+        table_column_count,
+        &out_predicate->column
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = convert_predicate_integer_literal(
+            database,
+            child_at(predicate_node, 1U),
+            &out_predicate->column,
+            &out_predicate->value
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_predicate->kind = PLANNED_SELECT_PREDICATE_COMPARISON;
+    out_predicate->operator_kind = mylite_sql_ast_node_operator(predicate_node);
+    return MYLITE_OK;
+}
+
+static int plan_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+) {
+    int rc = resolve_predicate_column(
+        database,
+        child_at(predicate_node, 0U),
+        table_columns,
+        table_column_count,
+        &out_predicate->column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_predicate->kind = PLANNED_SELECT_PREDICATE_IS_NULL;
+    out_predicate->operator_kind = mylite_sql_ast_node_operator(predicate_node);
+    return MYLITE_OK;
+}
+
+static int resolve_predicate_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "WHERE supports only unqualified predicate columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_where_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    *out_column = table_columns[column_index];
+    return MYLITE_OK;
+}
+
+static int convert_predicate_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    *out_value = (struct planned_value){.is_null = false, .integer = 0};
+    if (value_node == NULL || column == NULL) {
+        set_unsupported_error(database, "WHERE supports only integer predicate literals");
+        return MYLITE_ERROR;
+    }
+
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, "WHERE supports only integer predicate literals");
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, "WHERE supports only integer predicate literals");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+    if (rc != MYLITE_OK) {
+        set_predicate_out_of_range_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    rc = convert_integer_for_predicate(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        &out_value->integer
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_value->is_null = false;
+
+    return MYLITE_OK;
+}
+
+static int convert_integer_for_predicate(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    int64_t *out_value
+) {
+    const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
+    struct integer_column_range range = {0};
+    int rc = integer_range_for_column(
+        database,
+        column,
+        "WHERE supports only baseline integer columns",
+        &range
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_negative) {
+        if ((range.negative_abs_max == 0U && magnitude != 0U) ||
+            magnitude > range.negative_abs_max) {
+            set_predicate_out_of_range_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        if (magnitude == bigint_signed_negative_abs_max) {
+            *out_value = INT64_MIN;
+        } else {
+            *out_value = -(int64_t)magnitude;
+        }
+        return MYLITE_OK;
+    }
+    if (magnitude > range.positive_max) {
+        set_predicate_out_of_range_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (int64_t)magnitude;
+    return MYLITE_OK;
+}
+
+static int integer_range_for_column(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    const char *unsupported_message,
+    struct integer_column_range *out_range
+) {
+    const uint64_t int_signed_positive_max = 2147483647ULL;
+    const uint64_t int_signed_negative_abs_max = 2147483648ULL;
+    const uint64_t int_unsigned_max = 4294967295ULL;
+    const uint64_t bigint_signed_positive_max = 9223372036854775807ULL;
+    const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
+
+    if (strcmp(column->logical_type, "INT") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = int_signed_positive_max,
+            .negative_abs_max = int_signed_negative_abs_max,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(column->logical_type, "INT UNSIGNED") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = int_unsigned_max,
+            .negative_abs_max = 0U,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(column->logical_type, "BIGINT") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = bigint_signed_positive_max,
+            .negative_abs_max = bigint_signed_negative_abs_max,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(column->logical_type, "BIGINT UNSIGNED") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = bigint_signed_positive_max,
+            .negative_abs_max = 0U,
+        };
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(database, unsupported_message);
+    return MYLITE_ERROR;
 }
 
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data) {
@@ -2541,6 +2921,9 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
         rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
     }
     if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(&string, &plan->predicate);
+    }
+    if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);
         if (*out_sql == NULL) {
             rc = MYLITE_NOMEM;
@@ -2550,6 +2933,75 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
     dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static int append_select_predicate_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate
+) {
+    int rc = MYLITE_OK;
+
+    if (predicate->kind == PLANNED_SELECT_PREDICATE_NONE) {
+        return MYLITE_OK;
+    }
+
+    rc = dynamic_string_append(string, " WHERE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, predicate->column.name);
+    }
+    if (predicate->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ' ');
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, comparison_operator_sql(predicate->operator_kind));
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " ?1");
+        }
+    } else if (predicate->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
+        if (predicate->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
+            if (rc == MYLITE_OK) {
+                rc = dynamic_string_append(string, " IS NOT NULL");
+            }
+        } else {
+            if (rc == MYLITE_OK) {
+                rc = dynamic_string_append(string, " IS NULL");
+            }
+        }
+    }
+
+    return rc;
+}
+
+static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+        return "=";
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return "<>";
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        return "<";
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        return "<=";
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        return ">";
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return ">=";
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+        break;
+    }
+
+    return "=";
 }
 
 static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql) {
@@ -2649,6 +3101,24 @@ static int step_insert_row(sqlite3_stmt *statement) {
     int sqlite_rc = sqlite3_step(statement);
 
     if (sqlite_rc != SQLITE_DONE) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int bind_select_predicate(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate *predicate
+) {
+    int sqlite_rc = SQLITE_OK;
+
+    if (predicate->kind != PLANNED_SELECT_PREDICATE_COMPARISON) {
+        return MYLITE_OK;
+    }
+
+    sqlite_rc = sqlite3_bind_int64(statement, 1, (sqlite3_int64)predicate->value.integer);
+    if (sqlite_rc != SQLITE_OK) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
 
@@ -3018,6 +3488,22 @@ static void set_unknown_column_error(struct mylite_db *database, const char *col
     );
 }
 
+static void set_unknown_where_column_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Unknown column '%s' in 'where clause'", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_column,
+        "42S22",
+        message
+    );
+}
+
 static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Column '%s' specified twice", column_name);
@@ -3096,6 +3582,26 @@ static void set_out_of_range_error(
         "Out of range value for column '%s' at row %zu",
         column_name,
         row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_data_out_of_range,
+        "22003",
+        message
+    );
+}
+
+static void set_predicate_out_of_range_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Out of range value for column '%s' in WHERE",
+        column_name
     );
 
     if (written < 0) {

@@ -11,6 +11,7 @@ static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_table_lifecycle_statements(void);
+static int test_select_where_predicates(void);
 static int test_comments_are_skipped(void);
 static int test_syntax_errors(void);
 static int test_lexer_errors(void);
@@ -71,6 +72,7 @@ int main(void) {
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
     failures += test_table_lifecycle_statements();
+    failures += test_select_where_predicates();
     failures += test_comments_are_skipped();
     failures += test_syntax_errors();
     failures += test_lexer_errors();
@@ -491,6 +493,106 @@ static int test_table_lifecycle_statements(void) {
     return failures;
 }
 
+static int test_select_where_predicates(void) {
+    static const struct {
+        const char *sql;
+        enum mylite_sql_ast_operator expected_operator;
+        enum mylite_sql_ast_node_kind expected_kind;
+    } cases[] = {
+        {
+            "SELECT id FROM simple_lifecycle WHERE id = 1;",
+            MYLITE_SQL_AST_OPERATOR_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id <=> 1;",
+            MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id <> 1;",
+            MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id != 1;",
+            MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id < -1;",
+            MYLITE_SQL_AST_OPERATOR_LESS,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id <= +1;",
+            MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id > 1;",
+            MYLITE_SQL_AST_OPERATOR_GREATER,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id >= 1;",
+            MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id IS NULL;",
+            MYLITE_SQL_AST_OPERATOR_IS_NULL,
+            MYLITE_SQL_AST_IS_NULL_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id IS NOT NULL;",
+            MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL,
+            MYLITE_SQL_AST_IS_NULL_PREDICATE,
+        },
+    };
+    struct mylite_sql_parse_result result;
+    int failures = 0;
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        const struct mylite_sql_ast_node *statement = NULL;
+        const struct mylite_sql_ast_node *where_clause = NULL;
+        const struct mylite_sql_ast_node *predicate = NULL;
+
+        failures += parse_sql(cases[index].sql, MYLITE_SQL_PARSE_OK, &result);
+        statement = child_at(result.root, 0U);
+        where_clause = child_at(statement, 2U);
+        predicate = child_at(where_clause, 0U);
+        failures += expect_node(where_clause, MYLITE_SQL_AST_WHERE_CLAUSE, "where clause");
+        failures += expect_node(predicate, cases[index].expected_kind, "where predicate");
+        failures += expect_operator(predicate, cases[index].expected_operator, "where operator");
+        failures += expect_span_text(child_at(predicate, 0U), "id", "where predicate column");
+        mylite_sql_parse_result_deinit(&result);
+    }
+
+    failures +=
+        parse_sql("SELECT * FROM simple_lifecycle WHERE (id = +1);", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE simple_lifecycle.id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified predicate column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_comments_are_skipped(void) {
     struct mylite_sql_parse_result result;
     int failures = 0;
@@ -583,7 +685,59 @@ static int test_syntax_errors(void) {
         parse_sql("INSERT IGNORE INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT id FROM t WHERE id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures +=
+        parse_sql("SELECT id FROM t WHERE id = NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM t WHERE 1 = id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE id + 1 = 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE id = '1';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM t WHERE id = 1 AND nn = 2;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM t WHERE id = 1 OR nn = 2;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE ABS(id) = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE id = b'1';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM t JOIN other WHERE id = 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM t WHERE id = 1 ORDER BY nn;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE id = 1 LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

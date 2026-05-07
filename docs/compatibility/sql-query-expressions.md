@@ -4,11 +4,11 @@ Core query expression, SELECT, set operation, ordering, limiting, locking, modif
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `SELECT` | 🟡 | Descriptor-driven single persistent base-table `SELECT *` and `SELECT column[, column ...] FROM table` only, with unqualified or schema-qualified table names; no expressions, aliases, `WHERE`, ordering, limits, joins, grouping, locking, or arbitrary SQLite pass-through |
+| `SELECT` | 🟡 | Descriptor-driven single persistent base-table `SELECT *` and `SELECT column[, column ...] FROM table` with an optional limited `WHERE` predicate, using unqualified or schema-qualified table names; no expression projection, aliases, ordering, limits, joins, grouping, locking, or arbitrary SQLite pass-through |
 | Query expression grammar | ❌ | Query terms and primaries |
 | Projection list | 🟡 | Wildcard uses catalog ordinal order; explicit projections resolve unqualified descriptor column names only, with duplicate projected columns allowed and no aliases, expression metadata, or table-qualified references |
 | `SELECT ... FROM DUAL` | ❌ | `DUAL` one-row table semantics |
-| `WHERE` | ❌ | Predicate semantics and warnings |
+| `WHERE` | 🟡 | One unqualified descriptor column predicate for filtered table `SELECT`: integer comparisons with a non-`NULL` decimal integer right operand (`=`, `<=>`, `<>`, `!=`, `<`, `<=`, `>`, `>=`) plus `IS NULL` and `IS NOT NULL`; no boolean composition, literal-left comparisons, table-qualified columns, `col = NULL`, functions, parameters, string/decimal/float/hex/bit literals, subqueries, or general expression predicates |
 | `GROUP BY` | ❌ | Grouping and ONLY_FULL_GROUP_BY |
 | `WITH ROLLUP` | ❌ | Super-aggregate rows and GROUPING() behavior |
 | `HAVING` | ❌ | Post-group predicate semantics and alias resolution |

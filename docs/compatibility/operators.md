@@ -5,14 +5,14 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | Function or operator | Status | Notes |
 | --- | --- | --- |
 | `&` | ❌ | Bitwise AND |
-| `>` | ❌ | Greater than operator |
+| `>` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support |
 | `>>` | ❌ | Right shift |
-| `>=` | ❌ | Greater than or equal operator |
-| `<` | ❌ | Less than operator |
-| `<>, !=` | ❌ | Not equal operator |
+| `>=` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support |
+| `<` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support |
+| `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support |
 | `<<` | ❌ | Left shift |
-| `<=` | ❌ | Less than or equal operator |
-| `<=>` | ❌ | NULL-safe equal to operator |
+| `<=` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only; no expression-level operator support |
+| `<=>` | 🟡 | Descriptor-driven filtered table `SELECT` predicates with non-`NULL` integer right operands only |
 | `%, MOD` | ❌ | Modulo operator |
 | `*` | ❌ | Multiplication operator |
 | `+` | ❌ | Addition operator |
@@ -21,7 +21,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `/` | ❌ | Division operator |
 | `:=` | ❌ | Assign a value |
 | `=` (assignment) | ❌ | Assign a value as part of `SET` or an `UPDATE` assignment |
-| `=` (comparison) | ❌ | Equal operator |
+| `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT` predicates with non-`NULL` integer right operands only |
 | `^` | ❌ | Bitwise XOR |
 | `AND, &&` | ❌ | Logical AND |
 | `BETWEEN ... AND ...` | ❌ | Whether a value is within a range of values |
@@ -32,8 +32,8 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `IN()` | ❌ | Whether a value is within a set of values |
 | `IS` | ❌ | Test a value against a boolean |
 | `IS NOT` | ❌ | Test a value against a boolean |
-| `IS NOT NULL` | ❌ | NOT NULL value test |
-| `IS NULL` | ❌ | NULL value test |
+| `IS NOT NULL` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only |
+| `IS NULL` | 🟡 | Descriptor-driven filtered table `SELECT` predicates only |
 | `LIKE` | ❌ | Simple pattern matching |
 | `NOT, !` | ❌ | Negates value |
 | `NOT BETWEEN ... AND ...` | ❌ | Whether a value is not within a range of values |

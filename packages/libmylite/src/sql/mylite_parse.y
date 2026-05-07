@@ -153,29 +153,94 @@ insert_value(A) ::= NULL(T). {
 }
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL);
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D));
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL);
 }
-select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(N). {
+select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(N) where_clause_opt(W). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N));
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N), W);
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL);
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D));
+        mylite_sql_parser_make_from_dual(state, F, D), NULL);
 }
-select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(N). {
+select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(N) where_clause_opt(W). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N));
+        mylite_sql_parser_make_from_table(state, F, N), W);
+}
+
+where_clause_opt(A) ::= . {
+    A = NULL;
+}
+where_clause_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
+}
+
+predicate(A) ::= predicate_atom(B). {
+    A = B;
+}
+predicate(A) ::= LPAREN(L) predicate(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+predicate_atom(A) ::= qualified_identifier(C) EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
+}
+predicate_atom(A) ::= qualified_identifier(C) NULL_SAFE_EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, V);
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT_EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V);
+}
+predicate_atom(A) ::= qualified_identifier(C) LESS(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS, V);
+}
+predicate_atom(A) ::= qualified_identifier(C) LESS_EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, V);
+}
+predicate_atom(A) ::= qualified_identifier(C) GREATER(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER, V);
+}
+predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) predicate_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
+}
+predicate_atom(A) ::= qualified_identifier(C) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
+}
+predicate_atom(A) ::= qualified_identifier(C) IS(I) NOT NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
+
+predicate_integer_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+predicate_integer_value(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+predicate_integer_value(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
 
 select_item_list(A) ::= select_item(B). {

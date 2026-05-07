@@ -280,7 +280,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token select_token,
     struct mylite_sql_ast_node *select_list,
-    struct mylite_sql_ast_node *from_clause
+    struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause
 ) {
     struct mylite_sql_source_span span = span_from_token(&select_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -291,6 +292,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     if (from_clause != NULL) {
         span = span_join(span, from_clause->span);
     }
+    if (where_clause != NULL) {
+        span = span_join(span, where_clause->span);
+    }
 
     statement = make_node(state, MYLITE_SQL_AST_SELECT_STATEMENT, span);
     if (statement == NULL) {
@@ -299,6 +303,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
 
     mylite_sql_ast_node_append_child(statement, select_list);
     mylite_sql_ast_node_append_child(statement, from_clause);
+    mylite_sql_ast_node_append_child(statement, where_clause);
     return statement;
 }
 
@@ -531,6 +536,74 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
 
     mylite_sql_ast_node_append_child(from_table, table_name);
     return from_table;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_where_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token where_token,
+    struct mylite_sql_ast_node *predicate
+) {
+    struct mylite_sql_source_span span = span_from_token(&where_token);
+    struct mylite_sql_ast_node *where_clause = NULL;
+
+    if (predicate != NULL) {
+        span = span_join(span, predicate->span);
+    }
+
+    where_clause = make_node(state, MYLITE_SQL_AST_WHERE_CLAUSE, span);
+    if (where_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(where_clause, predicate);
+    return where_clause;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_comparison_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_ast_node *right
+) {
+    struct mylite_sql_source_span span =
+        left == NULL ? span_from_token(&operator_token) : left->span;
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    if (right != NULL) {
+        span = span_join(span, right->span);
+    }
+
+    predicate = make_node(state, MYLITE_SQL_AST_COMPARISON_PREDICATE, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_operator(predicate, operator_kind);
+    mylite_sql_ast_node_append_child(predicate, left);
+    mylite_sql_ast_node_append_child(predicate, right);
+    return predicate;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token is_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_token null_token
+) {
+    struct mylite_sql_source_span span = left == NULL ? span_from_token(&is_token) : left->span;
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    span = span_join(span, span_from_token(&null_token));
+    predicate = make_node(state, MYLITE_SQL_AST_IS_NULL_PREDICATE, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_operator(predicate, operator_kind);
+    mylite_sql_ast_node_append_child(predicate, left);
+    return predicate;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
@@ -977,102 +1050,36 @@ static bool map_keyword_token(
     bool previous_token_was_dot,
     int *out_parser_token
 ) {
+    static const struct {
+        const char *keyword;
+        int parser_token;
+    } keyword_mappings[] = {
+        {"SELECT", MYLITE_SQL_PARSE_SELECT}, {"FROM", MYLITE_SQL_PARSE_FROM},
+        {"WHERE", MYLITE_SQL_PARSE_WHERE},   {"USE", MYLITE_SQL_PARSE_USE},
+        {"CREATE", MYLITE_SQL_PARSE_CREATE}, {"TABLE", MYLITE_SQL_PARSE_TABLE},
+        {"DROP", MYLITE_SQL_PARSE_DROP},     {"SHOW", MYLITE_SQL_PARSE_SHOW},
+        {"TABLES", MYLITE_SQL_PARSE_TABLES}, {"RENAME", MYLITE_SQL_PARSE_RENAME},
+        {"INSERT", MYLITE_SQL_PARSE_INSERT}, {"INTO", MYLITE_SQL_PARSE_INTO},
+        {"VALUES", MYLITE_SQL_PARSE_VALUES}, {"TO", MYLITE_SQL_PARSE_TO},
+        {"INT", MYLITE_SQL_PARSE_INT},       {"INTEGER", MYLITE_SQL_PARSE_INTEGER_TYPE},
+        {"BIGINT", MYLITE_SQL_PARSE_BIGINT}, {"UNSIGNED", MYLITE_SQL_PARSE_UNSIGNED},
+        {"NOT", MYLITE_SQL_PARSE_NOT},       {"IS", MYLITE_SQL_PARSE_IS},
+        {"IN", MYLITE_SQL_PARSE_IN},         {"TRUE", MYLITE_SQL_PARSE_TRUE},
+        {"FALSE", MYLITE_SQL_PARSE_FALSE},   {"NULL", MYLITE_SQL_PARSE_NULL},
+        {"DUAL", MYLITE_SQL_PARSE_DUAL},
+    };
+
     if (previous_token_was_dot) {
         *out_parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
         return true;
     }
 
-    if (token_text_equals(token, "SELECT")) {
-        *out_parser_token = MYLITE_SQL_PARSE_SELECT;
-        return true;
-    }
-    if (token_text_equals(token, "FROM")) {
-        *out_parser_token = MYLITE_SQL_PARSE_FROM;
-        return true;
-    }
-    if (token_text_equals(token, "USE")) {
-        *out_parser_token = MYLITE_SQL_PARSE_USE;
-        return true;
-    }
-    if (token_text_equals(token, "CREATE")) {
-        *out_parser_token = MYLITE_SQL_PARSE_CREATE;
-        return true;
-    }
-    if (token_text_equals(token, "TABLE")) {
-        *out_parser_token = MYLITE_SQL_PARSE_TABLE;
-        return true;
-    }
-    if (token_text_equals(token, "DROP")) {
-        *out_parser_token = MYLITE_SQL_PARSE_DROP;
-        return true;
-    }
-    if (token_text_equals(token, "SHOW")) {
-        *out_parser_token = MYLITE_SQL_PARSE_SHOW;
-        return true;
-    }
-    if (token_text_equals(token, "TABLES")) {
-        *out_parser_token = MYLITE_SQL_PARSE_TABLES;
-        return true;
-    }
-    if (token_text_equals(token, "RENAME")) {
-        *out_parser_token = MYLITE_SQL_PARSE_RENAME;
-        return true;
-    }
-    if (token_text_equals(token, "INSERT")) {
-        *out_parser_token = MYLITE_SQL_PARSE_INSERT;
-        return true;
-    }
-    if (token_text_equals(token, "INTO")) {
-        *out_parser_token = MYLITE_SQL_PARSE_INTO;
-        return true;
-    }
-    if (token_text_equals(token, "VALUES")) {
-        *out_parser_token = MYLITE_SQL_PARSE_VALUES;
-        return true;
-    }
-    if (token_text_equals(token, "TO")) {
-        *out_parser_token = MYLITE_SQL_PARSE_TO;
-        return true;
-    }
-    if (token_text_equals(token, "INT")) {
-        *out_parser_token = MYLITE_SQL_PARSE_INT;
-        return true;
-    }
-    if (token_text_equals(token, "INTEGER")) {
-        *out_parser_token = MYLITE_SQL_PARSE_INTEGER_TYPE;
-        return true;
-    }
-    if (token_text_equals(token, "BIGINT")) {
-        *out_parser_token = MYLITE_SQL_PARSE_BIGINT;
-        return true;
-    }
-    if (token_text_equals(token, "UNSIGNED")) {
-        *out_parser_token = MYLITE_SQL_PARSE_UNSIGNED;
-        return true;
-    }
-    if (token_text_equals(token, "NOT")) {
-        *out_parser_token = MYLITE_SQL_PARSE_NOT;
-        return true;
-    }
-    if (token_text_equals(token, "IN")) {
-        *out_parser_token = MYLITE_SQL_PARSE_IN;
-        return true;
-    }
-    if (token_text_equals(token, "TRUE")) {
-        *out_parser_token = MYLITE_SQL_PARSE_TRUE;
-        return true;
-    }
-    if (token_text_equals(token, "FALSE")) {
-        *out_parser_token = MYLITE_SQL_PARSE_FALSE;
-        return true;
-    }
-    if (token_text_equals(token, "NULL")) {
-        *out_parser_token = MYLITE_SQL_PARSE_NULL;
-        return true;
-    }
-    if (token_text_equals(token, "DUAL")) {
-        *out_parser_token = MYLITE_SQL_PARSE_DUAL;
-        return true;
+    for (size_t index = 0U; index < sizeof(keyword_mappings) / sizeof(keyword_mappings[0]);
+         ++index) {
+        if (token_text_equals(token, keyword_mappings[index].keyword)) {
+            *out_parser_token = keyword_mappings[index].parser_token;
+            return true;
+        }
     }
 
     if ((token->keyword_flags & MYLITE_SQL_KEYWORD_RESERVED) != 0U) {
@@ -1111,6 +1118,27 @@ static bool map_punctuation_token(const struct mylite_sql_token *token, int *out
 
 static bool map_operator_token(const struct mylite_sql_token *token, int *out_parser_token) {
     switch (token->operator_kind) {
+    case MYLITE_SQL_OPERATOR_NULL_SAFE_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_NULL_SAFE_EQUAL;
+        return true;
+    case MYLITE_SQL_OPERATOR_LESS_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_LESS_EQUAL;
+        return true;
+    case MYLITE_SQL_OPERATOR_GREATER_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_GREATER_EQUAL;
+        return true;
+    case MYLITE_SQL_OPERATOR_NOT_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_NOT_EQUAL;
+        return true;
+    case MYLITE_SQL_OPERATOR_EQUAL:
+        *out_parser_token = MYLITE_SQL_PARSE_EQUAL;
+        return true;
+    case MYLITE_SQL_OPERATOR_LESS:
+        *out_parser_token = MYLITE_SQL_PARSE_LESS;
+        return true;
+    case MYLITE_SQL_OPERATOR_GREATER:
+        *out_parser_token = MYLITE_SQL_PARSE_GREATER;
+        return true;
     case MYLITE_SQL_OPERATOR_PLUS:
         *out_parser_token = MYLITE_SQL_PARSE_PLUS;
         return true;
@@ -1126,18 +1154,11 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
     case MYLITE_SQL_OPERATOR_NONE:
     case MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT:
     case MYLITE_SQL_OPERATOR_JSON_EXTRACT:
-    case MYLITE_SQL_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_OPERATOR_LEFT_SHIFT:
     case MYLITE_SQL_OPERATOR_RIGHT_SHIFT:
-    case MYLITE_SQL_OPERATOR_LESS_EQUAL:
-    case MYLITE_SQL_OPERATOR_GREATER_EQUAL:
-    case MYLITE_SQL_OPERATOR_NOT_EQUAL:
     case MYLITE_SQL_OPERATOR_LOGICAL_AND:
     case MYLITE_SQL_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_OPERATOR_ASSIGN:
-    case MYLITE_SQL_OPERATOR_EQUAL:
-    case MYLITE_SQL_OPERATOR_LESS:
-    case MYLITE_SQL_OPERATOR_GREATER:
     case MYLITE_SQL_OPERATOR_PERCENT:
     case MYLITE_SQL_OPERATOR_NOT:
     case MYLITE_SQL_OPERATOR_BITWISE_NOT:

@@ -99,7 +99,10 @@ run_mysql \
 "CREATE TABLE single_values (id INT NOT NULL); "\
 "INSERT INTO single_values VALUES (1); "\
 "CREATE TABLE null_probe (id INT NOT NULL, n INT NULL, nn INT NOT NULL); "\
-"INSERT INTO null_probe VALUES (1, NULL, 10), (2, 20, 20);" \
+"INSERT INTO null_probe VALUES (1, NULL, 10), (2, 20, 20); "\
+"CREATE TABLE integer_aliases ("\
+"id INT NOT NULL, ii INTEGER, intu INT UNSIGNED, integeru INTEGER UNSIGNED); "\
+"INSERT INTO integer_aliases VALUES (1, -3, 4294967295, 7);" \
     "$DATABASE" >/dev/null
 
 expect_error \
@@ -182,6 +185,24 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "not null column is null predicate" \
+    "" \
+    "SELECT id FROM null_probe WHERE nn IS NULL;" \
+    "$DATABASE"
+
+expect_output \
+    "nullable equal predicate" \
+    "1" \
+    "SELECT i FROM numbers WHERE n = 9;" \
+    "$DATABASE"
+
+expect_output \
+    "nullable not equal predicate excludes null rows" \
+    "" \
+    "SELECT i FROM numbers WHERE n <> 9;" \
+    "$DATABASE"
+
+expect_output \
     "comparison with null returns no rows upstream" \
     "" \
     "SELECT i FROM numbers WHERE n = NULL;" \
@@ -215,6 +236,24 @@ expect_output \
     "bigint unsigned signed64 maximum predicate" \
     "2147483647" \
     "SELECT i FROM numbers WHERE bu = 9223372036854775807;" \
+    "$DATABASE"
+
+expect_output \
+    "integer alias signed predicate" \
+    "1" \
+    "SELECT id FROM integer_aliases WHERE ii = -3;" \
+    "$DATABASE"
+
+expect_output \
+    "int unsigned predicate" \
+    "1" \
+    "SELECT id FROM integer_aliases WHERE intu = 4294967295;" \
+    "$DATABASE"
+
+expect_output \
+    "integer unsigned predicate" \
+    "1" \
+    "SELECT id FROM integer_aliases WHERE integeru = 7;" \
     "$DATABASE"
 
 expect_output \
@@ -280,6 +319,48 @@ expect_output \
     "mysql accepts logical and upstream" \
     "1" \
     "SELECT i FROM numbers WHERE i = 1 AND nn = 6;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts logical or upstream" \
+    "2" \
+    "SELECT COUNT(*) FROM numbers WHERE i = 1 OR nn = 5;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts logical not upstream" \
+    "2" \
+    "SELECT COUNT(*) FROM numbers WHERE NOT i = 1;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts logical xor upstream" \
+    "2" \
+    "SELECT COUNT(*) FROM numbers WHERE i = 1 XOR nn = 5;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts function predicate upstream" \
+    "1" \
+    "SELECT i FROM numbers WHERE ABS(i) = 1;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts bit literal predicate upstream" \
+    "1" \
+    "SELECT i FROM numbers WHERE i = b'1';" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts regexp upstream" \
+    "1" \
+    "SELECT i FROM numbers WHERE i REGEXP '^1$';" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts join upstream" \
+    "2" \
+    "SELECT COUNT(*) FROM numbers JOIN null_probe WHERE numbers.i = 1;" \
     "$DATABASE"
 
 expect_output \

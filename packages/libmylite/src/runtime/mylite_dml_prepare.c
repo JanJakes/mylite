@@ -82,6 +82,13 @@ static int clone_insert_select_node(
     size_t sql_length
 );
 
+static int clone_insert_update_nodes(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length
+);
+
 static int clone_insert_value_node(
     mylite_stmt *stmt,
     const struct mylite_sql_ast_node *value_node,
@@ -410,6 +417,7 @@ static int clone_insert_plan_nodes(
     const struct mylite_sql_ast_node *second_child = mylite_ast_child_at(statement, 1U);
     const struct mylite_sql_ast_node *values_node = NULL;
     const struct mylite_sql_ast_node *assignments_node = NULL;
+    int status = MYLITE_OK;
 
     stmt->insert_sql_text = mylite_copy_span_text(sql, sql_length);
     if (stmt->insert_sql_text == NULL) {
@@ -420,17 +428,20 @@ static int clone_insert_plan_nodes(
     if (statement->kind == MYLITE_SQL_AST_INSERT_SET_STATEMENT ||
         statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT) {
         assignments_node = second_child;
-        return clone_insert_set_nodes(stmt, assignments_node, sql, sql_length);
+        status = clone_insert_set_nodes(stmt, assignments_node, sql, sql_length);
+    } else if (statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT) {
+        status = clone_insert_select_node(stmt, statement, sql, sql_length);
+    } else {
+        values_node = second_child;
+        if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_INSERT_COLUMN_LIST) {
+            values_node = mylite_ast_child_at(statement, 2U);
+        }
+        status = clone_insert_values_nodes(stmt, values_node, sql, sql_length);
     }
-    if (statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT) {
-        return clone_insert_select_node(stmt, statement, sql, sql_length);
+    if (status != MYLITE_OK) {
+        return status;
     }
-
-    values_node = second_child;
-    if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_INSERT_COLUMN_LIST) {
-        values_node = mylite_ast_child_at(statement, 2U);
-    }
-    return clone_insert_values_nodes(stmt, values_node, sql, sql_length);
+    return clone_insert_update_nodes(stmt, statement, sql, sql_length);
 }
 
 static int clone_insert_values_nodes(
@@ -537,6 +548,52 @@ static int clone_insert_select_node(
         sql_length,
         &stmt->insert_select.select_statement
     );
+}
+
+static int clone_insert_update_nodes(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length
+) {
+    const struct mylite_sql_ast_node *clause =
+        mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE);
+    const struct mylite_sql_ast_node *assignments =
+        clause == NULL ? NULL : mylite_ast_child_at(clause, 0U);
+    size_t assignment_index = 0U;
+
+    if (clause == NULL || !stmt->insert_update.has_clause) {
+        return MYLITE_OK;
+    }
+    if (assignments == NULL || assignments->kind != MYLITE_SQL_AST_INSERT_UPDATE_ASSIGNMENT_LIST) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    for (const struct mylite_sql_ast_node *assignment = assignments->first_child;
+         assignment != NULL;
+         assignment = assignment->next_sibling, ++assignment_index) {
+        int status = MYLITE_OK;
+
+        if (assignment_index >= stmt->insert_update.assignment_count) {
+            return MYLITE_UNSUPPORTED;
+        }
+        if (stmt->insert_update.assignments[assignment_index].value.kind !=
+            MYLITE_INSERT_VALUE_UNSUPPORTED) {
+            continue;
+        }
+        status = clone_insert_value_node(
+            stmt,
+            mylite_ast_child_at(assignment, 1U),
+            sql,
+            sql_length,
+            &stmt->insert_update.assignments[assignment_index].value
+        );
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return assignment_index == stmt->insert_update.assignment_count ? MYLITE_OK
+                                                                    : MYLITE_UNSUPPORTED;
 }
 
 static int clone_insert_value_node(

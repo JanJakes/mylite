@@ -300,7 +300,8 @@ int mylite_dml_apply_insert_update_assignments(
     struct mylite_insert_execution_state *state,
     uint64_t row_number,
     const struct mylite_insert_bound_value *candidate_values,
-    struct mylite_insert_bound_value *updated_values
+    struct mylite_insert_bound_value *updated_values,
+    const struct mylite_dml_expression_callbacks *callbacks
 );
 int mylite_dml_execute_insert_update_values_row(
     mylite_db *database,

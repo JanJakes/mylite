@@ -17,7 +17,8 @@ static int evaluate_insert_update_assignment_value(
     const struct mylite_insert_value *value,
     const struct mylite_insert_bound_value *target_values,
     const struct mylite_insert_bound_value *candidate_values,
-    struct mylite_insert_bound_value *out_value
+    struct mylite_insert_bound_value *out_value,
+    const struct mylite_dml_expression_callbacks *callbacks
 );
 
 static int resolve_insert_update_default_value(
@@ -46,7 +47,8 @@ int mylite_dml_apply_insert_update_assignments(
     struct mylite_insert_execution_state *state,
     uint64_t row_number,
     const struct mylite_insert_bound_value *candidate_values,
-    struct mylite_insert_bound_value *updated_values
+    struct mylite_insert_bound_value *updated_values,
+    const struct mylite_dml_expression_callbacks *callbacks
 ) {
     if (database == NULL || values_plan == NULL || update_plan == NULL || table == NULL ||
         column_indexes == NULL || column_indexes->update_columns == NULL || state == NULL ||
@@ -70,7 +72,8 @@ int mylite_dml_apply_insert_update_assignments(
             &update_plan->assignments[index].value,
             updated_values,
             candidate_values,
-            &value
+            &value,
+            callbacks
         );
 
         if (status != MYLITE_OK) {
@@ -96,13 +99,31 @@ static int evaluate_insert_update_assignment_value(
     const struct mylite_insert_value *value,
     const struct mylite_insert_bound_value *target_values,
     const struct mylite_insert_bound_value *candidate_values,
-    struct mylite_insert_bound_value *out_value
+    struct mylite_insert_bound_value *out_value,
+    const struct mylite_dml_expression_callbacks *callbacks
 ) {
     const struct mylite_insert_table_column *column = &table->columns[target_column];
     int status = MYLITE_OK;
 
     if (value->kind == MYLITE_INSERT_VALUE_DEFAULT) {
         status = resolve_insert_update_default_value(database, column, out_value);
+    } else if (value->kind == MYLITE_INSERT_VALUE_EXPRESSION) {
+        const char *schema_name =
+            values_plan->schema_name == NULL ? selected_schema : values_plan->schema_name;
+
+        status = mylite_dml_resolve_insert_expression_bound_value(
+            database,
+            schema_name,
+            values_plan,
+            table,
+            target_values,
+            column,
+            value->expression,
+            row_number,
+            state,
+            callbacks,
+            out_value
+        );
     } else {
         status = mylite_dml_evaluate_insert_update_expression(
             database,

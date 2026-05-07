@@ -22,15 +22,15 @@ It also covers the first TEXT/BLOB-family runtime edges:
   single-table `UPDATE`, and single-table `UPDATE IGNORE`
 - `MEDIUMTEXT` and `MEDIUMBLOB` 16,777,215-byte write limits for
   `INSERT ... VALUES`, `INSERT ... SET`, `INSERT IGNORE`, `REPLACE ... VALUES`,
-  `REPLACE ... SET`, and single-table `UPDATE` / `UPDATE IGNORE`
+  `REPLACE ... SET`, ODKU update assignments, and single-table `UPDATE` /
+  `UPDATE IGNORE`
 - invalid UTF-8 byte sequences assigned to `utf8mb4` `VARCHAR` and `TEXT`
   columns for `INSERT ... VALUES`, `INSERT IGNORE`, non-strict inserts, and
   single-table `UPDATE IGNORE`
 
 `LONGTEXT`/`LONGBLOB` maximum sizes, exhaustive TEXT/BLOB coverage across all
-write forms, ODKU medium TEXT/BLOB update assignments, broader
-charset-specific byte validation, strict SQLSTATE details, `LOAD DATA`, and
-full numeric-to-string format fidelity remain separate tasks.
+write forms, broader charset-specific byte validation, strict SQLSTATE details,
+`LOAD DATA`, and full numeric-to-string format fidelity remain separate tasks.
 
 ## Sources
 
@@ -88,11 +88,11 @@ For `MEDIUMTEXT` and `MEDIUMBLOB`, MySQL enforces a 16,777,215-byte maximum. In
 strict mode, assigning 16,777,216 ASCII bytes rejects at the first overflowing
 column with error 1406 and leaves the table unchanged, including when a
 conflicting strict `REPLACE` would otherwise delete the old row. In non-strict
-mode, covered updates, covered replacements, and covered `IGNORE` forms, MySQL
-stores 16,777,215 bytes and emits warning 1265 per truncated column. For
-multibyte `MEDIUMTEXT`, non-strict truncation does not store a partial UTF-8
-character; 8,388,608 two-byte characters become 8,388,607 characters /
-16,777,214 bytes with one warning.
+mode, covered updates, covered replacements, covered ODKU update assignments,
+and covered `IGNORE` forms, MySQL stores 16,777,215 bytes and emits warning
+1265 per truncated column. For multibyte `MEDIUMTEXT`, non-strict truncation
+does not store a partial UTF-8 character; 8,388,608 two-byte characters become
+8,388,607 characters / 16,777,214 bytes with one warning.
 
 For `utf8mb4` `VARCHAR` and `TEXT`, assigning binary bytes that are not valid
 UTF-8 rejects in strict mode with error 1366, `Incorrect string value`, at the
@@ -153,8 +153,9 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - `REPLACE ... VALUES` and `REPLACE ... SET` truncation behavior for `TEXT`
   and `BLOB`, including conflict-row preservation on strict failure
 - `TEXT` byte-limit truncation at a complete UTF-8 character boundary
-- strict rejection, non-strict truncation, `INSERT IGNORE`, `REPLACE`, and
-  single-table `UPDATE` / `UPDATE IGNORE` for `MEDIUMTEXT` and `MEDIUMBLOB`
+- strict rejection, non-strict truncation, `INSERT IGNORE`, `REPLACE`, ODKU
+  update assignments, and single-table `UPDATE` / `UPDATE IGNORE` for
+  `MEDIUMTEXT` and `MEDIUMBLOB`
 - `MEDIUMTEXT` byte-limit truncation at a complete UTF-8 character boundary
 - strict invalid UTF-8 rejection for `utf8mb4` `VARCHAR`/`TEXT`, `INSERT
   IGNORE` and non-strict valid-prefix storage with warning 1366, `UPDATE

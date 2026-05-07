@@ -220,9 +220,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `MEDIUMTEXT` and `MEDIUMBLOB` 16,777,215-byte write limits are now
       covered for strict and non-strict `INSERT ... VALUES`, `INSERT ... SET`,
       `INSERT IGNORE`, `REPLACE ... VALUES`, `REPLACE ... SET`, strict and
-      non-strict single-table `UPDATE`, and single-table `UPDATE IGNORE`,
-      including strict `REPLACE` conflict-row preservation and UTF-8 boundary
-      truncation for `MEDIUMTEXT`.
+      non-strict ODKU update assignments, `INSERT IGNORE ... ON DUPLICATE KEY
+      UPDATE` demotion, strict and non-strict single-table `UPDATE`, and
+      single-table `UPDATE IGNORE`, including strict `REPLACE` conflict-row
+      preservation and UTF-8 boundary truncation for `MEDIUMTEXT`.
       Fixed `BINARY(N)` values now right-pad shorter write values with
       `0x00` bytes while preserving `VARBINARY(N)` shorter values, and covered
       strict/non-strict/`UPDATE IGNORE` overlength paths truncate or reject

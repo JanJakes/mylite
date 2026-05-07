@@ -60061,6 +60061,10 @@ static int test_string_dml_coercion_execution(void) {
         {"1", "16777215", "16777215", "m", "6E"};
     static const char *const medium_lob_row2_replace_values[] =
         {"2", "16777215", "16777215", "o", "70"};
+    static const char *const medium_lob_row1_odku_values[] =
+        {"1", "16777215", "16777215", "q", "72"};
+    static const char *const medium_lob_row2_odku_ignore_values[] =
+        {"2", "16777215", "16777215", "w", "7A"};
     static const char *const medium_lob_row4_insert_set_values[] =
         {"4", "16777215", "16777215", "e", "66"};
     static const char *const medium_text_utf8_columns[] = {"id", "t_len", "t_chars", "t_last_hex"};
@@ -61203,6 +61207,84 @@ static int test_string_dml_coercion_execution(void) {
         medium_lob_row2_replace_values,
         1,
         "medium lob replace set clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO medium_lobs VALUES (1, '', '') "
+        "ON DUPLICATE KEY UPDATE "
+        "t = REPEAT('q', 16777216), b = REPEAT('r', 16777216)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict medium text ODKU length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict medium text ODKU length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 1",
+        medium_lob_columns,
+        5,
+        medium_lob_row1_replace_values,
+        1,
+        "strict medium lob ODKU preserves row"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO medium_lobs VALUES (1, '', '') "
+        "ON DUPLICATE KEY UPDATE "
+        "t = REPEAT('q', 16777216), b = REPEAT('r', 16777216)",
+        2,
+        "non-strict medium lob ODKU truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "medium lob ODKU warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 1",
+        medium_lob_columns,
+        5,
+        medium_lob_row1_odku_values,
+        1,
+        "medium lob ODKU clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO medium_lobs VALUES (2, '', '') "
+        "ON DUPLICATE KEY UPDATE "
+        "t = REPEAT('w', 16777216), b = REPEAT('z', 16777216)",
+        2,
+        "ODKU IGNORE medium lob truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "ODKU IGNORE medium lob warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 2",
+        medium_lob_columns,
+        5,
+        medium_lob_row2_odku_ignore_values,
+        1,
+        "ODKU IGNORE medium lob clipped values"
     );
 
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);

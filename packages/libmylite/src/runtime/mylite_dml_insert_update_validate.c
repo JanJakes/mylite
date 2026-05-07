@@ -176,8 +176,9 @@ static int validate_insert_update_assignment_value(
         );
     }
     case MYLITE_INSERT_VALUE_UNSUPPORTED:
-    case MYLITE_INSERT_VALUE_EXPRESSION:
         return mylite_dml_insert_set_unsupported_expression_error(database);
+    case MYLITE_INSERT_VALUE_EXPRESSION:
+        return MYLITE_OK;
     }
 
     return mylite_dml_insert_set_unsupported_expression_error(database);

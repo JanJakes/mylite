@@ -17,7 +17,8 @@ static int execute_insert_update_bound_row(
     const struct mylite_insert_row_column_indexes *column_indexes,
     struct mylite_insert_execution_state *state,
     uint64_t row_number,
-    const struct mylite_insert_bound_value *values
+    const struct mylite_insert_bound_value *values,
+    const struct mylite_dml_expression_callbacks *callbacks
 );
 
 static int append_insert_values_deprecated_warning(mylite_db *database);
@@ -78,7 +79,8 @@ int mylite_dml_execute_insert_update_values_row(
             column_indexes,
             state,
             row_index + 1U,
-            values
+            values,
+            callbacks
         );
     }
 
@@ -137,7 +139,8 @@ int mylite_dml_execute_insert_update_set_row(
             row_column_indexes,
             state,
             1U,
-            values
+            values,
+            callbacks
         );
     }
     return status;
@@ -153,7 +156,8 @@ static int execute_insert_update_bound_row(
     const struct mylite_insert_row_column_indexes *column_indexes,
     struct mylite_insert_execution_state *state,
     uint64_t row_number,
-    const struct mylite_insert_bound_value *values
+    const struct mylite_insert_bound_value *values,
+    const struct mylite_dml_expression_callbacks *callbacks
 ) {
     struct mylite_insert_unique_conflict conflict = {0};
     struct mylite_insert_bound_value *stored_values = NULL;
@@ -232,7 +236,8 @@ static int execute_insert_update_bound_row(
             state,
             row_number,
             values,
-            updated_values
+            updated_values,
+            callbacks
         );
     }
     if (status == MYLITE_OK) {

@@ -33325,6 +33325,10 @@ static int test_cast_expression_execution(void) {
         "round_signed",
         "unsigned_wrap",
         "decimal_value",
+        "float_value",
+        "double_value",
+        "real_value",
+        "float_precision_value",
         "char_value",
         "binary_value",
     };
@@ -33369,6 +33373,71 @@ static int test_cast_expression_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          0U,
          0},
+        {"float_value",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_FLOAT,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"float25_value",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"double_value",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"real_value",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"null_float",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_FLOAT,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
         {"char_value",
          NULL,
          NULL,
@@ -33527,6 +33596,10 @@ static int test_cast_expression_execution(void) {
         "CAST(12.5 AS SIGNED) AS round_signed, "
         "CAST(-1 AS UNSIGNED) AS unsigned_wrap, "
         "CAST(12.345 AS DECIMAL(5,2)) AS decimal_value, "
+        "CAST('1.23456789' AS FLOAT) AS float_value, "
+        "CAST('1.23456789' AS DOUBLE) AS double_value, "
+        "CAST('1.23456789' AS REAL) AS real_value, "
+        "CAST('1.23456789' AS FLOAT(25)) AS float_precision_value, "
         "CAST(38.8 AS CHAR) AS char_value, "
         "CAST('abc' AS BINARY) AS binary_value",
         MYLITE_OK,
@@ -33547,8 +33620,13 @@ static int test_cast_expression_execution(void) {
         "CAST numeric unsigned wrap"
     );
     failures += expect_string(mylite_column_text(stmt, 3), "12.35", "CAST decimal value");
-    failures += expect_string(mylite_column_text(stmt, 4), "38.8", "CAST char value");
-    failures += expect_string(mylite_column_text(stmt, 5), "abc", "CAST binary value");
+    failures += expect_string(mylite_column_text(stmt, 4), "1.23457", "CAST float value");
+    failures += expect_string(mylite_column_text(stmt, 5), "1.23456789", "CAST double value");
+    failures += expect_string(mylite_column_text(stmt, 6), "1.23456789", "CAST real value");
+    failures +=
+        expect_string(mylite_column_text(stmt, 7), "1.23456789", "CAST float precision value");
+    failures += expect_string(mylite_column_text(stmt, 8), "38.8", "CAST char value");
+    failures += expect_string(mylite_column_text(stmt, 9), "abc", "CAST binary value");
     failures += expect_int(mylite_warning_count(database), 0, "CAST rowless warning count");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST rowless done");
     mylite_finalize(stmt);
@@ -33559,6 +33637,11 @@ static int test_cast_expression_execution(void) {
         "SELECT CAST('123' AS SIGNED) AS signed_value, "
         "CAST('123' AS UNSIGNED) AS unsigned_value, "
         "CAST('12.34' AS DECIMAL(6,2)) AS decimal_value, "
+        "CAST('1.25' AS FLOAT) AS float_value, "
+        "CAST('1.25' AS FLOAT(25)) AS float25_value, "
+        "CAST('1.25' AS DOUBLE) AS double_value, "
+        "CAST('1.25' AS REAL) AS real_value, "
+        "CAST(NULL AS FLOAT) AS null_float, "
         "CAST('abc' AS CHAR(3)) AS char_value, "
         "CAST('abc' AS BINARY) AS binary_value, "
         "CAST(NULL AS CHAR) AS null_char, "
@@ -33574,6 +33657,43 @@ static int test_cast_expression_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('x' AS DOUBLE) AS bad_double, "
+        "CAST('12x' AS FLOAT) AS bad_float, "
+        "CONVERT('x', DOUBLE) AS convert_bad",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST invalid float row");
+    failures += expect_string(mylite_column_text(stmt, 0), "0", "CAST invalid double value");
+    failures += expect_string(mylite_column_text(stmt, 1), "12", "CAST truncated float value");
+    failures += expect_string(mylite_column_text(stmt, 2), "0", "CONVERT invalid double value");
+    failures += expect_int(mylite_warning_count(database), 3, "CAST invalid float warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CAST invalid double warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "DOUBLE",
+        "CAST invalid double warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "CAST truncated float warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 1),
+        "DOUBLE",
+        "CAST truncated float warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST invalid float done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -34067,6 +34187,8 @@ static int test_convert_expression_execution(void) {
         "signed_value",
         "unsigned_value",
         "decimal_value",
+        "float_value",
+        "double_value",
         "char_value",
         "binary_value",
         "using_latin1",
@@ -34080,6 +34202,8 @@ static int test_convert_expression_execution(void) {
         "12",
         "18446744073709551615",
         "12.35",
+        "1.23457",
+        "1.23456789",
         "abc",
         "abc",
         "abc",
@@ -34121,6 +34245,32 @@ static int test_convert_expression_execution(void) {
          8U,
          MYLITE_FIELD_TYPE_NEWDECIMAL,
          2U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"float_value",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_FLOAT,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"double_value",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
          63U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          0U,
@@ -34342,11 +34492,13 @@ static int test_convert_expression_execution(void) {
         "CONVERT('12.5', SIGNED) AS signed_value, "
         "CONVERT('-1', UNSIGNED) AS unsigned_value, "
         "CONVERT('12.345', DECIMAL(5,2)) AS decimal_value, "
+        "CONVERT('1.23456789', FLOAT) AS float_value, "
+        "CONVERT('1.23456789', DOUBLE) AS double_value, "
         "CONVERT('abcdef', CHAR(3)) AS char_value, "
         "CONVERT('abc', BINARY) AS binary_value, "
         "CONVERT('abc' USING latin1) AS using_latin1",
         rowless_columns,
-        11,
+        13,
         rowless_values,
         1,
         "CONVERT rowless values"
@@ -34388,6 +34540,8 @@ static int test_convert_expression_execution(void) {
         "SELECT CONVERT('123', SIGNED) AS signed_value, "
         "CONVERT('123', UNSIGNED) AS unsigned_value, "
         "CONVERT('12.34', DECIMAL(6,2)) AS decimal_value, "
+        "CONVERT('1.25', FLOAT) AS float_value, "
+        "CONVERT('1.25', DOUBLE) AS double_value, "
         "CONVERT('abc', CHAR) AS char_value, "
         "CONVERT('abc', BINARY) AS binary_value, "
         "CONVERT('abc' USING latin1) AS using_latin1, "

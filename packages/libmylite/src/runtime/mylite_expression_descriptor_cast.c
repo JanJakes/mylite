@@ -25,6 +25,11 @@ static struct mylite_field_descriptor cast_decimal_descriptor(
     const struct mylite_field_descriptor *source
 );
 
+static struct mylite_field_descriptor cast_float_descriptor(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_field_descriptor *source
+);
+
 static struct mylite_field_descriptor cast_character_descriptor(
     mylite_db *database,
     const struct mylite_sql_ast_node *target,
@@ -45,6 +50,8 @@ static struct mylite_field_descriptor cast_datetime_descriptor(
 static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target);
 
 static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target);
+
+static bool cast_float_target_is_double(const struct mylite_sql_ast_node *target);
 
 static unsigned int cast_temporal_fsp(const struct mylite_sql_ast_node *target);
 
@@ -109,6 +116,10 @@ int mylite_expression_descriptor_infer_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL:
         *out_descriptor = cast_decimal_descriptor(target, &source_descriptor);
         return MYLITE_OK;
+    case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
+        *out_descriptor = cast_float_descriptor(target, &source_descriptor);
+        return MYLITE_OK;
     case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
     case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
         *out_descriptor = cast_character_descriptor(database, target, value, &source_descriptor);
@@ -139,8 +150,6 @@ int mylite_expression_descriptor_infer_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_BLOB:
     case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB:
     case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
-    case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
-    case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         break;
@@ -185,6 +194,24 @@ static struct mylite_field_descriptor cast_decimal_descriptor(
         .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
         .length = (uint64_t)precision + (scale == 0U ? 1U : 2U),
         .decimals = scale,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = mylite_expression_descriptor_is_nullable(source),
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, descriptor.nullable);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor cast_float_descriptor(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_field_descriptor *source
+) {
+    struct mylite_field_descriptor descriptor = {
+        .type = cast_float_target_is_double(target) ? MYLITE_FIELD_TYPE_DOUBLE
+                                                    : MYLITE_FIELD_TYPE_FLOAT,
+        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .length = mylite_mysql_double_display_length + 1U,
+        .decimals = mylite_mysql_not_fixed_decimals,
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = mylite_expression_descriptor_is_nullable(source),
     };
@@ -277,6 +304,17 @@ static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target)
         return (unsigned int)target->column_scale;
     }
     return 0U;
+}
+
+static bool cast_float_target_is_double(const struct mylite_sql_ast_node *target) {
+    enum { mysql_float_double_precision_cutover = 24U };
+
+    if (target == NULL || target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE) {
+        return true;
+    }
+    return target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_FLOAT &&
+           target->has_column_precision &&
+           target->column_precision > mysql_float_double_precision_cutover;
 }
 
 static unsigned int cast_temporal_fsp(const struct mylite_sql_ast_node *target) {

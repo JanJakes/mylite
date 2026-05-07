@@ -17,6 +17,8 @@ This task implements:
   `CHARSET charset_name`
 - `CONVERT(expr, NCHAR)` and `NCHAR(N)`
 - `CONVERT(expr, BINARY)` as the current MyLite binary-string metadata slice
+- `CONVERT(expr, FLOAT)`, `FLOAT(p)`, `FLOAT4`, `FLOAT4(p)`, `DOUBLE`,
+  `DOUBLE PRECISION`, default-mode `REAL`, and `FLOAT8`
 - `CONVERT(expr, DATE)`, `CONVERT(expr, TIME)`, `CONVERT(expr, TIME(fsp))`,
   `CONVERT(expr, DATETIME)`, and `CONVERT(expr, DATETIME(fsp))`
 - `CONVERT(expr USING charset_name)` for the current MyLite charset registry:
@@ -36,8 +38,9 @@ The following behavior is deferred with the same compatibility boundaries as
 `docs/specs/cast-expression/specs.md`:
 
 - `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
-  `YEAR`, JSON, spatial, floating-point, and timezone-aware casts remain
-  deferred
+  `YEAR`, JSON, spatial, and timezone-aware casts remain deferred
+- `REAL_AS_FLOAT` SQL mode for `REAL` cast targets remains deferred with the
+  broader approximate-numeric SQL-mode work
 - multi-valued-index `ARRAY` casts
 - fixed-length binary padding/truncation fidelity
 - full byte transcoding between character sets
@@ -72,6 +75,9 @@ using:
 Temporal target behavior was additionally checked on 2026-05-07 against the
 same MySQL 8.4.9 runtime.
 
+Floating-point target behavior was additionally checked on 2026-05-07 against
+the same MySQL 8.4.9 runtime.
+
 ## MySQL observations
 
 The ODBC-style `CONVERT(expr, type)` form is equivalent to
@@ -85,6 +91,11 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT('12.345', DECIMAL(5,2))` | `12.35` | none |
 | `CONVERT('abcdef', CHAR(3))` | `abc` | 1292 truncated char |
 | `CONVERT('abc', BINARY)` | `abc` | none |
+| `CONVERT('1.23456789', FLOAT)` | `1.23457` | none |
+| `CONVERT('1.23456789', FLOAT(25))` | `1.23456789` | none |
+| `CONVERT('1.23456789', DOUBLE)` | `1.23456789` | none |
+| `CONVERT('1.23456789', REAL)` | `1.23456789` | none |
+| `CONVERT('x', DOUBLE)` | `0` | 1292 truncated double |
 | `CONVERT(NULL, SIGNED)` | `NULL` | none |
 | `CONVERT('2024-01-02 03:04:05.123456', DATE)` | `2024-01-02` | none |
 | `CONVERT('2024-01-02 03:04:05.123456', DATETIME(6))` | `2024-01-02 03:04:05.123456` | none |
@@ -125,6 +136,10 @@ Parser and validation errors observed with MySQL 8.4.9:
 | `CONVERT('abc' USING nosuchcharset)` | error 1115 / `42000` |
 | `CONVERT('abc', CHAR CHARACTER SET nosuchcharset)` | error 1115 / `42000` |
 | `CONVERT('1', INT)` | syntax error 1064 / `42000` |
+| `CONVERT('1', FLOAT(54))` | error 1426 / `42000` |
+| `CONVERT('1', FLOAT(10,2))` | syntax error 1064 / `42000` |
+| `CONVERT('1', DOUBLE(10,2))` | syntax error 1064 / `42000` |
+| `CONVERT('1', FLOAT8(10))` | syntax error 1064 / `42000` |
 | `CONVERT()` | syntax error 1064 / `42000` |
 | `CONVERT(1)` | syntax error 1064 / `42000` |
 | `CONVERT(1, SIGNED, 2)` | syntax error 1064 / `42000` |
@@ -137,6 +152,9 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CONVERT('123', SIGNED)` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `CONVERT('123', UNSIGNED)` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` |
 | `CONVERT('12.34', DECIMAL(6,2))` | `NEWDECIMAL` | `8` | `2` | `binary` | `NOT_NULL BINARY NUM` |
+| `CONVERT('1.25', FLOAT)` | `FLOAT` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
+| `CONVERT('1.25', FLOAT(25))` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
+| `CONVERT('1.25', DOUBLE)` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
 | `CONVERT('abc', CHAR)` under `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `CONVERT('abc', CHAR(3))` under `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `CONVERT('abc', BINARY)` under `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `binary` | `BINARY` |
@@ -203,6 +221,8 @@ the result is `NULL` without conversion warnings.
 - decimal rounding and string truncation warnings match CAST
 - char length truncation warnings match CAST
 - binary conversion matches the current MyLite `CAST(... AS BINARY)` subset
+- floating-point conversion, single-precision rounding, and metadata match
+  CAST
 - date, time, and datetime parsing, fractional-second rounding, warnings, and
   metadata match CAST
 
@@ -266,6 +286,8 @@ Parser tests:
   `CHAR CHARSET utf8mb4`, `NCHAR(4)`, and `BINARY`
 - `CONVERT('2024-01-02', DATE)`, `CONVERT('03:04:05.987654', TIME(2))`,
   and `CONVERT('2024-01-02 03:04:05.987654', DATETIME(6))`
+- `CONVERT('1.25', FLOAT)`, `FLOAT(25)`, `FLOAT4`, `DOUBLE`,
+  `DOUBLE PRECISION`, `REAL`, and `FLOAT8`
 - `CONVERT('abc' USING latin1)`, `utf8mb4`, quoted `utf8mb3`, `utf8`, and
   `binary`
 - expression-level `COLLATE` after `CONVERT(... USING ...)` and
@@ -273,8 +295,9 @@ Parser tests:
 - nested `CONVERT` and `CONVERT` inside `CASE`
 - syntax errors for `INT`, empty argument list, one argument, three arguments,
   missing comma, missing `USING` charset, `COLLATE` inside the target, and
-  invalid decimal precision/scale; unknown or charset-incompatible
-  expression-level collations fail during preparation
+  invalid decimal precision/scale, invalid floating display-scale syntax, and
+  `FLOAT8(p)`; unknown or charset-incompatible expression-level collations fail
+  during preparation
 
 Runtime tests:
 
@@ -284,12 +307,14 @@ Runtime tests:
 - signed string truncation warnings
 - unsigned negative-string complement warnings
 - decimal scale rounding
+- floating `FLOAT`/`DOUBLE`/`REAL`/`FLOAT4`/`FLOAT8` values, truncation
+  warnings, `NULL` propagation, and metadata
 - char truncation and `CHAR(0)` warnings
 - temporal date/datetime/time parsing, fractional-second rounding, invalid
   input warnings, and metadata through the shared CAST evaluator
 - invalid charset diagnostics for both forms
-- metadata descriptors for signed, unsigned, decimal, char, binary, and
-  nullable `USING`
+- metadata descriptors for signed, unsigned, decimal, floating-point, char,
+  binary, and nullable `USING`
 - charset/collation/coercibility introspection for `USING latin1`,
   `USING utf8`, `USING utf8mb4`, `USING binary`, and
   `CHAR CHARACTER SET latin1`
@@ -315,6 +340,7 @@ transcoding project. Known differences after this implementation:
   text-value path
 - fixed-length binary padding remains deferred
 - `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; `YEAR`,
-  JSON, spatial, floating-point, and timezone-aware casts are separate tasks
+  JSON, spatial, and timezone-aware casts are separate tasks
+- `REAL_AS_FLOAT` is not yet applied to `REAL` cast targets
 - overflow and SQL-mode diagnostics remain incomplete in the same places as
   the existing CAST implementation

@@ -46,6 +46,7 @@ struct mylite_expression_value {
     uint64_t uint64_value;
     double real_value;
     bool compact_real_text;
+    bool preserve_real_text;
     bool suppress_text_numeric_warnings;
     bool preserve_temporal_fraction_digits;
     enum mylite_expression_temporal_type temporal_type;

@@ -187,8 +187,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       non-strict modes, including TEXT/BLOB limits, binary-string byte edge
       cases, charset-specific string validation, floating-point column edge
       cases, `BIGINT UNSIGNED` auto-increment and broad unsigned arithmetic
-      beyond signed 64-bit range, scalar `CAST`/`CONVERT` value semantics, and
-      conversion/truncation
+      beyond signed 64-bit range, scalar `CAST`/`CONVERT` value semantics
+      beyond the covered floating-point target slice, and conversion/truncation
       `IGNORE` demotion beyond the currently covered `INSERT IGNORE` invalid
       integer, integer range, invalid date, and `VARCHAR` truncation slice plus
       single-table `UPDATE IGNORE` numeric, temporal, string-length, `NULL`
@@ -203,7 +203,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `TEXT`.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
-      with warning 3719 and DATE/TIME/DATETIME temporal target casts.
+      with warning 3719, FLOAT/DOUBLE target casts, and DATE/TIME/DATETIME
+      temporal target casts.
 - [x] Complete `SELECT DATE(...)` and date-function predicates.
 - [x] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
       Covered behavior includes duplicate output-label diagnostics in the

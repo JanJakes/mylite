@@ -17,6 +17,10 @@ The current implementation supports the application-facing CAST slice:
   for the initial MyLite charset registry
 - `CAST(expr AS BINARY)` as a binary-string metadata cast without fixed-length
   zero padding
+- `CAST(expr AS FLOAT)`, `FLOAT(p)`, `FLOAT4`, and `FLOAT4(p)`, where
+  precision `p` from `0` through `24` returns `FLOAT` metadata and precision
+  `25` through `53` returns `DOUBLE` metadata
+- `CAST(expr AS DOUBLE)`, `DOUBLE PRECISION`, `REAL`, and `FLOAT8`
 - `CAST(expr AS DATE)`, `CAST(expr AS TIME)`, `CAST(expr AS TIME(fsp))`,
   `CAST(expr AS DATETIME)`, and `CAST(expr AS DATETIME(fsp))`
 
@@ -39,8 +43,10 @@ The following behavior is deferred:
   operator is specified in
   `docs/specs/expression-operator-foundation/specs.md`
 - `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
-  `YEAR`, `FLOAT`, `DOUBLE`, `REAL`, `JSON`, spatial casts, and
-  `CAST(... AT TIME ZONE ... AS DATETIME)` remain deferred
+  `YEAR`, `JSON`, spatial casts, and `CAST(... AT TIME ZONE ... AS DATETIME)`
+  remain deferred
+- `REAL_AS_FLOAT` SQL mode for `REAL` cast targets remains deferred with the
+  broader approximate-numeric SQL-mode work
 - multi-valued-index `ARRAY` casts
 - exhaustive overflow/range clipping and every SQL-mode variant
 
@@ -67,6 +73,9 @@ using:
 
 Temporal target behavior was additionally checked on 2026-05-07 against the
 same MySQL 8.4.9 runtime.
+
+Floating-point target behavior was additionally checked on 2026-05-07 against
+the same MySQL 8.4.9 runtime.
 
 ## MySQL observations
 
@@ -125,6 +134,26 @@ binary-string metadata.
 | `LENGTH(CAST('a\\0b' AS BINARY))` | `3` | none |
 | `HEX(CAST('a\\0b' AS CHAR))` | `610062` | none |
 
+Floating-point casts parse values through MySQL's DOUBLE conversion path.
+`FLOAT` and `FLOAT4` round to single-precision values unless a binary
+precision greater than `24` is supplied. `DOUBLE`, `DOUBLE PRECISION`, default
+mode `REAL`, and `FLOAT8` return double-precision values. Invalid strings
+return zero and emit warning 1292 with a DOUBLE message. `NULL` returns `NULL`
+without warnings.
+
+| SQL | Result | Warnings |
+| --- | --- | --- |
+| `CAST('1.23456789' AS FLOAT)` | `1.23457` | none |
+| `CAST('1.23456789' AS FLOAT(24))` | `1.23457` | none |
+| `CAST('1.23456789' AS FLOAT(25))` | `1.23456789` | none |
+| `CAST('1.23456789' AS DOUBLE)` | `1.23456789` | none |
+| `CAST('1.23456789' AS REAL)` | `1.23456789` | none |
+| `CAST('1.23456789' AS FLOAT4(10))` | `1.23457` | none |
+| `CAST('1.23456789' AS FLOAT8)` | `1.23456789` | none |
+| `CAST('x' AS DOUBLE)` | `0` | 1292 truncated double |
+| `CAST('12x' AS FLOAT)` | `12` | 1292 truncated double |
+| `CAST(NULL AS FLOAT)` | `NULL` | none |
+
 Temporal casts use MySQL's temporal parser and target fractional-second
 precision. Fractional values round half up to the requested precision, carrying
 into the next second when needed. Missing fractional precision means `0`.
@@ -148,6 +177,10 @@ Parser errors observed with MySQL 8.4.9:
 | `CAST('1' AS NUMERIC(5,2))` | syntax error 1064 |
 | `CAST('1' AS DECIMAL(66))` | error 1426 / `42000` |
 | `CAST('1' AS DECIMAL(5,6))` | error 1427 / `42000` |
+| `CAST('1' AS FLOAT(54))` | error 1426 / `42000` |
+| `CAST('1' AS FLOAT(10,2))` | syntax error 1064 |
+| `CAST('1' AS DOUBLE(10,2))` | syntax error 1064 |
+| `CAST('1' AS FLOAT8(10))` | syntax error 1064 |
 | `CAST('x' AS CHAR CHARACTER SET utf8mb4 COLLATE utf8mb4_bin)` | syntax error 1064 |
 | `CAST('x' AS TIMESTAMP)` | syntax error 1064 |
 | `CAST('x' AS TIME(7))` | error 1426 / `42000` |
@@ -165,6 +198,11 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CAST('abc' AS CHAR(3))` | `VAR_STRING` | `3` times charset maxlen | `31` | connection dependent | none |
 | `CAST('abc' AS BINARY)` | `VAR_STRING` | source length | `31` | `binary` | `BINARY` |
 | `CAST(NULL AS CHAR)` | `VAR_STRING` | `0` | `31` | connection dependent | nullable |
+| `CAST('1.25' AS FLOAT)` | `FLOAT` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
+| `CAST('1.25' AS FLOAT(25))` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
+| `CAST('1.25' AS DOUBLE)` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
+| `CAST('1.25' AS REAL)` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
+| `CAST(NULL AS FLOAT)` | `FLOAT` | `23` | `31` | `binary` | nullable `BINARY NUM` |
 | `CAST('2024-01-02' AS DATE)` | `DATE` | `10` | `0` | `binary` | `BINARY` |
 | `CAST('2024-01-02 03:04:05' AS DATETIME(3))` | `DATETIME` | `23` | `3` | `binary` | `BINARY` |
 | `CAST('03:04:05' AS TIME(2))` | `TIME` | `13` | `2` | `binary` | `BINARY` |
@@ -187,6 +225,11 @@ cast_target_type ::= SIGNED opt_integer_keyword.
 cast_target_type ::= UNSIGNED opt_integer_keyword.
 cast_target_type ::= DECIMALKW opt_numeric_precision_scale.
 cast_target_type ::= DEC opt_numeric_precision_scale.
+cast_target_type ::= FLOATKW opt_cast_float_precision.
+cast_target_type ::= FLOAT4 opt_cast_float_precision.
+cast_target_type ::= DOUBLE opt_precision_keyword.
+cast_target_type ::= REAL.
+cast_target_type ::= FLOAT8.
 cast_target_type ::= CHAR opt_column_length opt_cast_character_set.
 cast_target_type ::= NCHAR opt_column_length.
 cast_target_type ::= BINARY.
@@ -196,6 +239,9 @@ cast_target_type ::= DATETIME opt_temporal_fsp.
 
 opt_integer_keyword ::= .
 opt_integer_keyword ::= INTEGERKW.
+
+opt_cast_float_precision ::= .
+opt_cast_float_precision ::= column_precision.
 
 opt_cast_character_set ::= .
 opt_cast_character_set ::= CHARACTER SET charset_value.
@@ -264,6 +310,19 @@ deferred to the broader decimal type task.
   `Truncated incorrect DECIMAL value: '<value>'`
 - invalid strings return zero formatted at the target scale
 
+### Floating point
+
+- integer, unsigned integer, real, and text inputs convert through MyLite's
+  DOUBLE-compatible numeric conversion path
+- invalid or truncated string inputs emit warning 1292 using
+  `Truncated incorrect DOUBLE value: '<value>'`
+- `FLOAT` and `FLOAT4` without precision, and with precision `0` through `24`,
+  round to the nearest single-precision value before display
+- `FLOAT(p)` and `FLOAT4(p)` with precision `25` through `53` return
+  double-precision values and metadata
+- `DOUBLE`, `DOUBLE PRECISION`, default-mode `REAL`, and `FLOAT8` return
+  double-precision values and metadata
+
 ### Character
 
 - numeric sources are converted to character text
@@ -302,6 +361,11 @@ MyLite descriptors:
 - `UNSIGNED`: same as signed plus `UNSIGNED`
 - `DECIMAL`: `NEWDECIMAL`, decimals from target, binary charset, `BINARY NUM`,
   length `precision + 1` when scale is zero and `precision + 2` otherwise
+- `FLOAT` / `FLOAT4` with precision up to `24`: `FLOAT`, length `23`,
+  decimals `31`, binary charset, `BINARY NUM`
+- `FLOAT(p)` / `FLOAT4(p)` with precision `25` through `53`, `DOUBLE`,
+  `DOUBLE PRECISION`, default-mode `REAL`, and `FLOAT8`: `DOUBLE`, length
+  `23`, decimals `31`, binary charset, `BINARY NUM`
 - `CHAR`: `VAR_STRING`, decimals `31`, connection charset, nullable if source
   can be null
 - `CHAR(N)`: same as `CHAR`, length `N * maxlen_for_charset`
@@ -335,11 +399,14 @@ Parser tests:
   `CHAR CHARACTER SET binary`, `NCHAR(4)`, and `BINARY`
 - `CAST('2024-01-02' AS DATE)`, `CAST('03:04:05.987654' AS TIME(2))`,
   and `CAST('2024-01-02 03:04:05.987654' AS DATETIME(6))`
+- `CAST('1.25' AS FLOAT)`, `FLOAT(24)`, `FLOAT(25)`, `FLOAT4`,
+  `FLOAT4(25)`, `DOUBLE`, `DOUBLE PRECISION`, `REAL`, and `FLOAT8`
 - expression-level `COLLATE` after a supported character cast
 - nested casts and casts inside `CASE`
 - syntax errors for `INT`, `INTEGER`, `NUMERIC`, `COLLATE` inside the target,
   missing `AS`, missing target type, invalid decimal precision/scale, invalid
-  temporal precision, and direct `TIMESTAMP` targets
+  temporal precision, invalid floating display-scale syntax, `FLOAT8(p)`, and
+  direct `TIMESTAMP` targets
 
 Runtime tests:
 
@@ -350,6 +417,8 @@ Runtime tests:
 - decimal default precision/scale, explicit scale rounding, invalid string
   warning, and result text formatting
 - character truncation and `CHAR(0)` warnings
+- floating `FLOAT`/`DOUBLE`/`REAL`/`FLOAT4`/`FLOAT8` values, truncation
+  warnings, `NULL` propagation, and metadata
 - temporal date/datetime/time parsing, fractional-second rounding, invalid
   input warnings, and `CONVERT(expr, temporal_type)` delegation
 - metadata descriptors for signed, unsigned, decimal, char, binary, nullable
@@ -372,7 +441,8 @@ conversion engine. The main known differences are:
   for the supported `CAST(... AS BINARY)` form
 - connection charset metadata is limited to the current MyLite charset registry
 - `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; `YEAR`,
-  JSON, spatial, floating-point, and timezone-aware casts are separate tasks
+  JSON, spatial, and timezone-aware casts are separate tasks
+- `REAL_AS_FLOAT` is not yet applied to `REAL` cast targets
 - overflow and SQL-mode diagnostics are not exhaustive
 
 `CONVERT(expr, type)` and `CONVERT(expr USING charset_name)` are implemented as

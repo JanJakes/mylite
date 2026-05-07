@@ -859,6 +859,13 @@ static int eval_decimal_cast(
     struct mylite_expression_value *out_value
 );
 
+static int eval_float_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int eval_char_cast(
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
@@ -3806,6 +3813,12 @@ static int64_t cast_real_to_signed_integer(double value);
 
 static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target);
 
+static bool cast_float_target_is_double(const struct mylite_sql_ast_node *target);
+
+static int set_float_cast_value(double value, struct mylite_expression_value *out_value);
+
+static int append_float_cast_out_of_range_error(struct mylite_expression_warnings *warnings);
+
 static double absolute_real_value(double value);
 
 static int64_t floor_real_value(double value);
@@ -4091,6 +4104,10 @@ char *mylite_expression_value_to_text(const struct mylite_expression_value *valu
         return length <= 0 || (size_t)length >= sizeof(buffer)
                    ? NULL
                    : copy_span_text(buffer, (size_t)length);
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL && value->preserve_real_text &&
+        value->text_value != NULL) {
+        return copy_span_text(value->text_value, value->text_length);
     }
 
     int length = value->compact_real_text
@@ -5137,6 +5154,10 @@ static int eval_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL:
         status = eval_decimal_cast(target, &value, warnings, out_value);
         break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
+        status = eval_float_cast(target, &value, warnings, out_value);
+        break;
     case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
         status = eval_char_cast(target, &value, warnings, out_value);
         break;
@@ -5169,8 +5190,6 @@ static int eval_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_BLOB:
     case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB:
     case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
-    case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
-    case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         status = -1;
@@ -5254,6 +5273,33 @@ static int eval_decimal_cast(
         return -1;
     }
     return set_text_value(buffer, (size_t)length, out_value);
+}
+
+static int eval_float_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    struct numeric_value number = {0};
+    int status = value_to_numeric(value, warnings, &number);
+
+    if (status != 0) {
+        return status;
+    }
+    if (cast_float_target_is_double(target)) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_REAL,
+            .real_value = number.real_value,
+            .compact_real_text = true,
+        };
+        return 0;
+    }
+    if (number.real_value > (double)FLT_MAX || number.real_value < -(double)FLT_MAX) {
+        status = append_float_cast_out_of_range_error(warnings);
+        return status == 0 ? MYLITE_EXEC_ERROR : status;
+    }
+    return set_float_cast_value((double)(float)number.real_value, out_value);
 }
 
 static int eval_char_cast(
@@ -23426,6 +23472,35 @@ static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target)
     return 0U;
 }
 
+static bool cast_float_target_is_double(const struct mylite_sql_ast_node *target) {
+    enum { mysql_float_double_precision_cutover = 24U };
+
+    if (target == NULL || target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE) {
+        return true;
+    }
+    return target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_FLOAT &&
+           target->has_column_precision &&
+           target->column_precision > mysql_float_double_precision_cutover;
+}
+
+static int set_float_cast_value(double value, struct mylite_expression_value *out_value) {
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int length = snprintf(buffer, sizeof(buffer), "%.6g", value);
+
+    if (length <= 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = value,
+        .compact_real_text = true,
+        .preserve_real_text = true,
+        .text_value = copy_span_text(buffer, (size_t)length),
+        .text_length = (size_t)length,
+    };
+    return out_value->text_value == NULL ? -1 : 0;
+}
+
 static double absolute_real_value(double value) {
     return value < 0.0 ? -value : value;
 }
@@ -23761,6 +23836,15 @@ static int append_cot_out_of_range_error(struct mylite_expression_warnings *warn
         MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
         MYLITE_WARNING_OUT_OF_RANGE,
         "DOUBLE value is out of range in 'cot()'"
+    );
+}
+
+static int append_float_cast_out_of_range_error(struct mylite_expression_warnings *warnings) {
+    return mylite_expression_warnings_append_condition(
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_OUT_OF_RANGE,
+        "DOUBLE value is out of range in 'cast()'"
     );
 }
 

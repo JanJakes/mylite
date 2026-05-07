@@ -11340,6 +11340,78 @@ static int test_cast_expression_syntax(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT CAST('1.25' AS FLOAT), CAST('1.25' AS FLOAT(24)), "
+        "CAST('1.25' AS FLOAT(25)), CAST('1.25' AS FLOAT4), "
+        "CAST('1.25' AS FLOAT4(25)), CAST('1.25' AS DOUBLE), "
+        "CAST('1.25' AS DOUBLE PRECISION), CAST('1.25' AS REAL), "
+        "CAST('1.25' AS FLOAT8);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    cast_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_FLOAT,
+        "FLOAT CAST target"
+    );
+    cast_expression = child_at(child_at(select_list, 1U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_FLOAT, "FLOAT(24) CAST target");
+    if (target != NULL && (!target->has_column_precision || target->column_precision != 24U)) {
+        fprintf(stderr, "FLOAT(24) CAST did not record precision 24\n");
+        failures = 1;
+    }
+    cast_expression = child_at(child_at(select_list, 2U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_FLOAT, "FLOAT(25) CAST target");
+    if (target != NULL && (!target->has_column_precision || target->column_precision != 25U)) {
+        fprintf(stderr, "FLOAT(25) CAST did not record precision 25\n");
+        failures = 1;
+    }
+    cast_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_FLOAT,
+        "FLOAT4 CAST target"
+    );
+    cast_expression = child_at(child_at(select_list, 4U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_FLOAT, "FLOAT4(25) CAST target");
+    if (target != NULL && (!target->has_column_precision || target->column_precision != 25U)) {
+        fprintf(stderr, "FLOAT4(25) CAST did not record precision 25\n");
+        failures = 1;
+    }
+    cast_expression = child_at(child_at(select_list, 5U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE,
+        "DOUBLE CAST target"
+    );
+    cast_expression = child_at(child_at(select_list, 6U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE,
+        "DOUBLE PRECISION CAST target"
+    );
+    cast_expression = child_at(child_at(select_list, 7U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE,
+        "REAL CAST target"
+    );
+    cast_expression = child_at(child_at(select_list, 8U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE,
+        "FLOAT8 CAST target"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT CAST('x' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -11405,6 +11477,16 @@ static int test_cast_expression_syntax(void) {
     failures += parse_sql("SELECT CAST('x' AS TIME(7))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT CAST('x' AS TIMESTAMP)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CAST('x' AS FLOAT(54))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT CAST('x' AS FLOAT(10,2))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT CAST('x' AS DOUBLE(10,2))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CAST('x' AS FLOAT8(10))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     // NOLINTEND(readability-magic-numbers)
     return failures;
@@ -11510,6 +11592,61 @@ static int test_convert_expression_syntax(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT CONVERT('1.25', FLOAT), CONVERT('1.25', FLOAT(25)), "
+        "CONVERT('1.25', FLOAT4), CONVERT('1.25', DOUBLE), "
+        "CONVERT('1.25', DOUBLE PRECISION), CONVERT('1.25', REAL), "
+        "CONVERT('1.25', FLOAT8);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    cast_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_FLOAT,
+        "FLOAT CONVERT target"
+    );
+    cast_expression = child_at(child_at(select_list, 1U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_FLOAT, "FLOAT(25) CONVERT target");
+    if (target != NULL && (!target->has_column_precision || target->column_precision != 25U)) {
+        fprintf(stderr, "FLOAT(25) CONVERT did not record precision 25\n");
+        failures = 1;
+    }
+    cast_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_FLOAT,
+        "FLOAT4 CONVERT target"
+    );
+    cast_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE,
+        "DOUBLE CONVERT target"
+    );
+    cast_expression = child_at(child_at(select_list, 4U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE,
+        "DOUBLE PRECISION CONVERT target"
+    );
+    cast_expression = child_at(child_at(select_list, 5U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE,
+        "REAL CONVERT target"
+    );
+    cast_expression = child_at(child_at(select_list, 6U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE,
+        "FLOAT8 CONVERT target"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT CONVERT('abc' USING latin1), "
         "CONVERT('abc' USING utf8mb4), "
         "CONVERT('abc' USING 'utf8mb3'), "
@@ -11587,6 +11724,15 @@ static int test_convert_expression_syntax(void) {
     failures += parse_sql("SELECT CONVERT(1, SIGNED, 2)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT CONVERT('abc' USING)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT CONVERT('x', FLOAT(10,2))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT CONVERT('x', DOUBLE(10,2))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT CONVERT('x', FLOAT8(10))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
         "SELECT CONVERT('x', CHAR CHARACTER SET utf8mb4 COLLATE utf8mb4_bin)",

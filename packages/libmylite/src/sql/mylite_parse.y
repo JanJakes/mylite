@@ -5060,6 +5060,30 @@ cast_target_type(A) ::= DEC(T) opt_numeric_precision_scale(B). {
                    state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL),
                    B));
 }
+cast_target_type(A) ::= FLOATKW(T) opt_cast_float_precision(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_set_column_precision_scale(
+                   state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_FLOAT),
+                   B));
+}
+cast_target_type(A) ::= FLOAT4(T) opt_cast_float_precision(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_set_column_precision_scale(
+                   state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_FLOAT),
+                   B));
+}
+cast_target_type(A) ::= DOUBLE(T) opt_precision_keyword. {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE));
+}
+cast_target_type(A) ::= REAL(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE));
+}
+cast_target_type(A) ::= FLOAT8(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE));
+}
 cast_target_type(A) ::= CHAR(T) opt_column_length(B) opt_cast_character_set(C). {
     A = mylite_sql_parser_make_cast_character_target(
         state, T,
@@ -5102,6 +5126,13 @@ cast_target_type(A) ::= DATETIME(T) opt_temporal_fsp(B). {
 
 opt_integer_keyword ::= .
 opt_integer_keyword ::= INTEGERKW.
+
+opt_cast_float_precision(A) ::= . {
+    A = NULL;
+}
+opt_cast_float_precision(A) ::= column_precision(B). {
+    A = B;
+}
 
 opt_cast_character_set(A) ::= . {
     A = mylite_sql_parser_make_column_type_attribute_list(state);

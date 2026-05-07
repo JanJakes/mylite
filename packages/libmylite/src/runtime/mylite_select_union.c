@@ -619,6 +619,7 @@ static int execute_union_operand_statement(
     case MYLITE_STMT_DROP_INDEX:
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_INSERT_SELECT:
     case MYLITE_STMT_REPLACE_VALUES:
     case MYLITE_STMT_REPLACE_SET:
     case MYLITE_STMT_UPDATE:

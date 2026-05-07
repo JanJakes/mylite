@@ -842,6 +842,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_dual_statement(
     struct mylite_sql_token dual_token,
     struct mylite_sql_ast_node *duplicate_update
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_insert_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_ast_node *duplicate_update
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_insert_tokens tokens,

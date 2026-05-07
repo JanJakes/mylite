@@ -22,7 +22,7 @@ persistent and temporary base tables.
 ```lemon
 insert_select_statement ::=
     INSERT opt_insert_ignore opt_into table_name opt_insert_column_list
-    select_statement opt_insert_duplicate_update.
+    insert_select_source_statement opt_insert_duplicate_update.
 ```
 
 This slice intentionally excludes target `PARTITION` clauses and
@@ -32,11 +32,26 @@ keeps its existing lowering into a single-row values insert.
 
 ## Semantics
 
-The source `SELECT` is prepared with the same SELECT support already exposed by
-MyLite: scalar and table-backed projections, filtering, ordering, limits,
-joins, aggregates, unions, values queries, subqueries, and functions only where
-those surfaces are otherwise supported. Unsupported source queries fail before
-target mutation.
+The first executable source grammar covers direct table-backed `SELECT`
+statements over one named source table with optional alias, filtering, grouping,
+having, window clause, ordering, and limit clauses:
+
+```lemon
+insert_select_source_statement ::=
+    SELECT select_modifiers select_item_list FROM table_name opt_table_alias
+    opt_where_clause opt_group_by_clause opt_having_clause opt_window_clause
+    opt_order_by_clause opt_limit_clause.
+
+insert_select_source_statement ::=
+    SELECT select_modifiers STAR FROM table_name opt_table_alias
+    opt_where_clause opt_group_by_clause opt_having_clause opt_window_clause
+    opt_order_by_clause opt_limit_clause.
+```
+
+The prepared source query then uses the same expression, projection, predicate,
+ordering, grouping, function, and metadata support already exposed by MyLite for
+that direct-table SELECT surface. Unsupported source queries fail before target
+mutation.
 
 Execution has two phases:
 
@@ -99,9 +114,9 @@ ordering.
 
 The first slice rejects unsupported source SELECT shapes with a deterministic
 `unsupported INSERT ... SELECT query` diagnostic rather than silently falling
-back to SQLite. Target `PARTITION`, source `TABLE table_name`, source
-`VALUES ROW(...)`, locking clauses, priority modifiers, and temporary
-self-insert aliases beyond the direct covered shape remain deferred.
+back to SQLite. Target `PARTITION`, joins, comma table references, unions,
+source `TABLE table_name`, source `VALUES ROW(...)`, locking clauses, priority
+modifiers, and broader temporary self-reference variants remain deferred.
 
 ## Tests
 
@@ -124,7 +139,8 @@ Runtime tests must cover:
 
 ## Compatibility Status
 
-`INSERT ... SELECT` remains partial until query-source `TABLE` and
-`VALUES ROW(...)`, partitions, priority modifiers, lock clauses, temporary
-self-reference variants, broad source-query coverage, protocol OK-info text,
-and broader conversion-warning fidelity are complete.
+`INSERT ... SELECT` remains partial until joins, comma table references, union
+query expressions, query-source `TABLE` and `VALUES ROW(...)`, partitions,
+priority modifiers, lock clauses, temporary self-reference variants, broad
+source-query coverage, protocol OK-info text, and broader conversion-warning
+fidelity are complete.

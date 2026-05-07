@@ -117,6 +117,13 @@ int mylite_statement_prepare_custom(
             &stmt->insert_update
         );
         break;
+    case MYLITE_STMT_INSERT_SELECT:
+        status = mylite_dml_copy_insert_select_statement(
+            statement,
+            &stmt->insert_values,
+            &stmt->insert_update
+        );
+        break;
     case MYLITE_STMT_REPLACE_VALUES:
         status = mylite_dml_copy_replace_values_statement(statement, &stmt->insert_values);
         break;

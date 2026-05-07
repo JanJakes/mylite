@@ -88,6 +88,10 @@ struct mylite_insert_set_plan {
     size_t assignment_count;
 };
 
+struct mylite_insert_select_plan {
+    const struct mylite_sql_ast_node *select_statement;
+};
+
 struct mylite_insert_update_assignment {
     struct mylite_insert_column_reference target;
     struct mylite_insert_value value;

@@ -7023,6 +7023,50 @@ static int test_insert_values_syntax(void) {
     failures += expect_child_count(child_at(rows, 0U), 1U, "insert select without INTO values");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "INSERT INTO dst (id, note) SELECT id, note FROM src WHERE id > 1 ORDER BY id LIMIT 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert table select statement"
+    );
+    failures +=
+        expect_node(columns, MYLITE_SQL_AST_INSERT_COLUMN_LIST, "insert table select columns");
+    failures += expect_child_count(columns, 2U, "insert table select column count");
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "insert table select source"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT IGNORE dst SELECT id FROM src ON DUPLICATE KEY UPDATE id = VALUES(id);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert table select ODKU statement"
+    );
+    if (statement == NULL || !statement->insert_ignore) {
+        fprintf(stderr, "Expected INSERT IGNORE SELECT flag\n");
+        ++failures;
+    }
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_INSERT_DUPLICATE_UPDATE_CLAUSE,
+        "insert table select ODKU clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("INSERT INTO t VALUES (1,);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

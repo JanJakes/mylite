@@ -275,6 +275,14 @@ static int prepare_parsed_statement(
                 sql_length,
                 out_stmt
             );
+        case MYLITE_SQL_AST_INSERT_SELECT_STATEMENT:
+            return mylite_dml_prepare_insert_select_statement(
+                database,
+                statement,
+                sql,
+                sql_length,
+                out_stmt
+            );
         case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
             return mylite_dml_prepare_insert_set_statement(
                 database,

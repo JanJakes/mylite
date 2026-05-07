@@ -116,6 +116,7 @@ struct mylite_stmt {
     struct mylite_index_ddl_plan index_ddl;
     struct mylite_insert_values_plan insert_values;
     struct mylite_insert_set_plan insert_set;
+    struct mylite_insert_select_plan insert_select;
     struct mylite_insert_duplicate_update_plan insert_update;
     struct mylite_update_plan update;
     struct mylite_delete_plan delete_plan;

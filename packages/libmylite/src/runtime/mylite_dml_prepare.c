@@ -75,6 +75,13 @@ static int clone_insert_set_nodes(
     size_t sql_length
 );
 
+static int clone_insert_select_node(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length
+);
+
 static int clone_insert_value_node(
     mylite_stmt *stmt,
     const struct mylite_sql_ast_node *value_node,
@@ -207,6 +214,23 @@ int mylite_dml_prepare_insert_set_statement(
     );
 }
 
+int mylite_dml_prepare_insert_select_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length,
+    mylite_stmt **out_stmt
+) {
+    return prepare_insert_like_statement(
+        database,
+        MYLITE_STMT_INSERT_SELECT,
+        statement,
+        sql,
+        sql_length,
+        out_stmt
+    );
+}
+
 int mylite_dml_prepare_replace_values_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -296,6 +320,12 @@ static int copy_insert_like_statement(
             statement,
             &stmt->insert_values,
             &stmt->insert_set,
+            &stmt->insert_update
+        );
+    case MYLITE_STMT_INSERT_SELECT:
+        return mylite_dml_copy_insert_select_statement(
+            statement,
+            &stmt->insert_values,
             &stmt->insert_update
         );
     case MYLITE_STMT_REPLACE_VALUES:
@@ -392,6 +422,9 @@ static int clone_insert_plan_nodes(
         assignments_node = second_child;
         return clone_insert_set_nodes(stmt, assignments_node, sql, sql_length);
     }
+    if (statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT) {
+        return clone_insert_select_node(stmt, statement, sql, sql_length);
+    }
 
     values_node = second_child;
     if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_INSERT_COLUMN_LIST) {
@@ -480,6 +513,30 @@ static int clone_insert_set_nodes(
         }
     }
     return assignment_index == stmt->insert_set.assignment_count ? MYLITE_OK : MYLITE_UNSUPPORTED;
+}
+
+static int clone_insert_select_node(
+    mylite_stmt *stmt,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length
+) {
+    const struct mylite_sql_ast_node *second_child = mylite_ast_child_at(statement, 1U);
+    const struct mylite_sql_ast_node *select_statement = second_child;
+
+    if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_INSERT_COLUMN_LIST) {
+        select_statement = mylite_ast_child_at(statement, 2U);
+    }
+    if (select_statement == NULL || select_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return MYLITE_UNSUPPORTED;
+    }
+    return clone_insert_ast_node(
+        stmt,
+        select_statement,
+        sql,
+        sql_length,
+        &stmt->insert_select.select_statement
+    );
 }
 
 static int clone_insert_value_node(

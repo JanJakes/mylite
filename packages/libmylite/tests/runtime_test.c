@@ -126,6 +126,7 @@ enum {
     mysql_warning_wrong_field_with_group = 1055,
     mysql_warning_nonunique_table = 1066,
     mysql_warning_invalid_group_function = 1111,
+    mysql_warning_cant_reopen_table = 1137,
     mysql_warning_mix_group_function_fields = 1140,
     mysql_warning_unknown_system_variable = 1193,
     mysql_warning_wrong_usage = 1221,
@@ -537,6 +538,8 @@ static int test_show_diagnostics_execution(void);
 static int test_describe_table_execution(void);
 
 static int test_insert_values_execution(void);
+
+static int test_insert_select_execution(void);
 
 static int test_insert_values_quoted_text_storage(mylite_db *database, const char *path);
 
@@ -1046,6 +1049,7 @@ int main(void) {
     failures += test_show_diagnostics_execution();
     failures += test_describe_table_execution();
     failures += test_insert_values_execution();
+    failures += test_insert_select_execution();
     failures += test_no_auto_value_on_zero_execution();
     failures += test_insert_set_execution();
     failures += test_insert_update_null_byte_storage_execution();
@@ -50991,6 +50995,266 @@ static int test_insert_values_execution(void) {
     free(scalar_physical);
     mylite_close(database);
     remove_runtime_test_files();
+    return failures;
+}
+
+static int test_insert_select_execution(void) {
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open insert select db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_is44", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_is44", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE source_rows (id INT PRIMARY KEY, note VARCHAR(10))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO source_rows VALUES (1,'one'),(2,'two'),(3,'three')",
+        MYLITE_DONE
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_cols ("
+        "id INT PRIMARY KEY, note VARCHAR(10), extra VARCHAR(10) DEFAULT 'd')",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO target_cols (id, note) "
+        "SELECT id + 10, note FROM source_rows WHERE id >= 2 ORDER BY id DESC",
+        2,
+        "INSERT SELECT column-list affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note, extra FROM target_cols ORDER BY id",
+        (const char *const[]){"id", "note", "extra"},
+        3,
+        (const char *const[]){"12", "two", "d", "13", "three", "d"},
+        2,
+        "INSERT SELECT column-list rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_all (id INT PRIMARY KEY, note VARCHAR(10))",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO target_all SELECT * FROM source_rows ORDER BY id",
+        3,
+        "INSERT SELECT positional affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM target_all ORDER BY id",
+        (const char *const[]){"id", "note"},
+        2,
+        (const char *const[]){"1", "one", "2", "two", "3", "three"},
+        3,
+        "INSERT SELECT positional rows"
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_all (id, note) SELECT id FROM source_rows",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Column count doesn't match value count at row 1",
+        "INSERT SELECT too few source columns"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_dup (id INT PRIMARY KEY, note VARCHAR(10))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO target_dup VALUES (2, 'old')", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_dup SELECT * FROM source_rows ORDER BY id",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate entry '2'",
+        "INSERT SELECT duplicate rollback"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM target_dup ORDER BY id",
+        (const char *const[]){"id", "note"},
+        2,
+        (const char *const[]){"2", "old"},
+        1,
+        "INSERT SELECT duplicate rollback rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO target_dup SELECT * FROM source_rows ORDER BY id",
+        2,
+        "INSERT IGNORE SELECT affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "INSERT IGNORE SELECT warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_entry,
+        "INSERT IGNORE SELECT duplicate warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM target_dup ORDER BY id",
+        (const char *const[]){"id", "note"},
+        2,
+        (const char *const[]){"1", "one", "2", "old", "3", "three"},
+        3,
+        "INSERT IGNORE SELECT rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_ai (id INT AUTO_INCREMENT PRIMARY KEY, note VARCHAR(10))",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO target_ai (note) SELECT note FROM source_rows ORDER BY id",
+        3,
+        "INSERT SELECT auto increment affected rows"
+    );
+    failures +=
+        expect_int64((int64_t)mylite_last_insert_id(database), 1, "INSERT SELECT last insert id");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM target_ai ORDER BY id",
+        (const char *const[]){"id", "note"},
+        2,
+        (const char *const[]){"1", "one", "2", "two", "3", "three"},
+        3,
+        "INSERT SELECT auto increment rows"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO source_rows SELECT id + 10, note FROM source_rows WHERE id <= 2 ORDER BY id",
+        2,
+        "INSERT SELECT persistent self insert affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM source_rows WHERE id >= 10 ORDER BY id",
+        (const char *const[]){"id", "note"},
+        2,
+        (const char *const[]){"11", "one", "12", "two"},
+        2,
+        "INSERT SELECT persistent self insert rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TEMPORARY TABLE temp_rows (id INT PRIMARY KEY, note VARCHAR(10))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO temp_rows VALUES (1, 'one')", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO temp_rows SELECT id + 10, note FROM temp_rows ORDER BY id",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Can't reopen table: 'temp_rows'",
+        "INSERT SELECT temporary self insert"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_cant_reopen_table,
+        "INSERT SELECT temporary self insert warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_odku (id INT PRIMARY KEY, note VARCHAR(10))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO target_odku VALUES (1, 'old')", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO target_odku (id, note) "
+        "SELECT id, note FROM source_rows WHERE id <= 2 ORDER BY id "
+        "ON DUPLICATE KEY UPDATE note = VALUES(note)",
+        3,
+        "INSERT SELECT ODKU affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "INSERT SELECT ODKU warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_syntax,
+        "INSERT SELECT ODKU VALUES warning"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM target_odku ORDER BY id",
+        (const char *const[]){"id", "note"},
+        2,
+        (const char *const[]){"1", "one", "2", "two"},
+        2,
+        "INSERT SELECT ODKU rows"
+    );
+
+    failures += execute_sql(database, "CREATE TABLE fk_parent (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO fk_parent VALUES (1), (2)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE fk_child (id INT PRIMARY KEY, FOREIGN KEY (id) REFERENCES fk_parent(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "CREATE TABLE fk_source (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO fk_source VALUES (1), (3)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO fk_child SELECT id FROM fk_source ORDER BY id",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Cannot add or update a child row",
+        "INSERT SELECT foreign key rollback"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS child_count FROM fk_child",
+        (const char *const[]){"child_count"},
+        1,
+        (const char *const[]){"0"},
+        1,
+        "INSERT SELECT foreign key rollback rows"
+    );
+
+    mylite_close(database);
     return failures;
 }
 

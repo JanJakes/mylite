@@ -385,6 +385,7 @@ static bool union_operand_calc_found_rows(const mylite_stmt *operand) {
     case MYLITE_STMT_DROP_INDEX:
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_INSERT_SELECT:
     case MYLITE_STMT_REPLACE_VALUES:
     case MYLITE_STMT_REPLACE_SET:
     case MYLITE_STMT_UPDATE:

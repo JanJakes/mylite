@@ -265,6 +265,9 @@ statement(A) ::= unlock_tables_statement(B). {
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
+statement(A) ::= insert_select_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_set_statement(B). {
     A = B;
 }
@@ -958,6 +961,29 @@ insert_values_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_nam
         D,
         U,
         F);
+}
+insert_select_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B) opt_insert_column_list(C)
+        insert_select_source_statement(D) opt_insert_duplicate_update(F). {
+    A = mylite_sql_parser_make_insert_select_statement(
+        state,
+        (struct mylite_sql_parser_insert_tokens){.insert = T, .ignore = I},
+        B,
+        C,
+        D,
+        F);
+}
+insert_select_source_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F)
+        table_name(C) opt_table_alias(D) opt_where_clause(E) opt_group_by_clause(G)
+        opt_having_clause(H) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, B, mylite_sql_parser_make_from_table(state, F, C, D), E, G, H, W, I, J);
+}
+insert_select_source_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F)
+        table_name(C) opt_table_alias(D) opt_where_clause(E) opt_group_by_clause(G)
+        opt_having_clause(H) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_table(state, F, C, D), E, G, H, W, I, J);
 }
 insert_set_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B) SET insert_set_assignment_list(C)
         opt_insert_row_alias(D) opt_insert_duplicate_update(E). {
@@ -1772,6 +1798,9 @@ explainable_statement(A) ::= table_query_statement(B). {
 explainable_statement(A) ::= insert_values_statement(B). {
     A = B;
 }
+explainable_statement(A) ::= insert_select_statement(B). {
+    A = B;
+}
 explainable_statement(A) ::= insert_set_statement(B). {
     A = B;
 }
@@ -2186,6 +2215,9 @@ stored_program_statement(A) ::= select_statement(B). {
     A = B;
 }
 stored_program_statement(A) ::= insert_values_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= insert_select_statement(B). {
     A = B;
 }
 stored_program_statement(A) ::= insert_set_statement(B). {

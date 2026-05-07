@@ -158,6 +158,9 @@ int mylite_statement_execute_custom_with_callbacks(
     case MYLITE_STMT_INSERT_SET:
         status = mylite_dml_execute_insert_set_statement(stmt, &dml_expression_callbacks);
         break;
+    case MYLITE_STMT_INSERT_SELECT:
+        status = mylite_dml_execute_insert_select_statement(stmt, &dml_expression_callbacks);
+        break;
     case MYLITE_STMT_REPLACE_VALUES:
         status = mylite_dml_execute_replace_values_statement(stmt, &dml_expression_callbacks);
         break;
@@ -310,6 +313,7 @@ static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind
     case MYLITE_STMT_DROP_TABLE:
     case MYLITE_STMT_INSERT_VALUES:
     case MYLITE_STMT_INSERT_SET:
+    case MYLITE_STMT_INSERT_SELECT:
     case MYLITE_STMT_REPLACE_VALUES:
     case MYLITE_STMT_REPLACE_SET:
     case MYLITE_STMT_SCALAR_SELECT:

@@ -34,6 +34,13 @@ int mylite_dml_prepare_insert_set_statement(
     size_t sql_length,
     mylite_stmt **out_stmt
 );
+int mylite_dml_prepare_insert_select_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length,
+    mylite_stmt **out_stmt
+);
 int mylite_dml_prepare_replace_values_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *statement,

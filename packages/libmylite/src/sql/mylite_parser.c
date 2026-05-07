@@ -2526,6 +2526,48 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_dual_statement(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_select_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_insert_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_ast_node *duplicate_update
+) {
+    struct mylite_sql_source_span span = span_from_token(&tokens.insert);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (tokens.ignore.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.ignore));
+    }
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+    if (columns != NULL && columns->span.text != NULL) {
+        span = span_join(span, columns->span);
+    }
+    if (select_statement != NULL) {
+        span = span_join(span, select_statement->span);
+    }
+    if (duplicate_update != NULL) {
+        span = span_join(span, duplicate_update->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_INSERT_SELECT_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    if (tokens.ignore.text != NULL) {
+        mylite_sql_ast_node_set_insert_ignore(statement);
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, columns);
+    mylite_sql_ast_node_append_child(statement, select_statement);
+    mylite_sql_ast_node_append_child(statement, duplicate_update);
+    return statement;
+}
+
 static struct mylite_sql_ast_node *make_insert_row_list_from_select_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token select_token,

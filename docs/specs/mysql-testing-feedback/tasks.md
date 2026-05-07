@@ -280,6 +280,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `REGEXP_REPLACE()` now reports the MySQL 8.4.9-shaped default
       `utf8mb4` result descriptor (`LONG_BLOB`, length `67108864`, nullable,
       no `NOT_NULL` flag) instead of a medium text descriptor.
+      User-variable reads now report MySQL-shaped nullable descriptors for
+      assigned signed integer and default `utf8mb4` text values, including
+      `LONG_BLOB` text metadata with length `268435440` and no flags.
       Table-backed `LPAD()` / `RPAD()` expressions with nonnegative literal
       target lengths and `REPEAT()` expressions with nonnegative literal counts
       now infer MySQL-shaped connection-character-set string widths.

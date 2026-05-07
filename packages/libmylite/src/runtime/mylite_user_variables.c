@@ -1,5 +1,6 @@
 #include "mylite_user_variables.h"
 
+#include "mylite_charset.h"
 #include "mylite_connection.h"
 #include "mylite_connection_statement.h"
 #include "mylite_diagnostics.h"
@@ -47,6 +48,12 @@ static struct mylite_field_descriptor user_variable_descriptor_from_value(
 static struct mylite_field_descriptor assigned_null_user_variable_descriptor(void);
 
 static struct mylite_field_descriptor assigned_text_user_variable_descriptor(mylite_db *database);
+
+static uint64_t assigned_text_user_variable_length(mylite_db *database);
+
+static int assigned_text_user_variable_type(uint64_t length);
+
+static unsigned int assigned_text_user_variable_flags(mylite_db *database);
 
 static int copy_set_user_variable_assignments(
     mylite_db *database,
@@ -511,6 +518,7 @@ static struct mylite_field_descriptor user_variable_descriptor_from_value(
     } else if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
         descriptor.length = mylite_mysql_unsigned_longlong_display_length;
     }
+    mylite_field_descriptor_set_nullable(&descriptor, true);
     return descriptor;
 }
 
@@ -526,14 +534,45 @@ static struct mylite_field_descriptor assigned_null_user_variable_descriptor(voi
 }
 
 static struct mylite_field_descriptor assigned_text_user_variable_descriptor(mylite_db *database) {
+    uint64_t length = assigned_text_user_variable_length(database);
+
     return (struct mylite_field_descriptor){
-        .type = MYLITE_FIELD_TYPE_MEDIUM_BLOB,
-        .flags = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL,
-        .length = mylite_mysql_medium_text_length,
+        .type = assigned_text_user_variable_type(length),
+        .flags = assigned_text_user_variable_flags(database),
+        .length = length,
         .decimals = mylite_mysql_not_fixed_decimals,
         .charset_id = mylite_expression_descriptor_connection_collation_id(database),
-        .nullable = false,
+        .nullable = true,
     };
+}
+
+static uint64_t assigned_text_user_variable_length(mylite_db *database) {
+    const struct mylite_charset *charset =
+        database == NULL ? NULL : mylite_charset_lookup(database->character_set_connection);
+    uint64_t max_bytes_per_character = charset == NULL ? 1U : (uint64_t)charset->max_length;
+
+    if (max_bytes_per_character > UINT64_MAX / max_bytes_per_character ||
+        mylite_mysql_medium_text_length >
+            UINT64_MAX / max_bytes_per_character / max_bytes_per_character) {
+        return mylite_mysql_long_text_length;
+    }
+    return mylite_mysql_medium_text_length * max_bytes_per_character * max_bytes_per_character;
+}
+
+static int assigned_text_user_variable_type(uint64_t length) {
+    return length > mylite_mysql_medium_text_length ? MYLITE_FIELD_TYPE_LONG_BLOB
+                                                    : MYLITE_FIELD_TYPE_MEDIUM_BLOB;
+}
+
+static unsigned int assigned_text_user_variable_flags(mylite_db *database) {
+    const struct mylite_charset *charset =
+        database == NULL ? NULL : mylite_charset_lookup(database->character_set_connection);
+
+    if (charset != NULL &&
+        mylite_ascii_case_equal(charset->name, mylite_mysql_binary_charset_name)) {
+        return MYLITE_FIELD_FLAG_BINARY;
+    }
+    return 0U;
 }
 
 static int copy_set_user_variable_assignments(

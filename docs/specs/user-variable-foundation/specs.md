@@ -54,6 +54,19 @@ metadata; assigned nonbinary strings report string/blob metadata; assigned
 `NULL` keeps assigned-variable string/blob metadata rather than reverting to an
 uninitialized variable.
 
+Observed MySQL 8.4.9 result metadata:
+
+- unset variables: `VAR_STRING`, binary collation, length `65535`, decimals
+  `31`, `BINARY` flag, nullable
+- assigned signed integers: `LONGLONG`, binary collation, length `21`,
+  decimals `0`, `BINARY` and `NUM` flags, nullable
+- assigned nonbinary strings under `utf8mb4`: `LONG_BLOB`,
+  `utf8mb4_0900_ai_ci`, length `268435440`, decimals `31`, no flags, nullable
+- assigned nonbinary strings under `latin1`: `MEDIUM_BLOB`,
+  `latin1_swedish_ci`, length `16777215`, decimals `31`, no flags, nullable
+- assigned binary strings and assigned `NULL`: `MEDIUM_BLOB`, binary collation,
+  length `16777215`, decimals `31`, `BINARY` flag, nullable
+
 `@var := expr` is also accepted as an expression. It evaluates the right-hand
 expression, stores the value immediately, returns the assigned value, and emits
 warning `1287` with the MySQL deprecation message. SELECT-list evaluation is

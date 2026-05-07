@@ -323,6 +323,70 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&create_token), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *statement =
+        make_node(state, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, columns);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *table_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&drop_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token tables_token,
+    struct mylite_sql_ast_node *schema_name
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&tables_token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (schema_name != NULL) {
+        span = span_join(span, schema_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, schema_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard_select_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token wildcard_token
@@ -514,6 +578,114 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     return parenthesized;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column
+) {
+    struct mylite_sql_source_span span =
+        column == NULL ? (struct mylite_sql_source_span){0} : column->span;
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, column);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *column
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, column);
+    if (column != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, column->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *integer_type,
+    struct mylite_sql_ast_node *nullability
+) {
+    struct mylite_sql_source_span span =
+        name == NULL ? (struct mylite_sql_source_span){0} : name->span;
+    struct mylite_sql_ast_node *column = NULL;
+
+    if (integer_type != NULL) {
+        span = span_join(span, integer_type->span);
+    }
+    if (nullability != NULL) {
+        span = span_join(span, nullability->span);
+    }
+
+    column = make_node(state, MYLITE_SQL_AST_COLUMN_DEFINITION, span);
+    if (column == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(column, name);
+    mylite_sql_ast_node_append_child(column, integer_type);
+    mylite_sql_ast_node_append_child(column, nullability);
+    return column;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token type_token,
+    enum mylite_sql_ast_integer_type integer_type,
+    struct mylite_sql_token unsigned_token
+) {
+    struct mylite_sql_source_span span = span_from_token(&type_token);
+    struct mylite_sql_ast_node *type = NULL;
+    int is_unsigned = unsigned_token.text != NULL;
+
+    if (is_unsigned != 0) {
+        span = span_join(span, span_from_token(&unsigned_token));
+    }
+
+    type = make_node(state, MYLITE_SQL_AST_INTEGER_TYPE, span);
+    if (type == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_integer_type(
+        type,
+        (struct mylite_sql_ast_integer_type_payload){
+            .kind = integer_type,
+            .is_unsigned = is_unsigned,
+        }
+    );
+    return type;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_nullability nullability,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token
+) {
+    struct mylite_sql_ast_node *node = make_node(
+        state,
+        MYLITE_SQL_AST_NULLABILITY,
+        span_join(span_from_token(&first_token), span_from_token(&last_token))
+    );
+    if (node == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_nullability(node, nullability);
+    return node;
+}
+
 static bool map_lexer_token(
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
@@ -635,6 +807,50 @@ static bool map_keyword_token(
     }
     if (token_text_equals(token, "USE")) {
         *out_parser_token = MYLITE_SQL_PARSE_USE;
+        return true;
+    }
+    if (token_text_equals(token, "CREATE")) {
+        *out_parser_token = MYLITE_SQL_PARSE_CREATE;
+        return true;
+    }
+    if (token_text_equals(token, "TABLE")) {
+        *out_parser_token = MYLITE_SQL_PARSE_TABLE;
+        return true;
+    }
+    if (token_text_equals(token, "DROP")) {
+        *out_parser_token = MYLITE_SQL_PARSE_DROP;
+        return true;
+    }
+    if (token_text_equals(token, "SHOW")) {
+        *out_parser_token = MYLITE_SQL_PARSE_SHOW;
+        return true;
+    }
+    if (token_text_equals(token, "TABLES")) {
+        *out_parser_token = MYLITE_SQL_PARSE_TABLES;
+        return true;
+    }
+    if (token_text_equals(token, "INT")) {
+        *out_parser_token = MYLITE_SQL_PARSE_INT;
+        return true;
+    }
+    if (token_text_equals(token, "INTEGER")) {
+        *out_parser_token = MYLITE_SQL_PARSE_INTEGER_TYPE;
+        return true;
+    }
+    if (token_text_equals(token, "BIGINT")) {
+        *out_parser_token = MYLITE_SQL_PARSE_BIGINT;
+        return true;
+    }
+    if (token_text_equals(token, "UNSIGNED")) {
+        *out_parser_token = MYLITE_SQL_PARSE_UNSIGNED;
+        return true;
+    }
+    if (token_text_equals(token, "NOT")) {
+        *out_parser_token = MYLITE_SQL_PARSE_NOT;
+        return true;
+    }
+    if (token_text_equals(token, "IN")) {
+        *out_parser_token = MYLITE_SQL_PARSE_IN;
         return true;
     }
     if (token_text_equals(token, "TRUE")) {

@@ -4,6 +4,7 @@
 #include <mylite/mylite.h>
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 enum {
@@ -61,11 +62,75 @@ struct mylite_catalog_column_descriptor {
     uint64_t updated_catalog_generation;
 };
 
+struct mylite_catalog_mutation {
+    bool active;
+    uint64_t next_generation;
+};
+
+typedef int (*mylite_catalog_table_callback)(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+
 void mylite_catalog_init(struct mylite_catalog *catalog);
 void mylite_catalog_deinit(struct mylite_catalog *catalog);
 
 int mylite_catalog_initialize_file_backed(struct mylite_db *database);
 void mylite_catalog_invalidate_descriptor_cache(struct mylite_db *database);
+
+void mylite_catalog_mutation_init(struct mylite_catalog_mutation *mutation);
+void mylite_catalog_mutation_deinit(struct mylite_catalog_mutation *mutation);
+int mylite_catalog_begin_mutation(
+    struct mylite_db *database,
+    struct mylite_catalog_mutation *mutation
+);
+int mylite_catalog_commit_mutation(
+    struct mylite_db *database,
+    struct mylite_catalog_mutation *mutation
+);
+void mylite_catalog_rollback_mutation(
+    struct mylite_db *database,
+    struct mylite_catalog_mutation *mutation
+);
+uint64_t mylite_catalog_mutation_generation(const struct mylite_catalog_mutation *mutation);
+
+int mylite_catalog_allocate_table_id_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t *out_table_id
+);
+int mylite_catalog_insert_table_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t schema_id,
+    const char *name,
+    const char *physical_name,
+    enum mylite_catalog_table_kind kind,
+    struct mylite_catalog_table_descriptor *out_table
+);
+int mylite_catalog_insert_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t ordinal_position,
+    const char *name,
+    const char *logical_type,
+    const char *physical_type,
+    bool is_nullable,
+    struct mylite_catalog_column_descriptor *out_column
+);
+int mylite_catalog_delete_table_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id
+);
+int mylite_catalog_for_each_table_in_schema(
+    struct mylite_db *database,
+    int64_t schema_id,
+    mylite_catalog_table_callback callback,
+    void *user_data
+);
 
 int mylite_catalog_create_schema(
     struct mylite_db *database,

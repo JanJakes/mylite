@@ -10,6 +10,7 @@ static int test_select_expression_list(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
+static int test_table_lifecycle_statements(void);
 static int test_comments_are_skipped(void);
 static int test_syntax_errors(void);
 static int test_lexer_errors(void);
@@ -47,6 +48,18 @@ static int expect_operator(
     enum mylite_sql_ast_operator expected,
     const char *context
 );
+static int expect_true(int condition, const char *context);
+static int expect_integer_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_integer_type expected_type,
+    int expected_unsigned,
+    const char *context
+);
+static int expect_nullability(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_nullability expected,
+    const char *context
+);
 
 int main(void) {
     int failures = 0;
@@ -57,6 +70,7 @@ int main(void) {
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
+    failures += test_table_lifecycle_statements();
     failures += test_comments_are_skipped();
     failures += test_syntax_errors();
     failures += test_lexer_errors();
@@ -290,6 +304,102 @@ static int test_qualified_identifier_keyword_part(void) {
     return failures;
 }
 
+static int test_table_lifecycle_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE app.simple_lifecycle (id INT, amount BIGINT NOT NULL, "
+        "flags INTEGER UNSIGNED NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_name = child_at(statement, 0U);
+    columns = child_at(statement, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "create table statement");
+    failures +=
+        expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "create qualified table");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "create schema name");
+    failures += expect_span_text(child_at(table_name, 1U), "simple_lifecycle", "create table name");
+    failures += expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "create column list");
+    failures += expect_child_count(columns, 3U, "create column list");
+
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "id", "first column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "first column type"
+    );
+    failures += expect_true(child_at(column, 2U) == NULL, "first column default nullability");
+
+    column = child_at(columns, 1U);
+    failures += expect_span_text(child_at(column, 0U), "amount", "second column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_BIGINT,
+        0,
+        "second column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "second column nullability"
+    );
+
+    column = child_at(columns, 2U);
+    failures += expect_span_text(child_at(column, 0U), "flags", "third column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        1,
+        "third column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "third column nullability"
+    );
+
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE app.simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, "drop table statement");
+    failures += expect_span_text(child_at(statement, 0U), "app.simple_lifecycle", "drop target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLES FROM app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "show tables statement");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show tables schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLES IN app;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(result.root, 0U),
+        MYLITE_SQL_AST_SHOW_TABLES_STATEMENT,
+        "show tables in statement"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "bare show tables");
+    failures += expect_true(child_at(statement, 0U) == NULL, "bare show has no schema child");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_comments_are_skipped(void) {
     struct mylite_sql_parse_result result;
     int failures = 0;
@@ -322,10 +432,36 @@ static int test_syntax_errors(void) {
     failures += parse_sql("SELECT INTERVAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT INTEGER;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT 1 WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT 1, * FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE t ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE a.b.c (id INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id VARCHAR(10));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE t (id INT(11));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT) ENGINE=InnoDB;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE IF EXISTS t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE a, b;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -509,6 +645,61 @@ static int expect_operator(
             context,
             mylite_sql_ast_operator_name(expected),
             mylite_sql_ast_operator_name(mylite_sql_ast_node_operator(node))
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_true(int condition, const char *context) {
+    if (!condition) {
+        fprintf(stderr, "%s: expected true\n", context);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_integer_type(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_integer_type expected_type,
+    int expected_unsigned,
+    const char *context
+) {
+    enum mylite_sql_ast_integer_type actual_type = mylite_sql_ast_node_integer_type(node);
+    int actual_unsigned = mylite_sql_ast_node_integer_type_is_unsigned(node);
+
+    if (actual_type != expected_type || actual_unsigned != expected_unsigned) {
+        fprintf(
+            stderr,
+            "%s: expected %s unsigned=%d, got %s unsigned=%d\n",
+            context,
+            mylite_sql_ast_integer_type_name(expected_type),
+            expected_unsigned,
+            mylite_sql_ast_integer_type_name(actual_type),
+            actual_unsigned
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_nullability(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_nullability expected,
+    const char *context
+) {
+    enum mylite_sql_ast_nullability actual = mylite_sql_ast_node_nullability(node);
+
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected %s, got %s\n",
+            context,
+            mylite_sql_ast_nullability_name(expected),
+            mylite_sql_ast_nullability_name(actual)
         );
         return 1;
     }

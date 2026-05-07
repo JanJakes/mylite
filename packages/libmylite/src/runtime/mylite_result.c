@@ -1,0 +1,270 @@
+#include "mylite_result.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+static int reserve_columns(mylite_result *result, size_t required_capacity);
+static int reserve_rows(mylite_result *result, size_t required_capacity);
+static char *duplicate_text(const char *text);
+static void free_values(char **values, size_t value_count);
+
+int mylite_result_create(mylite_result **out_result) {
+    mylite_result *result = NULL;
+
+    if (out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_result = NULL;
+    result = calloc(1U, sizeof(*result));
+    if (result == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    *out_result = result;
+
+    return MYLITE_OK;
+}
+
+void mylite_result_free(mylite_result *result) {
+    if (result == NULL) {
+        return;
+    }
+
+    free_values(result->column_names, result->column_count);
+    free_values(result->values, result->row_count * result->column_count);
+    free(result);
+}
+
+int mylite_result_append_column(mylite_result *result, const char *name) {
+    char *owned_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (result == NULL || name == NULL || result->row_count != 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = reserve_columns(result, result->column_count + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    owned_name = duplicate_text(name);
+    if (owned_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    result->column_names[result->column_count] = owned_name;
+    ++result->column_count;
+
+    return MYLITE_OK;
+}
+
+int mylite_result_append_text_row(mylite_result *result, const char *const *values) {
+    size_t value_offset = 0U;
+    int rc = MYLITE_OK;
+
+    if (result == NULL || values == NULL || result->column_count == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = reserve_rows(result, result->row_count + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    value_offset = result->row_count * result->column_count;
+    for (size_t column_index = 0U; column_index < result->column_count; ++column_index) {
+        result->values[value_offset + column_index] = duplicate_text(values[column_index]);
+        if (result->values[value_offset + column_index] == NULL && values[column_index] != NULL) {
+            for (size_t rollback_index = 0U; rollback_index < column_index; ++rollback_index) {
+                free(result->values[value_offset + rollback_index]);
+                result->values[value_offset + rollback_index] = NULL;
+            }
+            return MYLITE_NOMEM;
+        }
+    }
+    ++result->row_count;
+
+    return MYLITE_OK;
+}
+
+void mylite_result_set_affected_rows(mylite_result *result, int64_t affected_rows) {
+    if (result == NULL) {
+        return;
+    }
+
+    result->affected_rows = affected_rows;
+}
+
+void mylite_result_set_warning_count(mylite_result *result, size_t warning_count) {
+    if (result == NULL) {
+        return;
+    }
+
+    result->warning_count = warning_count;
+}
+
+size_t mylite_result_column_count(const mylite_result *result) {
+    if (result == NULL) {
+        return 0U;
+    }
+
+    return result->column_count;
+}
+
+const char *mylite_result_column_name(const mylite_result *result, size_t column_index) {
+    if (result == NULL || column_index >= result->column_count) {
+        return NULL;
+    }
+
+    return result->column_names[column_index];
+}
+
+size_t mylite_result_row_count(const mylite_result *result) {
+    if (result == NULL) {
+        return 0U;
+    }
+
+    return result->row_count;
+}
+
+const char *mylite_result_value_text(
+    const mylite_result *result,
+    size_t row_index,
+    size_t column_index
+) {
+    if (result == NULL || row_index >= result->row_count || column_index >= result->column_count) {
+        return NULL;
+    }
+
+    return result->values[(row_index * result->column_count) + column_index];
+}
+
+int64_t mylite_result_affected_rows(const mylite_result *result) {
+    if (result == NULL) {
+        return 0;
+    }
+
+    return result->affected_rows;
+}
+
+size_t mylite_result_warning_count(const mylite_result *result) {
+    if (result == NULL) {
+        return 0U;
+    }
+
+    return result->warning_count;
+}
+
+static int reserve_columns(mylite_result *result, size_t required_capacity) {
+    enum { initial_column_capacity = 4 };
+
+    char **columns = NULL;
+    size_t capacity = result->column_capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = initial_column_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*columns)) {
+        return MYLITE_NOMEM;
+    }
+
+    columns = (char **)realloc((void *)result->column_names, capacity * sizeof(*columns));
+    if (columns == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t index = result->column_capacity; index < capacity; ++index) {
+        columns[index] = NULL;
+    }
+    result->column_names = columns;
+    result->column_capacity = capacity;
+
+    return MYLITE_OK;
+}
+
+static int reserve_rows(mylite_result *result, size_t required_capacity) {
+    enum { initial_row_capacity = 4 };
+
+    char **values = NULL;
+    size_t capacity = result->row_capacity;
+    size_t old_value_capacity = 0U;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = initial_row_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (result->column_count != 0U && capacity > SIZE_MAX / result->column_count) {
+        return MYLITE_NOMEM;
+    }
+    if ((capacity * result->column_count) > SIZE_MAX / sizeof(*values)) {
+        return MYLITE_NOMEM;
+    }
+
+    old_value_capacity = result->row_capacity * result->column_count;
+    values =
+        (char **)realloc((void *)result->values, capacity * result->column_count * sizeof(*values));
+    if (values == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t index = old_value_capacity; index < capacity * result->column_count; ++index) {
+        values[index] = NULL;
+    }
+    result->values = values;
+    result->row_capacity = capacity;
+
+    return MYLITE_OK;
+}
+
+static char *duplicate_text(const char *text) {
+    char *copy = NULL;
+    size_t length = 0U;
+
+    if (text == NULL) {
+        return NULL;
+    }
+
+    length = strlen(text);
+    if (length == SIZE_MAX) {
+        return NULL;
+    }
+
+    copy = malloc(length + 1U);
+    if (copy == NULL) {
+        return NULL;
+    }
+
+    memcpy(copy, text, length + 1U);
+
+    return copy;
+}
+
+static void free_values(char **values, size_t value_count) {
+    if (values == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < value_count; ++index) {
+        free(values[index]);
+    }
+    free((void *)values);
+}

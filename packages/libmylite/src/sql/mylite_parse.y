@@ -56,9 +56,36 @@ statement(A) ::= select_statement(B). {
 statement(A) ::= use_statement(B). {
     A = B;
 }
+statement(A) ::= create_table_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_table_statement(B). {
+    A = B;
+}
+statement(A) ::= show_tables_statement(B). {
+    A = B;
+}
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
+}
+
+create_table_statement(A) ::= CREATE(C) TABLE table_name(T) LPAREN column_definition_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_create_table_statement(state, C, T, L, R);
+}
+
+drop_table_statement(A) ::= DROP(D) TABLE table_name(T). {
+    A = mylite_sql_parser_make_drop_table_statement(state, D, T);
+}
+
+show_tables_statement(A) ::= SHOW(S) TABLES(T). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, NULL);
+}
+show_tables_statement(A) ::= SHOW(S) TABLES(T) FROM identifier(D). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, D);
+}
+show_tables_statement(A) ::= SHOW(S) TABLES(T) IN identifier(D). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, D);
 }
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
@@ -161,9 +188,64 @@ qualified_identifier(A) ::= qualified_identifier(B) DOT identifier(C). {
     A = mylite_sql_parser_make_qualified_identifier(state, B, C);
 }
 
+table_name(A) ::= identifier(B). {
+    A = B;
+}
+table_name(A) ::= identifier(B) DOT identifier(C). {
+    A = mylite_sql_parser_make_qualified_identifier(state, B, C);
+}
+
 identifier(A) ::= IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
+}
+
+column_definition_list(A) ::= column_definition(B). {
+    A = mylite_sql_parser_make_column_definition_list(state, B);
+}
+column_definition_list(A) ::= column_definition_list(B) COMMA column_definition(C). {
+    A = mylite_sql_parser_append_column_definition(state, B, C);
+}
+
+column_definition(A) ::= identifier(N) integer_type(T) nullability_opt(U). {
+    A = mylite_sql_parser_make_column_definition(state, N, T, U);
+}
+
+integer_type(A) ::= INT(T). {
+    A = mylite_sql_parser_make_integer_type(
+        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, (struct mylite_sql_token){0});
+}
+integer_type(A) ::= INTEGER_TYPE(T). {
+    A = mylite_sql_parser_make_integer_type(
+        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, (struct mylite_sql_token){0});
+}
+integer_type(A) ::= BIGINT(T). {
+    A = mylite_sql_parser_make_integer_type(
+        state, T, MYLITE_SQL_AST_INTEGER_TYPE_BIGINT, (struct mylite_sql_token){0});
+}
+integer_type(A) ::= INT(T) UNSIGNED(U). {
+    A = mylite_sql_parser_make_integer_type(
+        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, U);
+}
+integer_type(A) ::= INTEGER_TYPE(T) UNSIGNED(U). {
+    A = mylite_sql_parser_make_integer_type(
+        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, U);
+}
+integer_type(A) ::= BIGINT(T) UNSIGNED(U). {
+    A = mylite_sql_parser_make_integer_type(
+        state, T, MYLITE_SQL_AST_INTEGER_TYPE_BIGINT, U);
+}
+
+nullability_opt(A) ::= . {
+    A = NULL;
+}
+nullability_opt(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_nullability(
+        state, MYLITE_SQL_AST_NULLABILITY_NULL, T, T);
+}
+nullability_opt(A) ::= NOT(N) NULL(T). {
+    A = mylite_sql_parser_make_nullability(
+        state, MYLITE_SQL_AST_NULLABILITY_NOT_NULL, N, T);
 }

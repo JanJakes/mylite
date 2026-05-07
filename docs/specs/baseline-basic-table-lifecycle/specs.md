@@ -264,7 +264,8 @@ show_tables_statement ::= SHOW TABLES.
 show_tables_statement ::= SHOW TABLES FROM identifier.
 show_tables_statement ::= SHOW TABLES IN identifier.
 
-table_name ::= qualified_identifier.
+table_name ::= identifier.
+table_name ::= identifier DOT identifier.
 ```
 
 The existing parser rule that treats a reserved word after `.` as an identifier
@@ -304,9 +305,10 @@ before any physical SQLite SQL is generated. This prevents collisions with
 catalog tables and generated physical table names.
 
 Duplicate column names are rejected by MyLite analysis before catalog or
-physical schema mutation. This phase compares column names byte-for-byte after
-identifier unquoting; broader MySQL identifier case-folding policy remains a
-future schema/identifier feature.
+physical schema mutation. This phase compares column names with ASCII
+case-insensitive folding after identifier unquoting, matching observed MySQL
+8.4.9 duplicate-column behavior for the supported identifier subset. Broader
+schema and table-name case policy remains a future schema/identifier feature.
 
 ## Column Descriptors
 
@@ -425,6 +427,7 @@ Observed behavior used by this feature:
 | `DROP TABLE IF EXISTS t` when `t` does not exist | `Query OK, 0 rows affected, 1 warning`; warning note code `1051`. |
 | `CREATE TABLE t (id INT)` when `t` exists | Error `1050`, SQLSTATE `42S01`. |
 | `CREATE TABLE duplicate_column (id INT, id BIGINT)` | Error `1060`, SQLSTATE `42S21`. |
+| `CREATE TABLE duplicate_case_column (id INT, ID BIGINT)` | Error `1060`, SQLSTATE `42S21`, duplicate name `ID`. |
 | `CREATE TABLE display_width (id INT(11))` | Accepted with warning `1681`; MyLite rejects display width in this phase. |
 | `CREATE TABLE unsupported_varchar (name VARCHAR(10))` | Accepted by MySQL; MyLite rejects non-integer types in this phase. |
 | `CREATE TABLE bad_table_option (id INT) ENGINE=InnoDB` | Accepted by MySQL; MyLite rejects table options in this phase. |

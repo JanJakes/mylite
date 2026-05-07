@@ -99,6 +99,28 @@ void mylite_sql_ast_node_set_operator(
     node->payload.expression.operator_kind = operator_kind;
 }
 
+void mylite_sql_ast_node_set_integer_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_integer_type_payload payload
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.integer_type = payload;
+}
+
+void mylite_sql_ast_node_set_nullability(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_nullability nullability
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.nullability.kind = nullability;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *child = NULL;
     size_t count = 0U;
@@ -134,6 +156,34 @@ enum mylite_sql_ast_operator mylite_sql_ast_node_operator(const struct mylite_sq
     return node->payload.expression.operator_kind;
 }
 
+enum mylite_sql_ast_integer_type mylite_sql_ast_node_integer_type(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_INTEGER_TYPE) {
+        return MYLITE_SQL_AST_INTEGER_TYPE_NONE;
+    }
+
+    return node->payload.integer_type.kind;
+}
+
+int mylite_sql_ast_node_integer_type_is_unsigned(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_INTEGER_TYPE) {
+        return 0;
+    }
+
+    return node->payload.integer_type.is_unsigned;
+}
+
+enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_NULLABILITY) {
+        return MYLITE_SQL_AST_NULLABILITY_UNSPECIFIED;
+    }
+
+    return node->payload.nullability.kind;
+}
+
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
     switch (kind) {
     case MYLITE_SQL_AST_SCRIPT:
@@ -162,6 +212,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "binary_expression";
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         return "parenthesized_expression";
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+        return "create_table_statement";
+    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+        return "drop_table_statement";
+    case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
+        return "show_tables_statement";
+    case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
+        return "column_definition_list";
+    case MYLITE_SQL_AST_COLUMN_DEFINITION:
+        return "column_definition";
+    case MYLITE_SQL_AST_INTEGER_TYPE:
+        return "integer_type";
+    case MYLITE_SQL_AST_NULLABILITY:
+        return "nullability";
     }
 
     return "unknown";
@@ -212,6 +276,32 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "multiply";
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
         return "divide";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type integer_type) {
+    switch (integer_type) {
+    case MYLITE_SQL_AST_INTEGER_TYPE_NONE:
+        return "none";
+    case MYLITE_SQL_AST_INTEGER_TYPE_INT:
+        return "int";
+    case MYLITE_SQL_AST_INTEGER_TYPE_BIGINT:
+        return "bigint";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_nullability_name(enum mylite_sql_ast_nullability nullability) {
+    switch (nullability) {
+    case MYLITE_SQL_AST_NULLABILITY_UNSPECIFIED:
+        return "unspecified";
+    case MYLITE_SQL_AST_NULLABILITY_NULL:
+        return "null";
+    case MYLITE_SQL_AST_NULLABILITY_NOT_NULL:
+        return "not_null";
     }
 
     return "unknown";

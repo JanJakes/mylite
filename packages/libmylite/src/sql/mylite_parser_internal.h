@@ -46,6 +46,24 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
     struct mylite_sql_token use_token,
     struct mylite_sql_ast_node *schema_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *table_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token tables_token,
+    struct mylite_sql_ast_node *schema_name
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard_select_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token wildcard_token
@@ -104,6 +122,33 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_token left_paren,
     struct mylite_sql_ast_node *expression,
     struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_column_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *column
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *integer_type,
+    struct mylite_sql_ast_node *nullability
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token type_token,
+    enum mylite_sql_ast_integer_type integer_type,
+    struct mylite_sql_token unsigned_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_nullability nullability,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token
 );
 
 #endif

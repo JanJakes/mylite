@@ -19,6 +19,13 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_UNARY_EXPRESSION = 10,
     MYLITE_SQL_AST_BINARY_EXPRESSION = 11,
     MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION = 12,
+    MYLITE_SQL_AST_CREATE_TABLE_STATEMENT = 13,
+    MYLITE_SQL_AST_DROP_TABLE_STATEMENT = 14,
+    MYLITE_SQL_AST_SHOW_TABLES_STATEMENT = 15,
+    MYLITE_SQL_AST_COLUMN_DEFINITION_LIST = 16,
+    MYLITE_SQL_AST_COLUMN_DEFINITION = 17,
+    MYLITE_SQL_AST_INTEGER_TYPE = 18,
+    MYLITE_SQL_AST_NULLABILITY = 19,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -45,6 +52,18 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_DIVIDE = 6,
 };
 
+enum mylite_sql_ast_integer_type {
+    MYLITE_SQL_AST_INTEGER_TYPE_NONE = 0,
+    MYLITE_SQL_AST_INTEGER_TYPE_INT = 1,
+    MYLITE_SQL_AST_INTEGER_TYPE_BIGINT = 2,
+};
+
+enum mylite_sql_ast_nullability {
+    MYLITE_SQL_AST_NULLABILITY_UNSPECIFIED = 0,
+    MYLITE_SQL_AST_NULLABILITY_NULL = 1,
+    MYLITE_SQL_AST_NULLABILITY_NOT_NULL = 2,
+};
+
 struct mylite_sql_ast_literal_payload {
     enum mylite_sql_ast_literal_kind kind;
 };
@@ -53,9 +72,20 @@ struct mylite_sql_ast_expression_payload {
     enum mylite_sql_ast_operator operator_kind;
 };
 
+struct mylite_sql_ast_integer_type_payload {
+    enum mylite_sql_ast_integer_type kind;
+    int is_unsigned;
+};
+
+struct mylite_sql_ast_nullability_payload {
+    enum mylite_sql_ast_nullability kind;
+};
+
 union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_literal_payload literal;
     struct mylite_sql_ast_expression_payload expression;
+    struct mylite_sql_ast_integer_type_payload integer_type;
+    struct mylite_sql_ast_nullability_payload nullability;
 };
 
 struct mylite_sql_ast_node {
@@ -97,15 +127,32 @@ void mylite_sql_ast_node_set_operator(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_operator operator_kind
 );
+void mylite_sql_ast_node_set_integer_type(
+    struct mylite_sql_ast_node *node,
+    struct mylite_sql_ast_integer_type_payload payload
+);
+void mylite_sql_ast_node_set_nullability(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_nullability nullability
+);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_operator mylite_sql_ast_node_operator(const struct mylite_sql_ast_node *node);
+enum mylite_sql_ast_integer_type mylite_sql_ast_node_integer_type(
+    const struct mylite_sql_ast_node *node
+);
+int mylite_sql_ast_node_integer_type_is_unsigned(const struct mylite_sql_ast_node *node);
+enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
+    const struct mylite_sql_ast_node *node
+);
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);
 const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind kind);
 const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind);
+const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type integer_type);
+const char *mylite_sql_ast_nullability_name(enum mylite_sql_ast_nullability nullability);
 
 #endif

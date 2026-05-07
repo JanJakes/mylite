@@ -110,8 +110,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Verify and complete `UPDATE ... WHERE ... ORDER BY ... LIMIT`.
 - [x] Fix joined `UPDATE ... JOIN ... ON ...` name resolution such as `t1.id`.
 - [x] Complete more complex joined update forms. Comma joins, `USING` joins,
-      `RIGHT JOIN`, and self-join aliases are covered against MySQL 8.4.9
-      expectations.
+      `RIGHT JOIN`, self-join aliases, unqualified `USING` assignment targets,
+      case-sensitive assignment qualifiers, and parenthesized nested join
+      operands are covered against MySQL 8.4.9 expectations.
 - [x] Support `INSERT ... SELECT FROM DUAL`.
 - [x] Verify and complete `INSERT ... SET ...` defaults and generated values.
 - [x] Verify and complete `INSERT` without `INTO`.

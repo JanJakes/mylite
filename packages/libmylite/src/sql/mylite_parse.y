@@ -4524,6 +4524,9 @@ using_column_list(A) ::= using_column_list(B) COMMA identifier(C). {
 table_factor(A) ::= table_name(B) opt_table_alias(C) opt_index_hint_list. {
     A = mylite_sql_parser_make_table_factor(state, B, C);
 }
+table_factor(A) ::= LPAREN joined_table_reference(B) RPAREN. {
+    A = B;
+}
 
 opt_index_hint_list(A) ::= . {
     A = (struct mylite_sql_token){0};

@@ -7911,6 +7911,34 @@ static int test_update_single_table_syntax(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "UPDATE (a JOIN b ON a.id = b.a_id) JOIN c ON b.id = c.b_id SET a.v = c.add_v",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    references = child_at(child_at(statement, 0U), 0U);
+    failures += expect_node(
+        child_at(references, 0U),
+        MYLITE_SQL_AST_JOIN_EXPRESSION,
+        "left-parenthesized update join expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE a JOIN (b JOIN c ON b.id = c.b_id) ON a.id = b.a_id SET a.v = c.add_v",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    references = child_at(child_at(statement, 0U), 0U);
+    failures += expect_node(
+        child_at(references, 0U),
+        MYLITE_SQL_AST_JOIN_EXPRESSION,
+        "right-parenthesized update join expression"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "UPDATE t JOIN u ON t.id = u.id SET t.a = u.a ORDER BY t.id",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -12937,6 +12965,28 @@ static int test_select_inner_join_syntax(void) {
         MYLITE_SQL_AST_JOIN_CONDITION_ON,
         "comma explicit ON belongs to explicit join"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM (l JOIN r ON l.id = r.l_id) JOIN p ON r.id = p.r_id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    references = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    join = child_at(references, 0U);
+    failures +=
+        expect_node(join, MYLITE_SQL_AST_JOIN_EXPRESSION, "left-parenthesized join subtree");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM l JOIN (r JOIN p ON r.id = p.r_id) ON l.id = r.l_id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    references = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    join = child_at(references, 0U);
+    failures +=
+        expect_node(join, MYLITE_SQL_AST_JOIN_EXPRESSION, "right-parenthesized join subtree");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

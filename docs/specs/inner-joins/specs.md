@@ -43,8 +43,8 @@ Out of scope for the first implementation slice:
 - outer joins, including `LEFT`, `RIGHT`, and null-extension behavior
 - `NATURAL` joins
 - `STRAIGHT_JOIN`
-- parenthesized table-reference groups, except as a documented deferred MySQL
-  surface
+- broad parenthesized table-reference groups over comma lists; parenthesized
+  nested join operands are covered for the base-table join surface
 - derived tables, `LATERAL`, table functions, subqueries, CTEs, and views
 - information-schema and performance-schema joins
 - partitions; index hints are parsed and ignored by the separate placeholder
@@ -339,10 +339,10 @@ ORDER BY l.id, r.id, p.id;
 It returns `(1,10,100)`, `(2,20,200)`, and `(2,21,200)`.
 
 MySQL also supports parenthesized table-reference groups to override
-precedence, for example `(l, r) JOIN p ON l.id = p.l_id`. Parenthesized join
-groups are deferred in this MyLite slice; applications can use explicit joins
-to avoid the comma-precedence trap until that broader table-reference surface
-is implemented.
+precedence, for example `(l, r) JOIN p ON l.id = p.l_id`. MyLite's current
+covered surface accepts parenthesized nested join operands, such as
+`l JOIN (r JOIN p ON ...) ON ...`, while broader comma-list parenthesized
+groups remain deferred.
 
 `ON` is not valid directly after a comma-separated table reference. The query
 `SELECT * FROM l, r ON l.id = r.l_id` is a syntax error:
@@ -545,7 +545,9 @@ Deferred grammar must remain rejected or produce explicit unsupported
 diagnostics:
 
 ```lemon
-/* Deferred: parenthesized table-reference groups. */
+table_factor ::= LPAREN joined_table_reference RPAREN.
+
+/* Deferred: parenthesized comma-list table-reference groups. */
 table_factor ::= LPAREN table_references RPAREN.
 
 /* Deferred: outer, natural, and straight joins. */
@@ -760,13 +762,14 @@ Parser tests:
 - `JOIN`, `INNER JOIN`, and `CROSS JOIN` with `USING`
 - repeated `USING` names
 - chained explicit joins
+- parenthesized nested join operands
 - mixed comma and explicit joins preserving explicit-join precedence
 - aliases with and without `AS`
 - qualified wildcards over joined table references
 - syntax rejection for `ON` after comma joins
-- rejection or unsupported handling for parenthesized table references,
-  outer joins, natural joins, straight joins, derived tables, partitions, and
-  index hints
+- rejection or unsupported handling for parenthesized comma-list table
+  references, outer joins, natural joins, straight joins, derived tables,
+  partitions, and index hints
 
 Analyzer and runtime tests:
 

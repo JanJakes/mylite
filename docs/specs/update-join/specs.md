@@ -8,6 +8,8 @@ references:
 - `UPDATE t JOIN u ON ... SET t.col = expr [WHERE expr]`
 - `UPDATE t LEFT JOIN u ON ... SET t.col = expr [WHERE expr]`
 - `UPDATE t, u SET t.col = expr [WHERE expr]`
+- parenthesized joined-table operands such as
+  `UPDATE (a JOIN b ON ...) JOIN c ON ... SET a.col = c.col`
 - assignments to one or more joined base tables
 
 `ORDER BY` and `LIMIT` remain single-table-only. MySQL rejects them for
@@ -45,6 +47,9 @@ joined_update_explicit_reference ::= joined_update_explicit_reference
     inner_join_operator table_factor opt_inner_join_condition.
 joined_update_explicit_reference ::= joined_update_explicit_reference
     outer_join_operator table_factor outer_join_condition.
+
+table_factor ::= table_name opt_table_alias opt_index_hint_list.
+table_factor ::= LPAREN joined_table_reference RPAREN.
 ```
 
 The AST stores the joined source as the same `FROM_TABLE_REFERENCES` node used
@@ -77,6 +82,11 @@ is no physical row to update.
 
 - Missing target columns use `1054` in `field list`.
 - Ambiguous unqualified assignment targets use `1052` in `field list`.
+- Unqualified assignment targets that name a `USING` column resolve to the
+  coalesced writable side of that `USING` column. For `RIGHT JOIN`, the
+  coalesced side is the right table.
+- Assignment target table/schema qualifiers are case-sensitive, matching
+  SELECT reference resolution on the verified MySQL 8.4.9 Linux runtime.
 - `ORDER BY` and `LIMIT` after joined updates are syntax errors.
 - Assignment expression warnings are promoted with the same strict DML policy as
   single-table `UPDATE`.
@@ -86,7 +96,6 @@ is no physical row to update.
 
 - Optimizer behavior and physical join-order fidelity.
 - Generated-column execution and triggers.
-- Foreign-key interaction and lock ordering.
 - Exact behavior for duplicate joins that assign different values to the same
   target row.
 
@@ -99,6 +108,9 @@ Coverage includes:
 - joined assignment from source table columns
 - base table-name qualifiers in `JOIN ... ON` and `SET` targets, such as
   `UPDATE t1 JOIN t2 ON t1.id = t2.t1_id SET t1.a = t2.new_a`
+- unqualified `USING` assignment targets, including `RIGHT JOIN`
+- case-sensitive assignment target qualifiers
+- parenthesized left and right nested join operands
 - no-op affected-row behavior
 - automatic `ON UPDATE CURRENT_TIMESTAMP` refresh for changed target rows and
   explicit-assignment suppression

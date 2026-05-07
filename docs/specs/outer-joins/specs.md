@@ -44,7 +44,8 @@ Out of scope for this slice:
 - `NATURAL` joins, including `NATURAL LEFT JOIN` and `NATURAL RIGHT JOIN`
 - `STRAIGHT_JOIN`
 - ODBC `{ OJ ... }` escaped table references
-- parenthesized table-reference groups
+- broad parenthesized table-reference groups over comma lists; parenthesized
+  nested join operands are covered for the base-table join surface
 - derived tables, `LATERAL`, table functions, subqueries, CTEs, and views
 - information-schema and performance-schema joins
 - partitions; index hints are parsed and ignored by the separate placeholder
@@ -542,7 +543,9 @@ Deferred grammar should remain rejected or produce explicit unsupported
 diagnostics:
 
 ```lemon
-/* Deferred: parenthesized table-reference groups. */
+table_factor ::= LPAREN joined_table_reference RPAREN.
+
+/* Deferred: parenthesized comma-list table-reference groups. */
 table_factor ::= LPAREN table_references RPAREN.
 
 /* Deferred: natural, straight, and ODBC escaped joins. */
@@ -731,5 +734,5 @@ sides, and includes runtime tests for rows, metadata, warnings, diagnostics,
 ordering, limits, and aggregate counts.
 
 Compatibility remains partial for the explicitly deferred surfaces above:
-natural joins, parenthesized table references, derived tables, partitions, and
-optimizer behavior.
+natural joins, parenthesized comma-list table references, derived tables,
+partitions, and optimizer behavior.

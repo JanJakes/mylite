@@ -66822,6 +66822,30 @@ static int test_inner_join_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SELECT l.id AS left_id, r.id AS right_id, e.note "
+        "FROM (left_t AS l JOIN right_t AS r ON l.id = r.left_id) "
+        "JOIN extra_t AS e ON e.id = l.id "
+        "WHERE r.id < 20 ORDER BY r.id, e.note",
+        chained_columns,
+        3,
+        chained_values,
+        4,
+        "left-parenthesized inner join"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT l.id AS left_id, r.id AS right_id, e.note "
+        "FROM left_t AS l JOIN (right_t AS r "
+        "JOIN extra_t AS e ON e.id = r.left_id) ON l.id = r.left_id "
+        "WHERE r.id < 20 ORDER BY r.id, e.note",
+        chained_columns,
+        3,
+        chained_values,
+        4,
+        "right-parenthesized inner join"
+    );
+    failures += expect_select_rows(
+        database,
         "SELECT COUNT(*) AS c "
         "FROM left_t JOIN right_t "
         "ON left_t.id = right_t.left_id AND (right_t.id / 0) "
@@ -73798,6 +73822,36 @@ static int test_update_single_table_execution(void) {
         "3",
         "8",
     };
+    static const char *const joined_using_left_values[] = {
+        "2",
+        "20",
+        "11",
+        "10",
+    };
+    static const char *const joined_using_right_values[] = {
+        "1",
+        "100",
+        "2",
+        "200",
+        "14",
+        "400",
+    };
+    static const char *const joined_nested_first_values[] = {
+        "1",
+        "5",
+        "2",
+        "7",
+        "3",
+        "0",
+    };
+    static const char *const joined_nested_second_values[] = {
+        "1",
+        "10",
+        "2",
+        "14",
+        "3",
+        "0",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     uint64_t last_insert_id = 0U;
@@ -74532,6 +74586,214 @@ static int test_update_single_table_execution(void) {
         joined_self_values,
         3,
         "joined update self join aliases values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_using_left (id INT PRIMARY KEY, v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_using_right (id INT PRIMARY KEY, v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_using_left VALUES (1,10),(2,20)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_using_right VALUES (1,100),(2,200),(4,400)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_using_left AS l "
+        "JOIN joined_update_using_right AS r USING (id) "
+        "SET id = id + 10 WHERE r.id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_DONE,
+        "joined update using unqualified left target"
+    );
+    failures += expect_int64(
+        mylite_affected_rows(stmt),
+        1,
+        "joined update using unqualified left target affected"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM joined_update_using_left ORDER BY id",
+        shift_columns,
+        2,
+        joined_using_left_values,
+        2,
+        "joined update using unqualified left target values"
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_using_left AS l "
+        "RIGHT JOIN joined_update_using_right AS r USING (id) "
+        "SET id = id + 10 WHERE l.id IS NULL AND r.id = 4",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_DONE,
+        "joined update using unqualified right target"
+    );
+    failures += expect_int64(
+        mylite_affected_rows(stmt),
+        1,
+        "joined update using unqualified right target affected"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM joined_update_using_right ORDER BY id",
+        shift_columns,
+        2,
+        joined_using_right_values,
+        3,
+        "joined update using unqualified right target values"
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_using_left AS l "
+        "JOIN joined_update_using_right AS r USING (id) SET v = 999",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "joined update using ambiguous non-using target"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Column 'v' in field list is ambiguous",
+        "joined update using ambiguous non-using target error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_case_target (id INT PRIMARY KEY, v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_case_source (id INT PRIMARY KEY, v INT)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO joined_update_case_target VALUES (1,10)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO joined_update_case_source VALUES (1,20)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_case_target AS c "
+        "JOIN joined_update_case_source AS s ON c.id = s.id SET C.v = s.v",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "joined update case-sensitive assignment qualifier"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Unknown column 'C.v' in 'field list'",
+        "joined update case-sensitive assignment qualifier error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_nested_a (id INT PRIMARY KEY, v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_nested_b (id INT PRIMARY KEY, a_id INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_nested_c (id INT PRIMARY KEY, b_id INT, add_v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_nested_a VALUES (1,0),(2,0),(3,0)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_nested_b VALUES (10,1),(20,2)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_nested_c VALUES (100,10,5),(200,20,7)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE (joined_update_nested_a AS a "
+        "JOIN joined_update_nested_b AS b ON a.id = b.a_id) "
+        "JOIN joined_update_nested_c AS c ON b.id = c.b_id SET a.v = c.add_v",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update left nested join");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "joined update left nested join affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM joined_update_nested_a ORDER BY id",
+        shift_columns,
+        2,
+        joined_nested_first_values,
+        3,
+        "joined update left nested join values"
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_nested_a AS a "
+        "JOIN (joined_update_nested_b AS b "
+        "JOIN joined_update_nested_c AS c ON b.id = c.b_id) "
+        "ON a.id = b.a_id SET a.v = a.v + c.add_v",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update right nested join");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "joined update right nested join affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM joined_update_nested_a ORDER BY id",
+        shift_columns,
+        2,
+        joined_nested_second_values,
+        3,
+        "joined update right nested join values"
     );
 
     failures += prepare_sql(

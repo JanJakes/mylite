@@ -69,6 +69,22 @@ static int resolve_joined_update_assignment_target(
     size_t *out_column_index
 );
 
+static int resolve_joined_update_using_assignment_target(
+    mylite_db *database,
+    const struct mylite_update_column_reference *reference,
+    const struct mylite_select_plan *select_plan,
+    size_t *out_table_index,
+    size_t *out_column_index,
+    bool *out_matched
+);
+
+static bool joined_update_plan_column_target(
+    const struct mylite_select_plan *select_plan,
+    size_t plan_column_index,
+    size_t *out_table_index,
+    size_t *out_column_index
+);
+
 static int add_joined_update_assignment(
     mylite_db *database,
     struct mylite_joined_update_target **targets,
@@ -363,7 +379,18 @@ static int resolve_joined_update_assignment_target(
     size_t *out_column_index
 ) {
     bool matched = false;
+    int status = resolve_joined_update_using_assignment_target(
+        database,
+        reference,
+        select_plan,
+        out_table_index,
+        out_column_index,
+        &matched
+    );
 
+    if (status != MYLITE_OK || matched) {
+        return status;
+    }
     for (size_t table_index = 0U; table_index < mylite_select_plan_table_count(select_plan);
          ++table_index) {
         const struct mylite_select_table *table =
@@ -386,6 +413,85 @@ static int resolve_joined_update_assignment_target(
     }
 
     return matched ? MYLITE_OK : set_joined_update_unknown_column_error(database, reference);
+}
+
+static int resolve_joined_update_using_assignment_target(
+    mylite_db *database,
+    const struct mylite_update_column_reference *reference,
+    const struct mylite_select_plan *select_plan,
+    size_t *out_table_index,
+    size_t *out_column_index,
+    bool *out_matched
+) {
+    size_t matched_plan_column = SIZE_MAX;
+    size_t matched_table = 0U;
+    size_t matched_column = 0U;
+
+    *out_matched = false;
+    if (reference == NULL || reference->schema_name != NULL || reference->table_name != NULL ||
+        reference->column_name == NULL || select_plan == NULL) {
+        return MYLITE_OK;
+    }
+
+    for (size_t index = 0U; index < select_plan->using_column_count; ++index) {
+        const struct mylite_select_join_using_column *using_column =
+            &select_plan->using_columns[index];
+        size_t table_index = 0U;
+        size_t column_index = 0U;
+
+        if (!mylite_ascii_case_equal(using_column->name, reference->column_name)) {
+            continue;
+        }
+        if (matched_plan_column == using_column->coalesced_column_index) {
+            continue;
+        }
+        if (matched_plan_column != SIZE_MAX) {
+            return set_joined_update_ambiguous_column_error(database, reference->column_name);
+        }
+        if (!joined_update_plan_column_target(
+                select_plan,
+                using_column->coalesced_column_index,
+                &table_index,
+                &column_index
+            )) {
+            return MYLITE_UNSUPPORTED;
+        }
+        matched_plan_column = using_column->coalesced_column_index;
+        matched_table = table_index;
+        matched_column = column_index;
+    }
+
+    if (matched_plan_column != SIZE_MAX) {
+        *out_table_index = matched_table;
+        *out_column_index = matched_column;
+        *out_matched = true;
+    }
+    return MYLITE_OK;
+}
+
+static bool joined_update_plan_column_target(
+    const struct mylite_select_plan *select_plan,
+    size_t plan_column_index,
+    size_t *out_table_index,
+    size_t *out_column_index
+) {
+    if (select_plan == NULL) {
+        return false;
+    }
+    for (size_t table_index = 0U; table_index < mylite_select_plan_table_count(select_plan);
+         ++table_index) {
+        const struct mylite_select_table *table =
+            mylite_select_plan_table_const(select_plan, table_index);
+
+        if (table == NULL || plan_column_index < table->first_column_index ||
+            plan_column_index >= table->first_column_index + table->column_count) {
+            continue;
+        }
+        *out_table_index = table_index;
+        *out_column_index = plan_column_index - table->first_column_index;
+        return true;
+    }
+    return false;
 }
 
 static int add_joined_update_assignment(
@@ -483,14 +589,14 @@ static bool joined_update_reference_matches_table(
     }
     if (reference->schema_name != NULL) {
         return table->alias == NULL && table->schema_name != NULL &&
-               mylite_ascii_case_equal(reference->schema_name, table->schema_name) &&
+               strcmp(reference->schema_name, table->schema_name) == 0 &&
                reference->table_name != NULL &&
-               mylite_ascii_case_equal(reference->table_name, table->table_name);
+               strcmp(reference->table_name, table->table_name) == 0;
     }
     if (reference->table_name != NULL) {
         const char *visible_name = table->alias == NULL ? table->table_name : table->alias;
 
-        return visible_name != NULL && mylite_ascii_case_equal(reference->table_name, visible_name);
+        return visible_name != NULL && strcmp(reference->table_name, visible_name) == 0;
     }
     return true;
 }

@@ -356,7 +356,7 @@ static int copy_select_join_right_operand(
 ) {
     struct mylite_select_table_range right_range = {0};
     struct mylite_select_table_range joined_range = {0};
-    int status = copy_select_base_table_reference_node(database, entry->right, plan, &right_range);
+    int status = copy_select_table_reference_node(database, entry->right, plan, &right_range);
 
     if (status != MYLITE_OK) {
         return status;

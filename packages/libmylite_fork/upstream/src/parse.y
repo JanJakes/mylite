@@ -1235,6 +1235,10 @@ expr(A) ::= CAST LP expr(E) AS typetoken(T) RP. {
 expr(A) ::= idj(X) LP distinct(D) exprlist(Y) RP. {
   A = sqlite3ExprFunction(pParse, Y, &X, D);
 }
+expr(A) ::= ISNULL(X) LP expr(Y) RP. {
+  ExprList *pList = sqlite3ExprListAppend(pParse, 0, Y);
+  A = sqlite3ExprFunction(pParse, pList, &X, 0);
+}
 expr(A) ::= idj(X) LP distinct(D) exprlist(Y) ORDER BY sortlist(O) RP. {
   A = sqlite3ExprFunction(pParse, Y, &X, D);
   sqlite3ExprAddFunctionOrderBy(pParse, A, O);

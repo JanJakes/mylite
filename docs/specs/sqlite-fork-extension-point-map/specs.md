@@ -42,6 +42,8 @@ Implemented fork points:
   `CHECK`, and immediate foreign-key constraint failures
 - structured fork warning publication from configured scalar callbacks,
   beginning with `IF()` condition conversion warnings
+- narrow parser admission for MySQL function names that SQLite tokenizes as
+  syntax instead of identifiers, beginning with `ISNULL(expr)`
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before
@@ -120,7 +122,9 @@ timing.
 Use existing SQLite APIs for:
 
 - Scalar, aggregate, and window functions whose arguments and result metadata
-  can be represented by compact callbacks.
+  can be represented by compact callbacks. Function names that SQLite tokenizes
+  as operators or other syntax still need a small fork grammar rule before they
+  can lower to those callbacks.
 - Collations where the comparison algorithm can be implemented directly and
   registered by MySQL collation name. MyLite-generated expressions must still
   carry the intended `COLLATE` clause when SQLite would otherwise treat a
@@ -283,8 +287,10 @@ For the next foundation work, prefer this order:
    after catalog-fed descriptors cover the semantic primitive.
 4. Add fork diagnostics only when a conversion or constraint behavior needs
    MySQL warning/error semantics that cannot be represented by SQLite errors.
-5. Move row identity, sequence allocation, and constraint mapping into the fork
+5. Add narrow grammar hooks when MySQL-compatible syntax is blocked before the
+   public extension registry is consulted.
+6. Move row identity, sequence allocation, and constraint mapping into the fork
    when public MyLite SQL lowering cannot preserve MySQL affected-row,
    duplicate-key, or auto-increment side effects without duplicated logic.
-6. Delay broad parser patches until the primitive semantics are strong enough
+7. Delay broad parser patches until the primitive semantics are strong enough
    that parser integration can attach metadata instead of recreating behavior.

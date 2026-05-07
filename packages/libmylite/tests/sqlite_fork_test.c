@@ -349,6 +349,9 @@ static int test_registered_functions(void) {
     );
     failures +=
         expect_int64(database, "SELECT BIT_LENGTH(NULL) IS NULL", 1, "BIT_LENGTH propagates NULL");
+    failures += expect_int64(database, "SELECT ISNULL(NULL)", 1, "ISNULL returns 1 for NULL");
+    failures +=
+        expect_int64(database, "SELECT ISNULL(0)", 0, "ISNULL returns 0 for non-NULL values");
 
     sqlite3_close(database);
     return failures;

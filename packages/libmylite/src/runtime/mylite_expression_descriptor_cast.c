@@ -1,6 +1,7 @@
 #include "mylite_expression_descriptor_cast.h"
 
 #include "mylite_charset.h"
+#include "mylite_connection.h"
 #include "mylite_expression.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_expression_validation.h"
@@ -26,6 +27,7 @@ static struct mylite_field_descriptor cast_decimal_descriptor(
 );
 
 static struct mylite_field_descriptor cast_float_descriptor(
+    mylite_db *database,
     const struct mylite_sql_ast_node *target,
     const struct mylite_field_descriptor *source
 );
@@ -52,6 +54,11 @@ static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *tar
 static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target);
 
 static bool cast_float_target_is_double(const struct mylite_sql_ast_node *target);
+
+static bool cast_float_target_is_real_as_float(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target
+);
 
 static unsigned int cast_temporal_fsp(const struct mylite_sql_ast_node *target);
 
@@ -118,7 +125,7 @@ int mylite_expression_descriptor_infer_cast_expression(
         return MYLITE_OK;
     case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
     case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
-        *out_descriptor = cast_float_descriptor(target, &source_descriptor);
+        *out_descriptor = cast_float_descriptor(database, target, &source_descriptor);
         return MYLITE_OK;
     case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
     case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
@@ -203,12 +210,15 @@ static struct mylite_field_descriptor cast_decimal_descriptor(
 }
 
 static struct mylite_field_descriptor cast_float_descriptor(
+    mylite_db *database,
     const struct mylite_sql_ast_node *target,
     const struct mylite_field_descriptor *source
 ) {
     struct mylite_field_descriptor descriptor = {
-        .type = cast_float_target_is_double(target) ? MYLITE_FIELD_TYPE_DOUBLE
-                                                    : MYLITE_FIELD_TYPE_FLOAT,
+        .type = cast_float_target_is_double(target) &&
+                        !cast_float_target_is_real_as_float(database, target)
+                    ? MYLITE_FIELD_TYPE_DOUBLE
+                    : MYLITE_FIELD_TYPE_FLOAT,
         .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
         .length = mylite_mysql_double_display_length + 1U,
         .decimals = mylite_mysql_not_fixed_decimals,
@@ -315,6 +325,15 @@ static bool cast_float_target_is_double(const struct mylite_sql_ast_node *target
     return target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_FLOAT &&
            target->has_column_precision &&
            target->column_precision > mysql_float_double_precision_cutover;
+}
+
+static bool cast_float_target_is_real_as_float(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target
+) {
+    return mylite_connection_sql_mode_has_real_as_float(database) && target != NULL &&
+           target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE &&
+           mylite_span_equal_ci(target->span, "REAL");
 }
 
 static unsigned int cast_temporal_fsp(const struct mylite_sql_ast_node *target) {

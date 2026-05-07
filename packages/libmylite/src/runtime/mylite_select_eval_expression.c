@@ -1,5 +1,6 @@
 #include "mylite_select_eval_expression.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_dml.h"
 #include "mylite_expression.h"
@@ -121,6 +122,10 @@ void mylite_select_eval_expression_context_init(
 ) {
     *expression_context = (struct mylite_expression_eval_context){
         .user_data = user_context,
+        .real_as_float =
+            user_context != NULL && user_context->stmt != NULL
+                ? mylite_connection_sql_mode_has_real_as_float(user_context->stmt->database)
+                : false,
         .resolve_identifier = resolve_table_select_expression_identifier,
         .eval_constant = evaluate_table_select_cached_constant_expression,
         .eval_aggregate = evaluate_table_select_aggregate_call,

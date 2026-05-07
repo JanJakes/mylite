@@ -862,6 +862,7 @@ static int eval_decimal_cast(
 static int eval_float_cast(
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
+    bool real_as_float,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 );
@@ -3815,6 +3816,11 @@ static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target)
 
 static bool cast_float_target_is_double(const struct mylite_sql_ast_node *target);
 
+static bool cast_float_target_is_real_as_float(
+    const struct mylite_sql_ast_node *target,
+    bool real_as_float
+);
+
 static int set_float_cast_value(double value, struct mylite_expression_value *out_value);
 
 static int append_float_cast_out_of_range_error(struct mylite_expression_warnings *warnings);
@@ -5156,7 +5162,13 @@ static int eval_cast_expression(
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
     case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
-        status = eval_float_cast(target, &value, warnings, out_value);
+        status = eval_float_cast(
+            target,
+            &value,
+            context != NULL && context->real_as_float,
+            warnings,
+            out_value
+        );
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
         status = eval_char_cast(target, &value, warnings, out_value);
@@ -5278,6 +5290,7 @@ static int eval_decimal_cast(
 static int eval_float_cast(
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
+    bool real_as_float,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 ) {
@@ -5287,7 +5300,8 @@ static int eval_float_cast(
     if (status != 0) {
         return status;
     }
-    if (cast_float_target_is_double(target)) {
+    if (cast_float_target_is_double(target) &&
+        !cast_float_target_is_real_as_float(target, real_as_float)) {
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_REAL,
             .real_value = number.real_value,
@@ -23481,6 +23495,15 @@ static bool cast_float_target_is_double(const struct mylite_sql_ast_node *target
     return target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_FLOAT &&
            target->has_column_precision &&
            target->column_precision > mysql_float_double_precision_cutover;
+}
+
+static bool cast_float_target_is_real_as_float(
+    const struct mylite_sql_ast_node *target,
+    bool real_as_float
+) {
+    return real_as_float && target != NULL &&
+           target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE &&
+           ascii_span_equals(target->span, "REAL");
 }
 
 static int set_float_cast_value(double value, struct mylite_expression_value *out_value) {

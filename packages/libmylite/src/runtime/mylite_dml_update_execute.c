@@ -1,5 +1,6 @@
 #include "mylite_dml.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_select_types.h"
@@ -434,6 +435,7 @@ static int evaluate_update_assignment_value(
     };
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
+        .real_as_float = mylite_connection_sql_mode_has_real_as_float(database),
         .resolve_identifier = mylite_dml_resolve_update_expression_identifier,
         .eval_session_function = mylite_dml_evaluate_session_function,
         .eval_subquery = mylite_dml_evaluate_subquery,

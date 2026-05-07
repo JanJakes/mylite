@@ -739,6 +739,9 @@ static struct mylite_expression_eval_context scalar_expression_eval_context(
 ) {
     return (struct mylite_expression_eval_context){
         .user_data = context,
+        .real_as_float = context != NULL && context->stmt != NULL
+                             ? mylite_connection_sql_mode_has_real_as_float(context->stmt->database)
+                             : false,
         .resolve_identifier = scalar_context_resolve_identifier,
         .eval_subquery = scalar_context_eval_subquery,
         .eval_in_subquery = scalar_context_eval_in_subquery,

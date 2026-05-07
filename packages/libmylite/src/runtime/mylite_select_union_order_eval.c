@@ -1,5 +1,6 @@
 #include "mylite_select_union.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_select.h"
@@ -90,6 +91,7 @@ static int evaluate_union_order_key(
         };
         struct mylite_expression_eval_context context = {
             .user_data = &user_context,
+            .real_as_float = mylite_connection_sql_mode_has_real_as_float(stmt->database),
             .resolve_identifier = resolve_union_expression_identifier,
             .eval_session_function = evaluate_union_session_function,
         };

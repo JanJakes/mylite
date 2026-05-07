@@ -1,5 +1,6 @@
 #include "mylite_dml.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_dml_insert_bound_value.h"
 #include "mylite_dml_insert_column_reference.h"
@@ -141,6 +142,7 @@ int mylite_dml_resolve_insert_expression_bound_value(
     };
     struct mylite_expression_eval_context context = {
         .user_data = &user_context,
+        .real_as_float = mylite_connection_sql_mode_has_real_as_float(database),
         .resolve_identifier = resolve_insert_expression_identifier,
         .eval_session_function = evaluate_insert_expression_session_function,
         .eval_default_function = evaluate_insert_expression_default_function,

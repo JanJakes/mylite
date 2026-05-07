@@ -18,7 +18,8 @@ This task implements:
 - `CONVERT(expr, NCHAR)` and `NCHAR(N)`
 - `CONVERT(expr, BINARY)` as the current MyLite binary-string metadata slice
 - `CONVERT(expr, FLOAT)`, `FLOAT(p)`, `FLOAT4`, `FLOAT4(p)`, `DOUBLE`,
-  `DOUBLE PRECISION`, default-mode `REAL`, and `FLOAT8`
+  `DOUBLE PRECISION`, default-mode `REAL`, and `FLOAT8`; under
+  `REAL_AS_FLOAT`, `REAL` uses the `FLOAT` value and metadata path
 - `CONVERT(expr, DATE)`, `CONVERT(expr, TIME)`, `CONVERT(expr, TIME(fsp))`,
   `CONVERT(expr, DATETIME)`, and `CONVERT(expr, DATETIME(fsp))`
 - `CONVERT(expr USING charset_name)` for the current MyLite charset registry:
@@ -39,8 +40,6 @@ The following behavior is deferred with the same compatibility boundaries as
 
 - `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
   `YEAR`, JSON, spatial, and timezone-aware casts remain deferred
-- `REAL_AS_FLOAT` SQL mode for `REAL` cast targets remains deferred with the
-  broader approximate-numeric SQL-mode work
 - multi-valued-index `ARRAY` casts
 - fixed-length binary padding/truncation fidelity
 - full byte transcoding between character sets
@@ -75,8 +74,8 @@ using:
 Temporal target behavior was additionally checked on 2026-05-07 against the
 same MySQL 8.4.9 runtime.
 
-Floating-point target behavior was additionally checked on 2026-05-07 against
-the same MySQL 8.4.9 runtime.
+Floating-point target behavior, including `REAL_AS_FLOAT` for `REAL` targets,
+was additionally checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 
 ## MySQL observations
 
@@ -95,6 +94,7 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT('1.23456789', FLOAT(25))` | `1.23456789` | none |
 | `CONVERT('1.23456789', DOUBLE)` | `1.23456789` | none |
 | `CONVERT('1.23456789', REAL)` | `1.23456789` | none |
+| `SET sql_mode='REAL_AS_FLOAT'; CONVERT('1.23456789', REAL)` | `1.23457` | none |
 | `CONVERT('x', DOUBLE)` | `0` | 1292 truncated double |
 | `CONVERT(NULL, SIGNED)` | `NULL` | none |
 | `CONVERT('2024-01-02 03:04:05.123456', DATE)` | `2024-01-02` | none |
@@ -155,6 +155,7 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CONVERT('1.25', FLOAT)` | `FLOAT` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
 | `CONVERT('1.25', FLOAT(25))` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
 | `CONVERT('1.25', DOUBLE)` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
+| `CONVERT('1.25', REAL)` under `REAL_AS_FLOAT` | `FLOAT` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
 | `CONVERT('abc', CHAR)` under `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `CONVERT('abc', CHAR(3))` under `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `CONVERT('abc', BINARY)` under `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `binary` | `BINARY` |
@@ -341,6 +342,7 @@ transcoding project. Known differences after this implementation:
 - fixed-length binary padding remains deferred
 - `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; `YEAR`,
   JSON, spatial, and timezone-aware casts are separate tasks
-- `REAL_AS_FLOAT` is not yet applied to `REAL` cast targets
+- `REAL_AS_FLOAT` is applied to expression-level `REAL` cast targets, but
+  broader approximate-numeric DDL and storage-mode behavior remains deferred
 - overflow and SQL-mode diagnostics remain incomplete in the same places as
   the existing CAST implementation

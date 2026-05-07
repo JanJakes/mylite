@@ -121,6 +121,7 @@ typedef int (*mylite_expression_eval_default_function_fn)(
 
 struct mylite_expression_eval_context {
     void *user_data;
+    bool real_as_float;
     mylite_expression_resolve_identifier_fn resolve_identifier;
     mylite_expression_eval_constant_fn eval_constant;
     mylite_expression_eval_aggregate_fn eval_aggregate;

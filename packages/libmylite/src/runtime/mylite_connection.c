@@ -451,6 +451,13 @@ bool mylite_connection_sql_mode_has_no_backslash_escapes(const mylite_db *databa
     });
 }
 
+bool mylite_connection_sql_mode_has_real_as_float(const mylite_db *database) {
+    return sql_mode_contains_token((struct mylite_sql_mode_token_search){
+        .sql_mode = mylite_connection_sql_mode(database),
+        .expected = "REAL_AS_FLOAT",
+    });
+}
+
 bool mylite_connection_sql_mode_has_no_zero_date(const mylite_db *database) {
     return sql_mode_contains_token((struct mylite_sql_mode_token_search){
         .sql_mode = mylite_connection_sql_mode(database),

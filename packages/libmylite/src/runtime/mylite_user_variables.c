@@ -1,5 +1,6 @@
 #include "mylite_user_variables.h"
 
+#include "mylite_connection.h"
 #include "mylite_connection_statement.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
@@ -318,6 +319,7 @@ int mylite_user_variable_execute_set_statement(mylite_stmt *stmt) {
     };
     struct mylite_expression_eval_context expression_context = {
         .user_data = &user_context,
+        .real_as_float = mylite_connection_sql_mode_has_real_as_float(user_context.database),
         .resolve_identifier = eval_set_user_variable_identifier,
         .assign_user_variable = eval_set_user_variable_assignment_expression,
     };

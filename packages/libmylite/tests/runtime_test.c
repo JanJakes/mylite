@@ -33537,6 +33537,34 @@ static int test_cast_expression_execution(void) {
          MYLITE_FIELD_FLAG_NUM,
          0},
     };
+    static const struct expected_result_metadata real_as_float_metadata[] = {
+        {"real_cast",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_FLOAT,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"real_convert",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_FLOAT,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+    };
     static const struct expected_result_metadata temporal_metadata[] = {
         {"d",
          NULL,
@@ -33705,6 +33733,29 @@ static int test_cast_expression_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += execute_sql(database, "SET sql_mode='REAL_AS_FLOAT'", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('1.23456789' AS REAL) AS real_cast, "
+        "CONVERT('1.23456789', REAL) AS real_convert",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        real_as_float_metadata,
+        (int)(sizeof(real_as_float_metadata) / sizeof(real_as_float_metadata[0])),
+        "CAST REAL_AS_FLOAT metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST REAL_AS_FLOAT row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1.23457", "CAST REAL_AS_FLOAT value");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "1.23457", "CONVERT REAL_AS_FLOAT value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST REAL_AS_FLOAT done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET sql_mode=DEFAULT", MYLITE_DONE);
 
     failures += prepare_sql(
         database,

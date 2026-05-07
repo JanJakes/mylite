@@ -20,7 +20,9 @@ The current implementation supports the application-facing CAST slice:
 - `CAST(expr AS FLOAT)`, `FLOAT(p)`, `FLOAT4`, and `FLOAT4(p)`, where
   precision `p` from `0` through `24` returns `FLOAT` metadata and precision
   `25` through `53` returns `DOUBLE` metadata
-- `CAST(expr AS DOUBLE)`, `DOUBLE PRECISION`, `REAL`, and `FLOAT8`
+- `CAST(expr AS DOUBLE)`, `DOUBLE PRECISION`, default-mode `REAL`, and
+  `FLOAT8`; under `REAL_AS_FLOAT`, `REAL` uses the `FLOAT` value and metadata
+  path
 - `CAST(expr AS DATE)`, `CAST(expr AS TIME)`, `CAST(expr AS TIME(fsp))`,
   `CAST(expr AS DATETIME)`, and `CAST(expr AS DATETIME(fsp))`
 
@@ -45,8 +47,6 @@ The following behavior is deferred:
 - `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
   `YEAR`, `JSON`, spatial casts, and `CAST(... AT TIME ZONE ... AS DATETIME)`
   remain deferred
-- `REAL_AS_FLOAT` SQL mode for `REAL` cast targets remains deferred with the
-  broader approximate-numeric SQL-mode work
 - multi-valued-index `ARRAY` casts
 - exhaustive overflow/range clipping and every SQL-mode variant
 
@@ -74,8 +74,8 @@ using:
 Temporal target behavior was additionally checked on 2026-05-07 against the
 same MySQL 8.4.9 runtime.
 
-Floating-point target behavior was additionally checked on 2026-05-07 against
-the same MySQL 8.4.9 runtime.
+Floating-point target behavior, including `REAL_AS_FLOAT` for `REAL` targets,
+was additionally checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 
 ## MySQL observations
 
@@ -137,9 +137,10 @@ binary-string metadata.
 Floating-point casts parse values through MySQL's DOUBLE conversion path.
 `FLOAT` and `FLOAT4` round to single-precision values unless a binary
 precision greater than `24` is supplied. `DOUBLE`, `DOUBLE PRECISION`, default
-mode `REAL`, and `FLOAT8` return double-precision values. Invalid strings
-return zero and emit warning 1292 with a DOUBLE message. `NULL` returns `NULL`
-without warnings.
+mode `REAL`, and `FLOAT8` return double-precision values. When `REAL_AS_FLOAT`
+is active, `REAL` returns `FLOAT` metadata and single-precision rounded values.
+Invalid strings return zero and emit warning 1292 with a DOUBLE message. `NULL`
+returns `NULL` without warnings.
 
 | SQL | Result | Warnings |
 | --- | --- | --- |
@@ -148,6 +149,7 @@ without warnings.
 | `CAST('1.23456789' AS FLOAT(25))` | `1.23456789` | none |
 | `CAST('1.23456789' AS DOUBLE)` | `1.23456789` | none |
 | `CAST('1.23456789' AS REAL)` | `1.23456789` | none |
+| `SET sql_mode='REAL_AS_FLOAT'; CAST('1.23456789' AS REAL)` | `1.23457` | none |
 | `CAST('1.23456789' AS FLOAT4(10))` | `1.23457` | none |
 | `CAST('1.23456789' AS FLOAT8)` | `1.23456789` | none |
 | `CAST('x' AS DOUBLE)` | `0` | 1292 truncated double |
@@ -442,7 +444,8 @@ conversion engine. The main known differences are:
 - connection charset metadata is limited to the current MyLite charset registry
 - `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; `YEAR`,
   JSON, spatial, and timezone-aware casts are separate tasks
-- `REAL_AS_FLOAT` is not yet applied to `REAL` cast targets
+- `REAL_AS_FLOAT` is applied to expression-level `REAL` cast targets, but
+  broader approximate-numeric DDL and storage-mode behavior remains deferred
 - overflow and SQL-mode diagnostics are not exhaustive
 
 `CONVERT(expr, type)` and `CONVERT(expr USING charset_name)` are implemented as

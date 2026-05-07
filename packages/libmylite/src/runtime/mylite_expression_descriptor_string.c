@@ -40,6 +40,12 @@ static int infer_space_function_descriptor(
     struct mylite_field_descriptor *out_descriptor
 );
 
+static bool infer_padding_repeat_long_blob_descriptor(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor
+);
+
 static uint64_t insert_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -257,6 +263,9 @@ int mylite_expression_descriptor_infer_slice_string_function(
         (void)nullable;
         return infer_space_function_descriptor(database, expression, value, out_descriptor);
     }
+    if (infer_padding_repeat_long_blob_descriptor(database, expression, out_descriptor)) {
+        return MYLITE_OK;
+    }
 
     *out_descriptor = (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
@@ -268,6 +277,35 @@ int mylite_expression_descriptor_infer_slice_string_function(
     };
     mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
+}
+
+static bool infer_padding_repeat_long_blob_descriptor(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor
+) {
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *count = mylite_ast_child_at(arguments, 1U);
+    struct integer_constant_value count_value = {0};
+    uint64_t length = 0U;
+
+    if (out_descriptor == NULL || !(function_name_is_padding(name) ||
+                                    (name != NULL && mylite_span_equal_ci(name->span, "REPEAT")))) {
+        return false;
+    }
+    if (nonnegative_integer_constant(count, &length)) {
+        return false;
+    }
+    if (integer_constant_value(count, &count_value) && !count_value.is_unsigned &&
+        count_value.signed_value < 0) {
+        *out_descriptor =
+            space_function_descriptor(database, space_function_constant_max_length(database), true);
+        return true;
+    }
+    *out_descriptor =
+        space_function_descriptor(database, space_function_dynamic_length(database), true);
+    return true;
 }
 
 int mylite_expression_descriptor_infer_concat_function(

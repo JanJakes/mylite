@@ -186,14 +186,19 @@ Table-backed constant-width metadata was also verified for `utf8mb4`:
 | `RPAD(s,7,'.')` | `VAR_STRING` | `255` | `28` | `31` | none |
 | `REPEAT(s,3)` | `VAR_STRING` | `255` | `144` | `31` | none |
 | `SPACE(n)` | `LONG_BLOB` | `255` | `268435456` | `31` | none |
+| `LPAD(s,n,'.')` | `LONG_BLOB` | `255` | `268435456` | `31` | none |
+| `RPAD(s,n,'.')` | `LONG_BLOB` | `255` | `268435456` | `31` | none |
+| `REPEAT(s,n)` | `LONG_BLOB` | `255` | `268435456` | `31` | none |
+| `LPAD(s,NULL,'.')` | `LONG_BLOB` | `255` | `268435456` | `31` | none |
+| `RPAD(s,NULL,'.')` | `LONG_BLOB` | `255` | `268435456` | `31` | none |
+| `REPEAT(s,NULL)` | `LONG_BLOB` | `255` | `268435456` | `31` | none |
+| `LPAD(s,-1,'.')` | `LONG_BLOB` | `255` | `67108864` | `31` | none |
+| `RPAD(s,-1,'.')` | `LONG_BLOB` | `255` | `67108864` | `31` | none |
+| `REPEAT(s,-1)` | `LONG_BLOB` | `255` | `67108864` | `31` | none |
 
-MySQL returns a `LONG_BLOB`-sized descriptor for variable or `NULL` target
-length `LPAD()` / `RPAD()` expressions such as `LPAD('hi', NULL, '.')` and
-`LPAD(s, n, '.')`, and for negative literal target/count metadata. MyLite's
-first slice keeps the existing scalar metadata architecture and exposes a
-reduced-fidelity `VAR_STRING` descriptor using the current connection collation
-and a conservative length when the exact result is not available at prepare
-time.
+Variable or `NULL` target/count metadata uses MySQL's dynamic `LONG_BLOB`
+width. Negative literal target/count metadata uses the same connection
+character-set multiplier as the maximum constant-width padding path.
 
 ## Parser and AST design
 

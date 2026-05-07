@@ -327,7 +327,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       source-width fallback.
       Table-backed `LPAD()` / `RPAD()` expressions with nonnegative literal
       target lengths and `REPEAT()` expressions with nonnegative literal counts
-      now infer MySQL-shaped connection-character-set string widths.
+      now infer MySQL-shaped connection-character-set string widths, while
+      dynamic, `NULL`, and negative target/count expressions infer the
+      MySQL-observed nullable `LONG_BLOB` descriptors.
       `FOUND_ROWS()` now reports MySQL-shaped signed `LONGLONG` flags while
       neighboring session integer functions retain their verified signedness.
       Remaining expression and other SQLite-backed result metadata gaps are

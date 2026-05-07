@@ -39,6 +39,16 @@ int mylite_open_memory(mylite_db **out_db) {
     }
 
     database->sqlite = sqlite;
+    rc =
+        mylite_sqlite_bootstrap_connection(database->sqlite, database, &database->sqlite_bootstrap);
+    if (rc != MYLITE_OK) {
+        (void)sqlite3_close(database->sqlite);
+        database->sqlite = NULL;
+        mylite_diagnostics_deinit(&database->diagnostics);
+        free(database);
+        return rc;
+    }
+
     *out_db = database;
 
     return MYLITE_OK;
@@ -49,6 +59,7 @@ void mylite_close(mylite_db *database) {
         return;
     }
 
+    mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
     if (database->sqlite != NULL) {
         (void)sqlite3_close(database->sqlite);
     }
@@ -105,6 +116,16 @@ struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database) {
     }
 
     return database->sqlite;
+}
+
+const struct mylite_sqlite_bootstrap_state *mylite_connection_sqlite_bootstrap_state_for_test(
+    const struct mylite_db *database
+) {
+    if (database == NULL) {
+        return NULL;
+    }
+
+    return &database->sqlite_bootstrap;
 }
 
 static void initialize_session_state(struct mylite_session_state *session) {

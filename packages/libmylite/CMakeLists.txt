@@ -40,6 +40,8 @@ add_library(mylite STATIC
   src/runtime/mylite_connection.c
   src/runtime/mylite_diagnostics.c
   src/runtime/mylite_result_metadata.c
+  src/runtime/mylite_sqlite_bootstrap.c
+  src/runtime/mylite_sqlite_registration.c
   src/runtime/mylite_statement_context.c
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
@@ -155,12 +157,28 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_result_metadata_test)
 
+  add_executable(mylite_runtime_sqlite_bootstrap_test
+    tests/runtime_sqlite_bootstrap_test.c
+  )
+  target_link_libraries(mylite_runtime_sqlite_bootstrap_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_sqlite_bootstrap_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_sqlite_bootstrap_test)
+
   add_test(NAME libmylite.lexer COMMAND mylite_lexer_test)
   add_test(NAME libmylite.parser COMMAND mylite_parser_test)
   add_test(NAME libmylite.file_format COMMAND mylite_file_format_test)
   add_test(NAME libmylite.runtime.diagnostics COMMAND mylite_runtime_diagnostics_test)
   add_test(NAME libmylite.runtime.open_memory COMMAND mylite_runtime_open_memory_test)
   add_test(NAME libmylite.runtime.result_metadata COMMAND mylite_runtime_result_metadata_test)
+  add_test(
+    NAME libmylite.runtime.sqlite_bootstrap
+    COMMAND mylite_runtime_sqlite_bootstrap_test
+  )
   add_test(
     NAME libmylite.runtime.sqlite_owner
     COMMAND mylite_runtime_sqlite_owner_test

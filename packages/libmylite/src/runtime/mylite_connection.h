@@ -4,6 +4,7 @@
 #include <mylite/mylite.h>
 
 #include "mylite_diagnostics.h"
+#include "mylite_sqlite_bootstrap.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -40,6 +41,7 @@ struct mylite_db {
     struct sqlite3 *sqlite;
     struct mylite_diagnostics diagnostics;
     struct mylite_session_state session;
+    struct mylite_sqlite_bootstrap_state sqlite_bootstrap;
 };
 
 struct mylite_diagnostics *mylite_connection_diagnostics(struct mylite_db *database);
@@ -48,5 +50,8 @@ const struct mylite_session_state *mylite_connection_session_state(
 );
 
 struct sqlite3 *mylite_connection_sqlite_for_test(struct mylite_db *database);
+const struct mylite_sqlite_bootstrap_state *mylite_connection_sqlite_bootstrap_state_for_test(
+    const struct mylite_db *database
+);
 
 #endif

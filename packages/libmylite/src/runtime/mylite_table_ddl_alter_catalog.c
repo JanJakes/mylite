@@ -55,6 +55,17 @@ static int update_alter_table_auto_increment(
     const struct mylite_alter_table_model *model
 );
 
+static int alter_table_effective_auto_increment(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    uint64_t requested_auto_increment,
+    uint64_t *out_auto_increment
+);
+
+static const struct mylite_alter_table_column *find_alter_table_auto_increment_column(
+    const struct mylite_alter_table_model *model
+);
+
 static int refresh_alter_table_statistics(
     mylite_db *database,
     const struct mylite_alter_table_model *model
@@ -544,11 +555,22 @@ static int update_alter_table_auto_increment(
     int rc = SQLITE_OK;
 
     if (model->set_auto_increment) {
+        uint64_t auto_increment = 0U;
+        int status = alter_table_effective_auto_increment(
+            database,
+            model,
+            model->auto_increment,
+            &auto_increment
+        );
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
         return mylite_catalog_update_auto_increment(
             database,
             model->schema_name,
             model->table_name,
-            model->auto_increment
+            auto_increment
         );
     }
     if (!model->clear_auto_increment) {
@@ -574,6 +596,60 @@ static int update_alter_table_auto_increment(
     rc = sqlite3_step(update);
     sqlite3_finalize(update);
     return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int alter_table_effective_auto_increment(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    uint64_t requested_auto_increment,
+    uint64_t *out_auto_increment
+) {
+    const struct mylite_alter_table_column *column = find_alter_table_auto_increment_column(model);
+    sqlite3_stmt *select = NULL;
+    char *sql = NULL;
+    int rc = SQLITE_OK;
+
+    *out_auto_increment = requested_auto_increment;
+    if (column == NULL) {
+        return MYLITE_OK;
+    }
+
+    sql = sqlite3_mprintf(
+        "SELECT MAX(CAST(\"%w\" AS INTEGER)) FROM \"%w\"",
+        column->name,
+        model->physical_name
+    );
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    rc = sqlite3_step(select);
+    if (rc == SQLITE_ROW && sqlite3_column_type(select, 0) != SQLITE_NULL) {
+        sqlite3_int64 max_value = sqlite3_column_int64(select, 0);
+
+        if (max_value >= 0 && (uint64_t)max_value + 1U > *out_auto_increment) {
+            *out_auto_increment = (uint64_t)max_value + 1U;
+        }
+    }
+    sqlite3_finalize(select);
+    return rc == SQLITE_ROW ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static const struct mylite_alter_table_column *find_alter_table_auto_increment_column(
+    const struct mylite_alter_table_model *model
+) {
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        if (model->columns[index].auto_increment) {
+            return &model->columns[index];
+        }
+    }
+    return NULL;
 }
 
 static int refresh_alter_table_statistics(

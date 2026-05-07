@@ -131,6 +131,7 @@ enum {
     mysql_warning_unknown_system_variable = 1193,
     mysql_warning_wrong_usage = 1221,
     mysql_warning_wrong_number_of_columns = 1222,
+    mysql_warning_local_variable = 1228,
     mysql_warning_wrong_value_for_var = 1231,
     mysql_warning_wrong_type_for_var = 1232,
     mysql_warning_wrong_sql_calc_found_rows_placement = 1234,
@@ -2021,10 +2022,31 @@ static int test_information_schema_selected_schema_execution(void) {
         NULL,
         NULL,
     };
+    static const char *const user_table_columns[] = {
+        "TABLE_SCHEMA",
+        "TABLE_NAME",
+        "ENGINE",
+        "UPDATE_TIME",
+    };
+    static const char *const user_table_values[] = {
+        "mylite_information_schema_use",
+        "after_use",
+        "InnoDB",
+        any_datetime_text,
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_information_schema_use", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_information_schema_use", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE after_use (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY) "
+        "AUTO_INCREMENT=10",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO after_use VALUES (NULL)", MYLITE_DONE);
     failures += execute_sql(database, "USE information_schema", MYLITE_DONE);
     failures += expect_select_rows(
         database,
@@ -2036,6 +2058,17 @@ static int test_information_schema_selected_schema_execution(void) {
         values,
         1,
         "information_schema selected schema tables"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, UPDATE_TIME "
+        "FROM TABLES WHERE TABLE_SCHEMA = 'mylite_information_schema_use' "
+        "AND TABLE_NAME = 'after_use'",
+        user_table_columns,
+        4,
+        user_table_values,
+        1,
+        "information schema selected schema exposes user table metadata"
     );
 
     mylite_close(database);
@@ -3344,6 +3377,23 @@ static int test_information_schema_check_constraints_execution(void) {
         alter_check_values,
         1,
         "alter check constraints rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE check_constraints_fixture DROP CONSTRAINT check_constraints_fixture_chk_1",
+        0,
+        "alter drop constraint removes check metadata"
+    );
+    failures += expect_empty_information_schema_table(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
+        columns,
+        check_constraints_column_count
+    );
+    failures += expect_no_information_schema_table_constraints_row(
+        database,
+        "check_constraints_fixture",
+        "check_constraints_fixture_chk_1"
     );
 
     mylite_close(database);
@@ -32096,11 +32146,20 @@ static int test_user_variable_foundation_execution(void) {
          0U,
          0},
     };
-    static const char *const mixed_set_columns[] =
-        {"old_uc", "current_uc", "after_uc", "old_notes", "current_notes", "after_notes"};
-    static const char *const mixed_set_values[] = {"1", "0", "1", "1", "0", "1"};
-    static const char *const restored_set_columns[] = {"uc", "notes"};
-    static const char *const restored_set_values[] = {"1", "1"};
+    static const char *const mixed_set_columns[] = {
+        "old_uc",
+        "current_uc",
+        "after_uc",
+        "old_notes",
+        "current_notes",
+        "after_notes",
+        "old_sqlbin",
+        "current_sqlbin",
+        "after_sqlbin",
+    };
+    static const char *const mixed_set_values[] = {"1", "0", "1", "1", "0", "1", "1", "0", "1"};
+    static const char *const restored_set_columns[] = {"uc", "notes", "sqlbin"};
+    static const char *const restored_set_values[] = {"1", "1", "1"};
     static const char *const id_column[] = {"id"};
     static const char *const greater_than_threshold_values[] = {"2", "3"};
     static const char *const table_assignment_columns[] = {"seen", "after_seen"};
@@ -32309,27 +32368,32 @@ static int test_user_variable_foundation_execution(void) {
         database,
         "SET @old_unique_checks = @@unique_checks, unique_checks = 0, "
         "@after_unique_checks = @@unique_checks, "
-        "@old_sql_notes = @@sql_notes, sql_notes = 0, @after_sql_notes = @@sql_notes",
+        "@old_sql_notes = @@sql_notes, sql_notes = 0, @after_sql_notes = @@sql_notes, "
+        "@old_sql_log_bin = @@SESSION.sql_log_bin, @@SESSION.sql_log_bin = 0, "
+        "@after_sql_log_bin = @@SESSION.sql_log_bin",
         MYLITE_DONE
     );
     failures += expect_select_rows(
         database,
         "SELECT @old_unique_checks AS old_uc, @@unique_checks AS current_uc, "
         "@after_unique_checks AS after_uc, @old_sql_notes AS old_notes, "
-        "@@sql_notes AS current_notes, @after_sql_notes AS after_notes",
+        "@@sql_notes AS current_notes, @after_sql_notes AS after_notes, "
+        "@old_sql_log_bin AS old_sqlbin, @@sql_log_bin AS current_sqlbin, "
+        "@after_sql_log_bin AS after_sqlbin",
         mixed_set_columns,
-        6,
+        9,
         mixed_set_values,
         1,
         "mixed SET snapshots user and system assignments"
     );
     failures += execute_sql(database, "SET unique_checks = @old_unique_checks", MYLITE_DONE);
     failures += execute_sql(database, "SET sql_notes = @old_sql_notes", MYLITE_DONE);
+    failures += execute_sql(database, "SET @@SESSION.sql_log_bin = @old_sql_log_bin", MYLITE_DONE);
     failures += expect_select_rows(
         database,
-        "SELECT @@unique_checks AS uc, @@sql_notes AS notes",
+        "SELECT @@unique_checks AS uc, @@sql_notes AS notes, @@sql_log_bin AS sqlbin",
         restored_set_columns,
-        2,
+        3,
         restored_set_values,
         1,
         "system variable restore from user variables"
@@ -36098,6 +36162,35 @@ static int test_create_table_base_execution(void) {
         "missing_parent",
         "id",
     };
+    static const char *const fk_order_columns[] = {
+        "CONSTRAINT_NAME",
+        "COLUMN_NAME",
+        "ORDINAL_POSITION",
+        "POSITION_IN_UNIQUE_CONSTRAINT",
+        "REFERENCED_COLUMN_NAME",
+    };
+    static const char *const fk_order_values[] = {
+        "fk_pair",
+        "parent_id",
+        "1",
+        "1",
+        "id",
+        "fk_pair",
+        "other_id",
+        "2",
+        "2",
+        "other_id",
+        "multi_foreign_key_ibfk_1",
+        "other_id",
+        "1",
+        "1",
+        "other_id",
+        "multi_foreign_key_ibfk_1",
+        "parent_id",
+        "2",
+        "2",
+        "id",
+    };
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -36205,7 +36298,8 @@ static int test_create_table_base_execution(void) {
         "CREATE TABLE parent ("
         "id INT PRIMARY KEY, "
         "other_id INT, "
-        "UNIQUE KEY uq_parent_pair (id, other_id))",
+        "UNIQUE KEY uq_parent_pair (id, other_id), "
+        "UNIQUE KEY uq_parent_pair_rev (other_id, id))",
         MYLITE_DONE
     );
     failures += prepare_sql(
@@ -36303,7 +36397,7 @@ static int test_create_table_base_execution(void) {
         database,
         &(const struct expected_statistics_row){
             .table_name = "table_foreign_key",
-            .index_name = "fk_parent_idx",
+            .index_name = "fk_parent",
             .seq_in_index = 1,
             .column_name = "parent_id",
             .non_unique = 1,
@@ -36337,6 +36431,58 @@ static int test_create_table_base_execution(void) {
         fk_key_usage_values,
         2,
         "create table foreign key key column usage rows"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE multi_foreign_key ("
+        "id INT PRIMARY KEY, parent_id INT, other_id INT, "
+        "CONSTRAINT fk_pair FOREIGN KEY fk_pair_idx (parent_id, other_id) "
+        "REFERENCES parent(id, other_id), "
+        "FOREIGN KEY fk_generated_idx (other_id, parent_id) "
+        "REFERENCES parent(other_id, id))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, COLUMN_NAME, ORDINAL_POSITION, "
+        "POSITION_IN_UNIQUE_CONSTRAINT, REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_ct11' AND TABLE_NAME = 'multi_foreign_key' "
+        "AND REFERENCED_TABLE_NAME IS NOT NULL",
+        fk_order_columns,
+        5,
+        fk_order_values,
+        4,
+        "foreign key key column usage default ordering"
+    );
+    failures += execute_sql(
+        database,
+        "ALTER TABLE table_foreign_key DROP CONSTRAINT fk_parent",
+        MYLITE_DONE
+    );
+    failures += expect_no_information_schema_table_constraints_row(
+        database,
+        "table_foreign_key",
+        "fk_parent"
+    );
+    failures += expect_no_information_schema_key_column_usage_row(
+        database,
+        "table_foreign_key",
+        "fk_parent"
+    );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "table_foreign_key",
+            .index_name = "fk_parent",
+            .seq_in_index = 1,
+            .column_name = "parent_id",
+            .non_unique = 1,
+            .collation = "A",
+            .sub_part = NULL,
+            .index_comment = "",
+            .visible = "YES",
+        }
     );
     failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
     failures += execute_sql(
@@ -38481,7 +38627,7 @@ static int test_temporary_table_execution(void) {
         "0",
         "11",
         any_datetime_text,
-        NULL,
+        any_datetime_text,
         NULL,
         "utf8mb4_0900_ai_ci",
         NULL,
@@ -39456,6 +39602,22 @@ static int test_create_drop_index_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_no_information_schema_statistics_index_row(database, "idx_base", "ft_b");
+    failures +=
+        prepare_sql(database, "CREATE SPATIAL INDEX sp_b ON idx_base (b)", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_UNSUPPORTED,
+        "spatial create index deferred unsupported"
+    );
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "spatial create index affected rows");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Unsupported standalone index class",
+        "spatial create index unsupported error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_statistics_index_row(database, "idx_base", "sp_b");
 
     failures += execute_sql(
         database,
@@ -39629,7 +39791,8 @@ static int test_alter_table_column_operations_execution(void) {
     static const char *const alter_ai_no_equal_values[] =
         {"10", "1", "11", "2", "50", "3", "51", "4", "70", "5"};
     static const char *const alter_ai_metadata_value[] = {"50"};
-    static const char *const alter_no_ai_metadata_value[] = {NULL};
+    static const char *const alter_ai_lower_metadata_value[] = {"51"};
+    static const char *const alter_no_ai_metadata_value[] = {"20"};
     static const char *const empty_default_values[] = {"1", ""};
     static const char *const invisible_values[] = {"1"};
     static const char *const invalid_change_columns[] = {"id", "v"};
@@ -40084,6 +40247,16 @@ static int test_alter_table_column_operations_execution(void) {
         "ALTER TABLE alter_ai AUTO_INCREMENT=5",
         0,
         "alter auto increment lower affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT AUTO_INCREMENT FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alter_ai'",
+        auto_increment_columns,
+        1,
+        alter_ai_lower_metadata_value,
+        1,
+        "alter auto increment lower metadata keeps max plus one"
     );
     failures += execute_sql(database, "INSERT INTO alter_ai (v) VALUES (4)", MYLITE_DONE);
     failures += expect_select_rows(
@@ -43486,18 +43659,78 @@ static int test_show_table_status_execution(void) {
          .nullable = 1},
     };
     static const char *const selected_values[] = {
-        "CamelCase",   "InnoDB", "10",          "Dynamic", "0",  "0",
-        "16384",       "0",      "0",           "0",       NULL, any_datetime_text,
-        NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
-        "alpha",       "InnoDB", "10",          "Dynamic", "0",  "0",
-        "16384",       "0",      "0",           "0",       NULL, any_datetime_text,
-        NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
-        "beta_1",      "InnoDB", "10",          "Dynamic", "0",  "0",
-        "16384",       "0",      "0",           "0",       NULL, any_datetime_text,
-        NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "",
-        "status_meta", "InnoDB", "10",          "Dynamic", "2",  "8192",
-        "16384",       "0",      "0",           "0",       "44", any_datetime_text,
-        NULL,          NULL,     "utf8mb4_bin", NULL,      "",   "table comment",
+        "CamelCase",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "0",
+        "0",
+        "16384",
+        "0",
+        "0",
+        "0",
+        NULL,
+        any_datetime_text,
+        NULL,
+        NULL,
+        "utf8mb4_bin",
+        NULL,
+        "",
+        "",
+        "alpha",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "0",
+        "0",
+        "16384",
+        "0",
+        "0",
+        "0",
+        NULL,
+        any_datetime_text,
+        NULL,
+        NULL,
+        "utf8mb4_bin",
+        NULL,
+        "",
+        "",
+        "beta_1",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "0",
+        "0",
+        "16384",
+        "0",
+        "0",
+        "0",
+        NULL,
+        any_datetime_text,
+        NULL,
+        NULL,
+        "utf8mb4_bin",
+        NULL,
+        "",
+        "",
+        "status_meta",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "2",
+        "8192",
+        "16384",
+        "0",
+        "0",
+        "0",
+        "44",
+        any_datetime_text,
+        any_datetime_text,
+        NULL,
+        "utf8mb4_bin",
+        NULL,
+        "",
+        "table comment",
     };
     static const char *const alpha_values[] = {
         "alpha",
@@ -43599,6 +43832,38 @@ static int test_show_table_status_execution(void) {
         "",
         "",
     };
+    static const char *const status_meta_after_delete_values[] = {
+        "status_meta",
+        "InnoDB",
+        "10",
+        "Dynamic",
+        "1",
+        "16384",
+        "16384",
+        "0",
+        "0",
+        "0",
+        "44",
+        any_datetime_text,
+        any_datetime_text,
+        NULL,
+        "utf8mb4_bin",
+        NULL,
+        "",
+        "table comment",
+    };
+    static const char *const status_meta_info_columns[] = {
+        "TABLE_NAME",
+        "TABLE_ROWS",
+        "AUTO_INCREMENT",
+        "UPDATE_TIME",
+    };
+    static const char *const status_meta_info_values[] = {
+        "status_meta",
+        "1",
+        "44",
+        any_datetime_text,
+    };
     static const char *const rollback_one_row_values[] = {
         "rollback_stats",
         "InnoDB",
@@ -43612,7 +43877,7 @@ static int test_show_table_status_execution(void) {
         "0",
         NULL,
         any_datetime_text,
-        NULL,
+        any_datetime_text,
         NULL,
         "utf8mb4_bin",
         NULL,
@@ -43632,7 +43897,7 @@ static int test_show_table_status_execution(void) {
         "0",
         NULL,
         any_datetime_text,
-        NULL,
+        any_datetime_text,
         NULL,
         "utf8mb4_bin",
         NULL,
@@ -43787,6 +44052,36 @@ static int test_show_table_status_execution(void) {
         alpha_values,
         1,
         "show table status where name"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment = 44 AND Update_time IS NOT NULL",
+        columns,
+        18,
+        selected_values + (18 * 3),
+        1,
+        "show table status where auto increment and update time"
+    );
+    failures += execute_sql(database, "DELETE FROM status_meta WHERE v = 20", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT TABLE_NAME, TABLE_ROWS, AUTO_INCREMENT, UPDATE_TIME "
+        "FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'status_meta'",
+        status_meta_info_columns,
+        4,
+        status_meta_info_values,
+        1,
+        "information schema tables delete update time"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS LIKE 'status_meta'",
+        columns,
+        18,
+        status_meta_after_delete_values,
+        1,
+        "show table status after delete preserves next auto increment"
     );
     failures += expect_prepare_error(
         database,
@@ -43990,6 +44285,8 @@ static int test_show_variables_execution(void) {
         "ON",
         "foreign_key_checks",
         "ON",
+        "sql_log_bin",
+        "ON",
         "sql_notes",
         "ON",
         "unique_checks",
@@ -44117,6 +44414,8 @@ static int test_show_variables_execution(void) {
     static const char *const lower_case_table_names_values[] = {"lower_case_table_names", "0"};
     static const char *const max_allowed_packet_values[] = {"max_allowed_packet", "67108864"};
     static const char *const max_connections_values[] = {"max_connections", "151"};
+    static const char *const sql_log_bin_values[] = {"sql_log_bin", "ON"};
+    static const char *const sql_log_bin_off_values[] = {"sql_log_bin", "OFF"};
     static const char *const sql_notes_values[] = {"sql_notes", "ON"};
     static const char *const sql_notes_off_values[] = {"sql_notes", "OFF"};
     static const char *const time_zone_values[] = {"time_zone", "SYSTEM"};
@@ -44180,6 +44479,7 @@ static int test_show_variables_execution(void) {
         "fk",
         "tz",
         "sn",
+        "sqlbin",
         "uc",
         "wt",
     };
@@ -44189,12 +44489,14 @@ static int test_show_variables_execution(void) {
         "+00:00",
         "1",
         "0",
+        "0",
         "123",
     };
     static const char *const wp_system_variable_restored_values[] = {
         "InnoDB",
         "1",
         "SYSTEM",
+        "1",
         "1",
         "1",
         "28800",
@@ -44204,12 +44506,14 @@ static int test_show_variables_execution(void) {
         "0",
         "SYSTEM",
         "0",
+        "0",
         "1",
     };
     static const char *const keyword_system_variable_restored_values[] = {
         "InnoDB",
         "1",
         "SYSTEM",
+        "1",
         "1",
         "0",
     };
@@ -44507,6 +44811,15 @@ static int test_show_variables_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SHOW VARIABLES LIKE 'sql_log_bin'",
+        columns,
+        2,
+        sql_log_bin_values,
+        1,
+        "show variables sql log bin"
+    );
+    failures += expect_select_rows(
+        database,
         "SHOW VARIABLES LIKE 'lower_case_table_names'",
         columns,
         2,
@@ -44585,6 +44898,15 @@ static int test_show_variables_execution(void) {
         NULL,
         0,
         "show global variables omits last insert id"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_log_bin'",
+        columns,
+        2,
+        NULL,
+        0,
+        "show global variables omits sql log bin"
     );
     failures += expect_show_variables_contains(
         database,
@@ -44833,12 +45155,14 @@ static int test_show_variables_execution(void) {
     failures += execute_sql(database, "SET default_storage_engine = 'MEMORY'", MYLITE_DONE);
     failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
     failures += execute_sql(database, "SET time_zone = '+00:00'", MYLITE_DONE);
+    failures += execute_sql(database, "SET SQL_LOG_BIN = 0", MYLITE_DONE);
     failures += execute_sql(database, "SET unique_checks = 0", MYLITE_DONE);
     failures += execute_sql(database, "SET wait_timeout = 123", MYLITE_DONE);
     failures += expect_select_rows(
         database,
         "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
-        "@@time_zone AS tz, @@sql_notes AS sn, @@unique_checks AS uc, @@wait_timeout AS wt",
+        "@@time_zone AS tz, @@sql_notes AS sn, @@sql_log_bin AS sqlbin, "
+        "@@unique_checks AS uc, @@wait_timeout AS wt",
         wp_system_variable_changed_columns,
         (int)(sizeof(wp_system_variable_changed_columns) /
               sizeof(wp_system_variable_changed_columns[0])),
@@ -44884,6 +45208,15 @@ static int test_show_variables_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SHOW VARIABLES LIKE 'sql_log_bin'",
+        columns,
+        2,
+        sql_log_bin_off_values,
+        1,
+        "show variables sql log bin off"
+    );
+    failures += expect_select_rows(
+        database,
         "SHOW VARIABLES LIKE 'wait_timeout'",
         columns,
         2,
@@ -44904,13 +45237,15 @@ static int test_show_variables_execution(void) {
     failures += execute_sql(database, "SET default_storage_engine = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET foreign_key_checks = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET time_zone = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET SQL_LOG_BIN = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET sql_notes = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET unique_checks = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET wait_timeout = DEFAULT", MYLITE_DONE);
     failures += expect_select_rows(
         database,
         "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
-        "@@time_zone AS tz, @@sql_notes AS sn, @@unique_checks AS uc, @@wait_timeout AS wt",
+        "@@time_zone AS tz, @@sql_notes AS sn, @@sql_log_bin AS sqlbin, "
+        "@@unique_checks AS uc, @@wait_timeout AS wt",
         wp_system_variable_changed_columns,
         (int)(sizeof(wp_system_variable_changed_columns) /
               sizeof(wp_system_variable_changed_columns[0])),
@@ -44922,13 +45257,15 @@ static int test_show_variables_execution(void) {
     failures += execute_sql(database, "SET foreign_key_checks = OFF", MYLITE_DONE);
     failures += execute_sql(database, "SET time_zone = SYSTEM", MYLITE_DONE);
     failures += execute_sql(database, "SET sql_notes = FALSE", MYLITE_DONE);
+    failures += execute_sql(database, "SET SQL_LOG_BIN = OFF", MYLITE_DONE);
     failures += execute_sql(database, "SET unique_checks = TRUE", MYLITE_DONE);
     failures += expect_select_rows(
         database,
         "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
-        "@@time_zone AS tz, @@sql_notes AS sn, @@unique_checks AS uc",
-        (const char *const[]){"dse", "fk", "tz", "sn", "uc"},
-        5,
+        "@@time_zone AS tz, @@sql_notes AS sn, @@sql_log_bin AS sqlbin, "
+        "@@unique_checks AS uc",
+        (const char *const[]){"dse", "fk", "tz", "sn", "sqlbin", "uc"},
+        6,
         keyword_system_variable_values,
         1,
         "keyword system variable assignment values"
@@ -44945,13 +45282,15 @@ static int test_show_variables_execution(void) {
     failures += execute_sql(database, "SET default_storage_engine = InnoDB", MYLITE_DONE);
     failures += execute_sql(database, "SET foreign_key_checks = ON", MYLITE_DONE);
     failures += execute_sql(database, "SET sql_notes = TRUE", MYLITE_DONE);
+    failures += execute_sql(database, "SET SQL_LOG_BIN = ON", MYLITE_DONE);
     failures += execute_sql(database, "SET unique_checks = OFF", MYLITE_DONE);
     failures += expect_select_rows(
         database,
         "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
-        "@@time_zone AS tz, @@sql_notes AS sn, @@unique_checks AS uc",
-        (const char *const[]){"dse", "fk", "tz", "sn", "uc"},
-        5,
+        "@@time_zone AS tz, @@sql_notes AS sn, @@sql_log_bin AS sqlbin, "
+        "@@unique_checks AS uc",
+        (const char *const[]){"dse", "fk", "tz", "sn", "sqlbin", "uc"},
+        6,
         keyword_system_variable_restored_values,
         1,
         "keyword system variable restored values"
@@ -44989,6 +45328,18 @@ static int test_show_variables_execution(void) {
         MYLITE_UNSUPPORTED,
         "SET GLOBAL time_zone is not supported",
         "set global time zone unsupported"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SET GLOBAL sql_log_bin = 0",
+        MYLITE_EXEC_ERROR,
+        "Variable 'sql_log_bin' is a SESSION variable and can't be used with SET GLOBAL",
+        "set global sql log bin session-only error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_local_variable,
+        "set global sql log bin session-only error code"
     );
     failures += expect_prepare_error(
         database,
@@ -45074,6 +45425,18 @@ static int test_show_variables_execution(void) {
         mysql_warning_incorrect_global_local_var,
         "global last insert id scope error code"
     );
+    failures += expect_prepare_error(
+        database,
+        "SELECT @@GLOBAL.sql_log_bin",
+        MYLITE_EXEC_ERROR,
+        "Variable 'sql_log_bin' is a SESSION variable",
+        "global sql log bin scope error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_incorrect_global_local_var,
+        "global sql log bin scope error code"
+    );
     failures += expect_select_rows(
         database,
         "SHOW VARIABLES WHERE Variable_name = 'autocommit'",
@@ -45089,7 +45452,7 @@ static int test_show_variables_execution(void) {
         columns,
         2,
         on_variable_values,
-        4,
+        5,
         "show variables where value column"
     );
     failures += expect_prepare_error(
@@ -48587,6 +48950,23 @@ static int test_show_create_table_execution(void) {
         "child_cross_fk",
         show_create_fk_cross_schema_create
     };
+    static const char show_create_fk_pair_create[] =
+        "CREATE TABLE `child_pair_fk` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `parent_id` int DEFAULT NULL,\n"
+        "  `other_id` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  KEY `fk_pair` (`parent_id`,`other_id`),\n"
+        "  KEY `fk_generated_idx` (`other_id`,`parent_id`),\n"
+        "  CONSTRAINT `child_pair_fk_ibfk_1` FOREIGN KEY (`other_id`, `parent_id`) "
+        "REFERENCES `parent_pair_fk` (`other_id`, `id`),\n"
+        "  CONSTRAINT `fk_pair` FOREIGN KEY (`parent_id`, `other_id`) "
+        "REFERENCES `parent_pair_fk` (`id`, `other_id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const show_create_fk_pair_values[] = {
+        "child_pair_fk",
+        show_create_fk_pair_create
+    };
     static const char show_create_checks_create[] =
         "CREATE TABLE `show_checks` (\n"
         "  `id` int NOT NULL,\n"
@@ -48774,6 +49154,33 @@ static int test_show_create_table_execution(void) {
         show_create_fk_cross_schema_values,
         1,
         "show create table cross-schema foreign key metadata"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE parent_pair_fk ("
+        "id INT PRIMARY KEY, other_id INT, "
+        "UNIQUE KEY uq_pair (id, other_id), "
+        "UNIQUE KEY uq_pair_rev (other_id, id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE child_pair_fk ("
+        "id INT PRIMARY KEY, parent_id INT, other_id INT, "
+        "CONSTRAINT fk_pair FOREIGN KEY fk_pair_idx (parent_id, other_id) "
+        "REFERENCES parent_pair_fk(id, other_id), "
+        "FOREIGN KEY fk_generated_idx (other_id, parent_id) "
+        "REFERENCES parent_pair_fk(other_id, id))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE child_pair_fk",
+        columns,
+        2,
+        show_create_fk_pair_values,
+        1,
+        "show create table multi-column foreign key ordering"
     );
     failures += execute_sql(
         database,

@@ -154,6 +154,11 @@ static int apply_alter_table_drop_check_action(
     bool temporary
 );
 
+static int apply_alter_table_drop_generic_constraint_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_action *action
+);
+
 static int apply_alter_table_alter_check_action(
     mylite_stmt *stmt,
     const struct mylite_alter_table_model *model,
@@ -286,6 +291,19 @@ static char *build_alter_table_check_existing_rows_sql(
 static int set_alter_table_duplicate_check_error(mylite_db *database, const char *constraint_name);
 
 static int set_alter_table_missing_check_error(mylite_db *database, const char *constraint_name);
+
+static int alter_table_foreign_key_constraint_exists(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *constraint_name,
+    bool *out_exists
+);
+
+static int set_alter_table_missing_generic_constraint_error(
+    mylite_db *database,
+    const char *constraint_name
+);
 
 static int set_alter_table_check_violation_error(mylite_db *database, const char *constraint_name);
 
@@ -465,6 +483,11 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
     }
     if (status == MYLITE_OK) {
         status = mylite_table_ddl_validate_alter_table_final_model(stmt->database, &model);
+    }
+    if (status == MYLITE_OK && stmt->alter_table.has_auto_increment &&
+        stmt->alter_table.action_count == 0U &&
+        !alter_table_model_has_auto_increment_column(&model)) {
+        model.clear_auto_increment = false;
     }
     if (status == MYLITE_OK) {
         status = mylite_table_ddl_validate_alter_table_unique_indexes(stmt->database, &model);
@@ -1348,9 +1371,40 @@ static int apply_alter_table_drop_check_action(
         return status;
     }
     if (!exists) {
+        if (action->generic_constraint && !temporary) {
+            return apply_alter_table_drop_generic_constraint_action(stmt, action);
+        }
         return set_alter_table_missing_check_error(stmt->database, action->old_name);
     }
     return delete_alter_table_check_constraint(stmt, temporary, action->old_name);
+}
+
+static int apply_alter_table_drop_generic_constraint_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_action *action
+) {
+    bool exists = false;
+    int status = alter_table_foreign_key_constraint_exists(
+        stmt->database,
+        stmt->alter_table.schema_name,
+        stmt->alter_table.table_name,
+        action->old_name,
+        &exists
+    );
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!exists) {
+        return set_alter_table_missing_generic_constraint_error(stmt->database, action->old_name);
+    }
+    return mylite_foreign_key_catalog_delete_child_constraint(
+        stmt->database,
+        stmt->alter_table.schema_name,
+        stmt->alter_table.table_name,
+        action->old_name,
+        false
+    );
 }
 
 static int apply_alter_table_alter_check_action(
@@ -1612,9 +1666,10 @@ static int apply_alter_table_drop_foreign_key_action(
     const struct mylite_alter_table_action *action
 ) {
     bool exists = false;
-    int status = mylite_foreign_key_catalog_child_constraint_exists(
+    int status = alter_table_foreign_key_constraint_exists(
         stmt->database,
         stmt->alter_table.schema_name,
+        stmt->alter_table.table_name,
         action->old_name,
         &exists
     );
@@ -1642,7 +1697,9 @@ static void apply_alter_table_options(mylite_stmt *stmt, struct mylite_alter_tab
         return;
     }
     if (!alter_table_model_has_auto_increment_column(model)) {
-        model->clear_auto_increment = true;
+        if (stmt->alter_table.action_count == 0U) {
+            model->clear_auto_increment = false;
+        }
         return;
     }
     model->auto_increment = stmt->alter_table.auto_increment;
@@ -2213,6 +2270,61 @@ static int set_alter_table_missing_check_error(mylite_db *database, const char *
         status = mylite_diagnostics_append_error(
             database,
             MYLITE_MYSQL_ER_CHECK_CONSTRAINT_NOT_FOUND,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int alter_table_foreign_key_constraint_exists(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *constraint_name,
+    bool *out_exists
+) {
+    static const char sql[] = "SELECT 1 FROM __mylite_foreign_key_catalog "
+                              "WHERE constraint_schema = ? AND table_schema = ? AND table_name = ? "
+                              "AND constraint_name = ? COLLATE NOCASE LIMIT 1";
+    sqlite3_stmt *select = NULL;
+    int rc = SQLITE_OK;
+
+    *out_exists = false;
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 3, table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 4, constraint_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(select);
+    sqlite3_finalize(select);
+    if (rc == SQLITE_ROW) {
+        *out_exists = true;
+        return MYLITE_OK;
+    }
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int set_alter_table_missing_generic_constraint_error(
+    mylite_db *database,
+    const char *constraint_name
+) {
+    char *message = sqlite3_mprintf("Constraint '%q' does not exist.", constraint_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_CONSTRAINT_NOT_FOUND,
             message
         );
     }

@@ -57,6 +57,7 @@ container:
 | `lower_case_table_names` | `0` | global-only |
 | `max_allowed_packet` | `67108864` | global and session, session read-only |
 | `max_connections` | `151` | global-only |
+| `sql_log_bin` | `ON` | session-only |
 | `time_zone` | `SYSTEM` | global and session |
 | `unique_checks` | `ON` | global and session |
 | `wait_timeout` | `28800` | global and session |
@@ -67,10 +68,11 @@ string variables. Explicit wrong-scope reads return error `1238`, such as
 `@@GLOBAL.last_insert_id`.
 
 `SET foreign_key_checks = 0`, `SET unique_checks = 0`, `SET time_zone = '+00:00'`,
-`SET wait_timeout = 123`, and `SET default_storage_engine = 'MEMORY'` update the
-session value. `SET wait_timeout = 0` stores `1`. `SET ... = DEFAULT` restores
-the session default. MyLite implements the same visible session state for these
-forms, while deeper storage-engine side effects remain deferred.
+`SET wait_timeout = 123`, `SET default_storage_engine = 'MEMORY'`, and
+`SET SQL_LOG_BIN = 0` update the session value. `SET wait_timeout = 0` stores
+`1`. `SET ... = DEFAULT` restores the session default. MyLite implements the
+same visible session state for these forms, while deeper storage-engine side
+effects remain deferred.
 
 The verified status rows are ordinary `SHOW STATUS` string values. MySQL's byte,
 query, and temporary-table counters are server/session counters. MyLite exposes
@@ -112,6 +114,7 @@ expressions and decimal text in `SHOW VARIABLES`.
 | `lower_case_table_names` | omitted from explicit session reads | `0` | read-only |
 | `max_allowed_packet` | `67108864` | `67108864` | read-only in this slice |
 | `max_connections` | omitted from explicit session reads | `151` | read-only |
+| `sql_log_bin` | session boolean, default `ON` | omitted from global reads | session `0`, `1`, boolean keywords, or `DEFAULT`; binary-log side effects are not applicable to MyLite |
 | `time_zone` | session string, default `SYSTEM` | `SYSTEM` | session string or `DEFAULT`; temporal conversion effects are deferred |
 | `unique_checks` | session boolean, default `ON` | `ON` | session `0`, `1`, or `DEFAULT`; enforcement effects are deferred |
 | `wait_timeout` | session integer, default `28800` | `28800` | session integer or `DEFAULT`; values below `1` clamp to `1` |

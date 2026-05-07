@@ -40,6 +40,8 @@ int mylite_connection_set_default_unique_checks(mylite_db *database);
 int mylite_connection_set_unique_checks(mylite_db *database, bool enabled);
 int mylite_connection_set_default_sql_notes(mylite_db *database);
 int mylite_connection_set_sql_notes(mylite_db *database, bool enabled);
+int mylite_connection_set_default_sql_log_bin(mylite_db *database);
+int mylite_connection_set_sql_log_bin(mylite_db *database, bool enabled);
 
 const char *mylite_connection_character_set_client(const mylite_db *database);
 const char *mylite_connection_character_set_connection(const mylite_db *database);
@@ -72,5 +74,7 @@ bool mylite_connection_default_unique_checks(void);
 bool mylite_connection_unique_checks(const mylite_db *database);
 bool mylite_connection_default_sql_notes(void);
 bool mylite_connection_sql_notes(const mylite_db *database);
+bool mylite_connection_default_sql_log_bin(void);
+bool mylite_connection_sql_log_bin(const mylite_db *database);
 
 #endif

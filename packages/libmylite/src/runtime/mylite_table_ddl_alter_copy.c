@@ -297,6 +297,8 @@ static int copy_alter_table_action(
             MYLITE_ALTER_TABLE_ACTION_DROP_CHECK,
             &action
         );
+        action.generic_constraint = action_node->alter_table_constraint_spelling ==
+                                    MYLITE_SQL_AST_ALTER_TABLE_CONSTRAINT_SPELLING_CONSTRAINT;
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_CHECK_OR_CONSTRAINT:
         status = copy_alter_table_alter_check_action(action_node, &action);
@@ -571,11 +573,11 @@ static int copy_alter_table_add_foreign_key_action(
         );
     }
     if (status == MYLITE_OK) {
-        if (index_name != NULL) {
-            foreign_key.supporting_index_name = mylite_copy_identifier_span(index_name);
-        } else if (foreign_key.constraint_name != NULL) {
+        if (foreign_key.constraint_name != NULL) {
             foreign_key.supporting_index_name =
                 mylite_copy_nonempty_cstring(foreign_key.constraint_name);
+        } else if (index_name != NULL) {
+            foreign_key.supporting_index_name = mylite_copy_identifier_span(index_name);
         }
         if ((index_name != NULL || foreign_key.constraint_name != NULL) &&
             foreign_key.supporting_index_name == NULL) {

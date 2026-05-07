@@ -28,9 +28,9 @@ from `__mylite_index_catalog`. MyLite must not create a parallel key-column
 catalog for primary and unique metadata. Nonunique indexes are excluded.
 Functional or expression-only key parts are excluded because this information
 schema table reports columns, not expressions. CHECK constraints do not appear
-in `KEY_COLUMN_USAGE`. Table-level `CREATE TABLE ... FOREIGN KEY` definitions
-now produce referenced-table rows from MyLite's foreign-key catalog. ALTER
-foreign keys and referential enforcement remain deferred.
+in `KEY_COLUMN_USAGE`. `CREATE TABLE ... FOREIGN KEY` definitions and supported
+`ALTER TABLE ... ADD FOREIGN KEY` actions produce referenced-table rows from
+MyLite's foreign-key catalog.
 
 ## Compatibility Sources
 
@@ -69,8 +69,12 @@ For primary-key and unique constraints, MySQL reports:
 - referenced-table columns as `NULL`
 
 Foreign-key rows populate the referenced-table columns and
-`POSITION_IN_UNIQUE_CONSTRAINT`. CHECK constraints do not produce
-`KEY_COLUMN_USAGE` rows.
+`POSITION_IN_UNIQUE_CONSTRAINT`. Multi-column foreign keys return one row per
+child column with `ORDINAL_POSITION` matching the child-column order and
+`POSITION_IN_UNIQUE_CONSTRAINT` matching the referenced unique-key position.
+Observed direct `SELECT *` output places foreign-key constraints after primary
+and unique rows for the table and orders foreign-key groups by constraint name.
+CHECK constraints do not produce `KEY_COLUMN_USAGE` rows.
 
 The verified MySQL 8.4.9 runtime accepts case-insensitive references such as
 `information_schema.key_column_usage`, mixed-case references, and quoted forms
@@ -220,8 +224,10 @@ Rows are ordered deterministically by:
 1. `TABLE_SCHEMA` using binary collation
 2. `TABLE_NAME` using binary collation
 3. primary-key constraints before unique constraints
-4. first catalog row for the logical index
-5. `ORDINAL_POSITION`
+4. foreign-key constraints after primary-key and unique constraints
+5. foreign-key constraint name using case-insensitive MySQL-compatible ordering
+6. first catalog row for the logical index or foreign-key constraint
+7. `ORDINAL_POSITION`
 
 This ordering keeps `SELECT *` stable without adding general `ORDER BY` support
 for information-schema queries.
@@ -318,6 +324,10 @@ Runtime coverage:
   DDL is supported by the current runtime
 - table-level `CREATE TABLE ... FOREIGN KEY` adds child-column rows with
   referenced schema, table, column, and position-in-unique metadata
+- `ALTER TABLE ... ADD FOREIGN KEY` adds child-column rows, including
+  generated constraint names, multi-column ordering, and referenced-column
+  metadata; `DROP FOREIGN KEY` and `DROP CONSTRAINT` remove those rows while
+  leaving supporting indexes intact
 - `foreign_key_checks=0` permits a missing referenced table and still records
   the referenced table and column names
 - composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
@@ -328,8 +338,9 @@ Runtime coverage:
 
 - CHECK constraints are omitted. MySQL does not expose CHECK constraints in
   `KEY_COLUMN_USAGE`.
-- Foreign-key rows currently come from table-level `CREATE TABLE` definitions
-  only. ALTER foreign keys, referential actions, and enforcement are deferred.
+- Referential-action details are exposed through
+  `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`; `KEY_COLUMN_USAGE` only reports
+  the constrained and referenced columns.
 - Expression-only key parts are omitted until MyLite has functional index
   runtime/catalog support; even then `KEY_COLUMN_USAGE` should remain
   column-only.

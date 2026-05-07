@@ -176,6 +176,9 @@ static int load_alter_table_column_from_catalog_row(
     }
 
     load_alter_table_column_flags(&column);
+    if (column.auto_increment) {
+        model->had_auto_increment_column = true;
+    }
     status = mylite_table_ddl_add_alter_table_column(model, column);
     if (status != MYLITE_OK) {
         mylite_table_ddl_alter_table_column_deinit(&column);

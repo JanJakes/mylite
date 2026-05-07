@@ -127,7 +127,8 @@ later result metadata work.
 14. `AUTO_INCREMENT`
 15. `CREATE_TIME`: the table creation timestamp recorded when MyLite executes
     `CREATE TABLE`.
-16. `UPDATE_TIME`
+16. `UPDATE_TIME`: `NULL` until covered DML changes maintained row
+    statistics, then a MySQL-shaped datetime string.
 17. `CHECK_TIME`
 18. `TABLE_COLLATION`
 19. `CHECKSUM`
@@ -421,7 +422,7 @@ The following observations were verified against `mylite-mysql-849`:
 | `USE information_schema; SELECT SCHEMA_NAME FROM SCHEMATA WHERE SCHEMA_NAME = DATABASE()` | Returns `information_schema`. |
 | `USE information_schema; SELECT * FROM tables` | Resolves `tables` as `information_schema.TABLES` and returns the same system-view row shape and values as a qualified query. |
 | `SELECT ... FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='information_schema' AND TABLE_NAME IN (...)` | The scoped system views are reported as `SYSTEM VIEW` rows with `ENGINE=NULL`, `VERSION=10`, `TABLE_ROWS=0`, zero size counters, `TABLE_COLLATION=NULL`, and empty comments. |
-| `CREATE TABLE simple_create ...; SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='simple_create'` | The base-table row reports `ENGINE='InnoDB'`, `VERSION=10`, `ROW_FORMAT='Dynamic'`, zero size counters for the current placeholder statistics slice, the next `AUTO_INCREMENT` value when present, the table collation, and the table comment. |
+| `CREATE TABLE simple_create ...; SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='simple_create'` | The base-table row reports `ENGINE='InnoDB'`, `VERSION=10`, `ROW_FORMAT='Dynamic'`, maintained size counters, `UPDATE_TIME` after covered row-count-changing DML, the next `AUTO_INCREMENT` value when present, the table collation, and the table comment. |
 
 ## Test plan
 

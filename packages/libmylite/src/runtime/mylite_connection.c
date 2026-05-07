@@ -388,6 +388,19 @@ int mylite_connection_set_sql_notes(mylite_db *database, bool enabled) {
     return MYLITE_OK;
 }
 
+int mylite_connection_set_default_sql_log_bin(mylite_db *database) {
+    return mylite_connection_set_sql_log_bin(database, true);
+}
+
+int mylite_connection_set_sql_log_bin(mylite_db *database, bool enabled) {
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    database->sql_log_bin = enabled;
+    return MYLITE_OK;
+}
+
 const char *mylite_connection_default_sql_mode(void) {
     return mylite_default_sql_mode;
 }
@@ -544,6 +557,17 @@ bool mylite_connection_sql_notes(const mylite_db *database) {
     return database->sql_notes;
 }
 
+bool mylite_connection_default_sql_log_bin(void) {
+    return true;
+}
+
+bool mylite_connection_sql_log_bin(const mylite_db *database) {
+    if (database == NULL) {
+        return mylite_connection_default_sql_log_bin();
+    }
+    return database->sql_log_bin;
+}
+
 static int open_sqlite_database(
     const char *filename,
     int flags,
@@ -581,6 +605,7 @@ static int open_sqlite_database(
     (void)mylite_connection_set_default_foreign_key_checks(database);
     (void)mylite_connection_set_default_unique_checks(database);
     (void)mylite_connection_set_default_sql_notes(database);
+    (void)mylite_connection_set_default_sql_log_bin(database);
     rc = mylite_connection_set_default_sql_mode(database);
     if (rc == MYLITE_OK) {
         rc = mylite_connection_set_default_storage_engine(database);

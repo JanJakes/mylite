@@ -43,7 +43,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW TABLE STATUS FROM missing_show_table_status` | Error `1049`, SQLSTATE `42000`, message `Unknown database 'missing_show_table_status'`. |
 | `SHOW TABLE STATUS` | Columns are `Name`, `Engine`, `Version`, `Row_format`, `Rows`, `Avg_row_length`, `Data_length`, `Max_data_length`, `Index_length`, `Data_free`, `Auto_increment`, `Create_time`, `Update_time`, `Check_time`, `Collation`, `Checksum`, `Create_options`, `Comment`. |
 | Empty InnoDB base table | `Engine=InnoDB`, `Version=10`, `Row_format=Dynamic`, `Rows=0`, `Avg_row_length=0`, `Data_length=16384`, `Max_data_length=0`, secondary-index `Index_length` in 16 KiB page units, `Data_free=0`, `Auto_increment=NULL`, `Check_time=NULL`, default table collation, `Checksum=NULL`, and empty `Create_options` / `Comment`. |
-| Table created with `COMMENT='table comment' AUTO_INCREMENT=42` and two inserted rows | `Rows=2`, `Avg_row_length=8192`, `Data_length=16384`, `Comment` is `table comment`, and next `Auto_increment` is `44`. |
+| Table created with `COMMENT='table comment' AUTO_INCREMENT=42` and two inserted rows | `Rows=2`, `Avg_row_length=8192`, `Data_length=16384`, `Update_time` is a MySQL-shaped datetime, `Comment` is `table comment`, and next `Auto_increment` is `44`. |
 | `SHOW TABLE STATUS LIKE 'camel%'` with table `CamelCase` | No row on the local Linux runtime. |
 | `SHOW TABLE STATUS LIKE 'Camel%'` with table `CamelCase` | Returns `CamelCase`. |
 | `SHOW TABLE STATUS LIKE 'beta\_%'` with table `beta_1` | Returns `beta_1`. |
@@ -132,7 +132,8 @@ Column mapping:
 - `Auto_increment`: `auto_increment`
 - `Create_time`: the table catalog creation timestamp recorded when MyLite
   executes `CREATE TABLE`.
-- `Update_time`: `update_time`
+- `Update_time`: `update_time`, stamped when maintained row statistics change
+  after covered DML.
 - `Check_time`: `check_time`
 - `Collation`: `table_collation`
 - `Checksum`: `checksum`
@@ -224,7 +225,10 @@ Runtime coverage:
 - escaped `_` in `LIKE`
 - `WHERE` filtering and unknown-column diagnostics
 - base-table metadata, including row counts, size fields, collation, comment,
-  and next auto-increment
+  DML `Update_time`, and next auto-increment
+- `CREATE TABLE ... AUTO_INCREMENT`, `ALTER TABLE ... AUTO_INCREMENT`, inserts,
+  deletes, and `SHOW TABLE STATUS WHERE` predicates over displayed
+  `Auto_increment` / timestamp columns
 - transaction rollback of maintained row counts
 - secondary-index length changes after `CREATE INDEX` and `DROP INDEX`
 - `information_schema` lower-case and mixed-case schema/pattern behavior

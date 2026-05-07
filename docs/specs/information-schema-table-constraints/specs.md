@@ -28,8 +28,9 @@ This slice exposes primary-key and unique constraints by deriving rows from
 `__mylite_check_constraint_catalog`. MyLite must not create a parallel
 constraint catalog for primary and unique metadata. Nonunique indexes are
 excluded. Table-level `CREATE TABLE ... FOREIGN KEY` definitions now produce
-foreign-key rows from MyLite's foreign-key catalog. ALTER foreign keys and
-referential enforcement remain deferred.
+foreign-key rows from MyLite's foreign-key catalog. Supported
+`ALTER TABLE ... ADD/DROP FOREIGN KEY` and `DROP CONSTRAINT` actions update the
+same derived metadata.
 
 ## Compatibility Sources
 
@@ -256,6 +257,8 @@ Runtime coverage:
   8.4.9-verified generated names and enforcement values
 - table-level `CREATE TABLE ... FOREIGN KEY` returns `FOREIGN KEY` rows from
   the foreign-key catalog
+- supported `ALTER TABLE ... ADD FOREIGN KEY` adds `FOREIGN KEY` rows, and
+  `DROP FOREIGN KEY` / `DROP CONSTRAINT` removes them
 - row order follows the deterministic MyLite ordering documented above
 - lower-case, mixed-case, and quoted table references execute
 - `INFORMATION_SCHEMA.TABLES` exposes the `TABLE_CONSTRAINTS` system-view row
@@ -271,9 +274,10 @@ Runtime coverage:
 
 ## Known Gaps
 
-- Foreign-key constraints currently come from table-level `CREATE TABLE`
-  definitions only. ALTER foreign keys, referential actions, and enforcement
-  are deferred.
+- Referential-action details are exposed through
+  `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`; `TABLE_CONSTRAINTS` only
+  reports the logical constraint type and enforcement flag where MySQL exposes
+  one.
 - Key-part ordinals for primary and unique constraints are exposed by
   [INFORMATION_SCHEMA.KEY_COLUMN_USAGE](../information-schema-key-column-usage/specs.md).
 - Privilege filtering and exact MySQL field metadata remain deferred. General

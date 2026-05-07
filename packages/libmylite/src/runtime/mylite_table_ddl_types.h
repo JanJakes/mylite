@@ -194,6 +194,7 @@ struct mylite_alter_table_action {
     struct mylite_create_table_check check;
     struct mylite_create_table_foreign_key foreign_key;
     bool index_visible;
+    bool generic_constraint;
 };
 
 struct mylite_alter_table_plan {
@@ -281,6 +282,7 @@ struct mylite_alter_table_model {
     size_t index_count;
     uint64_t auto_increment;
     bool clear_auto_increment;
+    bool had_auto_increment_column;
     bool report_copied_rows;
     bool set_auto_increment;
     bool temporary;

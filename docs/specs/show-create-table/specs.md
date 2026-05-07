@@ -57,7 +57,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW CREATE TABLE text_defaults` for nullable `TEXT`, explicit `TEXT DEFAULT NULL`, and `TEXT NOT NULL` columns | Nullable text family columns omit implicit and explicit `DEFAULT NULL`; non-null text columns append `NOT NULL`. |
 | `SHOW CREATE TABLE t_default_col_explicit` for `CREATE TABLE t_default_col_explicit (c VARCHAR(10) COLLATE utf8mb4_bin, d VARCHAR(10)) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci` | Column `c` renders `varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL`; column `d` renders `varchar(10) DEFAULT NULL`. |
 | `SHOW CREATE TABLE t_table_bin` for `CREATE TABLE t_table_bin (c VARCHAR(10), d VARCHAR(10) COLLATE utf8mb4_0900_ai_ci) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin` | Column `c` renders `varchar(10) COLLATE utf8mb4_bin DEFAULT NULL`; column `d` renders `varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL`. |
-| `SHOW CREATE TABLE t` for a table with a supporting FK index, `CONSTRAINT fk_t_parent FOREIGN KEY (...)`, `CONSTRAINT chk_note CHECK (...) NOT ENFORCED`, and generated CHECK constraints | Foreign-key clauses render after keys and before CHECK clauses. CHECK clauses render as `CONSTRAINT <name> CHECK (<stored-clause>)`; since stored clauses are already parenthesized, binary comparisons display as `CHECK ((...))`. `NOT ENFORCED` renders `/*!80016 NOT ENFORCED */`. CHECK clauses are ordered by constraint name. |
+| `SHOW CREATE TABLE t` for a table with a supporting FK index, `CONSTRAINT fk_t_parent FOREIGN KEY (...)`, `CONSTRAINT chk_note CHECK (...) NOT ENFORCED`, and generated CHECK constraints | Foreign-key clauses render after keys and before CHECK clauses. Multi-column foreign-key child and referenced column lists use comma-space separators, and FK clauses are ordered by constraint name. CHECK clauses render as `CONSTRAINT <name> CHECK (<stored-clause>)`; since stored clauses are already parenthesized, binary comparisons display as `CHECK ((...))`. `NOT ENFORCED` renders `/*!80016 NOT ENFORCED */`. CHECK clauses are ordered by constraint name. |
 | `ALTER TABLE t ADD CONSTRAINT score_bound CHECK (score < 100) NOT ENFORCED; SHOW CREATE TABLE t` | The added CHECK appears in the sorted CHECK-constraint section and preserves the `/*!80016 NOT ENFORCED */` comment marker. |
 | `SHOW CREATE TABLE t` with no selected database | Error `1046`, SQLSTATE `3D000`, message `No database selected`. |
 | `SHOW CREATE TABLE missing_db.t` | Error `1049`, SQLSTATE `42000`, message `Unknown database 'missing_db'`. |
@@ -164,7 +164,10 @@ Formatting:
 - Invisible non-primary indexes append `/*!80000 INVISIBLE */`.
 - Foreign-key clauses follow indexes and render the cataloged constraint name,
   child column list, referenced schema/table when cross-schema, referenced
-  column list, and non-default `ON DELETE` / `ON UPDATE` actions.
+  column list, and non-default `ON DELETE` / `ON UPDATE` actions. Foreign-key
+  clauses are ordered by constraint name. Child and referenced column names in
+  FK clauses are separated with `, `, matching MySQL's default multi-column
+  foreign-key display.
 - CHECK clauses follow foreign keys and are ordered by constraint name, matching
   MySQL's `SHOW CREATE TABLE` display rather than DDL source order.
 - CHECK clauses render as
@@ -207,7 +210,8 @@ Runtime coverage:
   and table `AUTO_INCREMENT`
 - explicit `USING BTREE` display for create-table, standalone `CREATE INDEX`,
   and `ALTER TABLE ADD KEY`, including HASH fallback suppression
-- foreign-key clauses before CHECK clauses
+- foreign-key clauses before CHECK clauses, including constraint-name ordering
+  and MySQL-compatible multi-column column-list spacing
 - create-time and ALTER-added CHECK clauses, including generated names,
   constraint-name ordering, and `/*!80016 NOT ENFORCED */`
 - text family columns suppressing implicit and explicit `DEFAULT NULL`

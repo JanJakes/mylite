@@ -161,6 +161,7 @@ Catalog for this slice:
 | `log_bin` | `OFF` | `OFF` | Embedded runtime placeholder; MyLite does not write a MySQL binary log. |
 | `log_bin_trust_function_creators` | `OFF` | `OFF` | Embedded runtime placeholder; stored program privilege behavior is deferred. |
 | `max_error_count` | `1024` | `1024` | Storage cap behavior remains deferred; diagnostics currently store all generated conditions in memory. |
+| `sql_log_bin` | current handle state, default `ON` | omitted | Session-only binary-log toggle accepted for dump/restore compatibility; MyLite has no binary log side effect. |
 | `sql_mode` | current handle state, default MySQL 8.4 mode string | MySQL 8.4 default mode string | Session/local assignment is implemented for recognized modes and the focused `REPLACE(...)` removal idiom. Implemented expression/DDL/DML behavior may still be narrower than the full mode surface. |
 | `sql_notes` | current handle state, default `ON` | `ON` | Session/local assignment is implemented for numeric, boolean keyword, and `DEFAULT` values. |
 | `transaction_isolation` | `REPEATABLE-READ` | `REPEATABLE-READ` | Fixed compatibility value; isolation-level semantics are deferred. |

@@ -239,7 +239,7 @@ static int validate_alter_table_auto_increment_shape(
             return mylite_table_ddl_set_alter_table_wrong_auto_increment_error(database);
         }
     }
-    if (auto_increment_count == 0U) {
+    if (auto_increment_count == 0U && model->had_auto_increment_column) {
         model->clear_auto_increment = true;
     }
     return MYLITE_OK;

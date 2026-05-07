@@ -1149,14 +1149,17 @@ static int update_table_statistics(
         bind_avg_row_length = 2,
         bind_data_length = 3,
         bind_index_length = 4,
-        bind_schema = 5,
-        bind_table = 6,
+        bind_update_time_rows = 5,
+        bind_schema = 6,
+        bind_table = 7,
     };
 
     sqlite3_stmt *update = NULL;
     char *sql = sqlite3_mprintf(
         "UPDATE %s SET table_rows = ?, avg_row_length = ?, data_length = ?, "
-        "max_data_length = 0, index_length = ?, data_free = 0 "
+        "max_data_length = 0, index_length = ?, data_free = 0, "
+        "update_time = CASE WHEN table_rows IS NOT ? "
+        "THEN strftime('%%Y-%%m-%%d %%H:%%M:%%S', 'now') ELSE update_time END "
         "WHERE table_schema = ? AND table_name = ?",
         table_catalog
     );
@@ -1180,6 +1183,7 @@ static int update_table_statistics(
     sqlite3_bind_int64(update, bind_avg_row_length, avg_row_length);
     sqlite3_bind_int64(update, bind_data_length, data_length);
     sqlite3_bind_int64(update, bind_index_length, index_length);
+    sqlite3_bind_int64(update, bind_update_time_rows, row_count);
     sqlite3_bind_text(update, bind_schema, schema_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(update, bind_table, table_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(update);

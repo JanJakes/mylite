@@ -30,9 +30,10 @@ for the next generated value. A requested value lower than the current maximum
 stored auto value does not lower future generated values; the next generated
 value remains at least `MAX(auto_column) + 1`.
 
-If a table has no `AUTO_INCREMENT` column, MySQL accepts the statement but
-leaves the exposed `AUTO_INCREMENT` table metadata null and generated values are
-unaffected.
+If a table has no `AUTO_INCREMENT` column, MySQL accepts the statement but does
+not create or change generated-value state. A table option recorded by
+`CREATE TABLE ... AUTO_INCREMENT=N` remains visible; a table created without
+that option continues to expose `AUTO_INCREMENT` as `NULL`.
 
 Observed MySQL 8.4.9 results:
 
@@ -40,11 +41,16 @@ Observed MySQL 8.4.9 results:
   followed by two generated inserts produced ids `10` and `11`.
 - `ALTER TABLE ai AUTO_INCREMENT=50` affected zero rows and the next generated
   insert produced id `50`.
-- `ALTER TABLE ai AUTO_INCREMENT=5` affected zero rows after id `50` existed and
-  the next generated insert produced id `51`.
+- `ALTER TABLE ai AUTO_INCREMENT=5` affected zero rows after id `50` existed,
+  kept the exposed next value at `51`, and the next generated insert produced
+  id `51`.
 - `ALTER TABLE ai AUTO_INCREMENT 70` accepted the no-equals spelling and the next
   generated insert produced id `70`.
-- `ALTER TABLE no_ai AUTO_INCREMENT=50` succeeded and left
+- `CREATE TABLE no_ai (id INT PRIMARY KEY) AUTO_INCREMENT=20` exposed
+  `AUTO_INCREMENT=20`; `ALTER TABLE no_ai AUTO_INCREMENT=50` succeeded and left
+  that exposed value unchanged.
+- `CREATE TABLE no_ai (id INT PRIMARY KEY)` followed by
+  `ALTER TABLE no_ai AUTO_INCREMENT=50` succeeded and left
   `information_schema.TABLES.AUTO_INCREMENT` null.
 
 ## MyLite Behavior
@@ -54,12 +60,15 @@ literal in the prepared alter-table plan, and applies it after column and index
 alter actions have produced the final in-memory table model.
 
 When the final table model contains an `AUTO_INCREMENT` column, MyLite stores
-the requested value in the table catalog. The insert path already computes the
-runtime next value as the maximum of the catalog value and
-`MAX(auto_column) + 1`, which preserves MySQL's no-lowering behavior.
+the larger of the requested value and `MAX(auto_column) + 1` in the table
+catalog. This keeps `INFORMATION_SCHEMA.TABLES` and `SHOW TABLE STATUS`
+aligned with the next generated value before a later insert runs.
 
 When the final table model has no `AUTO_INCREMENT` column, MyLite treats the
-option as an accepted no-op and clears any stale auto-increment catalog value.
+table option as an accepted no-op. It does not create a new catalog value and
+does not replace a value previously recorded by `CREATE TABLE ... AUTO_INCREMENT`.
+Independent column actions that remove an auto-increment column still clear the
+catalog value.
 
 MyLite keeps `affected_rows` at `0` for supported persistent alter-table option
 updates, matching the observed MySQL persistent-table behavior for this slice.
@@ -77,4 +86,5 @@ Runtime tests compare the MySQL-observed generated-value behavior:
 - raising the next value to `50`;
 - trying to lower the value below existing rows;
 - using the no-equals spelling;
-- accepting the option as a no-op on a table without an auto-increment column.
+- accepting the option as a no-op on tables without an auto-increment column,
+  both with and without an existing create-time table option value.

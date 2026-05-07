@@ -50,6 +50,11 @@ static int execute_set_sql_notes_statement(
     const struct mylite_connection_system_variable_plan *plan
 );
 
+static int execute_set_sql_log_bin_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
 static int execute_set_unique_checks_statement(
     mylite_stmt *stmt,
     const struct mylite_connection_system_variable_plan *plan
@@ -314,6 +319,9 @@ int mylite_connection_execute_system_variable_plan(
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES:
         status = execute_set_sql_notes_statement(stmt, plan);
         break;
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
+        status = execute_set_sql_log_bin_statement(stmt, plan);
+        break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_TIME_ZONE:
         status = execute_set_time_zone_statement(stmt, plan);
         break;
@@ -400,6 +408,16 @@ static int execute_set_sql_notes_statement(
         return mylite_connection_set_default_sql_notes(stmt->database);
     }
     return mylite_connection_set_sql_notes(stmt->database, plan->unsigned_value != 0U);
+}
+
+static int execute_set_sql_log_bin_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
+    if (plan->use_default) {
+        return mylite_connection_set_default_sql_log_bin(stmt->database);
+    }
+    return mylite_connection_set_sql_log_bin(stmt->database, plan->unsigned_value != 0U);
 }
 
 static int execute_set_unique_checks_statement(
@@ -515,6 +533,7 @@ int mylite_connection_copy_system_variable_statement(
     }
 
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS ||
+        plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN ||
         plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES ||
         plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_UNIQUE_CHECKS) {
         return copy_connection_boolean_system_variable_value(
@@ -791,6 +810,7 @@ static int resolve_user_variable_system_value(
         break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES:
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
         status = resolve_boolean_user_variable_value(database, plan, &value, out_plan);
         break;
@@ -896,6 +916,9 @@ static enum mylite_connection_system_variable set_system_variable_kind(
     if (mylite_ascii_case_equal(name, "sql_notes")) {
         return MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES;
     }
+    if (mylite_ascii_case_equal(name, "sql_log_bin")) {
+        return MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN;
+    }
     if (mylite_ascii_case_equal(name, "unique_checks")) {
         return MYLITE_CONNECTION_SYSTEM_VARIABLE_UNIQUE_CHECKS;
     }
@@ -950,6 +973,8 @@ static const char *set_system_variable_name(enum mylite_connection_system_variab
         return "sql_mode";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES:
         return "sql_notes";
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
+        return "sql_log_bin";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_TIME_ZONE:
         return "time_zone";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
@@ -966,16 +991,35 @@ static int set_system_variable_global_error(
     mylite_db *database,
     enum mylite_connection_system_variable variable
 ) {
-    char *message =
-        sqlite3_mprintf("SET GLOBAL %s is not supported", set_system_variable_name(variable));
+    char *message = NULL;
+    unsigned int code = MYLITE_MYSQL_ER_UNKNOWN_ERROR;
+    int status = MYLITE_OK;
+
+    if (variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN) {
+        message = sqlite3_mprintf(
+            "Variable '%q' is a SESSION variable and can't be used with SET GLOBAL",
+            set_system_variable_name(variable)
+        );
+        code = MYLITE_MYSQL_ER_LOCAL_VARIABLE;
+    } else {
+        message =
+            sqlite3_mprintf("SET GLOBAL %s is not supported", set_system_variable_name(variable));
+    }
 
     if (message == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    (void)mylite_diagnostics_set_error_message(database, message);
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK && variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN) {
+        status = mylite_diagnostics_append_error(database, code, message);
+    }
     sqlite3_free(message);
-    return MYLITE_UNSUPPORTED;
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    return variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN ? MYLITE_EXEC_ERROR
+                                                                     : MYLITE_UNSUPPORTED;
 }
 
 static int set_system_variable_type_error(mylite_db *database, const char *variable_name) {

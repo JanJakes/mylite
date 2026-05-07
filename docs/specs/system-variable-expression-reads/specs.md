@@ -63,6 +63,8 @@ Invalid explicit scopes are errors:
 - `@@SESSION.log_bin`, `@@SESSION.gtid_purged`, and
   `@@SESSION.log_bin_trust_function_creators` report error 1238 because those
   variables are global-only.
+- `@@GLOBAL.sql_log_bin` reports error 1238 because `sql_log_bin` is
+  session-only.
 
 Unknown variables report error 1193 with
 `Unknown system variable '<name>'`.
@@ -107,6 +109,7 @@ Boolean variables return MySQL-compatible integers:
 
 - `@@autocommit` returns `1`.
 - `@@sql_notes` returns the current session value, defaulting to `1`.
+- `@@sql_log_bin` returns the current session value, defaulting to `1`.
 - `@@transaction_read_only` returns `0`.
 
 `@@transaction_isolation` returns `REPEATABLE-READ`.
@@ -121,7 +124,7 @@ metadata rather than `SHOW VARIABLES` metadata:
 - `group_concat_max_len`, `warning_count`, `error_count`, and `max_error_count`
   are unsigned `LONGLONG`, binary collation (id 63), declared length `21`,
   decimals `0`, and no `NOT_NULL` flag.
-- Boolean variables such as `autocommit`, `sql_notes`, and
+- Boolean variables such as `autocommit`, `sql_notes`, `sql_log_bin`, and
   `transaction_read_only` are signed numeric `LONGLONG`, binary collation
   (id 63), declared length `1`, decimals `0`, and no `NOT_NULL` flag.
 
@@ -149,6 +152,7 @@ Runtime tests cover:
 - Session mutation through existing `SET` support followed by expression reads.
 - Charset/collation state after `SET NAMES` and selected-schema defaults.
 - Boolean and version variables.
+- Session `sql_log_bin` reads and dump-style save/disable/restore assignment.
 - Use in table-backed `WHERE`, `ORDER BY`, and projection expressions.
 - Metadata for string, unsigned numeric, and boolean variables.
 - Unknown-variable and wrong-scope diagnostics.

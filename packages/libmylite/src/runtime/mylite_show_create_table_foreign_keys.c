@@ -41,7 +41,7 @@ int mylite_show_create_table_append_foreign_keys(
         "referenced_table_name, delete_rule, update_rule "
         "FROM %s "
         "WHERE table_schema = ? AND table_name = ? AND ordinal_position = 1 "
-        "ORDER BY rowid",
+        "ORDER BY constraint_name COLLATE NOCASE, constraint_name COLLATE BINARY, rowid",
         mylite_catalog_foreign_key_catalog_name(target->temporary)
     );
     int rc = SQLITE_OK;
@@ -181,7 +181,7 @@ static int append_show_create_table_foreign_key_columns(
         const char *column_name = (const char *)sqlite3_column_text(columns, referenced ? 1 : 0);
 
         if (!first) {
-            sqlite3_str_appendall(create_sql, ",");
+            sqlite3_str_appendall(create_sql, ", ");
         }
         first = false;
         mylite_show_create_append_identifier(create_sql, column_name);

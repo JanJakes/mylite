@@ -52,6 +52,7 @@ enum mylite_system_variable_id {
     MYLITE_SYSTEM_VARIABLE_GTID_PURGED = 34,
     MYLITE_SYSTEM_VARIABLE_LOG_BIN = 35,
     MYLITE_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS = 36,
+    MYLITE_SYSTEM_VARIABLE_SQL_LOG_BIN = 37,
 };
 
 enum mylite_system_variable_requested_scope {
@@ -428,6 +429,10 @@ static const struct mylite_system_variable_entry *find_system_variable_entry(
          MYLITE_SYSTEM_VARIABLE_SQL_MODE,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
          MYLITE_SYSTEM_VARIABLE_VALUE_STRING},
+        {"sql_log_bin",
+         MYLITE_SYSTEM_VARIABLE_SQL_LOG_BIN,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION,
+         MYLITE_SYSTEM_VARIABLE_VALUE_BOOLEAN},
         {"sql_notes",
          MYLITE_SYSTEM_VARIABLE_SQL_NOTES,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
@@ -627,6 +632,7 @@ static uint64_t system_variable_unsigned_value(
     case MYLITE_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
     case MYLITE_SYSTEM_VARIABLE_SQL_MODE:
     case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
+    case MYLITE_SYSTEM_VARIABLE_SQL_LOG_BIN:
     case MYLITE_SYSTEM_VARIABLE_TIME_ZONE:
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
@@ -657,6 +663,11 @@ static int64_t system_variable_boolean_value(
             return 0;
         }
         if (mylite_connection_sql_notes(database)) {
+            return 1;
+        }
+        return 0;
+    case MYLITE_SYSTEM_VARIABLE_SQL_LOG_BIN:
+        if (mylite_connection_sql_log_bin(database)) {
             return 1;
         }
         return 0;
@@ -797,6 +808,7 @@ static const char *system_variable_string_value(
     case MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
     case MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS:
     case MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
+    case MYLITE_SYSTEM_VARIABLE_SQL_LOG_BIN:
     case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY:
     case MYLITE_SYSTEM_VARIABLE_UNIQUE_CHECKS:

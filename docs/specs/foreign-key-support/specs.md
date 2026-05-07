@@ -73,7 +73,8 @@ MySQL creates:
   `DELETE_RULE`, `UNIQUE_CONSTRAINT_NAME`, child table, and referenced table
 - supporting child indexes named `fk_parent` and `idx_code_ref`
 - `SHOW CREATE TABLE` lines for the child indexes followed by the two
-  `CONSTRAINT ... FOREIGN KEY ... REFERENCES ...` lines
+  `CONSTRAINT ... FOREIGN KEY ... REFERENCES ...` lines, ordered by
+  constraint name
 
 Observed rule and error details:
 
@@ -88,6 +89,15 @@ Observed rule and error details:
   but later unmatched child inserts fail with 1452.
 - Dropping a foreign key reports affected rows `0` and leaves the supporting
   child index in place.
+- `ALTER TABLE ... DROP CONSTRAINT fk_name` drops a foreign-key constraint when
+  no CHECK constraint with that symbol exists on the table. A missing generic
+  constraint name fails with error 3940 and message
+  `Constraint '<name>' does not exist.`
+- When a child index already exists with a leading column sequence matching the
+  foreign-key child columns, MySQL reuses it. Without an existing matching
+  index, an explicit `CONSTRAINT symbol` names the created supporting index;
+  the optional identifier after `FOREIGN KEY` names the supporting index only
+  when the constraint name itself is generated.
 - Mixed `ALTER TABLE` statements combining supported column/index actions with
   foreign-key actions are executable. Observed MySQL 8.4.9 cases include
   `ADD COLUMN ..., ADD CONSTRAINT ... FOREIGN KEY ...` reporting the child row
@@ -110,6 +120,13 @@ Observed rule and error details:
 - `CASCADE`, `SET NULL`, and default `NO ACTION` rules are reported in
   `REFERENTIAL_CONSTRAINTS`; `SHOW CREATE TABLE` omits explicit default
   `NO ACTION`.
+- `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` reports multi-column foreign keys in
+  child-column order within each constraint. Direct `SELECT *` output orders
+  foreign-key constraint groups by constraint name after primary and unique
+  rows for the table.
+- `SHOW CREATE TABLE` renders foreign-key clauses by constraint name. Index key
+  parts use MySQL's compact comma formatting, while foreign-key child and
+  referenced column lists use comma-space separators.
 - `SET DEFAULT` rules are accepted and reported in `SHOW CREATE TABLE` and
   `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`, but parent updates/deletes are
   rejected with error 1451 in the observed InnoDB behavior rather than applying
@@ -189,6 +206,9 @@ reuses the supporting child index, validates existing child rows while
 `foreign_key_checks=0`, and permits missing referenced tables only while checks
 are disabled. FK-only `ALTER TABLE ... DROP FOREIGN KEY` removes only
 foreign-key metadata and leaves the supporting child index in place.
+`ALTER TABLE ... DROP CONSTRAINT` first removes a matching CHECK constraint;
+when no CHECK exists, it removes a matching foreign-key constraint and leaves
+the supporting child index intact.
 `DROP INDEX` and `ALTER TABLE ... DROP INDEX` / `DROP PRIMARY KEY` reject
 child supporting indexes and parent primary/unique indexes required by foreign
 keys with error 1553, even while `foreign_key_checks=0`. `RENAME TABLE` and
@@ -213,7 +233,10 @@ Table-level `CREATE TABLE ... FOREIGN KEY` should:
 
 - copy the source-complete AST into the create-table plan
 - generate the MySQL-style constraint name when omitted
-- create or reuse the supporting child index
+- create or reuse the supporting child index; reuse an existing matching index
+  first, otherwise use the explicit constraint name as the support index name
+  when present, then the optional `FOREIGN KEY index_name`, then a generated
+  name based on the first child column
 - validate child columns
 - validate the parent table and referenced columns when `foreign_key_checks`
   is enabled

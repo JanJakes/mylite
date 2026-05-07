@@ -535,21 +535,24 @@ static int copy_create_table_foreign_key(
         );
     }
     if (status == MYLITE_OK) {
-        if (index_name != NULL) {
-            foreign_key.supporting_index_name = mylite_copy_identifier_span(index_name);
+        const char *existing_index =
+            create_table_supporting_foreign_key_index_name(plan, &foreign_key);
+
+        if (existing_index != NULL) {
+            foreign_key.supporting_index_name =
+                mylite_copy_span_text(existing_index, strlen(existing_index));
         } else if (constraint_name != NULL) {
             foreign_key.supporting_index_name = mylite_copy_span_text(
                 foreign_key.constraint_name,
                 strlen(foreign_key.constraint_name)
             );
+        } else if (index_name != NULL) {
+            foreign_key.supporting_index_name = mylite_copy_identifier_span(index_name);
         } else {
-            const char *existing_index =
-                create_table_supporting_foreign_key_index_name(plan, &foreign_key);
-            const char *supporting_name =
-                existing_index == NULL ? foreign_key.column_names[0] : existing_index;
-
-            foreign_key.supporting_index_name =
-                mylite_copy_span_text(supporting_name, strlen(supporting_name));
+            foreign_key.supporting_index_name = mylite_copy_span_text(
+                foreign_key.column_names[0],
+                strlen(foreign_key.column_names[0])
+            );
         }
         if (foreign_key.supporting_index_name == NULL) {
             status = MYLITE_NOMEM;

@@ -889,11 +889,12 @@ static int test_connection_charset_statements(void) {
         "SET unique_checks = TRUE; "
         "SET default_storage_engine = MEMORY; "
         "SET time_zone = SYSTEM; "
-        "SET sql_notes = FALSE;",
+        "SET sql_notes = FALSE; "
+        "SET SQL_LOG_BIN = ON;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
-    failures += expect_child_count(result.root, 5U, "set keyword variable script");
+    failures += expect_child_count(result.root, 6U, "set keyword variable script");
     statement = child_at(result.root, 0U);
     failures += expect_literal(
         child_at(statement, 1U),
@@ -919,6 +920,14 @@ static int test_connection_charset_statements(void) {
         child_at(statement, 1U),
         MYLITE_SQL_AST_LITERAL_FALSE,
         "set sql notes false value"
+    );
+    statement = child_at(result.root, 5U);
+    failures +=
+        expect_span_text(child_at(statement, 0U), "SQL_LOG_BIN", "set sql log bin variable");
+    failures += expect_literal(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "set sql log bin on value"
     );
     mylite_sql_parse_result_deinit(&result);
 

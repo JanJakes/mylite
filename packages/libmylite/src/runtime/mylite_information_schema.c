@@ -340,11 +340,15 @@ static const char information_schema_key_column_usage_sql[] =
     "referenced_table_name AS REFERENCED_TABLE_NAME,"
     "referenced_column_name AS REFERENCED_COLUMN_NAME,"
     "2 AS constraint_order,"
-    "MIN(rowid) OVER (PARTITION BY constraint_schema, table_name, constraint_name) "
+    "MIN(rowid) OVER (PARTITION BY constraint_schema, table_schema, table_name, "
+    "constraint_name) "
     "AS first_rowid "
     "FROM __mylite_foreign_key_catalog) "
     "ORDER BY TABLE_SCHEMA COLLATE BINARY, TABLE_NAME COLLATE BINARY, "
-    "constraint_order, first_rowid, ORDINAL_POSITION";
+    "constraint_order, "
+    "CASE WHEN constraint_order = 2 THEN CONSTRAINT_NAME ELSE '' END COLLATE NOCASE, "
+    "CASE WHEN constraint_order = 2 THEN CONSTRAINT_NAME ELSE '' END COLLATE BINARY, "
+    "first_rowid, ORDINAL_POSITION";
 static const char information_schema_check_constraints_sql[] =
     "SELECT constraint_catalog AS CONSTRAINT_CATALOG,"
     "constraint_schema AS CONSTRAINT_SCHEMA,"

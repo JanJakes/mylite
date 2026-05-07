@@ -8,14 +8,14 @@ actions.
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `ALTER TABLE` | ❌ | See [ALTER TABLE actions](#alter-table-actions) |
-| `CREATE TABLE` | ❌ | Table creation and linked options |
+| `CREATE TABLE` | 🟡 | Limited persistent base-table creation from `baseline-basic-table-lifecycle`: explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, and `NULL`/`NOT NULL`; no options, keys, defaults, temporary tables, or `IF NOT EXISTS` |
 | `CREATE TEMPORARY TABLE` | ❌ | Session-scoped table lifecycle and name shadowing |
 | `CREATE TABLE ... LIKE` | ❌ | Exact metadata cloning rules |
 | `CREATE TABLE ... SELECT` | ❌ | CTAS inference and atomicity |
-| `DROP TABLE` | ❌ | Drop semantics and warnings |
+| `DROP TABLE` | 🟡 | Limited single persistent base-table drop without `IF EXISTS`, `TEMPORARY`, multi-table drop, `RESTRICT`, or `CASCADE` |
 | `RENAME TABLE` | ❌ | Atomic multi-table rename semantics |
 | `TRUNCATE TABLE` | ❌ | DDL truncate semantics |
-| Atomic DDL | ❌ | DDL atomicity expectations |
+| Atomic DDL | 🟡 | Catalog descriptor rows and generated physical SQLite table changes commit or roll back atomically for the limited create/drop subset only |
 | Implicit commit boundaries | ❌ | Implicit commit boundaries |
 | `IMPORT TABLE` | ❌ | Transportable tablespace import syntax, diagnostics |
 
@@ -23,7 +23,7 @@ actions.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Column definition grammar | ❌ | Column attributes and constraints |
+| Column definition grammar | 🟡 | Limited integer type and nullability grammar only |
 | Silent column specification changes | ❌ | Automatic column rewrites |
 | Default expressions | ❌ | Literal/expression defaults |
 | Generated columns | ❌ | Generated column metadata |

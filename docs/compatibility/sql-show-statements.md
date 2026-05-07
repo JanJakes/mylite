@@ -47,7 +47,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW REPLICAS` | ❌ | Result shape, filters, privileges |
 | `SHOW STATUS` | ❌ | Result shape, filters, privileges |
 | `SHOW TABLE STATUS` | ❌ | Result shape, filters, privileges |
-| `SHOW TABLES` | ❌ | Result shape, filters, privileges |
+| `SHOW TABLES` | 🟡 | Limited descriptor-driven `SHOW TABLES` with optional `FROM`/`IN` schema; no `FULL`, `EXTENDED`, `LIKE`, `WHERE`, views, privileges, or temporary tables |
 | `SHOW TRIGGERS` | ❌ | Result shape, filters, privileges |
 | `SHOW VARIABLES` | ❌ | Result shape, filters, privileges |
 | `SHOW WARNINGS` | ❌ | Result shape, filters, privileges |

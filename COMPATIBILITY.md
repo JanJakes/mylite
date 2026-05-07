@@ -40,7 +40,7 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| Base tables | ❌ | Persistent table objects. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Base tables | 🟡 | Persistent base-table descriptors and physical tables for the limited `baseline-basic-table-lifecycle` subset only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Temporary tables | ❌ | Session-scoped tables and name shadowing. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md) |
 | Views | ❌ | View DDL, metadata, and query behavior. | [SQL views](docs/compatibility/sql-views.md) |
 
@@ -48,11 +48,11 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `CREATE TABLE` | ❌ | Baseline table creation. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `CREATE TABLE` | 🟡 | Limited persistent base-table creation with explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, and `NULL`/`NOT NULL`; no options, keys, defaults, temporary tables, or `IF NOT EXISTS`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CREATE TEMPORARY TABLE` | ❌ | Session-scoped creation. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CREATE TABLE ... LIKE` | ❌ | Metadata cloning. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CREATE TABLE ... SELECT` | ❌ | CTAS inference and atomicity. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| Column definition grammar | ❌ | Column attributes and constraints. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Column definition grammar | 🟡 | Limited integer column descriptors and nullability only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Default expressions | ❌ | Literal and expression defaults. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Table engine options | ❌ | Accept and expose `InnoDB`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Table charset and collation options | ❌ | Table defaults and metadata. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
@@ -67,9 +67,9 @@ tests.
 | `ORDER BY` | ❌ | Accepted table-rebuild syntax. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `DEFAULT CHARACTER SET` / `COLLATE` | ❌ | Table default charset and collation changes. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
 | `TRUNCATE TABLE` | ❌ | DDL truncate semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| `DROP TABLE` | ❌ | Drop semantics and warnings. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `DROP TABLE` | 🟡 | Limited single persistent base-table drop without `IF EXISTS`, `TEMPORARY`, multi-table drop, `RESTRICT`, or `CASCADE`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `RENAME TABLE` | ❌ | Atomic multi-table rename. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| Atomic DDL | ❌ | Transactional DDL expectations. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Atomic DDL | 🟡 | Catalog descriptors and generated physical SQLite table changes commit or roll back atomically for the limited create/drop subset only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Implicit commit boundaries | ❌ | MySQL DDL commit behavior. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [SQL transactions](docs/compatibility/sql-transactions.md) |
 
 ### Auto Increment
@@ -119,8 +119,8 @@ tests.
 | `TINYINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `SMALLINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `MEDIUMINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
-| `INT` / `INTEGER` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
-| `BIGINT` | ❌ | Ranges, overflow, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `INT` / `INTEGER` | 🟡 | DDL descriptor capture only for table lifecycle; no value conversion, range checks, expression semantics, display width, or result metadata support. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BIGINT` | 🟡 | DDL descriptor capture only for table lifecycle; no value conversion, range checks, expression semantics, display width, or result metadata support. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Integer type aliases | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `DECIMAL` / `NUMERIC` | ❌ | Exact math and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `FIXED` | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |

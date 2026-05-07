@@ -7,8 +7,8 @@
 | `TINYINT` | ❌ | Ranges, display width, metadata |
 | `SMALLINT` | ❌ | Ranges, display width, metadata |
 | `MEDIUMINT` | ❌ | Ranges, display width, metadata |
-| `INT` / `INTEGER` | ❌ | Ranges, display width, metadata |
-| `BIGINT` | ❌ | Ranges, overflow, metadata |
+| `INT` / `INTEGER` | 🟡 | DDL descriptor capture only for the limited table lifecycle subset; no value conversion, range checks, expression semantics, display width, or result metadata |
+| `BIGINT` | 🟡 | DDL descriptor capture only for the limited table lifecycle subset; no value conversion, range checks, expression semantics, display width, or result metadata |
 | Integer type aliases | ❌ | Alias rewrites and metadata |
 | `DECIMAL` / `NUMERIC` | ❌ | Exact math and metadata |
 | `FIXED` | ❌ | Alias rewrites and metadata |

@@ -246,6 +246,9 @@ tasks. Unsupported column families should stay deferred rather than guessed.
 | `NULL AS nil` | `NULL` | length `0`, decimals `0` | `BINARY NUM`; `NOT_NULL` clear |
 | `'abc' AS str_lit` under utf8mb4 results | `VAR_STRING` | length `12`, decimals `31` | `NOT_NULL` |
 | `_binary 'abc' AS bin_lit` | `VAR_STRING` | length `3`, decimals `31` | `NOT_NULL BINARY` |
+| `BINARY 'abc' AS binary_expr` under utf8mb4 results | `VAR_STRING` | length `12`, decimals `31` | `BINARY`; nullable |
+| `BINARY c` for `c CHAR(3) NOT NULL` under utf8mb4 results | `VAR_STRING` | length `12`, decimals `31` | `BINARY`; nullable |
+| `BINARY b` for `b VARBINARY(8)` | `VAR_STRING` | length `8`, decimals `31` | `BINARY`; nullable |
 | `1 + 2 AS sum_expr` | `LONGLONG` | length `3`, decimals `0` | `NOT_NULL BINARY NUM` |
 | `n + 1 AS n_plus` where `n INT NULL` | `LONGLONG` | length `12`, decimals `0` | `BINARY NUM` |
 | `5 / 2 AS slash_expr` | `NEWDECIMAL` | length `7`, decimals `4` | `BINARY NUM` |

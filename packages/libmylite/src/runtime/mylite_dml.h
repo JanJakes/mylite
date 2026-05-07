@@ -96,6 +96,15 @@ int mylite_dml_validate_insert_child_foreign_keys(
     const struct mylite_insert_bound_value *values,
     bool *out_ignored
 );
+int mylite_dml_validate_insert_check_constraints(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    bool ignore,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_bound_value *values,
+    bool *out_ignored
+);
 int mylite_dml_validate_parent_update_foreign_keys(
     mylite_db *database,
     const struct mylite_select_table *table,
@@ -139,6 +148,14 @@ int mylite_dml_validate_update_child_foreign_keys(
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
     const struct mylite_update_row *stored,
+    const struct mylite_update_row *candidate,
+    bool ignore,
+    bool *out_ignored
+);
+int mylite_dml_validate_update_check_constraints(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const struct mylite_insert_table *write_table,
     const struct mylite_update_row *candidate,
     bool ignore,
     bool *out_ignored

@@ -168,6 +168,19 @@ static int execute_insert_update_bound_row(
         return MYLITE_MISUSE;
     }
 
+    status = mylite_dml_validate_insert_check_constraints(
+        database,
+        schema_name,
+        values_plan->table_name,
+        values_plan->ignore,
+        table,
+        values,
+        &ignored
+    );
+    if (status != MYLITE_OK || ignored) {
+        return status;
+    }
+
     status = mylite_dml_find_insert_unique_conflict(database, table, values, &conflict);
     if (status != MYLITE_OK) {
         return status;
@@ -217,6 +230,17 @@ static int execute_insert_update_bound_row(
         );
     }
     if (status == MYLITE_OK) {
+        status = mylite_dml_validate_insert_check_constraints(
+            database,
+            schema_name,
+            values_plan->table_name,
+            values_plan->ignore,
+            table,
+            updated_values,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && !ignored) {
         status = mylite_dml_validate_insert_update_unique_indexes(
             database,
             values_plan->table_name,
@@ -227,7 +251,7 @@ static int execute_insert_update_bound_row(
             &update_conflicts
         );
     }
-    if (status == MYLITE_OK && !update_conflicts) {
+    if (status == MYLITE_OK && !ignored && !update_conflicts) {
         row_changed = mylite_dml_insert_update_row_changed(
             stored_values,
             updated_values,

@@ -76,8 +76,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Complete `CREATE TABLE ... CHECK (...)` syntax forms. Inline and
       table-level CHECK clauses parse and record catalog-backed metadata for
       `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` and CHECK rows in
-      `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`; CHECK enforcement remains
-      deferred.
+      `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`. Enforced CHECK constraints now
+      reject covered invalid `INSERT`, ODKU, `REPLACE`, single-table `UPDATE`,
+      joined `UPDATE`, and temporary-table DML rows; covered `IGNORE` paths
+      skip invalid rows with warning 3819.
 - [x] Complete inline and table-level foreign-key DDL syntax coverage. Inline
       `REFERENCES` is parsed and ignored like the verified MySQL 8.4.9 shape;
       table-level `FOREIGN KEY` clauses parse and return a deterministic

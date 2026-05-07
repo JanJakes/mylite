@@ -177,6 +177,20 @@ static int execute_update_row(
         );
     }
     if (status == MYLITE_OK) {
+        status = mylite_dml_validate_update_check_constraints(
+            database,
+            table,
+            write_table,
+            &candidate,
+            ignore,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && ignored) {
+        mylite_dml_update_row_deinit(&candidate);
+        return MYLITE_OK;
+    }
+    if (status == MYLITE_OK) {
         status = mylite_dml_validate_update_unique_indexes(
             database,
             table,

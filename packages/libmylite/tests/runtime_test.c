@@ -178,6 +178,7 @@ enum {
     mysql_warning_primary_invisible = 3522,
     mysql_warning_foreign_key_drop_parent = 3730,
     mysql_warning_foreign_key_incompatible_columns = 3780,
+    mysql_warning_check_constraint = 3819,
     mysql_warning_default_value_generated = 3773,
     mysql_warning_user_lock_name_too_long = 4163,
     mysql_warning_illegal_regexp_argument = 3685,
@@ -435,6 +436,8 @@ static int test_information_schema_collation_character_set_applicability_executi
 static int test_information_schema_keywords_execution(void);
 
 static int test_information_schema_check_constraints_execution(void);
+
+static int test_check_constraint_enforcement_execution(void);
 
 static int test_information_schema_referential_constraints_execution(void);
 
@@ -974,6 +977,7 @@ int main(void) {
     failures += test_information_schema_collation_character_set_applicability_execution();
     failures += test_information_schema_keywords_execution();
     failures += test_information_schema_check_constraints_execution();
+    failures += test_check_constraint_enforcement_execution();
     failures += test_information_schema_referential_constraints_execution();
     failures += test_information_schema_table_constraints_execution();
     failures += test_information_schema_key_column_usage_execution();
@@ -3209,6 +3213,214 @@ static int test_information_schema_check_constraints_execution(void) {
         columns,
         check_constraints_column_count
     );
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_check_constraint_enforcement_execution(void) {
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const count_columns[] = {"c"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const two_count[] = {"2"};
+    static const char *const rows_columns[] = {"id", "score", "note"};
+    static const char *const rows_after_seed[] = {
+        "1",
+        "1",
+        "ok",
+        "2",
+        NULL,
+        "",
+    };
+    static const char *const rows_after_ignore[] = {
+        "1",
+        "1",
+        "ok",
+        "2",
+        NULL,
+        "",
+        "3",
+        "3",
+        "dup",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open check database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_check_enforcement", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_check_enforcement", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE checks_runtime ("
+        "id INT PRIMARY KEY, "
+        "score INT, "
+        "note VARCHAR(10), "
+        "CHECK (score > 0), "
+        "CONSTRAINT chk_note CHECK (note <> '') NOT ENFORCED)",
+        MYLITE_DONE
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO checks_runtime VALUES (1, 1, 'ok')",
+        1,
+        "check valid insert affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO checks_runtime VALUES (2, NULL, '')",
+        1,
+        "check null and not enforced insert affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, score, note FROM checks_runtime ORDER BY id",
+        rows_columns,
+        3,
+        rows_after_seed,
+        2,
+        "check seed rows"
+    );
+
+    failures +=
+        prepare_sql(database, "INSERT INTO checks_runtime VALUES (4, -1, 'bad')", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "check insert violation");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "check insert affected rows");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "checks_runtime_chk_1",
+        "check insert violation constraint name"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint,
+        "check insert violation error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM checks_runtime WHERE id = 4",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "check invalid insert rolled back"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO checks_runtime VALUES (4, -1, 'bad')",
+        0,
+        "check insert ignore affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "check insert ignore warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint,
+        "check insert ignore warning code"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO checks_runtime VALUES (3, 3, 'dup')",
+        1,
+        "check duplicate seed affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO checks_runtime VALUES (3, -2, 'bad') "
+        "ON DUPLICATE KEY UPDATE score = 4",
+        0,
+        "check odku invalid insert candidate ignore affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, score, note FROM checks_runtime ORDER BY id",
+        rows_columns,
+        3,
+        rows_after_ignore,
+        3,
+        "check ignored insert leaves rows unchanged"
+    );
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO checks_runtime VALUES (3, 4, 'dup') "
+        "ON DUPLICATE KEY UPDATE score = -1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "check odku update violation");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "checks_runtime_chk_1",
+        "check odku update violation constraint name"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "UPDATE checks_runtime SET score = -1 WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "check update violation");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "checks_runtime_chk_1",
+        "check update violation constraint name"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE checks_runtime SET score = -1 WHERE id = 1",
+        0,
+        "check update ignore affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "check update ignore warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint,
+        "check update ignore warning code"
+    );
+    failures += prepare_sql(
+        database,
+        "REPLACE INTO checks_runtime VALUES (1, -1, 'bad')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "check replace violation");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM checks_runtime WHERE id IN (1, 2)",
+        count_columns,
+        1,
+        two_count,
+        1,
+        "check replace violation preserves existing rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TEMPORARY TABLE temp_checks (id INT CHECK (id > 0))",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(database, "INSERT INTO temp_checks VALUES (-1)", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "temporary check insert violation");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "temp_checks_chk_1",
+        "temporary check violation constraint name"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     mylite_close(database);
     mylite_finalize(stmt);

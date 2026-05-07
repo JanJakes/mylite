@@ -70,7 +70,16 @@ static bool insert_plan_tracks_required_warnings(
     const mylite_db *database,
     const struct mylite_insert_values_plan *plan
 ) {
-    return plan != NULL && (plan->ignore || !mylite_connection_sql_mode_is_strict(database));
+    if (plan == NULL) {
+        return false;
+    }
+    if (plan->ignore) {
+        return true;
+    }
+    if (mylite_connection_sql_mode_is_strict(database)) {
+        return false;
+    }
+    return true;
 }
 
 char *mylite_dml_build_insert_physical_sql(
@@ -199,6 +208,17 @@ int mylite_dml_execute_insert_row(
         callbacks
     );
     if (status == MYLITE_OK) {
+        status = mylite_dml_validate_insert_check_constraints(
+            database,
+            schema_name,
+            plan->table_name,
+            plan->ignore,
+            table,
+            values,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && !ignored) {
         status = mylite_dml_validate_insert_unique_indexes(
             database,
             plan->table_name,
@@ -265,6 +285,17 @@ int mylite_dml_execute_insert_set_row(
         callbacks
     );
     if (status == MYLITE_OK) {
+        status = mylite_dml_validate_insert_check_constraints(
+            database,
+            schema_name,
+            values_plan->table_name,
+            values_plan->ignore,
+            table,
+            values,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && !ignored) {
         status = mylite_dml_validate_insert_unique_indexes(
             database,
             values_plan->table_name,
@@ -415,8 +446,10 @@ static bool insert_bound_values_equal(
         if (left->text_value == NULL || right->text_value == NULL) {
             return left->text_value == right->text_value;
         }
-        return left->text_length == right->text_length &&
-               memcmp(left->text_value, right->text_value, left->text_length) == 0;
+        if (left->text_length != right->text_length) {
+            return false;
+        }
+        return memcmp(left->text_value, right->text_value, left->text_length) == 0;
     }
     return false;
 }

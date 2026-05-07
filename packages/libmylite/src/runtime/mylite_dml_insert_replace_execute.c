@@ -34,6 +34,19 @@ int mylite_dml_write_replace_candidate_row(
         return MYLITE_MISUSE;
     }
 
+    status = mylite_dml_validate_insert_check_constraints(
+        database,
+        schema_name,
+        table_name,
+        false,
+        table,
+        values,
+        &ignored
+    );
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
     status = mylite_dml_validate_insert_child_foreign_keys(
         database,
         schema_name,

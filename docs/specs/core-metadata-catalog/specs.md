@@ -302,8 +302,8 @@ Behavior:
   `__mylite_index_catalog`.
 - Excludes nonunique indexes.
 - Returns no rows before primary or unique index metadata exists.
-- CHECK and foreign-key rows are deferred until those catalogs and runtime
-  semantics exist. See
+- CHECK rows are derived from `__mylite_check_constraint_catalog`; foreign-key
+  rows are derived from `__mylite_foreign_key_catalog`. See
   [INFORMATION_SCHEMA.TABLE_CONSTRAINTS](../information-schema-table-constraints/specs.md).
 
 ### `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
@@ -318,9 +318,8 @@ Behavior:
 
 - Exposes the MySQL-compatible four-column shape as a static read-only system
   view.
-- Returns no rows until MyLite has CHECK DDL, a CHECK catalog, expression
-  validation, enforcement state, and DML enforcement.
-- Does not create an internal CHECK catalog or fake CHECK rows. See
+- Returns rows from `__mylite_check_constraint_catalog` for supported
+  `CREATE TABLE` CHECK definitions. See
   [INFORMATION_SCHEMA.CHECK_CONSTRAINTS](../information-schema-check-constraints/specs.md).
 
 ### `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`

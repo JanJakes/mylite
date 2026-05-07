@@ -688,6 +688,21 @@ static int execute_joined_update_target_row(
             apply_joined_update_assignments(database, joined_stmt, joined_row, target, &candidate);
     }
     if (status == MYLITE_OK) {
+        status = mylite_dml_validate_update_check_constraints(
+            database,
+            target->table,
+            &target->write_table,
+            &candidate,
+            false,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && ignored) {
+        mylite_dml_update_row_deinit(&candidate);
+        mylite_dml_update_row_deinit(&stored);
+        return MYLITE_OK;
+    }
+    if (status == MYLITE_OK) {
         status = mylite_dml_validate_update_unique_indexes(
             database,
             target->table,

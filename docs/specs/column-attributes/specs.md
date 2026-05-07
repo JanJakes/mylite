@@ -299,7 +299,7 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `a VARCHAR(20) DEFAULT (UPPER('x'))` | parse error until function-call expressions land |
 | `a INT AUTO_INCREMENT`, inline keys | parse error until later roadmap tasks |
 | `a INT REFERENCES parent(id)` | parse OK; ignored at execution like the verified MySQL 8.4.9 shape |
-| `a INT CHECK (a > 0)` | parse OK; executable CHECK catalog/enforcement support is deferred |
+| `a INT CHECK (a > 0)` | parse OK; supported `CREATE TABLE` execution records CHECK metadata and covered DML paths enforce it |
 
 Runtime tests should verify that valid covered `CREATE TABLE` statements
 prepare as `MYLITE_UNSUPPORTED` and leave `INFORMATION_SCHEMA.TABLES` and

@@ -6,10 +6,12 @@ This feature adds the first executable MyLite slice for:
 
 - `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
 
-MyLite records CHECK constraints accepted by `CREATE TABLE` in a CHECK catalog
-and exposes them through the MySQL-compatible
-`INFORMATION_SCHEMA.CHECK_CONSTRAINTS` read-only system view. CHECK expression
-enforcement and `ALTER TABLE ... ADD/DROP CHECK` remain deferred.
+MyLite records CHECK constraints accepted by `CREATE TABLE` in a CHECK catalog,
+exposes them through the MySQL-compatible
+`INFORMATION_SCHEMA.CHECK_CONSTRAINTS` read-only system view, and enforces the
+cataloged expression subset covered by the dedicated
+[CHECK constraints spec](../check-constraints/specs.md). `ALTER TABLE ...
+ADD/DROP/ALTER CHECK` remains deferred.
 
 Wildcard selection remains the baseline row-shape requirement for
 `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`. Broader projections, filters, aliases,
@@ -176,14 +178,17 @@ Runtime coverage:
 - composable projections, `DISTINCT`/`ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
   `COUNT(*)`, aliases, and qualified wildcard forms are covered by the shared
   system-view SELECT path
+- enforced `CREATE TABLE` CHECK constraints reject invalid covered DML rows
+  with error or warning 3819
 - unsupported `ALTER TABLE ... ADD CHECK ...` DDL must not create
   `CHECK_CONSTRAINTS` rows
 
 ## Known Gaps
 
-- CHECK expression enforcement remains deferred.
 - `ALTER TABLE ... ADD/DROP/ALTER CHECK` remains unsupported and does not
   mutate CHECK metadata.
+- Full MySQL CHECK expression semantics and DDL-time expression validation are
+  tracked by the dedicated [CHECK constraints spec](../check-constraints/specs.md).
 - Privilege filtering and exact MySQL field metadata remain deferred. General
   projection, filtering, ordering, limiting, alias, and aggregate behavior is
   covered by the composable information-schema SELECT path.

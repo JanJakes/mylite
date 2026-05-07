@@ -223,6 +223,8 @@ void mylite_table_ddl_create_table_check_deinit(struct mylite_create_table_check
 
     free(check->name);
     free(check->clause);
+    free(check->expression_sql);
+    mylite_sql_ast_deinit(&check->expression_ast);
     *check = (struct mylite_create_table_check){0};
 }
 
@@ -238,13 +240,13 @@ void mylite_table_ddl_create_table_foreign_key_deinit(
     for (size_t index = 0U; index < foreign_key->column_count; ++index) {
         free(foreign_key->column_names[index]);
     }
-    free(foreign_key->column_names);
+    free((void *)foreign_key->column_names);
     free(foreign_key->referenced_schema_name);
     free(foreign_key->referenced_table_name);
     for (size_t index = 0U; index < foreign_key->referenced_column_count; ++index) {
         free(foreign_key->referenced_column_names[index]);
     }
-    free(foreign_key->referenced_column_names);
+    free((void *)foreign_key->referenced_column_names);
     free(foreign_key->unique_constraint_name);
     *foreign_key = (struct mylite_create_table_foreign_key){0};
 }

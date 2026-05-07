@@ -178,7 +178,12 @@ enum {
     mysql_warning_primary_invisible = 3522,
     mysql_warning_foreign_key_drop_parent = 3730,
     mysql_warning_foreign_key_incompatible_columns = 3780,
+    mysql_warning_check_constraint_disallowed_function = 3814,
+    mysql_warning_check_constraint_disallowed_function_no_name = 3815,
+    mysql_warning_check_constraint_variable = 3816,
+    mysql_warning_check_constraint_auto_increment = 3818,
     mysql_warning_check_constraint = 3819,
+    mysql_warning_check_constraint_unknown_column = 3820,
     mysql_warning_check_constraint_not_found = 3821,
     mysql_warning_check_constraint_duplicate_name = 3822,
     mysql_warning_default_value_generated = 3773,
@@ -440,6 +445,8 @@ static int test_information_schema_keywords_execution(void);
 static int test_information_schema_check_constraints_execution(void);
 
 static int test_check_constraint_enforcement_execution(void);
+
+static int test_check_constraint_expression_validation_execution(void);
 
 static int test_alter_table_check_constraint_execution(void);
 
@@ -982,6 +989,7 @@ int main(void) {
     failures += test_information_schema_keywords_execution();
     failures += test_information_schema_check_constraints_execution();
     failures += test_check_constraint_enforcement_execution();
+    failures += test_check_constraint_expression_validation_execution();
     failures += test_alter_table_check_constraint_execution();
     failures += test_information_schema_referential_constraints_execution();
     failures += test_information_schema_table_constraints_execution();
@@ -3448,6 +3456,284 @@ static int test_check_constraint_enforcement_execution(void) {
         (int)mylite_warning_code(database, 0),
         mysql_warning_check_constraint_duplicate_name,
         "create duplicate generated check warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_check_constraint_expression_validation_execution(void) {
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const count_columns[] = {"c"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const check_clause_columns[] = {"CHECK_CLAUSE"};
+    static const char *const qualified_check_clause[] = {"(`id` >= 0)"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open check validation database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_check_validation", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_check_validation", MYLITE_DONE);
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE check_expr_ok ("
+        "CHECK (future_id > 0), "
+        "id INT, "
+        "future_id INT, "
+        "s VARCHAR(10), "
+        "CHECK (ABS(id) >= 0), "
+        "CHECK (LOWER(s) <> 'x'), "
+        "CHECK (check_expr_ok.id >= 0))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CHECK_CLAUSE FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_check_validation' "
+        "AND CONSTRAINT_NAME = 'check_expr_ok_chk_4'",
+        check_clause_columns,
+        1,
+        qualified_check_clause,
+        1,
+        "qualified check expression normalizes to column name"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO check_expr_ok VALUES (1, 1, 'ok')",
+        1,
+        "validated check expression accepts valid row"
+    );
+    failures +=
+        prepare_sql(database, "INSERT INTO check_expr_ok VALUES (2, 2, 'X')", MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "check_expr_ok_chk_3", "lower check rejects invalid row");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE check_expr_rand (id INT, CHECK (RAND() > 0))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "disallowed function: rand",
+        "create check rejects nondeterministic function"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_disallowed_function,
+        "create check nondeterministic warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE check_expr_now (id INT, CHECK (CURRENT_TIMESTAMP IS NOT NULL))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "disallowed function: now",
+        "create check rejects current timestamp"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_disallowed_function,
+        "create check current timestamp warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE check_expr_user_var (id INT, CHECK (@x > 0))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "cannot refer to a user or system variable",
+        "create check rejects user variable"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_variable,
+        "create check user variable warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE check_expr_system_var (id INT, CHECK (@@version <> ''))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "cannot refer to a user or system variable",
+        "create check rejects system variable"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_variable,
+        "create check system variable warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE check_expr_subquery (id INT, CHECK (id > (SELECT 0)))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "contains disallowed function.",
+        "create check rejects subquery"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_disallowed_function_no_name,
+        "create check subquery warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE check_expr_missing (id INT, CHECK (missing > 0))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "refers to non-existing column 'missing'",
+        "create check rejects unknown column"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_unknown_column,
+        "create check unknown column warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE check_expr_ai (id INT AUTO_INCREMENT PRIMARY KEY, CHECK (id > 0))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "cannot refer to an auto-increment column",
+        "create check rejects auto increment reference"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_auto_increment,
+        "create check auto increment warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE alter_expr (id INT PRIMARY KEY, s VARCHAR(10))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO alter_expr VALUES (1, 'ok')", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_expr ADD CHECK (ABS(id) >= 0)",
+        0,
+        "alter check accepts deterministic function"
+    );
+    failures +=
+        prepare_sql(database, "ALTER TABLE alter_expr ADD CHECK (RAND() > 0)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "alter_expr_chk_2",
+        "alter check rejects nondeterministic function"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "disallowed function: rand",
+        "alter check nondeterministic function name"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_disallowed_function,
+        "alter check nondeterministic warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "ALTER TABLE alter_expr ADD CHECK (missing > 0)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Unknown column 'missing' in 'check constraint alter_expr_chk_2 expression'",
+        "alter check rejects unknown column"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_unknown_column,
+        "alter check unknown column warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_check_validation' "
+        "AND CONSTRAINT_NAME = 'alter_expr_chk_2'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "failed alter check expression leaves no metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE alter_expr_ai (id INT AUTO_INCREMENT PRIMARY KEY)",
+        MYLITE_DONE
+    );
+    failures +=
+        prepare_sql(database, "ALTER TABLE alter_expr_ai ADD CHECK (id > 0)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "cannot refer to an auto-increment column",
+        "alter check rejects auto increment reference"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_auto_increment,
+        "alter check auto increment warning code"
     );
     mylite_finalize(stmt);
     stmt = NULL;

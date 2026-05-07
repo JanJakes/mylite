@@ -65,6 +65,9 @@ struct mylite_create_table_index {
 struct mylite_create_table_check {
     char *name;
     char *clause;
+    char *expression_sql;
+    struct mylite_sql_ast expression_ast;
+    const struct mylite_sql_ast_node *expression;
     bool enforced;
     bool generated_name;
 };

@@ -1,6 +1,7 @@
 #include "mylite_table_ddl_create_column_copy.h"
 
 #include "mylite_span.h"
+#include "mylite_statement_ast.h"
 #include "mylite_table_ddl.h"
 
 #include <stdio.h>
@@ -88,6 +89,7 @@ int mylite_table_ddl_add_create_table_check(
         .generated_name = input->constraint_name == NULL,
     };
     struct mylite_create_table_check *checks = NULL;
+    int status = MYLITE_OK;
 
     check.name = copy_check_constraint_name(plan, input->constraint_name);
     if (check.name == NULL) {
@@ -95,19 +97,52 @@ int mylite_table_ddl_add_create_table_check(
     }
     check.clause = mylite_table_ddl_copy_check_clause_text(input->expression);
     if (check.clause == NULL) {
-        free(check.name);
+        mylite_table_ddl_create_table_check_deinit(&check);
         return MYLITE_NOMEM;
+    }
+    status = mylite_table_ddl_copy_check_expression_ast(input->expression, &check);
+    if (status != MYLITE_OK) {
+        mylite_table_ddl_create_table_check_deinit(&check);
+        return status;
     }
 
     checks = realloc(plan->checks, (plan->check_count + 1U) * sizeof(*plan->checks));
     if (checks == NULL) {
-        free(check.name);
-        free(check.clause);
+        mylite_table_ddl_create_table_check_deinit(&check);
         return MYLITE_NOMEM;
     }
 
     plan->checks = checks;
     plan->checks[plan->check_count++] = check;
+    return MYLITE_OK;
+}
+
+int mylite_table_ddl_copy_check_expression_ast(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_create_table_check *check
+) {
+    struct mylite_sql_ast_node *expression_copy = NULL;
+    int status = MYLITE_OK;
+
+    if (expression == NULL || expression->span.text == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+    check->expression_sql = mylite_copy_span_text(expression->span.text, expression->span.length);
+    if (check->expression_sql == NULL) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_statement_ast_clone_subtree(
+        &check->expression_ast,
+        expression,
+        expression->span.text,
+        check->expression_sql,
+        expression->span.length,
+        &expression_copy
+    );
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    check->expression = expression_copy;
     return MYLITE_OK;
 }
 
@@ -351,7 +386,8 @@ static char *copy_check_operand_text(const struct mylite_sql_ast_node *expressio
     if (expression == NULL) {
         return NULL;
     }
-    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER) {
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         return copy_check_identifier_text(expression);
     }
     if (expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
@@ -361,10 +397,16 @@ static char *copy_check_operand_text(const struct mylite_sql_ast_node *expressio
 }
 
 static char *copy_check_identifier_text(const struct mylite_sql_ast_node *expression) {
-    char *identifier = mylite_copy_identifier_span(expression);
+    const struct mylite_sql_ast_node *identifier_node = expression;
+    char *identifier = NULL;
     char *text = NULL;
     size_t length = 0U;
 
+    while (identifier_node != NULL &&
+           identifier_node->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        identifier_node = mylite_ast_child_at(identifier_node, 1U);
+    }
+    identifier = mylite_copy_identifier_span(identifier_node);
     if (identifier == NULL) {
         return NULL;
     }

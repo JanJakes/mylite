@@ -85,7 +85,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`. Enforced CHECK constraints now
       reject covered invalid `INSERT`, ODKU, `REPLACE`, single-table `UPDATE`,
       joined `UPDATE`, and temporary-table DML rows; covered `IGNORE` paths
-      skip invalid rows with warning 3819.
+      skip invalid rows with warning 3819. DDL-time validation now rejects
+      subqueries, variables, unsupported functions, unknown columns, and
+      `AUTO_INCREMENT` column references with MySQL-compatible diagnostics.
 - [x] Complete inline and table-level foreign-key DDL syntax coverage. Inline
       `REFERENCES` is parsed and ignored like the verified MySQL 8.4.9 shape;
       table-level `FOREIGN KEY` clauses parse and return a deterministic

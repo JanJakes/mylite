@@ -19,6 +19,7 @@
 #include "mylite_table_ddl_alter_model.h"
 #include "mylite_table_ddl_alter_rebuild.h"
 #include "mylite_table_ddl_alter_unique_validate.h"
+#include "mylite_table_ddl_check_validate.h"
 #include "mylite_transactions.h"
 #include "sqlite3.h"
 
@@ -137,6 +138,12 @@ static int apply_alter_table_add_check_action(
     mylite_stmt *stmt,
     const struct mylite_alter_table_model *model,
     struct mylite_create_table_check *check
+);
+
+static int validate_alter_table_check_expression(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_check *check
 );
 
 static int apply_alter_table_drop_check_action(
@@ -1246,6 +1253,9 @@ static int apply_alter_table_add_check_action(
     if (status == MYLITE_OK && duplicate_name) {
         status = set_alter_table_duplicate_check_error(stmt->database, check->name);
     }
+    if (status == MYLITE_OK) {
+        status = validate_alter_table_check_expression(stmt, model, check);
+    }
     if (status == MYLITE_OK && check->enforced) {
         const struct alter_table_check_existing_rows_input input = {
             .constraint_name = check->name,
@@ -1265,6 +1275,42 @@ static int apply_alter_table_add_check_action(
             ordinal_position + 1
         );
     }
+    return status;
+}
+
+static int validate_alter_table_check_expression(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_check *check
+) {
+    struct mylite_table_ddl_check_column *columns = NULL;
+    int status = MYLITE_OK;
+
+    if (model->column_count > 0U) {
+        columns = calloc(model->column_count, sizeof(*columns));
+    }
+    if (model->column_count > 0U && columns == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < model->column_count; ++index) {
+        columns[index] = (struct mylite_table_ddl_check_column){
+            .name = model->columns[index].name,
+            .auto_increment = model->columns[index].auto_increment,
+        };
+    }
+    {
+        const struct mylite_table_ddl_check_validation_input input = {
+            .constraint_name = check->name,
+            .expression = check->expression,
+            .columns = columns,
+            .column_count = model->column_count,
+            .context = MYLITE_TABLE_DDL_CHECK_VALIDATE_ALTER_TABLE,
+        };
+
+        status = mylite_table_ddl_validate_check_expression(stmt->database, &input);
+    }
+    free(columns);
     return status;
 }
 

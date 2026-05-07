@@ -21,7 +21,7 @@
       including existing-row validation when enabling enforcement.
 - [x] Support CHECK actions mixed with column/index/table-option ALTER
       statements.
-- [ ] Validate CHECK expressions at DDL time for deterministic, row-local
+- [x] Validate CHECK expressions at DDL time for deterministic, row-local
       MySQL rules and reject subqueries, variables, unsupported functions,
       references to other tables, and invalid `AUTO_INCREMENT` references.
 - [x] Render CHECK clauses in `SHOW CREATE TABLE` with MySQL-compatible

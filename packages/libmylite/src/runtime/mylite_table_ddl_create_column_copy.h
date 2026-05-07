@@ -19,6 +19,10 @@ int mylite_table_ddl_add_create_table_check(
     struct mylite_create_table_plan *plan,
     const struct mylite_create_table_check_ast *input
 );
+int mylite_table_ddl_copy_check_expression_ast(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_create_table_check *check
+);
 char *mylite_table_ddl_copy_check_clause_text(const struct mylite_sql_ast_node *expression);
 
 #endif

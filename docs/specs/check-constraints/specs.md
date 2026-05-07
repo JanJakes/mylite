@@ -15,11 +15,13 @@ This feature covers the implemented CHECK constraint slice for supported
 - supported `INSERT`, `INSERT ... SET`, `INSERT ... ON DUPLICATE KEY UPDATE`,
   `INSERT IGNORE`, `REPLACE`, single-table `UPDATE`, `UPDATE IGNORE`, and
   joined `UPDATE`
+- DDL-time expression validation for the first deterministic, row-local CHECK
+  subset
 - `SHOW CREATE TABLE` rendering for cataloged CHECK constraints
 - warning/error code 3819 behavior for covered DML paths
 
-Full MySQL deterministic expression validation, generated-column dependencies,
-and broader expression formatting remain deferred.
+Generated-column dependencies, broader expression formatting, and full MySQL
+expression semantics remain deferred.
 
 ## Sources
 
@@ -88,6 +90,17 @@ Observed behavior:
 - a mixed enforced `ADD CHECK` failure over existing invalid rows rolls back
   the whole `ALTER TABLE`, including same-statement column/index/catalog
   changes
+- `CREATE TABLE` rejects CHECK expressions with nondeterministic or disallowed
+  functions using error 3814, subqueries using 3815, user or system variables
+  using 3816, auto-increment column references using 3818, and unknown columns
+  using 3820
+- `ALTER TABLE ... ADD CHECK` uses the same function, subquery, variable, and
+  auto-increment diagnostics; unknown columns use MySQL's normal 1054 unknown
+  column diagnostic with the generated CHECK name in the message
+- CHECK expressions can reference columns declared later in the same
+  `CREATE TABLE` statement
+- qualified CHECK column references are accepted when the final identifier
+  resolves to a column, and MySQL renders them as an unqualified column
 
 ## MyLite Behavior
 
@@ -138,6 +151,18 @@ constraints rather than counting explicit CHECK constraints. Duplicate names
 return error 3822, leave no table behind, and set statement affected rows to
 `-1`.
 
+`CREATE TABLE` and `ALTER TABLE ... ADD CHECK` validate CHECK expressions before
+catalog writes. MyLite accepts the first supported row-local expression subset:
+column references, references to columns declared later in `CREATE TABLE`,
+qualified references whose final identifier names a local column, comparison
+and boolean operators already emitted by the CHECK clause formatter, literals,
+`NULL`, and a narrow deterministic function allow-list currently backed by the
+SQLite enforcement path: `ABS`, `LOWER`, `UPPER`, `LENGTH`, `COALESCE`,
+`IFNULL`, `NULLIF`, and `ROUND`. The validator rejects subqueries,
+aggregate/window expressions, user and system variables, unsupported functions,
+unknown columns, and `AUTO_INCREMENT` column references with MySQL-observed
+diagnostics.
+
 `SHOW CREATE TABLE` reads CHECK metadata from the persistent or temporary CHECK
 catalog after column, index, and foreign-key formatting. CHECK rows are sorted
 by constraint name, rendered as table constraints, and preserve
@@ -172,10 +197,16 @@ Runtime coverage:
   and roll back all same-statement changes on validation failure
 - `SHOW CREATE TABLE` renders create-time and ALTER-added CHECK clauses in
   MySQL-compatible constraint-name order
+- DDL-time expression validation rejects disallowed functions, `CURRENT_TIMESTAMP`,
+  subqueries, user/system variables, unknown columns, and `AUTO_INCREMENT`
+  references with MySQL-compatible error codes
+- CHECK expressions may reference later columns in `CREATE TABLE`; qualified
+  local column references are normalized to the column name for stored metadata
 
 ## Known Gaps
 
 - CHECK expressions are evaluated through SQLite for this first slice; broader
-  MySQL expression semantics, deterministic-function validation, character-set
-  behavior, SQL-mode interactions, and exact coercion warnings remain deferred.
+  MySQL expression semantics, a wider deterministic function catalog,
+  character-set behavior, SQL-mode interactions, and exact coercion warnings
+  remain deferred.
 - Generated-column dependency handling for CHECK constraints remains deferred.

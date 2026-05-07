@@ -447,6 +447,7 @@ static int copy_alter_table_add_check_action(
         first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER ? first_child : NULL;
     const struct mylite_sql_ast_node *expression =
         constraint_name == NULL ? first_child : mylite_ast_child_at(action_node, 1U);
+    int status = MYLITE_OK;
 
     action->kind = MYLITE_ALTER_TABLE_ACTION_ADD_CHECK;
     action->check.generated_name = constraint_name == NULL;
@@ -462,7 +463,8 @@ static int copy_alter_table_add_check_action(
     if (action->check.clause == NULL) {
         return MYLITE_NOMEM;
     }
-    return MYLITE_OK;
+    status = mylite_table_ddl_copy_check_expression_ast(expression, &action->check);
+    return status;
 }
 
 static int copy_alter_table_alter_check_action(

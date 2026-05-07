@@ -6,6 +6,7 @@
 #include "mylite_error_codes.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl.h"
+#include "mylite_table_ddl_check_validate.h"
 #include "mylite_table_ddl_create_options.h"
 #include "mylite_table_ddl_plan_lookup.h"
 #include "sqlite3.h"
@@ -26,6 +27,11 @@ static bool validate_create_table_indexes(
 );
 
 static int validate_create_table_checks(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+);
+
+static int validate_create_table_check_expressions(
     mylite_db *database,
     const struct mylite_create_table_plan *plan
 );
@@ -273,7 +279,48 @@ static int validate_create_table_checks(
             return set_create_table_duplicate_check_error(database, plan->checks[index].name);
         }
     }
-    return MYLITE_OK;
+    return validate_create_table_check_expressions(database, plan);
+}
+
+static int validate_create_table_check_expressions(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+) {
+    struct mylite_table_ddl_check_column *columns = NULL;
+    int status = MYLITE_OK;
+
+    if (plan->check_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (plan->column_count > 0U) {
+        columns = calloc(plan->column_count, sizeof(*columns));
+    }
+    if (plan->column_count > 0U && columns == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < plan->column_count; ++index) {
+        columns[index] = (struct mylite_table_ddl_check_column){
+            .name = plan->columns[index].name,
+            .auto_increment = plan->columns[index].auto_increment,
+        };
+    }
+    for (size_t index = 0U; index < plan->check_count; ++index) {
+        const struct mylite_table_ddl_check_validation_input input = {
+            .constraint_name = plan->checks[index].name,
+            .expression = plan->checks[index].expression,
+            .columns = columns,
+            .column_count = plan->column_count,
+            .context = MYLITE_TABLE_DDL_CHECK_VALIDATE_CREATE_TABLE,
+        };
+
+        status = mylite_table_ddl_validate_check_expression(database, &input);
+        if (status != MYLITE_OK) {
+            break;
+        }
+    }
+    free(columns);
+    return status;
 }
 
 static bool create_table_check_name_exists(

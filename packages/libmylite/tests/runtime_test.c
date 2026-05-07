@@ -12956,6 +12956,20 @@ static int test_hex_bit_literal_execution(void) {
     static const char *const bit_padding_columns[] =
         {"one", "two", "three", "eight", "nine_length", "nine_hex"};
     static const char *const bit_padding_values[] = {"01", "01", "01", "01", "2", "0001"};
+    static const char *const binary_cast_columns[] = {
+        "binary_prefix_hex",
+        "binary_prefix_len",
+        "cast_binary_hex",
+        "cast_binary_len",
+        "cast_char_hex",
+        "cast_char_len",
+        "cast_char_trunc_hex",
+        "cast_char_trunc_len",
+        "binary_from_base64_hex",
+        "binary_from_base64_len",
+    };
+    static const char *const binary_cast_values[] =
+        {"610062", "3", "610062", "3", "610062", "3", "6100", "2", "610062", "3"};
     static const unsigned char odd_width_bit_literal[] = {0x00U, 0x01U};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -12998,6 +13012,24 @@ static int test_hex_bit_literal_execution(void) {
         bit_padding_values,
         1,
         "bit literal byte padding"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(BINARY 'a\\0b') AS binary_prefix_hex, "
+        "LENGTH(BINARY 'a\\0b') AS binary_prefix_len, "
+        "HEX(CAST('a\\0b' AS BINARY)) AS cast_binary_hex, "
+        "LENGTH(CAST('a\\0b' AS BINARY)) AS cast_binary_len, "
+        "HEX(CAST('a\\0b' AS CHAR)) AS cast_char_hex, "
+        "LENGTH(CAST('a\\0b' AS CHAR)) AS cast_char_len, "
+        "HEX(CAST('a\\0b' AS CHAR(2))) AS cast_char_trunc_hex, "
+        "LENGTH(CAST('a\\0b' AS CHAR(2))) AS cast_char_trunc_len, "
+        "HEX(BINARY FROM_BASE64(TO_BASE64('a\\0b'))) AS binary_from_base64_hex, "
+        "LENGTH(BINARY FROM_BASE64(TO_BASE64('a\\0b'))) AS binary_from_base64_len",
+        binary_cast_columns,
+        (int)(sizeof(binary_cast_columns) / sizeof(binary_cast_columns[0])),
+        binary_cast_values,
+        1,
+        "binary casts preserve embedded NUL bytes"
     );
     failures += prepare_sql(database, "SELECT 0b000000001 AS odd_bits", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "odd-width bit literal row");

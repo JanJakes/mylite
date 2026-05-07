@@ -3766,6 +3766,12 @@ static int cast_string_to_decimal_double(
 
 static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text);
 
+static int cast_value_to_string_with_length(
+    const struct mylite_expression_value *value,
+    char **out_text,
+    size_t *out_length
+);
+
 static int cast_real_to_string(double value, char **out_text);
 
 static int64_t cast_real_to_signed_integer(double value);
@@ -3804,7 +3810,15 @@ static bool ascii_text_equal_ci(struct text_compare_input input);
 
 static int utf8_char_count(const char *text, int64_t *out_count);
 
+static int utf8_char_count_with_length(const char *text, size_t text_length, int64_t *out_count);
+
 static size_t utf8_offset_for_chars(const char *text, int64_t char_count);
+
+static size_t utf8_offset_for_chars_with_length(
+    const char *text,
+    size_t text_length,
+    int64_t char_count
+);
 
 static size_t utf8_first_character_length(const char *text);
 
@@ -5208,7 +5222,8 @@ static int eval_char_cast(
     struct mylite_expression_value *out_value
 ) {
     char *text = NULL;
-    int status = cast_value_to_string(value, &text);
+    size_t text_length = 0U;
+    int status = cast_value_to_string_with_length(value, &text, &text_length);
 
     if (status != 0) {
         return status;
@@ -5216,18 +5231,23 @@ static int eval_char_cast(
     if (target->has_column_length) {
         int64_t character_count = 0;
 
-        status = utf8_char_count(text, &character_count);
+        status = utf8_char_count_with_length(text, text_length, &character_count);
         if (status == 0 && character_count > (int64_t)target->column_length) {
-            size_t offset = utf8_offset_for_chars(text, (int64_t)target->column_length);
+            size_t offset = utf8_offset_for_chars_with_length(
+                text,
+                text_length,
+                (int64_t)target->column_length
+            );
 
             status = append_char_truncation_warning(warnings, target->column_length, text);
             if (status == 0) {
+                text_length = offset;
                 text[offset] = '\0';
             }
         }
     }
     if (status == 0) {
-        status = set_text_value(text, strlen(text), out_value);
+        status = set_text_value(text, text_length, out_value);
     }
     free(text);
     return status;
@@ -5238,10 +5258,11 @@ static int eval_binary_cast(
     struct mylite_expression_value *out_value
 ) {
     char *text = NULL;
-    int status = cast_value_to_string(value, &text);
+    size_t text_length = 0U;
+    int status = cast_value_to_string_with_length(value, &text, &text_length);
 
     if (status == 0) {
-        status = set_text_value(text, strlen(text), out_value);
+        status = set_text_value(text, text_length, out_value);
     }
     free(text);
     return status;
@@ -23122,32 +23143,54 @@ static int cast_string_to_decimal_double(
 }
 
 static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text) {
+    size_t length = 0U;
+
+    return cast_value_to_string_with_length(value, out_text, &length);
+}
+
+static int cast_value_to_string_with_length(
+    const struct mylite_expression_value *value,
+    char **out_text,
+    size_t *out_length
+) {
     char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     int length = 0;
 
-    if (out_text == NULL || value == NULL) {
+    if (out_text == NULL || out_length == NULL || value == NULL) {
         return -1;
     }
+    *out_text = NULL;
+    *out_length = 0U;
     switch (value->kind) {
     case MYLITE_EXPRESSION_VALUE_INT64:
         length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);
         *out_text = length <= 0 || (size_t)length >= sizeof(buffer)
                         ? NULL
                         : copy_span_text(buffer, (size_t)length);
-        return *out_text == NULL ? -1 : 0;
+        if (*out_text == NULL) {
+            return -1;
+        }
+        *out_length = (size_t)length;
+        return 0;
     case MYLITE_EXPRESSION_VALUE_UINT64:
         length = snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)value->uint64_value);
         *out_text = length <= 0 || (size_t)length >= sizeof(buffer)
                         ? NULL
                         : copy_span_text(buffer, (size_t)length);
-        return *out_text == NULL ? -1 : 0;
+        if (*out_text == NULL) {
+            return -1;
+        }
+        *out_length = (size_t)length;
+        return 0;
     case MYLITE_EXPRESSION_VALUE_REAL:
-        return cast_real_to_string(value->real_value, out_text);
+        if (cast_real_to_string(value->real_value, out_text) != 0) {
+            return -1;
+        }
+        *out_length = strlen(*out_text);
+        return 0;
     case MYLITE_EXPRESSION_VALUE_TEXT:
-        *out_text = copy_span_text(
-            value->text_value == NULL ? "" : value->text_value,
-            value->text_value == NULL ? 0U : value->text_length
-        );
+        *out_length = value->text_value == NULL ? 0U : value->text_length;
+        *out_text = copy_span_text(value->text_value == NULL ? "" : value->text_value, *out_length);
         return *out_text == NULL ? -1 : 0;
     case MYLITE_EXPRESSION_VALUE_NULL:
         return -1;
@@ -23359,6 +23402,10 @@ static bool ascii_text_equal_ci(struct text_compare_input input) {
 }
 
 static int utf8_char_count(const char *text, int64_t *out_count) {
+    return utf8_char_count_with_length(text, text == NULL ? 0U : strlen(text), out_count);
+}
+
+static int utf8_char_count_with_length(const char *text, size_t text_length, int64_t *out_count) {
     int64_t count = 0;
 
     if (text == NULL) {
@@ -23366,8 +23413,9 @@ static int utf8_char_count(const char *text, int64_t *out_count) {
         return 0;
     }
 
-    for (const unsigned char *cursor = (const unsigned char *)text; *cursor != '\0'; ++cursor) {
-        if ((*cursor & MYLITE_UTF8_CONTINUATION_MASK) != MYLITE_UTF8_CONTINUATION_MARKER) {
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (((unsigned char)text[index] & MYLITE_UTF8_CONTINUATION_MASK) !=
+            MYLITE_UTF8_CONTINUATION_MARKER) {
             ++count;
         }
     }
@@ -23376,21 +23424,30 @@ static int utf8_char_count(const char *text, int64_t *out_count) {
 }
 
 static size_t utf8_offset_for_chars(const char *text, int64_t char_count) {
-    const unsigned char *cursor = (const unsigned char *)text;
+    return utf8_offset_for_chars_with_length(text, text == NULL ? 0U : strlen(text), char_count);
+}
+
+static size_t utf8_offset_for_chars_with_length(
+    const char *text,
+    size_t text_length,
+    int64_t char_count
+) {
+    size_t offset = 0U;
     int64_t count = 0;
 
     if (text == NULL || char_count <= 0) {
         return 0U;
     }
-    while (*cursor != '\0' && count < char_count) {
-        ++cursor;
-        while (*cursor != '\0' &&
-               (*cursor & MYLITE_UTF8_CONTINUATION_MASK) == MYLITE_UTF8_CONTINUATION_MARKER) {
-            ++cursor;
+    while (offset < text_length && count < char_count) {
+        ++offset;
+        while (offset < text_length &&
+               ((unsigned char)text[offset] & MYLITE_UTF8_CONTINUATION_MASK) ==
+                   MYLITE_UTF8_CONTINUATION_MARKER) {
+            ++offset;
         }
         ++count;
     }
-    return (size_t)((const char *)cursor - text);
+    return offset;
 }
 
 static size_t utf8_first_character_length(const char *text) {

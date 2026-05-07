@@ -30,9 +30,12 @@ subset works:
 
 The following behavior is deferred:
 
-- `BINARY expr` prefix operator
 - fixed-length binary padding/truncation fidelity for `CAST(... AS BINARY(N))`
-  because MyLite's public value API does not yet expose binary lengths
+  beyond preserving the byte sequence for the currently supported binary
+  metadata cast
+- exhaustive binary-string operator semantics for `BINARY expr`; the prefix
+  operator is specified in
+  `docs/specs/expression-operator-foundation/specs.md`
 - `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, `YEAR`, `FLOAT`, `DOUBLE`, `REAL`,
   `JSON`, spatial casts, and `CAST(... AT TIME ZONE ... AS DATETIME)`
 - multi-valued-index `ARRAY` casts
@@ -112,6 +115,9 @@ binary-string metadata.
 | `CAST('abcdef' AS CHAR(3))` | `abc` | 1292 truncated char |
 | `CAST('abc' AS CHAR(5))` | `abc` | none |
 | `CAST('abc' AS CHAR CHARACTER SET binary)` | `abc` | none |
+| `HEX(CAST('a\\0b' AS BINARY))` | `610062` | none |
+| `LENGTH(CAST('a\\0b' AS BINARY))` | `3` | none |
+| `HEX(CAST('a\\0b' AS CHAR))` | `610062` | none |
 
 Parser errors observed with MySQL 8.4.9:
 
@@ -307,8 +313,9 @@ conversion engine. The main known differences after Task 26 are:
 
 - decimal runtime values are formatted text with decimal metadata, not native
   fixed-point values
-- binary strings cannot yet preserve embedded NUL bytes through the public
-  text-only value API
+- fixed-length binary padding/truncation and complete binary-string operator
+  semantics remain deferred beyond length-aware preservation of source bytes
+  for the supported `CAST(... AS BINARY)` form
 - connection charset metadata is limited to the current MyLite charset registry
 - temporal, JSON, spatial, and timezone-aware casts are separate tasks
 - overflow and SQL-mode diagnostics are not exhaustive

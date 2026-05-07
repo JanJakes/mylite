@@ -216,7 +216,9 @@ content and `LIKE` does not use a default backslash escape. Explicit
 
 `BINARY expr` is accepted as a deprecated binary-string cast and forces
 case-sensitive `LIKE` evaluation for the covered ASCII-compatible string
-subset. Full collation-aware pattern semantics, `COLLATE`, character set
+subset. The cast preserves the source byte length, including embedded NUL
+bytes, in the shared value model. Full collation-aware pattern semantics,
+`COLLATE`, character set
 introducers, and multibyte collation equivalence are deferred. Until those are
 implemented, non-ASCII and explicit-collation pattern tests should remain
 outside supported coverage.

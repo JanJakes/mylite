@@ -16,6 +16,7 @@ enum mylite_dml_string_kind {
     MYLITE_DML_STRING_NONE = 0,
     MYLITE_DML_STRING_CHARACTER,
     MYLITE_DML_STRING_TEXT_BYTES,
+    MYLITE_DML_STRING_FIXED_BINARY,
     MYLITE_DML_STRING_BINARY,
 };
 
@@ -59,6 +60,8 @@ static bool column_data_type_is_text_bytes(const char *data_type);
 
 static bool column_data_type_is_binary_string(const char *data_type);
 
+static bool column_data_type_is_fixed_binary_string(const char *data_type);
+
 static bool column_data_type_is_blob_bytes(const char *data_type);
 
 static int insert_value_to_string_text(
@@ -78,6 +81,19 @@ static int coerce_string_text(
     uint64_t row_number,
     bool ignore,
     const struct mylite_dml_string_text *text,
+    struct mylite_dml_string_output *out_output
+);
+
+static bool string_text_needs_fixed_binary_padding(
+    enum mylite_dml_string_kind kind,
+    const struct mylite_dml_string_text *text,
+    uint64_t maximum_length
+);
+
+static int replace_with_padded_fixed_binary(
+    mylite_db *database,
+    const struct mylite_dml_string_text *text,
+    uint64_t padded_length,
     struct mylite_dml_string_output *out_output
 );
 
@@ -230,6 +246,9 @@ static enum mylite_dml_string_kind string_kind_for_column(
     if (column_data_type_is_text_bytes(column->data_type)) {
         return MYLITE_DML_STRING_TEXT_BYTES;
     }
+    if (column_data_type_is_fixed_binary_string(column->data_type)) {
+        return MYLITE_DML_STRING_FIXED_BINARY;
+    }
     if (column_data_type_is_binary_string(column->data_type)) {
         return MYLITE_DML_STRING_BINARY;
     }
@@ -250,8 +269,11 @@ static bool column_data_type_is_text_bytes(const char *data_type) {
 }
 
 static bool column_data_type_is_binary_string(const char *data_type) {
-    return mylite_ascii_case_equal(data_type, "binary") ||
-           mylite_ascii_case_equal(data_type, "varbinary");
+    return mylite_ascii_case_equal(data_type, "varbinary");
+}
+
+static bool column_data_type_is_fixed_binary_string(const char *data_type) {
+    return mylite_ascii_case_equal(data_type, "binary");
 }
 
 static bool column_data_type_is_blob_bytes(const char *data_type) {
@@ -327,6 +349,14 @@ static int coerce_string_text(
     int status = MYLITE_OK;
 
     if (!string_text_exceeds_column_length(kind, text, column->character_maximum_length)) {
+        if (string_text_needs_fixed_binary_padding(kind, text, column->character_maximum_length)) {
+            return replace_with_padded_fixed_binary(
+                database,
+                text,
+                column->character_maximum_length,
+                out_output
+            );
+        }
         return MYLITE_OK;
     }
     status = handle_string_truncation(database, column, row_number, ignore);
@@ -345,6 +375,46 @@ static int coerce_string_text(
     return MYLITE_OK;
 }
 
+static bool string_text_needs_fixed_binary_padding(
+    enum mylite_dml_string_kind kind,
+    const struct mylite_dml_string_text *text,
+    uint64_t maximum_length
+) {
+    if (kind != MYLITE_DML_STRING_FIXED_BINARY || text == NULL) {
+        return false;
+    }
+    return (uint64_t)text->length < maximum_length;
+}
+
+static int replace_with_padded_fixed_binary(
+    mylite_db *database,
+    const struct mylite_dml_string_text *text,
+    uint64_t padded_length,
+    struct mylite_dml_string_output *out_output
+) {
+    char *padded = NULL;
+
+    if (text == NULL || out_output == NULL || padded_length > (uint64_t)SIZE_MAX - 1U) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    padded = malloc((size_t)padded_length + 1U);
+    if (padded == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    if (text->length > 0U && text->text != NULL) {
+        memcpy(padded, text->text, text->length);
+    }
+    memset(padded + text->length, 0, (size_t)padded_length - text->length + 1U);
+
+    out_output->text = padded;
+    out_output->length = (size_t)padded_length;
+    out_output->replace = true;
+    return MYLITE_OK;
+}
+
 static bool string_text_exceeds_column_length(
     enum mylite_dml_string_kind kind,
     const struct mylite_dml_string_text *text,
@@ -353,7 +423,8 @@ static bool string_text_exceeds_column_length(
     if (text == NULL) {
         return false;
     }
-    if (kind == MYLITE_DML_STRING_BINARY || kind == MYLITE_DML_STRING_TEXT_BYTES) {
+    if (kind == MYLITE_DML_STRING_FIXED_BINARY || kind == MYLITE_DML_STRING_BINARY ||
+        kind == MYLITE_DML_STRING_TEXT_BYTES) {
         return (uint64_t)text->length > maximum_length;
     }
     return utf8_prefix_byte_length(text->text, text->length, maximum_length) < text->length;
@@ -367,7 +438,7 @@ static size_t string_text_truncated_byte_length(
     if (text == NULL) {
         return 0U;
     }
-    if (kind == MYLITE_DML_STRING_BINARY) {
+    if (kind == MYLITE_DML_STRING_FIXED_BINARY || kind == MYLITE_DML_STRING_BINARY) {
         return maximum_length > (uint64_t)SIZE_MAX ? text->length : (size_t)maximum_length;
     }
     if (kind == MYLITE_DML_STRING_TEXT_BYTES) {

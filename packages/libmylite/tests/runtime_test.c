@@ -58408,6 +58408,15 @@ static int test_string_dml_coercion_execution(void) {
     static const char *const lob_row1_update_values[] = {"1", "65535", "65535", "x", "79"};
     static const char *const text_utf8_columns[] = {"id", "t_len", "t_chars"};
     static const char *const text_utf8_values[] = {"3", "65534", "32767"};
+    static const char *const binary_columns[] = {"id", "fb_hex", "fb_len", "vb_hex", "vb_len"};
+    static const char *const binary_insert_values[] = {"1", "610000", "3", "61", "1"};
+    static const char *const binary_update_values[] = {"1", "787900", "3", "7879", "2"};
+    static const char *const binary_non_strict_values[] =
+        {"1", "787900", "3", "7879", "2", "2", "616263", "3", "616263", "3"};
+    static const char *const binary_short_update_values[] =
+        {"1", "7A0000", "3", "7A", "1", "2", "616263", "3", "616263", "3"};
+    static const char *const binary_long_update_values[] =
+        {"1", "777879", "3", "777879", "3", "2", "616263", "3", "616263", "3"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -58544,6 +58553,129 @@ static int test_string_dml_coercion_execution(void) {
         string_values,
         3,
         "string final coerced values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE binary_values (id INT PRIMARY KEY, fb BINARY(3), vb VARBINARY(3))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO binary_values VALUES (1, 'a', 'a')",
+        1,
+        "fixed binary insert pads nul bytes"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(fb) AS fb_hex, LENGTH(fb) AS fb_len, "
+        "HEX(vb) AS vb_hex, LENGTH(vb) AS vb_len "
+        "FROM binary_values ORDER BY id",
+        binary_columns,
+        5,
+        binary_insert_values,
+        1,
+        "fixed binary insert padded values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE binary_values SET fb = 'xy', vb = 'xy' WHERE id = 1",
+        1,
+        "fixed binary update pads nul bytes"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(fb) AS fb_hex, LENGTH(fb) AS fb_len, "
+        "HEX(vb) AS vb_hex, LENGTH(vb) AS vb_len "
+        "FROM binary_values ORDER BY id",
+        binary_columns,
+        5,
+        binary_update_values,
+        1,
+        "fixed binary update padded values"
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO binary_values VALUES (2, 'abcd', 'abcd')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 'fb' at row 1",
+        "strict fixed binary insert length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict fixed binary insert length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM binary_values WHERE id = 2",
+        0,
+        "strict fixed binary no inserted row"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO binary_values VALUES (2, 'abcd', 'abcd')",
+        1,
+        "non-strict binary insert truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "binary insert warning count");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(fb) AS fb_hex, LENGTH(fb) AS fb_len, "
+        "HEX(vb) AS vb_hex, LENGTH(vb) AS vb_len "
+        "FROM binary_values ORDER BY id",
+        binary_columns,
+        5,
+        binary_non_strict_values,
+        2,
+        "binary non-strict clipped values"
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE binary_values SET fb = 'z', vb = 'z' WHERE id = 1",
+        1,
+        "update ignore fixed binary short value"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "short fixed binary warning count");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(fb) AS fb_hex, LENGTH(fb) AS fb_len, "
+        "HEX(vb) AS vb_hex, LENGTH(vb) AS vb_len "
+        "FROM binary_values ORDER BY id",
+        binary_columns,
+        5,
+        binary_short_update_values,
+        2,
+        "fixed binary update ignore padded values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE binary_values SET fb = 'wxyz', vb = 'wxyz' WHERE id = 1",
+        1,
+        "update ignore binary truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "binary update warning count");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(fb) AS fb_hex, LENGTH(fb) AS fb_len, "
+        "HEX(vb) AS vb_hex, LENGTH(vb) AS vb_len "
+        "FROM binary_values ORDER BY id",
+        binary_columns,
+        5,
+        binary_long_update_values,
+        2,
+        "binary update ignore clipped values"
     );
 
     failures += execute_sql(

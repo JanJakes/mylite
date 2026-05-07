@@ -51,6 +51,12 @@ two columns records two warnings in column/assignment order. `INSERT ... SET`,
 `REPLACE`, ODKU update assignments, single-table `UPDATE`, and joined `UPDATE`
 share this strict versus non-strict behavior for the covered forms.
 
+For `BINARY(N)`, MySQL right-pads shorter assigned values with `0x00` bytes to
+the declared length. `VARBINARY(N)` stores the original shorter byte sequence.
+For values longer than `N`, strict mode rejects with error 1406; non-strict and
+`IGNORE` forms store the first `N` bytes and emit warning 1265 for each
+truncated binary column.
+
 For `TINYTEXT` and `TINYBLOB`, MySQL enforces a 255-byte maximum. In strict
 mode, assigning 256 ASCII bytes to `TINYTEXT` and `TINYBLOB` rejects the
 statement at the first overflowing column with error 1406 and leaves rows
@@ -79,6 +85,8 @@ UTF-8 text handling for covered tests; complete charset-specific character and
 byte accounting remains deferred.
 
 For binary string columns, MyLite applies the catalog length as bytes.
+`BINARY(N)` additionally pads shorter values with trailing `0x00` bytes before
+SQLite binding, while `VARBINARY(N)` preserves shorter values without padding.
 
 For the covered `TINYTEXT` and `TEXT` slices, MyLite applies the catalog length
 as a byte limit and truncates to a complete UTF-8 prefix. For the covered
@@ -98,6 +106,9 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - non-strict warning 1265 and stored truncation for both `VARCHAR` and `CHAR`
 - `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`, ODKU update assignments,
   single-table `UPDATE`, and joined `UPDATE`
+- `BINARY(N)` NUL-byte right-padding for shorter insert and update values,
+  `VARBINARY(N)` non-padding, strict rejection for overlong values, non-strict
+  truncation, and single-table `UPDATE IGNORE` padding/truncation
 - strict rejection, non-strict truncation, `INSERT IGNORE`, and
   single-table `UPDATE IGNORE` for `TINYTEXT` and `TINYBLOB`
 - `TINYTEXT` byte-limit truncation at a complete UTF-8 character boundary

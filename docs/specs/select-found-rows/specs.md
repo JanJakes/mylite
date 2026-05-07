@@ -140,9 +140,9 @@ FOUND_ROWS() is deprecated and will be removed in a future release.
 Consider using COUNT(*) instead.
 ```
 
-`FOUND_ROWS()` returns an unsigned integer-like result. MyLite reports it as a
-non-null `LONGLONG` numeric result with unsigned, binary, and numeric flags,
-matching the existing `LAST_INSERT_ID()` style metadata.
+`FOUND_ROWS()` returns a non-null `LONGLONG` numeric result. MySQL 8.4.9
+reports binary and numeric flags, but not the unsigned flag used by
+`LAST_INSERT_ID()` and `CONNECTION_ID()`.
 
 ## Tests
 

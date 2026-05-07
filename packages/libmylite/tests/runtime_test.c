@@ -32694,8 +32694,7 @@ static int test_session_information_functions_execution(void) {
          MYLITE_FIELD_TYPE_LONGLONG,
          0U,
          63U,
-         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
-             MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          0U,
          0},
     };

@@ -11,6 +11,10 @@ expression contexts.
 - Invalid date input returns `NULL` and emits warning 1292.
 - Date and datetime inputs are parsed with MyLite's temporal conversion rules.
 - The result is a connection-character-set text value.
+- Result metadata is a nullable `VAR_STRING` in the connection character set
+  with decimals `31`. Literal format arguments expand to the maximum display
+  width of their tokens; dynamic format arguments estimate width from the
+  format expression descriptor.
 - Supported format tokens include common MySQL date/time tokens:
   `%Y`, `%y`, `%M`, `%b`, `%m`, `%c`, `%D`, `%d`, `%e`, `%j`, `%W`, `%a`,
   `%w`, `%H`, `%k`, `%h`, `%I`, `%l`, `%i`, `%s`, `%S`, `%f`, `%p`, `%r`,

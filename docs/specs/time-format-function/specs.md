@@ -62,9 +62,8 @@ Verified results:
 | `TIME_FORMAT('2024-02-29 12:34:56', '%H:%i:%s')` | `12:34:56` | none |
 
 Observed metadata is a nullable `VAR_STRING` in the connection character set and
-collation, with `decimals = 31`. Constant folded expressions expose the folded
-result length; otherwise MyLite may report the general text length until exact
-prepared-statement metadata is implemented.
+collation, with `decimals = 31`. MyLite infers literal-format token expansion
+and estimates dynamic format width from the format expression descriptor.
 
 ## MyLite Compatibility Decisions
 
@@ -140,5 +139,5 @@ Runtime tests should cover:
 
 After implementation, `TIME_FORMAT()` has partial compatibility for supported
 scalar expression paths and MyLite's current time input surface. Exact native
-diagnostics, broader temporal literal variants, exact prepared-statement
-metadata, and protocol metadata remain deferred.
+diagnostics, broader temporal literal variants, and protocol metadata remain
+deferred.

@@ -260,8 +260,12 @@ MySQL 8.4.9 runtime before each item is marked complete.
       approximate, text, and `NULL` argument domains. JSON scalar and path
       functions now infer byte-scaled JSON document lengths, argument-shaped
       `JSON_QUOTE()` / plain-string `JSON_UNQUOTE()` lengths, and long-blob
-      metadata for JSON unquote expressions. Remaining expression and other
-      SQLite-backed result metadata gaps are still tracked here.
+      metadata for JSON unquote expressions. `DATE_FORMAT()` and
+      `TIME_FORMAT()` now infer nullable connection-character-set string
+      descriptors for scalar and table-backed expressions, including
+      literal-format token expansion and dynamic-format width estimates.
+      Remaining expression and other SQLite-backed result metadata gaps are
+      still tracked here.
 
 ## Test harness classification
 

@@ -70,6 +70,43 @@ static bool from_unixtime_argument_is_approximate(
     const struct mylite_field_descriptor *descriptor
 );
 
+static int infer_temporal_format_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks
+);
+
+static struct mylite_field_descriptor temporal_format_string_descriptor(
+    mylite_db *database,
+    uint64_t character_length
+);
+
+static uint64_t temporal_format_result_character_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool time_format,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks
+);
+
+static uint64_t literal_temporal_format_character_length(
+    const struct mylite_sql_ast_node *format,
+    bool time_format
+);
+
+static uint64_t date_format_token_character_length(char token);
+
+static uint64_t time_format_token_character_length(char token);
+
+static uint64_t dynamic_temporal_format_character_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *format,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks
+);
+
 static int infer_date_interval_function_descriptor(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -154,6 +191,16 @@ int mylite_expression_descriptor_infer_temporal_function(
         plan,
         expression,
         value,
+        out_descriptor,
+        callbacks
+    );
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
+    status = infer_temporal_format_function_descriptor(
+        database,
+        plan,
+        expression,
         out_descriptor,
         callbacks
     );
@@ -652,6 +699,195 @@ static bool from_unixtime_argument_is_approximate(
     }
     return descriptor->type == MYLITE_FIELD_TYPE_FLOAT ||
            descriptor->type == MYLITE_FIELD_TYPE_DOUBLE;
+}
+
+static int infer_temporal_format_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    bool time_format = false;
+    uint64_t character_length = 0U;
+
+    if (name != NULL && mylite_span_equal_ci(name->span, "TIME_FORMAT")) {
+        time_format = true;
+    } else if (name == NULL || !mylite_span_equal_ci(name->span, "DATE_FORMAT")) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    character_length =
+        temporal_format_result_character_length(database, plan, expression, time_format, callbacks);
+    *out_descriptor = temporal_format_string_descriptor(database, character_length);
+    return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor temporal_format_string_descriptor(
+    mylite_db *database,
+    uint64_t character_length
+) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t length =
+        max_bytes_per_character != 0U && character_length > UINT64_MAX / max_bytes_per_character
+            ? mylite_mysql_long_text_length
+            : character_length * max_bytes_per_character;
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static uint64_t temporal_format_result_character_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool time_format,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *format = mylite_ast_child_at(arguments, 1U);
+    uint64_t length = literal_temporal_format_character_length(format, time_format);
+
+    if (length != 0U) {
+        return length;
+    }
+    return dynamic_temporal_format_character_length(database, plan, format, callbacks);
+}
+
+static uint64_t literal_temporal_format_character_length(
+    const struct mylite_sql_ast_node *format,
+    bool time_format
+) {
+    uint64_t length = 0U;
+    bool quoted = false;
+
+    format = mylite_sql_ast_unwrap_parenthesized_expression(format);
+    if (format == NULL || format->kind != MYLITE_SQL_AST_LITERAL ||
+        (format->literal_kind != MYLITE_SQL_AST_LITERAL_STRING &&
+         format->literal_kind != MYLITE_SQL_AST_LITERAL_NATIONAL_STRING)) {
+        return 0U;
+    }
+    quoted = format->span.length >= 2U && format->span.text[0] == '\'' &&
+             format->span.text[format->span.length - 1U] == '\'';
+
+    for (size_t offset = 0U; offset < format->span.length; ++offset) {
+        uint64_t token_length = 1U;
+
+        if (format->span.text[offset] == '%' && offset + 1U < format->span.length) {
+            char token = format->span.text[++offset];
+
+            token_length = time_format ? time_format_token_character_length(token)
+                                       : date_format_token_character_length(token);
+        }
+        if (length > UINT64_MAX - token_length) {
+            return mylite_mysql_long_text_length;
+        }
+        length += token_length;
+    }
+    return quoted && length >= 2U ? length - 2U : length;
+}
+
+static uint64_t date_format_token_character_length(char token) {
+    switch (token) {
+    case 'M':
+    case 'W':
+    case 'r':
+        return 9U;
+    case 'T':
+        return 8U;
+    case 'f':
+        return 6U;
+    case 'D':
+    case 'X':
+    case 'x':
+    case 'Y':
+        return 4U;
+    case 'a':
+    case 'b':
+    case 'j':
+        return 3U;
+    case 'c':
+    case 'd':
+    case 'e':
+    case 'H':
+    case 'h':
+    case 'I':
+    case 'i':
+    case 'k':
+    case 'l':
+    case 'm':
+    case 'p':
+    case 'S':
+    case 's':
+    case 'U':
+    case 'u':
+    case 'V':
+    case 'v':
+    case 'y':
+        return 2U;
+    default:
+        return 1U;
+    }
+}
+
+static uint64_t time_format_token_character_length(char token) {
+    switch (token) {
+    case 'r':
+        return 13U;
+    case 'T':
+        return 10U;
+    case 'H':
+    case 'k':
+        return 7U;
+    case 'f':
+        return 6U;
+    case 'Y':
+        return 4U;
+    case 'h':
+    case 'I':
+    case 'i':
+    case 'm':
+    case 'p':
+    case 'S':
+    case 's':
+    case 'y':
+        return 2U;
+    default:
+        return 1U;
+    }
+}
+
+static uint64_t dynamic_temporal_format_character_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *format,
+    const struct mylite_expression_descriptor_temporal_callbacks *callbacks
+) {
+    struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (callbacks->infer_expression_descriptor(database, plan, format, NULL, &descriptor) !=
+        MYLITE_OK) {
+        return mylite_mysql_text_length;
+    }
+    if (descriptor.length > UINT64_MAX / 10U) {
+        return mylite_mysql_long_text_length;
+    }
+    if (max_bytes_per_character > 1U) {
+        return (descriptor.length / max_bytes_per_character) * 10U;
+    }
+    return descriptor.length * 10U;
 }
 
 static int infer_date_interval_function_descriptor(

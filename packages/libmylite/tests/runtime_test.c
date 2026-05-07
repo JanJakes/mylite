@@ -21514,13 +21514,13 @@ static int test_time_format_function_execution(void) {
          NULL,
          NULL,
          NULL,
-         32U,
+         52U,
          MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
          255U,
-         MYLITE_FIELD_FLAG_NOT_NULL,
-         MYLITE_FIELD_FLAG_UNSIGNED,
-         0},
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const char *const scalar_columns[] =
         {"over_hour", "basic", "negative", "zero_date", "null_token", "null_time", "null_format"};
@@ -69632,6 +69632,32 @@ static int test_result_metadata_expression_labels_execution(void) {
              MYLITE_FIELD_FLAG_NUM,
          0U,
          0},
+        {"date_format_expr",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         16U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         1},
+        {"time_format_expr",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         28U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         1},
     };
     static const struct expected_result_metadata table_expression_metadata[] = {
         {"abc",
@@ -69856,6 +69882,45 @@ static int test_result_metadata_expression_labels_execution(void) {
          63U,
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"date_format_dt",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         40U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         1},
+        {"time_format_dt",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         40U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         1},
+        {"date_format_dynamic",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         480U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
          1},
     };
     static const struct expected_result_metadata conditional_function_metadata[] = {
@@ -70303,7 +70368,8 @@ static int test_result_metadata_expression_labels_execution(void) {
         "SELECT 1, 'abc', NULL AS nil, 'abc' AS str_lit, "
         "BINARY 'abc' AS binary_expr, 1 + 2 AS sum_expr, 5 / 2 AS slash_expr, "
         "5 DIV 2 AS div_expr, 1 = 1 AS eq_expr, NULL IS NULL AS is_expr, "
-        "1 & 3 AS bit_expr",
+        "1 & 3 AS bit_expr, DATE_FORMAT('2000-01-02','%Y') AS date_format_expr, "
+        "TIME_FORMAT('12:34:56','%H') AS time_format_expr",
         MYLITE_OK,
         &stmt
     );
@@ -70325,7 +70391,10 @@ static int test_result_metadata_expression_labels_execution(void) {
         "n IN (1,2) AS n_in, n BETWEEN 1 AND 20 AS n_between, "
         "s LIKE 'a%' AS s_like, -n AS n_neg, -u AS u_neg, +n AS n_pos, "
         "+u AS u_pos, -d AS d_neg, -r AS r_neg, -s AS s_neg, "
-        "BINARY c AS binary_c, BINARY b AS binary_b "
+        "BINARY c AS binary_c, BINARY b AS binary_b, "
+        "DATE_FORMAT(dt, '%Y-%m-%d') AS date_format_dt, "
+        "TIME_FORMAT(dt, '%H:%i') AS time_format_dt, "
+        "DATE_FORMAT(dt, s) AS date_format_dynamic "
         "FROM t LIMIT 0",
         MYLITE_OK,
         &stmt

@@ -3344,9 +3344,10 @@ static int test_wordpress_like_crud(void) {
         database,
         "CREATE TABLE wp_options_like ("
         "option_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
-        "option_name VARCHAR(191) NOT NULL DEFAULT '' COLLATE utf8mb4_unicode_ci,"
-        "option_value LONGTEXT NOT NULL,"
-        "autoload VARCHAR(20) NOT NULL DEFAULT 'yes',"
+        "option_name VARCHAR(191) CHARACTER SET utf8mb4 NOT NULL DEFAULT '' "
+        "COLLATE utf8mb4_unicode_ci COMMENT 'option key',"
+        "option_value LONGTEXT CHARSET utf8mb4 NOT NULL COMMENT 'option payload',"
+        "autoload VARCHAR(20) NOT NULL DEFAULT 'yes' COMMENT 'autoload flag',"
         "PRIMARY KEY (option_id),"
         "UNIQUE KEY option_name (option_name),"
         "KEY autoload (autoload)"

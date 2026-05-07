@@ -449,6 +449,9 @@ ccons ::= REFERENCES nm(T) eidlist_opt(TA) refargs(R).
                                  {sqlite3CreateForeignKey(pParse,0,&T,TA,R);}
 ccons ::= defer_subclause(D).    {sqlite3DeferForeignKey(pParse,D);}
 ccons ::= COLLATE ids(C).        {sqlite3AddCollateType(pParse, &C);}
+ccons ::= CHARACTER SET nm.
+ccons ::= CHARSET nm.
+ccons ::= COMMENTKW STRING.
 ccons ::= GENERATED ALWAYS AS generated.
 ccons ::= AS generated.
 generated ::= LP expr(E) RP.          {sqlite3AddGenerated(pParse,E,0);}

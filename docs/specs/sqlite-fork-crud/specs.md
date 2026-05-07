@@ -48,6 +48,9 @@ slices:
 - admit MySQL `INSERT ... SET` in the direct fork parser and lower it to
   SQLite's ordinary insert path with a generated column list and one-row
   values source
+- admit MySQL column-level `CHARACTER SET`, `CHARSET`, and `COMMENT`
+  attributes in the direct fork parser, currently as schema-builder metadata
+  extension points whose descriptor/catalog persistence is deferred
 - execute the MySQL-runtime-verified WordPress-like CRUD fixture through
   MyLite's public SQL API
 
@@ -471,6 +474,12 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
     generated column list and single-row `VALUES` source, so defaults,
     constraints, indexes, `INSERT IGNORE`, and direct ODKU continue through the
     same VDBE paths as `INSERT ... VALUES`.
+18. Admit MySQL column-level `CHARACTER SET`, `CHARSET`, and `COMMENT`
+    attributes in the direct parser. The current fork slice treats them as
+    schema-builder extension points so common MySQL table declarations parse
+    unchanged; later descriptor/catalog work must persist the authored column
+    charset, collation, and comment metadata for `SHOW` and information-schema
+    surfaces.
 
 ## Lemon Grammar Direction
 

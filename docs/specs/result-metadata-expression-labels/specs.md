@@ -279,7 +279,10 @@ This task should not claim aggregate or general built-in function metadata as
 supported. It should create an inference structure that later tasks can extend:
 
 - Task 24 owns scalar built-in function return types, collations, decimals, and
-  nullability.
+  nullability. Its current descriptor slices reuse this statement-owned
+  metadata path for table-backed scalar calls, including `ABS`, `MOD`,
+  `FLOOR`, `CEIL`, and `CEILING` over the covered integer, unsigned integer,
+  decimal, approximate, text, and `NULL` argument domains.
 - Task 25 owns aggregate return metadata, including `COUNT(*)` being non-null
   integer metadata and `SUM`/`AVG` precision rules.
 - Grouping, joins, set operations, and subqueries own merged output metadata

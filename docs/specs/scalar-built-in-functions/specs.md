@@ -697,6 +697,15 @@ Verified `mysql --column-type-info -vvv` examples:
 | `SUBSTRING('abcdef',2,3) AS substr_value` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `SUBSTRING_INDEX('www.mysql.com','.',2) AS substring_index_value` | `VAR_STRING` | `52` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `ABS(-12.5) AS abs_decimal` | `NEWDECIMAL` | `5` | `1` | `binary` | `NOT_NULL BINARY NUM` |
+| `ABS(int_col) AS abs_n` | `LONGLONG` | source integer display length | `0` | `binary` | nullable follows argument, `BINARY NUM` |
+| `ABS(unsigned_int_col) AS abs_u` | `LONGLONG` | source integer display length | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` for non-null unsigned arguments |
+| `ABS(decimal_col) AS abs_d` | `NEWDECIMAL` | source decimal display length | source scale | `binary` | nullable follows argument, `BINARY NUM` |
+| `ABS(double_col) AS abs_r` | `DOUBLE` | `23` | `31` | `binary` | nullable follows argument, `BINARY NUM` |
+| `MOD(unsigned_int_col,2) AS mod_u` | `LONGLONG` | unsigned source integer display length plus sign slot | `0` | `binary` | nullable, `UNSIGNED BINARY NUM` |
+| `MOD(decimal_col,2) AS mod_d` | `NEWDECIMAL` | source decimal display length | source scale | `binary` | nullable, `BINARY NUM` |
+| `FLOOR(unsigned_int_col) AS floor_u` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` for non-null unsigned arguments |
+| `CEIL(decimal_col) AS ceil_d` | `LONGLONG` | `21` | `0` | `binary` | nullable follows argument, `BINARY NUM` |
+| `CEIL(text_col) AS ceil_s` | `DOUBLE` | `23` | `31` | `binary` | nullable follows argument, `BINARY NUM` |
 | `ROUND(123.456,2) AS round_scale` | `NEWDECIMAL` | `8` | `2` | `binary` | `NOT_NULL BINARY NUM` |
 | `POW(2,10) AS pow_value` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |
 | `SQRT(-1) AS sqrt_domain` | `DOUBLE` | `23` | `31` | `binary` | `BINARY NUM` |

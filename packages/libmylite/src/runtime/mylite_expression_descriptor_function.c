@@ -252,12 +252,14 @@ int mylite_expression_descriptor_infer_function_expression(
     bool result_nullable = false;
     bool matched_string_encoding = false;
     bool matched_slice_string = false;
+    struct mylite_expression_descriptor_numeric_callbacks numeric_callbacks = {0};
     struct mylite_expression_descriptor_string_callbacks string_callbacks = {0};
     int status = validate_function_descriptor_callbacks(callbacks);
 
     if (status != MYLITE_OK) {
         return status;
     }
+    numeric_callbacks.infer_expression_descriptor = callbacks->infer_expression_descriptor;
     string_callbacks.infer_expression_descriptor = callbacks->infer_expression_descriptor;
     if (!mylite_expression_is_supported_function_call(expression)) {
         return MYLITE_UNSUPPORTED;
@@ -391,13 +393,17 @@ int mylite_expression_descriptor_infer_function_expression(
         )) {
         return MYLITE_OK;
     }
-    if (mylite_expression_descriptor_infer_scalar_numeric_function(
-            name,
-            value,
-            result_nullable,
-            out_descriptor
-        )) {
-        return MYLITE_OK;
+    status = mylite_expression_descriptor_infer_scalar_numeric_function(
+        database,
+        plan,
+        expression,
+        value,
+        result_nullable,
+        out_descriptor,
+        &numeric_callbacks
+    );
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
     }
 
     *out_descriptor = mylite_expression_descriptor_from_value(value);

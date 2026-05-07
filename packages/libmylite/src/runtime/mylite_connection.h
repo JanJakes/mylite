@@ -32,6 +32,8 @@ int mylite_connection_set_character_set_results(
 int mylite_connection_set_collation_connection(mylite_db *database, const char *collation_name);
 int mylite_connection_set_default_sql_mode(mylite_db *database);
 int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode);
+int mylite_connection_set_default_global_sql_mode(void);
+int mylite_connection_set_global_sql_mode(mylite_db *database, const char *sql_mode);
 int mylite_connection_set_default_storage_engine(mylite_db *database);
 int mylite_connection_set_storage_engine(mylite_db *database, const char *storage_engine);
 int mylite_connection_set_default_time_zone(mylite_db *database);
@@ -56,6 +58,7 @@ const char *mylite_connection_character_set_connection(const mylite_db *database
 const char *mylite_connection_character_set_results(const mylite_db *database);
 const char *mylite_connection_collation_connection(const mylite_db *database);
 const char *mylite_connection_default_sql_mode(void);
+int mylite_connection_copy_global_sql_mode(mylite_db *database, char **out_value);
 const char *mylite_connection_sql_mode(const mylite_db *database);
 bool mylite_connection_sql_mode_is_strict(const mylite_db *database);
 bool mylite_connection_sql_mode_has_ansi_quotes(const mylite_db *database);

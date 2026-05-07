@@ -11,10 +11,12 @@ behaviors that depend on `ONLY_FULL_GROUP_BY`:
 - `SET [SESSION|LOCAL] sql_mode = DEFAULT`
 - `SET @@sql_mode = ...`, `SET @@session.sql_mode = ...`, and
   `SET @@local.sql_mode = ...`
+- `SET GLOBAL sql_mode = '<mode-list>'`, `SET @@GLOBAL.sql_mode = ...`, and
+  `SET GLOBAL sql_mode = DEFAULT`
 - `SET [SESSION|LOCAL] sql_mode =
   REPLACE(@@SESSION.sql_mode, 'ONLY_FULL_GROUP_BY', '')`
 - `SHOW [SESSION|LOCAL] VARIABLES LIKE 'sql_mode'` exposing the session value
-- `SHOW GLOBAL VARIABLES LIKE 'sql_mode'` exposing the immutable MyLite default
+- `SHOW GLOBAL VARIABLES LIKE 'sql_mode'` exposing the mutable global value
 - `GROUP BY` strict validation only when `ONLY_FULL_GROUP_BY` is active
 - `SELECT DISTINCT ... ORDER BY` hidden-expression validation only when
   `ONLY_FULL_GROUP_BY` is active
@@ -95,13 +97,15 @@ set_system_variable_value ::= REPLACE LPAREN set_system_variable_name COMMA STRI
     COMMA STRING RPAREN.
 ```
 
-Only session/local assignment is supported. `GLOBAL` assignment remains
-unsupported because MyLite has no mutable server-global state.
+Session/local assignment mutates the current connection only. Global assignment
+mutates the process-global default for new connections and for later session
+`DEFAULT` assignments; it does not change the current session value.
 
 ## Semantics
 
 `mylite_db` owns the session SQL mode string. Connection open initializes it to
-the MySQL 8.4.9 default. Closing the connection frees it.
+the current process-global value, whose startup value is the MySQL 8.4.9
+default. Closing the connection frees the handle-owned session string.
 
 Assignment canonicalizes recognized modes in MySQL display order, expands
 combination modes such as `ANSI` and `TRADITIONAL`, removes duplicates, and
@@ -109,7 +113,8 @@ preserves an empty list as the empty string. Unknown mode names fail before
 mutating the connection state.
 
 `SHOW VARIABLES` reads the session value for session/local scope and the
-immutable default for global scope.
+process-global value for global scope. `@@GLOBAL.sql_mode` reads the same
+process-global value.
 
 The grouping and distinct-order validators must query the session state:
 

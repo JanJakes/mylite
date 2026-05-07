@@ -131,8 +131,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       keywords, and dump-style backup/restore scripts. Boolean keyword values,
       unquoted string keyword values, and mutable `sql_notes` are covered; mixed
       user/system-variable dump assignment lists and user-variable restore
-      values are covered. `SET GLOBAL group_concat_max_len` now mutates only the
-      global value, with session `DEFAULT` picking up the current global value.
+      values are covered. `SET GLOBAL group_concat_max_len` and
+      `SET GLOBAL sql_mode` now mutate only the global value, with session
+      `DEFAULT` picking up the current global value.
 - [x] Decide and document whether `SELECT VERSION()` / `@@version` should
       report the MySQL compatibility target (`8.4.9`) or MyLite's own version,
       then align tests and docs.

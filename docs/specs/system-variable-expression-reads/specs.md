@@ -11,7 +11,8 @@ variables.
 
 User-defined variables (`@name`), variable assignment, persisted variables,
 complete variable catalog coverage, Performance Schema variable tables, global
-mutation, and protocol session-state tracking remain separate tasks.
+mutation beyond the covered `sql_mode` and `group_concat_max_len` variables,
+and protocol session-state tracking remain separate tasks.
 
 ## Sources
 
@@ -91,9 +92,10 @@ Session values reflect handle-owned MyLite state:
 - `character_set_database` and `collation_database` read the selected schema
   defaults, or MyLite defaults when no schema is selected.
 
-Global values reflect MyLite defaults for this embedded runtime:
+Global values reflect MyLite defaults and the currently supported process-global
+mutable variables for this embedded runtime:
 
-- `sql_mode` and `group_concat_max_len` read default values.
+- `sql_mode` and `group_concat_max_len` read their current global values.
 - Charset and collation globals read the built-in default registry values.
 - `version` reads the MySQL compatibility target, currently `8.4.9`.
 - `gtid_purged` reads an empty string, and `log_bin` /

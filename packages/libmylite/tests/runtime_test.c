@@ -48381,6 +48381,10 @@ static int test_show_variables_execution(void) {
         "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
         "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
     };
+    static const char *const global_sql_mode_values[] = {
+        "sql_mode",
+        "ANSI_QUOTES,NO_ENGINE_SUBSTITUTION",
+    };
     static const char *const relaxed_sql_mode_values[] = {
         "sql_mode",
         "STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
@@ -48415,6 +48419,19 @@ static int test_show_variables_execution(void) {
     static const char *const short_group_concat_max_len_values[] = {"group_concat_max_len", "4"};
     static const char *const global_group_concat_max_len_values[] = {"group_concat_max_len", "8"};
     static const char *const six_group_concat_max_len_values[] = {"group_concat_max_len", "6"};
+    static const char *const sql_mode_scope_columns[] = {"session_value", "global_value"};
+    const char *const sql_mode_global_scope_values[] = {
+        default_sql_mode_values[1],
+        global_sql_mode_values[1],
+    };
+    const char *const sql_mode_default_to_global_values[] = {
+        global_sql_mode_values[1],
+        global_sql_mode_values[1],
+    };
+    const char *const sql_mode_global_default_scope_values[] = {
+        global_sql_mode_values[1],
+        default_sql_mode_values[1],
+    };
     static const char *const group_concat_scope_columns[] = {"session_value", "global_value"};
     static const char *const group_concat_global_scope_values[] = {"1024", "8"};
     static const char *const group_concat_default_to_global_values[] = {"8", "8"};
@@ -49014,6 +49031,107 @@ static int test_show_variables_execution(void) {
         default_sql_mode_values,
         1,
         "show variables sql mode unchanged after invalid set"
+    );
+    failures += execute_sql(
+        database,
+        "SET @@GLOBAL.sql_mode = 'ansi_quotes,no_engine_substitution'",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_mode'",
+        columns,
+        2,
+        global_sql_mode_values,
+        1,
+        "show global variables sql mode changed"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'sql_mode'",
+        columns,
+        2,
+        default_sql_mode_values,
+        1,
+        "show variables sql mode unchanged after global set"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT @@SESSION.sql_mode AS session_value, @@GLOBAL.sql_mode AS global_value",
+        sql_mode_scope_columns,
+        2,
+        sql_mode_global_scope_values,
+        1,
+        "system variable sql mode global scope"
+    );
+    failures += expect_status(
+        mylite_open_memory(&global_default_database),
+        MYLITE_OK,
+        "open sql mode global default database"
+    );
+    failures += expect_select_rows(
+        global_default_database,
+        "SHOW VARIABLES LIKE 'sql_mode'",
+        columns,
+        2,
+        global_sql_mode_values,
+        1,
+        "new database inherits global sql mode"
+    );
+    mylite_close(global_default_database);
+    global_default_database = NULL;
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@SESSION.sql_mode AS session_value, @@GLOBAL.sql_mode AS global_value",
+        sql_mode_scope_columns,
+        2,
+        sql_mode_default_to_global_values,
+        1,
+        "set sql mode default uses global value"
+    );
+    failures += execute_sql(database, "SET GLOBAL sql_mode = DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@SESSION.sql_mode AS session_value, @@GLOBAL.sql_mode AS global_value",
+        sql_mode_scope_columns,
+        2,
+        sql_mode_global_default_scope_values,
+        1,
+        "set global sql mode default preserves session value"
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'sql_mode'",
+        columns,
+        2,
+        default_sql_mode_values,
+        1,
+        "show variables sql mode restored after global default"
+    );
+    failures += prepare_sql(database, "SET GLOBAL sql_mode = 'NO_SUCH_MODE'", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "set invalid global sql mode");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Variable 'sql_mode' can't be set to the value of 'NO_SUCH_MODE'",
+        "set invalid global sql mode error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_wrong_value_for_var,
+        "set invalid global sql mode warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_mode'",
+        columns,
+        2,
+        default_sql_mode_values,
+        1,
+        "show global variables sql mode unchanged after invalid set"
     );
     failures += execute_sql(database, "SET SESSION group_concat_max_len = 4", MYLITE_DONE);
     failures += expect_select_rows(

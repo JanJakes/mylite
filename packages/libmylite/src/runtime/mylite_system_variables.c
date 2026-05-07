@@ -582,6 +582,18 @@ static int copy_system_variable_string_value(
         }
     }
 
+    if (id == MYLITE_SYSTEM_VARIABLE_SQL_MODE && scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        char *global_sql_mode = NULL;
+
+        status = mylite_connection_copy_global_sql_mode(database, &global_sql_mode);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        status = set_system_variable_text_value(global_sql_mode, out_value);
+        free(global_sql_mode);
+        return status;
+    }
+
     value = system_variable_string_value(database, id, scope, &schema_default);
     return set_system_variable_text_value(value, out_value);
 }

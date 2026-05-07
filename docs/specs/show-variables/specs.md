@@ -136,9 +136,9 @@ Scope:
 - `GLOBAL` exposes default/global values when MyLite can represent them.
 - Session-only diagnostic counters such as `warning_count` and `error_count`
   are omitted from `GLOBAL` results.
-- MyLite has no process-global mutable state in this slice. For variables where
-  MyLite has only fixed compatibility defaults, session and global values are
-  intentionally the same.
+- `sql_mode` and `group_concat_max_len` have process-global mutable values in
+  this slice. For variables where MyLite has only fixed compatibility defaults,
+  session and global values are intentionally the same.
 
 Catalog for this slice:
 
@@ -158,12 +158,12 @@ Catalog for this slice:
 | `collation_server` | `utf8mb4_0900_ai_ci` | `utf8mb4_0900_ai_ci` | MyLite's current server default collation. |
 | `error_count` | `0` | omitted | SHOW VARIABLES clears prior diagnostics before reporting. |
 | `gtid_purged` | empty string | empty string | Embedded runtime placeholder; MyLite has no binary log or GTID state. |
-| `group_concat_max_len` | current handle state, default `1024` | `1024` | Session/local assignment is implemented; global mutation is deferred. |
+| `group_concat_max_len` | current handle state, default from the current global value | current global value, default `1024` | Session/local/global assignment is implemented; session `DEFAULT` reads the current global value. |
 | `log_bin` | `OFF` | `OFF` | Embedded runtime placeholder; MyLite does not write a MySQL binary log. |
 | `log_bin_trust_function_creators` | `OFF` | `OFF` | Embedded runtime placeholder; stored program privilege behavior is deferred. |
 | `max_error_count` | `1024` | `1024` | Storage cap behavior remains deferred; diagnostics currently store all generated conditions in memory. |
 | `sql_log_bin` | current handle state, default `ON` | omitted | Session-only binary-log toggle accepted for dump/restore compatibility; MyLite has no binary log side effect. |
-| `sql_mode` | current handle state, default MySQL 8.4 mode string | MySQL 8.4 default mode string | Session/local assignment is implemented for recognized modes and the focused `REPLACE(...)` removal idiom. Implemented expression/DDL/DML behavior may still be narrower than the full mode surface. |
+| `sql_mode` | current handle state, default from the current global value | current global value, startup value is the MySQL 8.4 mode string | Session/local/global assignment is implemented for recognized modes. Session `DEFAULT` reads the current global value. The focused `REPLACE(...)` removal idiom is implemented for session scope. Implemented expression/DDL/DML behavior may still be narrower than the full mode surface. |
 | `sql_notes` | current handle state, default `ON` | `ON` | Session/local assignment is implemented for numeric, boolean keyword, and `DEFAULT` values. |
 | `transaction_isolation` | `REPEATABLE-READ` | `REPEATABLE-READ` | Fixed compatibility value; isolation-level semantics are deferred. |
 | `transaction_read_only` | `OFF` | `OFF` | This variable is the default transaction mode, not the current active transaction access mode. |
@@ -234,6 +234,9 @@ Runtime coverage:
   `collation_database`
 - `SET SESSION group_concat_max_len` changes the session row without changing
   the global/default row
+- `SET GLOBAL sql_mode` and `SET GLOBAL group_concat_max_len` change global
+  rows without changing the current session row; new handles and session
+  `DEFAULT` assignments inherit the current global value
 - supported `SET` session-variable assignments update displayed session rows,
   including boolean keywords, unquoted string keyword values, dump-style
   user/system-variable assignment lists, and user-variable restore values

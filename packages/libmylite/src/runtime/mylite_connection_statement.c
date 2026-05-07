@@ -433,6 +433,12 @@ static int execute_set_sql_mode_statement(
     mylite_stmt *stmt,
     const struct mylite_connection_system_variable_plan *plan
 ) {
+    if (plan->global_scope) {
+        if (plan->use_default) {
+            return mylite_connection_set_default_global_sql_mode();
+        }
+        return mylite_connection_set_global_sql_mode(stmt->database, plan->value);
+    }
     if (plan->use_default) {
         return mylite_connection_set_default_sql_mode(stmt->database);
     }
@@ -601,7 +607,8 @@ int mylite_connection_copy_system_variable_statement(
         return MYLITE_UNSUPPORTED;
     }
     plan->global_scope = global_scope;
-    if (global_scope && plan->variable != MYLITE_CONNECTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
+    if (global_scope && plan->variable != MYLITE_CONNECTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN &&
+        plan->variable != MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_MODE) {
         return set_system_variable_global_error(database, plan->variable);
     }
     if (mylite_user_variable_identifier_is_user_variable(value)) {
@@ -824,9 +831,10 @@ static int copy_connection_sql_mode_replace_statement(
     char *variable_name = NULL;
     bool global_scope = false;
 
-    if (function_name == NULL || !mylite_span_equal_ci(function_name->span, "REPLACE") ||
-        arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 3U || variable == NULL ||
-        search == NULL || replacement == NULL || search->kind != MYLITE_SQL_AST_LITERAL ||
+    if (plan->global_scope || function_name == NULL ||
+        !mylite_span_equal_ci(function_name->span, "REPLACE") || arguments == NULL ||
+        mylite_sql_ast_node_child_count(arguments) != 3U || variable == NULL || search == NULL ||
+        replacement == NULL || search->kind != MYLITE_SQL_AST_LITERAL ||
         search->literal_kind != MYLITE_SQL_AST_LITERAL_STRING ||
         replacement->kind != MYLITE_SQL_AST_LITERAL ||
         replacement->literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {

@@ -11,6 +11,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static void append_show_variable_row(
     sqlite3_str *sql,
@@ -47,6 +48,7 @@ int mylite_show_variables_sql(
     char max_allowed_packet[integer_buffer_size] = {0};
     char max_connections[integer_buffer_size] = {0};
     char wait_timeout[integer_buffer_size] = {0};
+    char *global_sql_mode = NULL;
     bool first = true;
     bool global = query->scope == MYLITE_SQL_AST_SHOW_VARIABLES_GLOBAL;
     bool foreign_key_checks = mylite_connection_default_foreign_key_checks();
@@ -57,7 +59,13 @@ int mylite_show_variables_sql(
     int status = MYLITE_OK;
 
     *out_sql = NULL;
-    if (!global) {
+    if (global) {
+        status = mylite_connection_copy_global_sql_mode(database, &global_sql_mode);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        sql_mode = global_sql_mode;
+    } else {
         status = mylite_catalog_selected_schema_default(database, &schema_default);
         if (status != MYLITE_OK) {
             return status;
@@ -111,6 +119,7 @@ int mylite_show_variables_sql(
 
     sql = sqlite3_str_new(database->sqlite);
     if (sql == NULL) {
+        free(global_sql_mode);
         return MYLITE_NOMEM;
     }
 
@@ -195,6 +204,7 @@ int mylite_show_variables_sql(
     );
 
     *out_sql = sqlite3_str_finish(sql);
+    free(global_sql_mode);
     if (status != MYLITE_OK) {
         sqlite3_free(*out_sql);
         *out_sql = NULL;

@@ -55,6 +55,11 @@ enum mylite_sql_mode_mask {
     MYLITE_SQL_MODE_NO_AUTO_VALUE_ON_ZERO = 1U << 19U,
 };
 
+#define MYLITE_DEFAULT_SQL_MODE_MASK                                                               \
+    (MYLITE_SQL_MODE_ONLY_FULL_GROUP_BY | MYLITE_SQL_MODE_STRICT_TRANS_TABLES |                    \
+     MYLITE_SQL_MODE_NO_ZERO_IN_DATE | MYLITE_SQL_MODE_NO_ZERO_DATE |                              \
+     MYLITE_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO | MYLITE_SQL_MODE_NO_ENGINE_SUBSTITUTION)
+
 struct mylite_sql_mode_entry {
     const char *name;
     uint64_t mask;
@@ -63,6 +68,31 @@ struct mylite_sql_mode_entry {
 struct mylite_sql_mode_token_search {
     const char *sql_mode;
     const char *expected;
+};
+
+static _Atomic uint64_t mylite_global_sql_mode_mask = MYLITE_DEFAULT_SQL_MODE_MASK;
+
+static const struct mylite_sql_mode_entry mylite_sql_mode_canonical_order[] = {
+    {"REAL_AS_FLOAT", MYLITE_SQL_MODE_REAL_AS_FLOAT},
+    {"PIPES_AS_CONCAT", MYLITE_SQL_MODE_PIPES_AS_CONCAT},
+    {"ANSI_QUOTES", MYLITE_SQL_MODE_ANSI_QUOTES},
+    {"IGNORE_SPACE", MYLITE_SQL_MODE_IGNORE_SPACE},
+    {"ONLY_FULL_GROUP_BY", MYLITE_SQL_MODE_ONLY_FULL_GROUP_BY},
+    {"NO_UNSIGNED_SUBTRACTION", MYLITE_SQL_MODE_NO_UNSIGNED_SUBTRACTION},
+    {"ANSI", MYLITE_SQL_MODE_ANSI},
+    {"NO_AUTO_VALUE_ON_ZERO", MYLITE_SQL_MODE_NO_AUTO_VALUE_ON_ZERO},
+    {"NO_BACKSLASH_ESCAPES", MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES},
+    {"STRICT_TRANS_TABLES", MYLITE_SQL_MODE_STRICT_TRANS_TABLES},
+    {"STRICT_ALL_TABLES", MYLITE_SQL_MODE_STRICT_ALL_TABLES},
+    {"NO_ZERO_IN_DATE", MYLITE_SQL_MODE_NO_ZERO_IN_DATE},
+    {"NO_ZERO_DATE", MYLITE_SQL_MODE_NO_ZERO_DATE},
+    {"ALLOW_INVALID_DATES", MYLITE_SQL_MODE_INVALID_DATES},
+    {"ERROR_FOR_DIVISION_BY_ZERO", MYLITE_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO},
+    {"TRADITIONAL", MYLITE_SQL_MODE_TRADITIONAL},
+    {"HIGH_NOT_PRECEDENCE", MYLITE_SQL_MODE_HIGH_NOT_PRECEDENCE},
+    {"NO_ENGINE_SUBSTITUTION", MYLITE_SQL_MODE_NO_ENGINE_SUBSTITUTION},
+    {"PAD_CHAR_TO_FULL_LENGTH", MYLITE_SQL_MODE_PAD_CHAR_TO_FULL_LENGTH},
+    {"TIME_TRUNCATE_FRACTIONAL", MYLITE_SQL_MODE_TIME_TRUNCATE_FRACTIONAL},
 };
 
 static int open_sqlite_database(
@@ -75,6 +105,10 @@ static int open_sqlite_database(
 static int set_connection_text_value(mylite_db *database, const char *value, char **out_value);
 
 static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, char **out_value);
+
+static int sql_mode_mask_from_string(mylite_db *database, const char *sql_mode, uint64_t *out_mask);
+
+static int copy_sql_mode_mask(mylite_db *database, uint64_t mask, char **out_value);
 
 static int append_sql_mode_token(
     mylite_db *database,
@@ -349,7 +383,15 @@ int mylite_connection_set_collation_connection(mylite_db *database, const char *
 }
 
 int mylite_connection_set_default_sql_mode(mylite_db *database) {
-    return mylite_connection_set_sql_mode(database, mylite_default_sql_mode);
+    char *sql_mode = NULL;
+    int status = mylite_connection_copy_global_sql_mode(database, &sql_mode);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    free(database->sql_mode);
+    database->sql_mode = sql_mode;
+    return MYLITE_OK;
 }
 
 int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode) {
@@ -362,6 +404,26 @@ int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode) {
 
     free(database->sql_mode);
     database->sql_mode = canonical;
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_default_global_sql_mode(void) {
+    atomic_store_explicit(
+        &mylite_global_sql_mode_mask,
+        MYLITE_DEFAULT_SQL_MODE_MASK,
+        memory_order_relaxed
+    );
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_global_sql_mode(mylite_db *database, const char *sql_mode) {
+    uint64_t mask = 0U;
+    int status = sql_mode_mask_from_string(database, sql_mode, &mask);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    atomic_store_explicit(&mylite_global_sql_mode_mask, mask, memory_order_relaxed);
     return MYLITE_OK;
 }
 
@@ -477,6 +539,16 @@ int mylite_connection_set_sql_log_bin(mylite_db *database, bool enabled) {
 
 const char *mylite_connection_default_sql_mode(void) {
     return mylite_default_sql_mode;
+}
+
+int mylite_connection_copy_global_sql_mode(mylite_db *database, char **out_value) {
+    uint64_t mask = 0U;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    mask = atomic_load_explicit(&mylite_global_sql_mode_mask, memory_order_relaxed);
+    return copy_sql_mode_mask(database, mask, out_value);
 }
 
 const char *mylite_connection_sql_mode(const mylite_db *database) {
@@ -728,33 +800,26 @@ static int set_connection_text_value(mylite_db *database, const char *value, cha
 }
 
 static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, char **out_value) {
-    static const struct mylite_sql_mode_entry canonical_order[] = {
-        {"REAL_AS_FLOAT", MYLITE_SQL_MODE_REAL_AS_FLOAT},
-        {"PIPES_AS_CONCAT", MYLITE_SQL_MODE_PIPES_AS_CONCAT},
-        {"ANSI_QUOTES", MYLITE_SQL_MODE_ANSI_QUOTES},
-        {"IGNORE_SPACE", MYLITE_SQL_MODE_IGNORE_SPACE},
-        {"ONLY_FULL_GROUP_BY", MYLITE_SQL_MODE_ONLY_FULL_GROUP_BY},
-        {"NO_UNSIGNED_SUBTRACTION", MYLITE_SQL_MODE_NO_UNSIGNED_SUBTRACTION},
-        {"ANSI", MYLITE_SQL_MODE_ANSI},
-        {"NO_AUTO_VALUE_ON_ZERO", MYLITE_SQL_MODE_NO_AUTO_VALUE_ON_ZERO},
-        {"NO_BACKSLASH_ESCAPES", MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES},
-        {"STRICT_TRANS_TABLES", MYLITE_SQL_MODE_STRICT_TRANS_TABLES},
-        {"STRICT_ALL_TABLES", MYLITE_SQL_MODE_STRICT_ALL_TABLES},
-        {"NO_ZERO_IN_DATE", MYLITE_SQL_MODE_NO_ZERO_IN_DATE},
-        {"NO_ZERO_DATE", MYLITE_SQL_MODE_NO_ZERO_DATE},
-        {"ALLOW_INVALID_DATES", MYLITE_SQL_MODE_INVALID_DATES},
-        {"ERROR_FOR_DIVISION_BY_ZERO", MYLITE_SQL_MODE_ERROR_FOR_DIVISION_BY_ZERO},
-        {"TRADITIONAL", MYLITE_SQL_MODE_TRADITIONAL},
-        {"HIGH_NOT_PRECEDENCE", MYLITE_SQL_MODE_HIGH_NOT_PRECEDENCE},
-        {"NO_ENGINE_SUBSTITUTION", MYLITE_SQL_MODE_NO_ENGINE_SUBSTITUTION},
-        {"PAD_CHAR_TO_FULL_LENGTH", MYLITE_SQL_MODE_PAD_CHAR_TO_FULL_LENGTH},
-        {"TIME_TRUNCATE_FRACTIONAL", MYLITE_SQL_MODE_TIME_TRUNCATE_FRACTIONAL},
-    };
     uint64_t mask = 0U;
-    char *value = NULL;
-    size_t value_length = 0U;
+    int status = sql_mode_mask_from_string(database, sql_mode, &mask);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return copy_sql_mode_mask(database, mask, out_value);
+}
+
+static int sql_mode_mask_from_string(
+    mylite_db *database,
+    const char *sql_mode,
+    uint64_t *out_mask
+) {
+    uint64_t mask = 0U;
     const char *token_start = sql_mode == NULL ? "" : sql_mode;
 
+    if (out_mask == NULL) {
+        return MYLITE_MISUSE;
+    }
     while (token_start != NULL) {
         const char *token_end = strchr(token_start, ',');
         const struct mylite_sql_mode_entry *entry = NULL;
@@ -779,12 +844,26 @@ static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, ch
         token_start = token_end == NULL ? NULL : token_end + 1;
     }
 
-    for (size_t index = 0U; index < sizeof(canonical_order) / sizeof(canonical_order[0]); ++index) {
-        if ((mask & canonical_order[index].mask) == 0U) {
+    *out_mask = mask;
+    return MYLITE_OK;
+}
+
+static int copy_sql_mode_mask(mylite_db *database, uint64_t mask, char **out_value) {
+    char *value = NULL;
+    size_t value_length = 0U;
+
+    for (size_t index = 0U; index < sizeof(mylite_sql_mode_canonical_order) /
+                                        sizeof(mylite_sql_mode_canonical_order[0]);
+         ++index) {
+        if ((mask & mylite_sql_mode_canonical_order[index].mask) == 0U) {
             continue;
         }
-        if (append_sql_mode_token(database, &value, &value_length, canonical_order[index].name) !=
-            MYLITE_OK) {
+        if (append_sql_mode_token(
+                database,
+                &value,
+                &value_length,
+                mylite_sql_mode_canonical_order[index].name
+            ) != MYLITE_OK) {
             free(value);
             return MYLITE_NOMEM;
         }

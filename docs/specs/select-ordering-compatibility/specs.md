@@ -21,7 +21,7 @@ This slice makes existing SELECT validation sensitive to the session
 
 Out of scope:
 
-- process-global mutable `sql_mode`
+- persisted global `sql_mode` and startup-option integration
 - persisted system variables
 - user variables and multi-assignment `SET` statements
 - expression reads such as `SELECT @@SESSION.sql_mode`

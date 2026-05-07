@@ -251,6 +251,13 @@ tasks. Unsupported column families should stay deferred rather than guessed.
 | `BINARY b` for `b VARBINARY(8)` | `VAR_STRING` | length `8`, decimals `31` | `BINARY`; nullable |
 | `1 + 2 AS sum_expr` | `LONGLONG` | length `3`, decimals `0` | `NOT_NULL BINARY NUM` |
 | `n + 1 AS n_plus` where `n INT NULL` | `LONGLONG` | length `12`, decimals `0` | `BINARY NUM` |
+| `-n AS n_neg` where `n INT NULL` | `LONGLONG` | length `11`, decimals `0` | `BINARY NUM`; nullable |
+| `-u AS u_neg` where `u INT UNSIGNED NOT NULL` | `LONGLONG` | length `11`, decimals `0` | `NOT_NULL BINARY NUM` |
+| `+n AS n_pos` where `n INT NULL` | same descriptor and origin metadata as `n` |
+| `+u AS u_pos` where `u INT UNSIGNED NOT NULL` | same descriptor and origin metadata as `u` |
+| `-d AS d_neg` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `8`, decimals `2` | `BINARY NUM`; nullable |
+| `-r AS r_neg` where `r DOUBLE` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
+| `-s AS s_neg` where `s VARCHAR(12)` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
 | `5 / 2 AS slash_expr` | `NEWDECIMAL` | length `7`, decimals `4` | `BINARY NUM` |
 | `5 DIV 2 AS div_expr` | `LONGLONG` | length `2`, decimals `0` | `BINARY NUM` |
 | `1 = 1 AS eq_expr` | `LONGLONG` | length `1`, decimals `0` | `NOT_NULL BINARY NUM` |

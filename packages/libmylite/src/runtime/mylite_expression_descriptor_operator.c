@@ -4,6 +4,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_expression_collation.h"
 #include "mylite_expression_descriptor.h"
+#include "mylite_expression_descriptor_numeric.h"
 #include "mylite_expression_descriptor_subquery.h"
 #include "mylite_metadata_constants.h"
 #include "mylite_span.h"
@@ -22,6 +23,12 @@ static int infer_collate_expression_descriptor(
     const struct mylite_field_descriptor *left,
     struct mylite_field_descriptor *out_descriptor
 );
+
+static struct mylite_field_descriptor negative_expression_descriptor(
+    const struct mylite_field_descriptor *operand
+);
+
+static bool descriptor_has_integer_result(const struct mylite_field_descriptor *descriptor);
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_descriptor_infer_unary_expression(
@@ -103,7 +110,6 @@ int mylite_expression_descriptor_infer_unary_expression(
         mylite_field_descriptor_set_nullable(out_descriptor, true);
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_POSITIVE:
-    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
         status = callbacks->infer_expression_descriptor(
             database,
             plan,
@@ -115,10 +121,21 @@ int mylite_expression_descriptor_infer_unary_expression(
             return status;
         }
         nullable = mylite_expression_descriptor_is_nullable(&operand);
-        operand.flags &= ~(unsigned int)MYLITE_FIELD_FLAG_UNSIGNED;
-        operand.length = mylite_expression_descriptor_max_u64(operand.length, 2U);
         mylite_field_descriptor_set_nullable(&operand, nullable);
         *out_descriptor = operand;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+        status = callbacks->infer_expression_descriptor(
+            database,
+            plan,
+            mylite_ast_child_at(expression, 0U),
+            value,
+            &operand
+        );
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        *out_descriptor = negative_expression_descriptor(&operand);
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_NONE:
     case MYLITE_SQL_AST_OPERATOR_ADD:
@@ -158,6 +175,91 @@ int mylite_expression_descriptor_infer_unary_expression(
 
     *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor negative_expression_descriptor(
+    const struct mylite_field_descriptor *operand
+) {
+    bool nullable = mylite_expression_descriptor_is_nullable(operand);
+
+    if (descriptor_has_integer_result(operand)) {
+        uint64_t length = operand == NULL ? 0U : operand->length;
+        struct mylite_field_descriptor descriptor =
+            mylite_expression_descriptor_signed_longlong(nullable);
+
+        if (operand != NULL && (operand->flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U) {
+            ++length;
+        }
+        descriptor.length = mylite_expression_descriptor_max_u64(length, 2U);
+        return descriptor;
+    }
+    if (operand != NULL && operand->type == MYLITE_FIELD_TYPE_NEWDECIMAL) {
+        struct mylite_field_descriptor descriptor = {
+            .type = MYLITE_FIELD_TYPE_NEWDECIMAL,
+            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length =
+                operand->length + ((operand->flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U ? 1U : 0U),
+            .decimals = operand->decimals,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = nullable,
+        };
+
+        mylite_field_descriptor_set_nullable(&descriptor, nullable);
+        return descriptor;
+    }
+    if (operand != NULL && operand->type == MYLITE_FIELD_TYPE_NULL) {
+        struct mylite_field_descriptor descriptor = {
+            .type = MYLITE_FIELD_TYPE_DOUBLE,
+            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .length = 17U,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+
+        mylite_field_descriptor_set_nullable(&descriptor, true);
+        return descriptor;
+    }
+    return mylite_expression_descriptor_numeric_double_function(nullable);
+}
+
+static bool descriptor_has_integer_result(const struct mylite_field_descriptor *descriptor) {
+    if (descriptor == NULL) {
+        return false;
+    }
+
+    switch (descriptor->type) {
+    case MYLITE_FIELD_TYPE_TINY:
+    case MYLITE_FIELD_TYPE_SHORT:
+    case MYLITE_FIELD_TYPE_LONG:
+    case MYLITE_FIELD_TYPE_LONGLONG:
+    case MYLITE_FIELD_TYPE_INT24:
+    case MYLITE_FIELD_TYPE_YEAR:
+        return true;
+    case MYLITE_FIELD_TYPE_DECIMAL:
+    case MYLITE_FIELD_TYPE_FLOAT:
+    case MYLITE_FIELD_TYPE_DOUBLE:
+    case MYLITE_FIELD_TYPE_NULL:
+    case MYLITE_FIELD_TYPE_TIMESTAMP:
+    case MYLITE_FIELD_TYPE_DATE:
+    case MYLITE_FIELD_TYPE_TIME:
+    case MYLITE_FIELD_TYPE_DATETIME:
+    case MYLITE_FIELD_TYPE_NEWDATE:
+    case MYLITE_FIELD_TYPE_VARCHAR:
+    case MYLITE_FIELD_TYPE_BIT:
+    case MYLITE_FIELD_TYPE_JSON:
+    case MYLITE_FIELD_TYPE_NEWDECIMAL:
+    case MYLITE_FIELD_TYPE_ENUM:
+    case MYLITE_FIELD_TYPE_SET:
+    case MYLITE_FIELD_TYPE_TINY_BLOB:
+    case MYLITE_FIELD_TYPE_MEDIUM_BLOB:
+    case MYLITE_FIELD_TYPE_LONG_BLOB:
+    case MYLITE_FIELD_TYPE_BLOB:
+    case MYLITE_FIELD_TYPE_VAR_STRING:
+    case MYLITE_FIELD_TYPE_STRING:
+    case MYLITE_FIELD_TYPE_GEOMETRY:
+    default:
+        return false;
+    }
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

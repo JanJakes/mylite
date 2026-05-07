@@ -159,6 +159,7 @@ static int validate_positive_id(int64_t id);
 static int validate_positive_ordinal(int64_t ordinal_position);
 static int validate_generation(uint64_t generation);
 static int validate_callback(mylite_catalog_table_callback callback);
+static int validate_column_callback(mylite_catalog_column_callback callback);
 static int u64_to_i64(uint64_t value, int64_t *out_value);
 static int i64_to_u32(int64_t value, uint32_t *out_value);
 static int i64_to_u64(int64_t value, uint64_t *out_value);
@@ -718,6 +719,59 @@ int mylite_catalog_for_each_table_in_schema(
         rc = materialize_table(statement, &table);
         if (rc == MYLITE_OK) {
             rc = callback(&table, user_data);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+int mylite_catalog_for_each_column_in_table(
+    struct mylite_db *database,
+    int64_t table_id,
+    mylite_catalog_column_callback callback,
+    void *user_data
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_column_callback(callback);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, descriptor_version, created_catalog_generation, updated_catalog_generation "
+        "FROM _mylite_catalog_columns WHERE table_id = ?1 ORDER BY ordinal_position",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    while (rc == MYLITE_OK) {
+        struct mylite_catalog_column_descriptor column = {0};
+
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            break;
+        }
+        if (sqlite_rc != SQLITE_ROW) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            break;
+        }
+
+        rc = materialize_column(statement, &column);
+        if (rc == MYLITE_OK) {
+            rc = callback(&column, user_data);
         }
     }
 
@@ -2240,6 +2294,14 @@ static int validate_generation(uint64_t generation) {
 }
 
 static int validate_callback(mylite_catalog_table_callback callback) {
+    if (callback == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_column_callback(mylite_catalog_column_callback callback) {
     if (callback == NULL) {
         return MYLITE_MISUSE;
     }

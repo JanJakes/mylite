@@ -71,6 +71,10 @@ typedef int (*mylite_catalog_table_callback)(
     const struct mylite_catalog_table_descriptor *table,
     void *user_data
 );
+typedef int (*mylite_catalog_column_callback)(
+    const struct mylite_catalog_column_descriptor *column,
+    void *user_data
+);
 
 void mylite_catalog_init(struct mylite_catalog *catalog);
 void mylite_catalog_deinit(struct mylite_catalog *catalog);
@@ -137,6 +141,12 @@ int mylite_catalog_for_each_table_in_schema(
     struct mylite_db *database,
     int64_t schema_id,
     mylite_catalog_table_callback callback,
+    void *user_data
+);
+int mylite_catalog_for_each_column_in_table(
+    struct mylite_db *database,
+    int64_t table_id,
+    mylite_catalog_column_callback callback,
     void *user_data
 );
 

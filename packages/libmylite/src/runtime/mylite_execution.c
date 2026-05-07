@@ -11,6 +11,7 @@
 #include "sqlite3.h"
 
 #include <inttypes.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -22,15 +23,23 @@ enum {
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_table_exists = 1050,
+    mysql_error_unknown_column = 1054,
     mysql_error_unknown_table = 1051,
     mysql_error_identifier_too_long = 1059,
     mysql_error_duplicate_column = 1060,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
+    mysql_error_column_specified_twice = 1110,
+    mysql_error_column_count_mismatch = 1136,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_column_name = 1166,
+    mysql_error_data_out_of_range = 1264,
+    mysql_error_field_no_default = 1364,
+    mysql_error_bad_null = 1048,
+    sqlite_use_nul_terminated_string = -1,
     table_name_part_capacity = 3,
+    integer_text_capacity = 32,
 };
 
 struct table_name_resolution {
@@ -56,9 +65,40 @@ struct planned_rename_table {
     struct table_name_resolution target;
 };
 
+struct planned_value {
+    bool is_null;
+    int64_t integer;
+};
+
+struct planned_insert_row {
+    struct planned_value *values;
+};
+
+struct planned_insert {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
+    struct planned_insert_row *rows;
+    size_t row_count;
+};
+
+struct planned_select {
+    struct table_name_resolution source;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
+};
+
 struct dynamic_string {
     char *text;
     size_t length;
+    size_t capacity;
+};
+
+struct load_columns_context {
+    struct mylite_catalog_column_descriptor *columns;
+    size_t count;
     size_t capacity;
 };
 
@@ -88,6 +128,16 @@ static int execute_drop_table_statement(
     mylite_result **out_result
 );
 static int execute_rename_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_insert_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -136,6 +186,30 @@ static int plan_rename_table(
 static int rename_table_from_plan(
     struct mylite_db *database,
     const struct planned_rename_table *plan
+);
+
+static int plan_insert(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert *out_plan
+);
+static void planned_insert_deinit(struct planned_insert *plan);
+static int execute_insert_from_plan(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    mylite_result *result
+);
+
+static int plan_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_select *out_plan
+);
+static void planned_select_deinit(struct planned_select *plan);
+static int execute_select_from_plan(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    mylite_result **out_result
 );
 
 static int resolve_table_name(
@@ -203,6 +277,106 @@ static int map_integer_type(
 );
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node);
 
+static int resolve_readable_base_table(
+    struct mylite_db *database,
+    const struct table_name_resolution *resolution,
+    struct mylite_catalog_table_descriptor *out_table
+);
+static int load_table_columns(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+);
+static int append_loaded_column(
+    const struct mylite_catalog_column_descriptor *column,
+    void *user_data
+);
+static int load_columns_reserve(struct load_columns_context *context, size_t required_capacity);
+static int find_column_index(
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const char *name,
+    size_t *out_index
+);
+static int collect_insert_target_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_list,
+    const struct planned_insert *plan,
+    size_t **out_indexes,
+    size_t *out_index_count
+);
+static int check_insert_target_duplicate(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    const size_t *target_indexes,
+    size_t target_count
+);
+static int check_insert_omitted_columns(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const size_t *target_indexes,
+    size_t target_count
+);
+static int plan_insert_rows(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *row_list,
+    const size_t *target_indexes,
+    size_t target_count,
+    struct planned_insert *plan
+);
+static int plan_insert_row(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *row_node,
+    size_t row_number,
+    const size_t *target_indexes,
+    size_t target_count,
+    struct planned_insert *plan,
+    struct planned_insert_row *out_row
+);
+static int convert_insert_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int convert_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+);
+static int parse_unsigned_integer_literal(
+    const struct mylite_sql_source_span *span,
+    uint64_t *out_value
+);
+static int convert_integer_for_column(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    int64_t *out_value
+);
+static int plan_select_columns(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select *out_plan
+);
+static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
+static int append_select_column(
+    struct planned_select *plan,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int is_unqualified_identifier_select_item(
+    const struct mylite_sql_ast_node *item,
+    const struct mylite_sql_ast_node **out_identifier
+);
+
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data);
 
 static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size);
@@ -212,7 +386,19 @@ static int build_create_table_sql(
     char **out_sql
 );
 static int build_drop_table_sql(const char *physical_name, char **out_sql);
+static int build_insert_sql(const struct planned_insert *plan, char **out_sql);
+static int build_select_sql(const struct planned_select *plan, char **out_sql);
 static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql);
+static int execute_sqlite_control_sql(const struct mylite_db *database, const char *sql);
+static int prepare_sqlite_statement(
+    const struct mylite_db *database,
+    const char *sql,
+    sqlite3_stmt **out_statement
+);
+static int finalize_sqlite_statement(sqlite3_stmt *statement, int rc);
+static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert *plan, size_t row);
+static int step_insert_row(sqlite3_stmt *statement);
+static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *result);
 
 static void dynamic_string_init(struct dynamic_string *string);
 static void dynamic_string_deinit(struct dynamic_string *string);
@@ -235,6 +421,7 @@ static void set_unsupported_error(struct mylite_db *database, const char *messag
 static void set_no_database_error(struct mylite_db *database);
 static void set_unknown_database_error(struct mylite_db *database, const char *schema_name);
 static void set_table_exists_error(struct mylite_db *database, const char *table_name);
+static void set_unknown_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_table_error(
     struct mylite_db *database,
     const char *schema_name,
@@ -246,10 +433,20 @@ static void set_table_does_not_exist_error(
     const char *table_name
 );
 static void set_duplicate_column_error(struct mylite_db *database, const char *column_name);
+static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name);
+static void set_column_count_mismatch_error(struct mylite_db *database, size_t row_number);
+static void set_bad_null_error(struct mylite_db *database, const char *column_name);
+static void set_no_default_error(struct mylite_db *database, const char *column_name);
+static void set_out_of_range_error(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+);
 static void set_identifier_too_long_error(struct mylite_db *database, const char *kind);
 static void set_reserved_name_error(struct mylite_db *database, const char *kind, const char *name);
 static void set_nomem_error(struct mylite_db *database);
 static void set_physical_sqlite_error(struct mylite_db *database);
+static void set_physical_sqlite_row_error(struct mylite_db *database);
 static void set_runtime_error(struct mylite_db *database, const char *message);
 static void set_internal_error_if_clear(struct mylite_db *database, int rc, const char *message);
 static int status_from_parse_status(enum mylite_sql_parse_status status);
@@ -359,9 +556,12 @@ static int execute_parsed_statement(
         return execute_drop_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return execute_rename_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_INSERT_STATEMENT:
+        return execute_insert_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+        return execute_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
         return execute_show_tables_statement(database, statement, out_result);
-    case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_LIST:
     case MYLITE_SQL_AST_SELECT_ITEM:
@@ -377,7 +577,6 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
     case MYLITE_SQL_AST_NULLABILITY:
-    case MYLITE_SQL_AST_INSERT_STATEMENT:
     case MYLITE_SQL_AST_IDENTIFIER_LIST:
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
@@ -556,6 +755,49 @@ static int execute_rename_table_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_insert_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_insert plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_insert(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = execute_insert_from_plan(database, &plan, result);
+    }
+    planned_insert_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_select plan = {0};
+    int rc = plan_select(database, statement, &plan);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_select_from_plan(database, &plan, out_result);
+    }
+    planned_select_deinit(&plan);
+
+    return rc;
+}
+
 static int execute_show_tables_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -627,7 +869,6 @@ static int finish_successful_result(
     mylite_result *result,
     mylite_result **out_result
 ) {
-    mylite_result_set_affected_rows(result, 0);
     mylite_result_set_warning_count(
         result,
         mylite_diagnostics_warning_count(mylite_connection_diagnostics(database))
@@ -894,6 +1135,239 @@ static int rename_table_from_plan(
     }
 
     return MYLITE_OK;
+}
+
+static int plan_insert(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert *out_plan
+) {
+    const struct mylite_sql_ast_node *column_list = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *row_list = child_at(statement, 2U);
+    size_t *target_indexes = NULL;
+    size_t target_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_insert){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &out_plan->target, &out_plan->table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &out_plan->columns,
+            &out_plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = collect_insert_target_indexes(
+            database,
+            column_list,
+            out_plan,
+            &target_indexes,
+            &target_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_insert_target_duplicate(
+            database,
+            out_plan->columns,
+            target_indexes,
+            target_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_insert_omitted_columns(database, out_plan, target_indexes, target_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_rows(database, row_list, target_indexes, target_count, out_plan);
+    }
+
+    free(target_indexes);
+    if (rc != MYLITE_OK) {
+        planned_insert_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static void planned_insert_deinit(struct planned_insert *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    if (plan->rows != NULL) {
+        for (size_t row_index = 0U; row_index < plan->row_count; ++row_index) {
+            free(plan->rows[row_index].values);
+        }
+    }
+    free(plan->rows);
+    free(plan->columns);
+    *plan = (struct planned_insert){0};
+}
+
+static int execute_insert_from_plan(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    mylite_result *result
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    bool transaction_started = false;
+    int rc = build_insert_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+    }
+    if (rc == MYLITE_OK) {
+        transaction_started = true;
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < plan->row_count; ++row_index) {
+        rc = bind_insert_row(statement, plan, row_index);
+        if (rc == MYLITE_OK) {
+            rc = step_insert_row(statement);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    statement = NULL;
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_control_sql(database, "COMMIT");
+        transaction_started = false;
+    }
+    if (rc != MYLITE_OK && transaction_started) {
+        (void)execute_sqlite_control_sql(database, "ROLLBACK");
+    }
+    free(sql);
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+            return rc;
+        }
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    mylite_result_set_affected_rows(result, (int64_t)plan->row_count);
+
+    return MYLITE_OK;
+}
+
+static int plan_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_select *out_plan
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    struct mylite_catalog_column_descriptor *table_columns = NULL;
+    size_t table_column_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_select){0};
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(database, "SELECT supports only descriptor-backed table reads");
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_table_name(database, child_at(from_clause, 0U), &out_plan->source);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->source.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &table_columns,
+            &table_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            plan_select_columns(database, select_list, table_columns, table_column_count, out_plan);
+    }
+
+    free(table_columns);
+    if (rc != MYLITE_OK) {
+        planned_select_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static void planned_select_deinit(struct planned_select *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->columns);
+    *plan = (struct planned_select){0};
+}
+
+static int execute_select_from_plan(
+    struct mylite_db *database,
+    const struct planned_select *plan,
+    mylite_result **out_result
+) {
+    sqlite3_stmt *statement = NULL;
+    mylite_result *result = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, plan->columns[column_index].name);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_select_sql(plan, &sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    while (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            break;
+        }
+        if (sqlite_rc != SQLITE_ROW) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            break;
+        }
+        rc = append_selected_sqlite_row(statement, result);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+            return rc;
+        }
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return finish_successful_result(database, result, out_result);
 }
 
 static int resolve_table_name(
@@ -1255,6 +1729,604 @@ static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_nod
     return mylite_sql_ast_node_nullability(nullability_node) != MYLITE_SQL_AST_NULLABILITY_NOT_NULL;
 }
 
+static int resolve_readable_base_table(
+    struct mylite_db *database,
+    const struct table_name_resolution *resolution,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    int rc = mylite_catalog_read_table_by_name(
+        database,
+        resolution->schema.schema_id,
+        resolution->table_name,
+        out_table
+    );
+
+    if (rc != MYLITE_OK) {
+        set_table_does_not_exist_error(database, resolution->schema.name, resolution->table_name);
+        return MYLITE_ERROR;
+    }
+    if (out_table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(database, "statement supports only persistent base tables");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int load_table_columns(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+) {
+    struct load_columns_context context = {0};
+    int rc = MYLITE_OK;
+
+    *out_columns = NULL;
+    *out_column_count = 0U;
+    rc =
+        mylite_catalog_for_each_column_in_table(database, table_id, append_loaded_column, &context);
+    if (rc != MYLITE_OK) {
+        free(context.columns);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else {
+            set_runtime_error(database, "failed to load table columns");
+        }
+        return rc;
+    }
+    if (context.count == 0U) {
+        free(context.columns);
+        set_runtime_error(database, "table descriptor has no columns");
+        return MYLITE_ERROR;
+    }
+
+    *out_columns = context.columns;
+    *out_column_count = context.count;
+
+    return MYLITE_OK;
+}
+
+static int append_loaded_column(
+    const struct mylite_catalog_column_descriptor *column,
+    void *user_data
+) {
+    struct load_columns_context *context = user_data;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || context == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = load_columns_reserve(context, context->count + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    context->columns[context->count] = *column;
+    ++context->count;
+
+    return MYLITE_OK;
+}
+
+static int load_columns_reserve(struct load_columns_context *context, size_t required_capacity) {
+    enum { initial_column_capacity = 4 };
+
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t capacity = context->capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = initial_column_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*columns)) {
+        return MYLITE_NOMEM;
+    }
+
+    columns = realloc(context->columns, capacity * sizeof(*columns));
+    if (columns == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    context->columns = columns;
+    context->capacity = capacity;
+
+    return MYLITE_OK;
+}
+
+static int find_column_index(
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const char *name,
+    size_t *out_index
+) {
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        if (text_equals_ascii_case_insensitive(columns[column_index].name, name)) {
+            *out_index = column_index;
+            return MYLITE_OK;
+        }
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int collect_insert_target_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_list,
+    const struct planned_insert *plan,
+    size_t **out_indexes,
+    size_t *out_index_count
+) {
+    size_t column_count = mylite_sql_ast_node_child_count(column_list);
+    size_t *indexes = NULL;
+
+    *out_indexes = NULL;
+    *out_index_count = 0U;
+    if (column_list == NULL || column_list->kind != MYLITE_SQL_AST_IDENTIFIER_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (column_count == 0U) {
+        column_count = plan->column_count;
+    }
+    if (column_count > SIZE_MAX / sizeof(*indexes)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    indexes = calloc(column_count, sizeof(*indexes));
+    if (indexes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    if (mylite_sql_ast_node_child_count(column_list) == 0U) {
+        for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+            indexes[column_index] = column_index;
+        }
+    } else {
+        const struct mylite_sql_ast_node *column_node = child_at(column_list, 0U);
+
+        for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            int rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+
+            if (rc == MYLITE_OK) {
+                rc = find_column_index(
+                    plan->columns,
+                    plan->column_count,
+                    column_name,
+                    &indexes[column_index]
+                );
+                if (rc != MYLITE_OK) {
+                    set_unknown_column_error(database, column_name);
+                    free(indexes);
+                    return MYLITE_ERROR;
+                }
+            } else {
+                free(indexes);
+                return rc;
+            }
+            column_node = column_node == NULL ? NULL : column_node->next_sibling;
+        }
+    }
+
+    *out_indexes = indexes;
+    *out_index_count = column_count;
+
+    return MYLITE_OK;
+}
+
+static int check_insert_target_duplicate(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    const size_t *target_indexes,
+    size_t target_count
+) {
+    for (size_t left = 0U; left < target_count; ++left) {
+        for (size_t right = left + 1U; right < target_count; ++right) {
+            if (target_indexes[left] == target_indexes[right]) {
+                set_column_specified_twice_error(database, columns[target_indexes[right]].name);
+                return MYLITE_ERROR;
+            }
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int check_insert_omitted_columns(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    const size_t *target_indexes,
+    size_t target_count
+) {
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        bool is_assigned = false;
+
+        for (size_t target_index = 0U; target_index < target_count; ++target_index) {
+            if (target_indexes[target_index] == column_index) {
+                is_assigned = true;
+                break;
+            }
+        }
+        if (!is_assigned && !plan->columns[column_index].is_nullable) {
+            set_no_default_error(database, plan->columns[column_index].name);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_insert_rows(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *row_list,
+    const size_t *target_indexes,
+    size_t target_count,
+    struct planned_insert *plan
+) {
+    const struct mylite_sql_ast_node *row_node = NULL;
+
+    if (row_list == NULL || row_list->kind != MYLITE_SQL_AST_INSERT_ROW_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    plan->row_count = mylite_sql_ast_node_child_count(row_list);
+    if (plan->row_count == 0U || plan->row_count > SIZE_MAX / sizeof(*plan->rows)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    plan->rows = calloc(plan->row_count, sizeof(*plan->rows));
+    if (plan->rows == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    row_node = child_at(row_list, 0U);
+    for (size_t row_index = 0U; row_index < plan->row_count; ++row_index) {
+        int rc = plan_insert_row(
+            database,
+            row_node,
+            row_index + 1U,
+            target_indexes,
+            target_count,
+            plan,
+            &plan->rows[row_index]
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        row_node = row_node == NULL ? NULL : row_node->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_insert_row(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *row_node,
+    size_t row_number,
+    const size_t *target_indexes,
+    size_t target_count,
+    struct planned_insert *plan,
+    struct planned_insert_row *out_row
+) {
+    const struct mylite_sql_ast_node *value_node = child_at(row_node, 0U);
+
+    if (row_node == NULL || row_node->kind != MYLITE_SQL_AST_INSERT_ROW) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(row_node) != target_count) {
+        set_column_count_mismatch_error(database, row_number);
+        return MYLITE_ERROR;
+    }
+    if (plan->column_count > SIZE_MAX / sizeof(*out_row->values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_row->values = calloc(plan->column_count, sizeof(*out_row->values));
+    if (out_row->values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t target_index = 0U; target_index < target_count; ++target_index) {
+        size_t column_index = target_indexes[target_index];
+        int rc = convert_insert_value(
+            database,
+            value_node,
+            &plan->columns[column_index],
+            row_number,
+            &out_row->values[column_index]
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        value_node = value_node == NULL ? NULL : value_node->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int convert_insert_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    if (value_node == NULL || column == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (struct planned_value){.is_null = true, .integer = 0};
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        if (!column->is_nullable) {
+            set_bad_null_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    return convert_integer_literal(database, value_node, column, row_number, out_value);
+}
+
+static int convert_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, "INSERT supports only integer and NULL values");
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, "INSERT supports only integer and NULL values");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+    if (rc != MYLITE_OK) {
+        set_out_of_range_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+
+    out_value->is_null = false;
+    rc = convert_integer_for_column(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        row_number,
+        &out_value->integer
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int parse_unsigned_integer_literal(
+    const struct mylite_sql_source_span *span,
+    uint64_t *out_value
+) {
+    uint64_t value = 0U;
+
+    if (span == NULL || span->text == NULL || span->length == 0U || out_value == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; index < span->length; ++index) {
+        unsigned char byte = (unsigned char)span->text[index];
+        uint64_t digit = 0U;
+
+        if (byte < '0' || byte > '9') {
+            return MYLITE_ERROR;
+        }
+        digit = (uint64_t)(byte - '0');
+        if (value > (UINT64_MAX - digit) / 10U) {
+            return MYLITE_ERROR;
+        }
+        value = (value * 10U) + digit;
+    }
+
+    *out_value = value;
+
+    return MYLITE_OK;
+}
+
+static int convert_integer_for_column(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number,
+    int64_t *out_value
+) {
+    const uint64_t int_signed_positive_max = 2147483647ULL;
+    const uint64_t int_signed_negative_abs_max = 2147483648ULL;
+    const uint64_t int_unsigned_max = 4294967295ULL;
+    const uint64_t bigint_signed_positive_max = 9223372036854775807ULL;
+    const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
+    uint64_t positive_max = 0U;
+    uint64_t negative_abs_max = 0U;
+
+    if (strcmp(column->logical_type, "INT") == 0) {
+        positive_max = int_signed_positive_max;
+        negative_abs_max = int_signed_negative_abs_max;
+    } else if (strcmp(column->logical_type, "INT UNSIGNED") == 0) {
+        positive_max = int_unsigned_max;
+        negative_abs_max = 0U;
+    } else if (strcmp(column->logical_type, "BIGINT") == 0) {
+        positive_max = bigint_signed_positive_max;
+        negative_abs_max = bigint_signed_negative_abs_max;
+    } else if (strcmp(column->logical_type, "BIGINT UNSIGNED") == 0) {
+        positive_max = bigint_signed_positive_max;
+        negative_abs_max = 0U;
+    } else {
+        set_unsupported_error(database, "INSERT supports only baseline integer columns");
+        return MYLITE_ERROR;
+    }
+
+    if (is_negative) {
+        if ((negative_abs_max == 0U && magnitude != 0U) || magnitude > negative_abs_max) {
+            set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        if (magnitude == bigint_signed_negative_abs_max) {
+            *out_value = INT64_MIN;
+        } else {
+            *out_value = -(int64_t)magnitude;
+        }
+        return MYLITE_OK;
+    }
+
+    if (magnitude > positive_max) {
+        set_out_of_range_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+    *out_value = (int64_t)magnitude;
+
+    return MYLITE_OK;
+}
+
+static int plan_select_columns(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select *out_plan
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (select_list_is_wildcard(select_list)) {
+        for (size_t column_index = 0U; column_index < table_column_count; ++column_index) {
+            int rc = append_select_column(out_plan, &table_columns[column_index]);
+
+            if (rc != MYLITE_OK) {
+                set_nomem_error(database);
+                return rc;
+            }
+        }
+        return MYLITE_OK;
+    }
+
+    item = child_at(select_list, 0U);
+    while (item != NULL) {
+        const struct mylite_sql_ast_node *identifier = NULL;
+        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        size_t column_index = 0U;
+        int rc = is_unqualified_identifier_select_item(item, &identifier);
+
+        if (rc != MYLITE_OK) {
+            set_unsupported_error(database, "SELECT supports only unqualified table columns");
+            return MYLITE_ERROR;
+        }
+        rc = copy_identifier_text(identifier, column_name, sizeof(column_name), database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
+        if (rc != MYLITE_OK) {
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        rc = append_select_column(out_plan, &table_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+            return rc;
+        }
+        item = item->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list) {
+    const struct mylite_sql_ast_node *item = child_at(select_list, 0U);
+    const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+
+    return mylite_sql_ast_node_child_count(select_list) == 1U && expression != NULL &&
+           expression->kind == MYLITE_SQL_AST_WILDCARD;
+}
+
+static int append_select_column(
+    struct planned_select *plan,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t required_count = plan->column_count + 1U;
+
+    if (required_count > SIZE_MAX / sizeof(*columns)) {
+        return MYLITE_NOMEM;
+    }
+
+    columns = realloc(plan->columns, required_count * sizeof(*columns));
+    if (columns == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->columns = columns;
+    plan->columns[plan->column_count] = *column;
+    plan->column_count = required_count;
+
+    return MYLITE_OK;
+}
+
+static int is_unqualified_identifier_select_item(
+    const struct mylite_sql_ast_node *item,
+    const struct mylite_sql_ast_node **out_identifier
+) {
+    const struct mylite_sql_ast_node *expression = child_at(item, 0U);
+
+    *out_identifier = NULL;
+    if (item == NULL || item->kind != MYLITE_SQL_AST_SELECT_ITEM || expression == NULL ||
+        expression->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_ERROR;
+    }
+
+    *out_identifier = expression;
+
+    return MYLITE_OK;
+}
+
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data) {
     struct show_tables_context *context = user_data;
     const char *values[1] = {NULL};
@@ -1351,6 +2423,100 @@ static int build_drop_table_sql(const char *physical_name, char **out_sql) {
     return rc;
 }
 
+static int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "INSERT INTO ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " (");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, plan->columns[column_index].name);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") VALUES (");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        char parameter[integer_text_capacity];
+        int written = 0;
+
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            written = snprintf(parameter, sizeof(parameter), "?%zu", column_index + 1U);
+            if (written < 0 || (size_t)written >= sizeof(parameter)) {
+                rc = MYLITE_NOMEM;
+            }
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, parameter);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_select_sql(const struct planned_select *plan, char **out_sql) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, plan->columns[column_index].name);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
 static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql) {
     int sqlite_rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
     int rc = mylite_sqlite_status_to_mylite(sqlite_rc);
@@ -1365,6 +2531,145 @@ static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql
     }
 
     return MYLITE_OK;
+}
+
+static int execute_sqlite_control_sql(const struct mylite_db *database, const char *sql) {
+    int sqlite_rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
+
+    return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static int prepare_sqlite_statement(
+    const struct mylite_db *database,
+    const char *sql,
+    sqlite3_stmt **out_statement
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+
+    *out_statement = NULL;
+    sqlite_rc = sqlite3_prepare_v2(
+        database->sqlite,
+        sql,
+        sqlite_use_nul_terminated_string,
+        &statement,
+        NULL
+    );
+    if (sqlite_rc != SQLITE_OK) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    *out_statement = statement;
+
+    return MYLITE_OK;
+}
+
+static int finalize_sqlite_statement(sqlite3_stmt *statement, int rc) {
+    int sqlite_rc = SQLITE_OK;
+
+    if (statement == NULL) {
+        return rc;
+    }
+
+    sqlite_rc = sqlite3_finalize(statement);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert *plan, size_t row) {
+    int sqlite_rc = sqlite3_reset(statement);
+
+    if (sqlite_rc == SQLITE_OK) {
+        sqlite_rc = sqlite3_clear_bindings(statement);
+    }
+    if (sqlite_rc != SQLITE_OK) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        const struct planned_value *value = &plan->rows[row].values[column_index];
+        int bind_index = 0;
+
+        if (column_index >= (size_t)INT_MAX) {
+            return MYLITE_ERROR;
+        }
+        bind_index = (int)column_index + 1;
+        if (value->is_null) {
+            sqlite_rc = sqlite3_bind_null(statement, bind_index);
+        } else {
+            sqlite_rc = sqlite3_bind_int64(statement, bind_index, (sqlite3_int64)value->integer);
+        }
+        if (sqlite_rc != SQLITE_OK) {
+            return mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int step_insert_row(sqlite3_stmt *statement) {
+    int sqlite_rc = sqlite3_step(statement);
+
+    if (sqlite_rc != SQLITE_DONE) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *result) {
+    size_t column_count = mylite_result_column_count(result);
+    const char **values = NULL;
+    char *texts = NULL;
+    int rc = MYLITE_OK;
+
+    if (column_count > (size_t)INT_MAX || column_count > SIZE_MAX / sizeof(*values) ||
+        column_count > SIZE_MAX / integer_text_capacity) {
+        return MYLITE_NOMEM;
+    }
+
+    values = calloc(column_count, sizeof(*values));
+    texts = calloc(column_count, integer_text_capacity);
+    if (values == NULL || texts == NULL) {
+        free(values);
+        free(texts);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        int sqlite_type = sqlite3_column_type(statement, (int)column_index);
+        char *text = &texts[column_index * integer_text_capacity];
+        int written = 0;
+
+        if (sqlite_type == SQLITE_NULL) {
+            values[column_index] = NULL;
+        } else if (sqlite_type == SQLITE_INTEGER) {
+            written = snprintf(
+                text,
+                integer_text_capacity,
+                "%" PRId64,
+                (int64_t)sqlite3_column_int64(statement, (int)column_index)
+            );
+            if (written < 0 || written >= integer_text_capacity) {
+                rc = MYLITE_ERROR;
+            } else {
+                values[column_index] = text;
+            }
+        } else {
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+    }
+
+    free(values);
+    free(texts);
+
+    return rc;
 }
 
 static void dynamic_string_init(struct dynamic_string *string) {
@@ -1663,6 +2968,113 @@ static void set_duplicate_column_error(struct mylite_db *database, const char *c
     );
 }
 
+static void set_unknown_column_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Unknown column '%s' in 'field list'", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_column,
+        "42S22",
+        message
+    );
+}
+
+static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Column '%s' specified twice", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_column_specified_twice,
+        "42000",
+        message
+    );
+}
+
+static void set_column_count_mismatch_error(struct mylite_db *database, size_t row_number) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Column count doesn't match value count at row %zu",
+        row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_column_count_mismatch,
+        "21S01",
+        message
+    );
+}
+
+static void set_bad_null_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Column '%s' cannot be null", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_bad_null,
+        "23000",
+        message
+    );
+}
+
+static void set_no_default_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Field '%s' doesn't have a default value", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_field_no_default,
+        "HY000",
+        message
+    );
+}
+
+static void set_out_of_range_error(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Out of range value for column '%s' at row %zu",
+        column_name,
+        row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_data_out_of_range,
+        "22003",
+        message
+    );
+}
+
 static void set_identifier_too_long_error(struct mylite_db *database, const char *kind) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "%s identifier is too long", kind);
@@ -1715,6 +3127,15 @@ static void set_physical_sqlite_error(struct mylite_db *database) {
         mysql_error_unknown,
         "HY000",
         "internal SQLite schema operation failed"
+    );
+}
+
+static void set_physical_sqlite_row_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown,
+        "HY000",
+        "internal SQLite row operation failed"
     );
 }
 

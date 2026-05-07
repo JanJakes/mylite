@@ -177,6 +177,7 @@ enum {
     mysql_warning_json_document_null_key = 3158,
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
+    mysql_warning_deprecated_utf8_alias = 3719,
     mysql_warning_foreign_key_drop_parent = 3730,
     mysql_warning_foreign_key_incompatible_columns = 3780,
     mysql_warning_check_constraint_disallowed_function = 3814,
@@ -1341,6 +1342,26 @@ static int test_character_set_collation_foundation(void) {
         "utf8mb3_bin",
         "set names quoted utf8mb3"
     );
+    failures += execute_sql(database, "SET NAMES utf8", MYLITE_DONE);
+    failures += expect_connection_state(
+        database,
+        "utf8mb3",
+        "utf8mb3",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "set names utf8 alias"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "set names utf8 alias warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_utf8_alias,
+        "set names utf8 alias warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "alias for the character set UTF8MB3",
+        "set names utf8 alias warning message"
+    );
     failures += execute_sql(database, "SET NAMES DEFAULT", MYLITE_DONE);
     failures += expect_connection_state(
         database,
@@ -1359,6 +1380,27 @@ static int test_character_set_collation_foundation(void) {
         "utf8mb3",
         "utf8mb4_0900_ai_ci",
         "set character set no selected schema"
+    );
+    failures += execute_sql(database, "SET CHARACTER SET utf8", MYLITE_DONE);
+    failures += expect_connection_state(
+        database,
+        "utf8mb3",
+        "utf8mb4",
+        "utf8mb3",
+        "utf8mb4_0900_ai_ci",
+        "set character set utf8 alias no selected schema"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "set character set utf8 warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_utf8_alias,
+        "set character set utf8 warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "alias for the character set UTF8MB3",
+        "set character set utf8 warning message"
     );
     failures += execute_sql(database, "SET CHARACTER SET binary", MYLITE_DONE);
     failures += expect_connection_state(
@@ -1505,6 +1547,29 @@ static int test_character_set_collation_foundation(void) {
         }
     );
     failures += execute_sql(database, "DROP DATABASE mylite_charset_upper", MYLITE_DONE);
+
+    failures += execute_sql(
+        database,
+        "CREATE DATABASE mylite_charset_utf8_alias DEFAULT CHARACTER SET utf8",
+        MYLITE_DONE
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "create schema utf8 alias warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_utf8_alias,
+        "create schema utf8 alias warning code"
+    );
+    failures += expect_information_schema_schemata_row(
+        database,
+        &(const struct expected_schemata_row){
+            .schema_name = "mylite_charset_utf8_alias",
+            .character_set = "utf8mb3",
+            .collation = "utf8mb3_general_ci",
+            .encryption = "NO",
+        }
+    );
+    failures += execute_sql(database, "DROP DATABASE mylite_charset_utf8_alias", MYLITE_DONE);
 
     failures += execute_sql(
         database,
@@ -33698,6 +33763,19 @@ static int test_convert_expression_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL,
          MYLITE_FIELD_FLAG_BINARY,
          0},
+        {"using_utf8",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         9U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         33U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY,
+         0},
         {"using_utf8mb4",
          NULL,
          NULL,
@@ -33745,6 +33823,9 @@ static int test_convert_expression_execution(void) {
         "cs_utf8mb3",
         "co_utf8mb3",
         "cc_utf8mb3",
+        "cs_utf8",
+        "co_utf8",
+        "cc_utf8",
         "cs_utf8mb4",
         "co_utf8mb4",
         "cc_utf8mb4",
@@ -33756,6 +33837,9 @@ static int test_convert_expression_execution(void) {
     static const char *const introspection_values[] = {
         "latin1",
         "latin1_swedish_ci",
+        "2",
+        "utf8mb3",
+        "utf8mb3_general_ci",
         "2",
         "utf8mb3",
         "utf8mb3_general_ci",
@@ -33848,6 +33932,7 @@ static int test_convert_expression_execution(void) {
         "CONVERT('abc', BINARY) AS binary_value, "
         "CONVERT('abc' USING latin1) AS using_latin1, "
         "CONVERT('abc' USING utf8mb3) AS using_utf8mb3, "
+        "CONVERT('abc' USING utf8) AS using_utf8, "
         "CONVERT('abc' USING utf8mb4) AS using_utf8mb4, "
         "CONVERT('abc' USING binary) AS using_binary, "
         "CONVERT(NULL USING utf8mb4) AS null_using",
@@ -33862,6 +33947,17 @@ static int test_convert_expression_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT metadata done");
+    failures += expect_int(mylite_warning_count(database), 1, "CONVERT utf8 alias warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_utf8_alias,
+        "CONVERT utf8 alias warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "alias for the character set UTF8MB3",
+        "CONVERT utf8 alias warning message"
+    );
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -33873,6 +33969,9 @@ static int test_convert_expression_execution(void) {
         "CHARSET(CONVERT('abc' USING utf8mb3)) AS cs_utf8mb3, "
         "COLLATION(CONVERT('abc' USING utf8mb3)) AS co_utf8mb3, "
         "COERCIBILITY(CONVERT('abc' USING utf8mb3)) AS cc_utf8mb3, "
+        "CHARSET(CONVERT('abc' USING utf8)) AS cs_utf8, "
+        "COLLATION(CONVERT('abc' USING utf8)) AS co_utf8, "
+        "COERCIBILITY(CONVERT('abc' USING utf8)) AS cc_utf8, "
         "CHARSET(CONVERT('abc' USING utf8mb4)) AS cs_utf8mb4, "
         "COLLATION(CONVERT('abc' USING utf8mb4)) AS co_utf8mb4, "
         "COERCIBILITY(CONVERT('abc' USING utf8mb4)) AS cc_utf8mb4, "
@@ -33882,7 +33981,7 @@ static int test_convert_expression_execution(void) {
         "CHARSET(CONVERT('abc', CHAR CHARACTER SET latin1)) "
         "AS cs_char_latin1",
         introspection_columns,
-        13,
+        16,
         introspection_values,
         1,
         "CONVERT charset introspection"

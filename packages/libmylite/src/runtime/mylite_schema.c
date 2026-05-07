@@ -248,6 +248,12 @@ static int normalize_schema_charset_and_collation(
             character_set->name
         );
     }
+    if (mylite_charset_name_is_utf8_alias(options->character_set)) {
+        status = mylite_diagnostics_append_utf8_alias_warning(database);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
     if (character_set == NULL && collation == NULL) {
         return MYLITE_OK;
     }

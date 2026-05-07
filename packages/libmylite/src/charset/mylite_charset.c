@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 
+static const struct mylite_charset *lookup_registered_charset(const char *name);
 static bool ascii_case_equal(const char *left, const char *right);
 
 static const struct mylite_charset character_sets[] = {
@@ -100,12 +101,18 @@ const struct mylite_charset *mylite_charset_at(size_t index) {
 }
 
 const struct mylite_charset *mylite_charset_lookup(const char *name) {
-    for (size_t index = 0U; index < mylite_charset_count(); ++index) {
-        if (ascii_case_equal(name, character_sets[index].name)) {
-            return &character_sets[index];
-        }
+    const struct mylite_charset *character_set = lookup_registered_charset(name);
+    if (character_set != NULL) {
+        return character_set;
+    }
+    if (mylite_charset_name_is_utf8_alias(name)) {
+        return lookup_registered_charset("utf8mb3");
     }
     return NULL;
+}
+
+bool mylite_charset_name_is_utf8_alias(const char *name) {
+    return ascii_case_equal(name, "utf8");
 }
 
 size_t mylite_collation_count(void) {
@@ -136,6 +143,15 @@ bool mylite_charset_collation_match(
         return false;
     }
     return ascii_case_equal(character_set->name, collation->character_set);
+}
+
+static const struct mylite_charset *lookup_registered_charset(const char *name) {
+    for (size_t index = 0U; index < mylite_charset_count(); ++index) {
+        if (ascii_case_equal(name, character_sets[index].name)) {
+            return &character_sets[index];
+        }
+    }
+    return NULL;
 }
 
 static bool ascii_case_equal(const char *left, const char *right) {

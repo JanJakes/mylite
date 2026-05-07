@@ -9,6 +9,8 @@
 
 static bool expression_function_name_is_char(const struct mylite_sql_ast_node *name);
 
+static int append_utf8_alias_warning_if_needed(mylite_db *database, const char *charset_name);
+
 int mylite_expression_validate_char_function_charset(
     mylite_db *database,
     const struct mylite_sql_ast_node *expression
@@ -27,6 +29,9 @@ int mylite_expression_validate_char_function_charset(
     }
     if (!mylite_expression_char_function_charset_name_is_supported(charset_name)) {
         status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
+    }
+    if (status == MYLITE_OK) {
+        status = append_utf8_alias_warning_if_needed(database, charset_name);
     }
     free(charset_name);
     return status;
@@ -52,6 +57,9 @@ int mylite_expression_validate_cast_target_charset(
     }
     if (mylite_charset_lookup(charset_name) == NULL) {
         status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
+    }
+    if (status == MYLITE_OK) {
+        status = append_utf8_alias_warning_if_needed(database, charset_name);
     }
     free(charset_name);
     return status;
@@ -99,4 +107,11 @@ static bool expression_function_name_is_char(const struct mylite_sql_ast_node *n
         return false;
     }
     return mylite_span_equal_ci(name->span, "CHAR");
+}
+
+static int append_utf8_alias_warning_if_needed(mylite_db *database, const char *charset_name) {
+    if (!mylite_charset_name_is_utf8_alias(charset_name)) {
+        return MYLITE_OK;
+    }
+    return mylite_diagnostics_append_utf8_alias_warning(database);
 }

@@ -74,6 +74,12 @@ int mylite_table_ddl_normalize_create_table_options(
             character_set->name
         );
     }
+    if (mylite_charset_name_is_utf8_alias(options->character_set)) {
+        status = mylite_diagnostics_append_utf8_alias_warning(database);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
 
     status =
         normalize_create_table_option_text(database, &options->character_set, character_set->name);

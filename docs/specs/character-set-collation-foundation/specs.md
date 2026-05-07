@@ -4,7 +4,8 @@
 
 This feature adds the first MyLite character set and collation foundation:
 
-- an internal registry for `utf8mb4`, `utf8mb3`, `latin1`, and `binary`
+- an internal registry for `utf8mb4`, `utf8mb3`, `latin1`, and `binary`,
+  with `utf8` accepted as a warning-emitting alias for `utf8mb3`
 - default collation lookup for those character sets
 - charset/collation compatibility validation for schema defaults and connection
   character-set statements
@@ -79,6 +80,10 @@ Verified character sets for this feature:
 | `utf8mb3` | `utf8mb3_general_ci` | 3 |
 | `utf8mb4` | `utf8mb4_0900_ai_ci` | 4 |
 
+MySQL 8.4 also accepts `utf8` as a compatibility alias for `utf8mb3` and
+emits warning `3719`. MyLite normalizes `utf8` to `utf8mb3` for supported
+connection, schema, table-option, and CAST-family charset validation paths.
+
 Verified collations for this feature:
 
 | Collation | Character set | ID | Default |
@@ -137,6 +142,8 @@ MyLite keeps a small internal static registry for the character sets and
 collations listed above. It supports:
 
 - case-insensitive charset lookup
+- `utf8` alias lookup that returns the normalized `utf8mb3` registry entry and
+  emits warning `3719` in user-facing statement paths
 - case-insensitive collation lookup
 - normalized charset and collation names
 - default collation lookup by charset
@@ -299,8 +306,10 @@ The following observations were verified against `mylite-mysql-849`:
 | `SET NAMES binary` | Sets client/connection/results to `binary`, collation to `binary`. |
 | `SET NAMES UTF8MB4 COLLATE UTF8MB4_BIN` | Succeeds and stores normalized lowercase names. |
 | `SET NAMES utf8mb3 COLLATE utf8mb3_bin` | Sets client/connection/results to `utf8mb3`, collation to `utf8mb3_bin`. |
+| `SET NAMES utf8` | Sets client/connection/results to `utf8mb3`, collation to `utf8mb3_general_ci`, with warning `3719`. |
 | `SET NAMES DEFAULT` | Restores `utf8mb4` and `utf8mb4_0900_ai_ci` in this container. |
 | `SET CHARACTER SET utf8mb3` with no selected database | Sets client/results to `utf8mb3`; connection/collation remain the default database values `utf8mb4` / `utf8mb4_0900_ai_ci`. |
+| `SET CHARACTER SET utf8` with no selected database | Sets client/results to `utf8mb3`; connection/collation remain the default database values, with warning `3719`. |
 | `SET CHARACTER SET binary` with no selected database | Sets client/results to `binary`; connection/collation remain `utf8mb4` / `utf8mb4_0900_ai_ci`. |
 | `SET CHARACTER SET DEFAULT` with no selected database | Restores all four connection variables to `utf8mb4` / `utf8mb4_0900_ai_ci`. |
 | `SET CHARACTER SET utf8mb4` after selecting a database whose defaults are `latin1` / `latin1_bin` | Sets client/results to `utf8mb4`; sets connection/collation to `latin1` / `latin1_bin`. |
@@ -310,6 +319,7 @@ The following observations were verified against `mylite-mysql-849`:
 | `CREATE DATABASE ... DEFAULT CHARACTER SET latin1` | Stores `latin1` / `latin1_swedish_ci`. |
 | `ALTER DATABASE ... DEFAULT CHARACTER SET latin1 COLLATE latin1_bin` | Stores `latin1` / `latin1_bin`. |
 | `ALTER DATABASE ... DEFAULT CHARACTER SET utf8mb3` | Stores `utf8mb3` / `utf8mb3_general_ci`. |
+| `CREATE DATABASE ... DEFAULT CHARACTER SET utf8` | Stores `utf8mb3` / `utf8mb3_general_ci`, with warning `3719`. |
 | `SET NAMES nosuchcharset` | Fails with unknown charset error `1115`. |
 | `SET NAMES utf8mb4 COLLATE latin1_bin` | Fails with invalid collation/charset combination error `1253`. |
 | `SET NAMES utf8mb4 COLLATE nosuchcollation` | Fails with unknown collation error `1273`. |

@@ -7,6 +7,7 @@
 #include "mylite_metadata.h"
 #include "mylite_select.h"
 #include "mylite_select_scalar_order_validate.h"
+#include "mylite_select_subquery.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
 #include "mylite_statement_ast.h"
@@ -41,6 +42,8 @@ static int evaluate_scalar_select_result(
 );
 
 static int append_scalar_select_calc_found_rows_warning(mylite_stmt *stmt);
+
+static int publish_scalar_select_warnings(mylite_stmt *stmt);
 
 static int evaluate_scalar_select_result_item(
     mylite_stmt *stmt,
@@ -282,8 +285,10 @@ int mylite_select_scalar_execute_statement(
     }
 
     stmt->executed = true;
-    stmt->database->warnings = stmt->scalar_result.warnings;
-    stmt->scalar_result.warnings = (struct mylite_expression_warnings){0};
+    status = publish_scalar_select_warnings(stmt);
+    if (status != MYLITE_OK) {
+        return status;
+    }
     stmt->affected_rows = -1;
     stmt->scalar_result.has_row = true;
     return MYLITE_ROW;
@@ -299,6 +304,25 @@ static int append_scalar_select_calc_found_rows_warning(mylite_stmt *stmt) {
         return mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     }
     return MYLITE_OK;
+}
+
+static int publish_scalar_select_warnings(mylite_stmt *stmt) {
+    int status = MYLITE_OK;
+
+    if (stmt->database->warnings.count == 0U) {
+        stmt->database->warnings = stmt->scalar_result.warnings;
+        stmt->scalar_result.warnings = (struct mylite_expression_warnings){0};
+        return MYLITE_OK;
+    }
+    status = mylite_select_subquery_append_warnings(
+        &stmt->database->warnings,
+        &stmt->scalar_result.warnings
+    );
+    mylite_expression_warnings_deinit(&stmt->scalar_result.warnings);
+    if (status != MYLITE_OK) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+    }
+    return status;
 }
 
 static int evaluate_scalar_select_result(

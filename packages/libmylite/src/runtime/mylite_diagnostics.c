@@ -221,6 +221,15 @@ int mylite_diagnostics_set_collation_charset_error(
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
+int mylite_diagnostics_append_utf8_alias_warning(mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        database,
+        MYLITE_MYSQL_ER_WARN_DEPRECATED_UTF8_ALIAS,
+        "'utf8' is currently an alias for the character set UTF8MB3, but will be an alias for "
+        "UTF8MB4 in a future release. Please consider using UTF8MB4 in order to be unambiguous."
+    );
+}
+
 int mylite_diagnostics_append_warning(mylite_db *database, unsigned int code, const char *message) {
     return append_database_condition(
         database,

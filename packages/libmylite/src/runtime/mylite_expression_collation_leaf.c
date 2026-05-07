@@ -1,6 +1,5 @@
 #include "mylite_expression_collation_leaf.h"
 
-#include "mylite_diagnostics.h"
 #include "mylite_expression_collation.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_expression_validation.h"
@@ -114,6 +113,7 @@ int mylite_expression_infer_cast_collation_info(
     }
     if (target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_CHAR) {
         char *charset_name = NULL;
+        int status = MYLITE_OK;
 
         if (!target->has_column_character_set) {
             *out_info = mylite_expression_connection_collation_info(
@@ -126,9 +126,8 @@ int mylite_expression_infer_cast_collation_info(
         if (charset_name == NULL) {
             return MYLITE_NOMEM;
         }
-        if (!mylite_expression_char_function_charset_name_is_supported(charset_name)) {
-            int status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
-
+        status = mylite_expression_validate_cast_target_charset(database, expression);
+        if (status != MYLITE_OK) {
             free(charset_name);
             return status;
         }

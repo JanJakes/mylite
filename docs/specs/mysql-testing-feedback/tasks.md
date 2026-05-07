@@ -178,7 +178,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `UPDATE IGNORE` numeric, temporal, string-length, `NULL` not-null,
       duplicate-key, and foreign-key slices.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
-      `CONVERT ... USING utf8`.
+      MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
+      with warning 3719.
 - [x] Complete `SELECT DATE(...)` and date-function predicates.
 - [x] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
       Covered behavior includes duplicate output-label diagnostics in the

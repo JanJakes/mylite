@@ -160,6 +160,7 @@ int mylite_statement_prepare_custom(
         return status;
     }
 
+    stmt->preserve_prepare_warnings = database->warnings.count > 0U;
     if (kind == MYLITE_STMT_CREATE_SCHEMA &&
         mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_IF_NOT_EXISTS) != NULL) {
         stmt->if_not_exists = true;

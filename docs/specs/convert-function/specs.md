@@ -18,7 +18,7 @@ This task implements:
 - `CONVERT(expr, NCHAR)` and `NCHAR(N)`
 - `CONVERT(expr, BINARY)` as the current MyLite binary-string metadata slice
 - `CONVERT(expr USING charset_name)` for the current MyLite charset registry:
-  `binary`, `latin1`, `utf8mb3`, and `utf8mb4`
+  `binary`, `latin1`, `utf8mb3` / `utf8`, and `utf8mb4`
 
 The expression must work everywhere the supported scalar expression subset
 already evaluates `CAST`:
@@ -93,6 +93,16 @@ introspection metadata for supported charsets.
 | `CHARSET(CONVERT('abc' USING binary))` | `binary` |
 | `COLLATION(CONVERT('abc' USING binary))` | `binary` |
 | `CONVERT(NULL USING utf8mb4)` | `NULL` |
+
+`utf8` is accepted as MySQL 8.4's compatibility alias for `utf8mb3`. MySQL
+returns the converted value with `utf8mb3` charset/collation introspection and
+emits warning `3719`:
+
+| SQL | Result | Warning |
+| --- | --- | --- |
+| `CHARSET(CONVERT('abc' USING utf8))` | `utf8mb3` | `3719` |
+| `COLLATION(CONVERT('abc' USING utf8))` | `utf8mb3_general_ci` | `3719` |
+| `CONVERT('abc' USING utf8)` | `abc` | `3719` |
 
 Parser and validation errors observed with MySQL 8.4.9:
 
@@ -178,6 +188,7 @@ the result is `NULL` without conversion warnings.
 `CONVERT(expr USING charset_name)`:
 
 - validates `charset_name` against MyLite's charset registry
+- normalizes `utf8` to `utf8mb3` and records MySQL warning `3719`
 - returns `NULL` for `NULL` input
 - converts non-`NULL` input to MyLite text bytes using the same string
   conversion path as character casts
@@ -232,7 +243,8 @@ Parser tests:
 - `CONVERT('1.25', DECIMAL)`, `DECIMAL(5)`, `DECIMAL(5,2)`, and `DEC(5,2)`
 - `CONVERT('abcdef', CHAR(3))`, `CHAR CHARACTER SET latin1`,
   `CHAR CHARSET utf8mb4`, `NCHAR(4)`, and `BINARY`
-- `CONVERT('abc' USING latin1)`, `utf8mb4`, quoted `utf8mb3`, and `binary`
+- `CONVERT('abc' USING latin1)`, `utf8mb4`, quoted `utf8mb3`, `utf8`, and
+  `binary`
 - nested `CONVERT` and `CONVERT` inside `CASE`
 - syntax errors for `INT`, empty argument list, one argument, three arguments,
   missing comma, missing `USING` charset, `COLLATE` inside the target, and
@@ -251,7 +263,8 @@ Runtime tests:
 - metadata descriptors for signed, unsigned, decimal, char, binary, and
   nullable `USING`
 - charset/collation/coercibility introspection for `USING latin1`,
-  `USING utf8mb4`, `USING binary`, and `CHAR CHARACTER SET latin1`
+  `USING utf8`, `USING utf8mb4`, `USING binary`, and
+  `CHAR CHARACTER SET latin1`
 - table projection, `WHERE`, and `ORDER BY`
 - `UPDATE` assignment, predicate, and order-key expressions, including strict
   warning promotion

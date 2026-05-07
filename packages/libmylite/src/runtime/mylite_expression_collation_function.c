@@ -1,6 +1,5 @@
 #include "mylite_expression_collation.h"
 
-#include "mylite_diagnostics.h"
 #include "mylite_expression_validation.h"
 #include "mylite_function_names.h"
 #include "mylite_metadata_constants.h"
@@ -162,9 +161,9 @@ static int infer_char_function_collation_info(
     if (charset_name == NULL) {
         return MYLITE_NOMEM;
     }
-    if (!mylite_expression_char_function_charset_name_is_supported(charset_name)) {
-        int status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
+    int status = mylite_expression_validate_char_function_charset(database, expression);
 
+    if (status != MYLITE_OK) {
         free(charset_name);
         return status;
     }

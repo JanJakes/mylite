@@ -238,6 +238,13 @@ int mylite_connection_set_names_state(
             );
         }
     }
+    if (mylite_charset_name_is_utf8_alias(state.character_set_name)) {
+        int status = mylite_diagnostics_append_utf8_alias_warning(database);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
 
     database->character_set_client = character_set->name;
     database->character_set_connection = character_set->name;
@@ -254,6 +261,12 @@ int mylite_connection_set_character_set_state(mylite_db *database, const char *c
 
     if (character_set == NULL) {
         return mylite_diagnostics_set_unknown_charset_error(database, character_set_name);
+    }
+    if (mylite_charset_name_is_utf8_alias(character_set_name)) {
+        status = mylite_diagnostics_append_utf8_alias_warning(database);
+        if (status != MYLITE_OK) {
+            return status;
+        }
     }
 
     status = mylite_catalog_selected_schema_default(database, &schema_default);

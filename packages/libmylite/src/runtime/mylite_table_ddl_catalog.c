@@ -81,7 +81,7 @@ static int insert_table_catalog_row(
         "INSERT INTO %s("
         "table_catalog, table_schema, table_name, table_type, engine, version, row_format, "
         "table_rows, avg_row_length, data_length, max_data_length, index_length, data_free, "
-        "auto_increment, create_time, update_time, check_time, table_collation, checksum, "
+        "\"auto_increment\", create_time, update_time, check_time, table_collation, checksum, "
         "create_options, table_comment)"
         " VALUES('def', ?, ?, 'BASE TABLE', ?, 10, NULL, 0, NULL, NULL, NULL, NULL, NULL, "
         "?, '1970-01-01 00:00:00', NULL, NULL, ?, NULL, '', ?)",

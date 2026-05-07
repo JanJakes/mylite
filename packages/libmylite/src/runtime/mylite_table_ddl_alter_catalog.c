@@ -486,7 +486,7 @@ static int update_alter_table_auto_increment(
         return MYLITE_OK;
     }
     sql = sqlite3_mprintf(
-        "UPDATE %s SET auto_increment = NULL "
+        "UPDATE %s SET \"auto_increment\" = NULL "
         "WHERE table_schema = ? AND table_name = ?",
         mylite_catalog_table_catalog_name(model->temporary)
     );

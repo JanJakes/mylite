@@ -3151,7 +3151,7 @@ static int test_wordpress_like_crud(void) {
     failures += exec_sql(
         database,
         "CREATE TABLE wp_posts_like ("
-        "ID INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ID INTEGER PRIMARY KEY AUTO_INCREMENT,"
         "post_author INTEGER NOT NULL DEFAULT 0 CHECK(post_author >= 0),"
         "post_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
         "post_title TEXT NOT NULL COLLATE utf8mb4_unicode_ci,"
@@ -3176,7 +3176,7 @@ static int test_wordpress_like_crud(void) {
     failures += exec_sql(
         database,
         "CREATE TABLE wp_postmeta_like ("
-        "meta_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "meta_id INTEGER PRIMARY KEY AUTO_INCREMENT,"
         "post_id INTEGER NOT NULL DEFAULT 0 CHECK(post_id >= 0),"
         "meta_key TEXT DEFAULT NULL COLLATE utf8mb4_unicode_ci "
         "CHECK(meta_key IS NULL OR CHAR_LENGTH(meta_key) <= 255),"

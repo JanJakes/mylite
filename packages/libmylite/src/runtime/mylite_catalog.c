@@ -33,7 +33,7 @@ static const char table_catalog_sql[] = "CREATE TABLE IF NOT EXISTS __mylite_tab
                                         "max_data_length INTEGER,"
                                         "index_length INTEGER,"
                                         "data_free INTEGER,"
-                                        "auto_increment INTEGER,"
+                                        "\"auto_increment\" INTEGER,"
                                         "create_time TEXT NOT NULL,"
                                         "update_time TEXT,"
                                         "check_time TEXT,"
@@ -105,7 +105,7 @@ static const char temporary_table_catalog_sql[] =
     "max_data_length INTEGER,"
     "index_length INTEGER,"
     "data_free INTEGER,"
-    "auto_increment INTEGER,"
+    "\"auto_increment\" INTEGER,"
     "create_time TEXT NOT NULL,"
     "update_time TEXT,"
     "check_time TEXT,"
@@ -289,7 +289,7 @@ int mylite_catalog_update_auto_increment(
     }
 
     sql = sqlite3_mprintf(
-        "UPDATE %s SET auto_increment = ? "
+        "UPDATE %s SET \"auto_increment\" = ? "
         "WHERE table_schema = ? AND table_name = ?",
         catalog.catalog_name
     );
@@ -690,7 +690,7 @@ static int load_table_metadata_from_catalog(
 ) {
     sqlite3_stmt *stmt = NULL;
     char *sql = sqlite3_mprintf(
-        "SELECT auto_increment FROM %s WHERE table_schema = ? "
+        "SELECT \"auto_increment\" FROM %s WHERE table_schema = ? "
         "AND table_name = ?",
         catalog_name
     );

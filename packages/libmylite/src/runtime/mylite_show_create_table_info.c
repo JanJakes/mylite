@@ -19,7 +19,7 @@ int mylite_show_create_table_read_info(
 ) {
     sqlite3_stmt *select = NULL;
     char *sql = sqlite3_mprintf(
-        "SELECT engine, auto_increment, table_collation, table_comment "
+        "SELECT engine, \"auto_increment\", table_collation, table_comment "
         "FROM %s WHERE table_schema = ? AND table_name = ?",
         mylite_catalog_table_catalog_name(target->temporary)
     );

@@ -184,7 +184,7 @@ static int reset_truncate_table_auto_increment(
     const struct mylite_truncate_table_plan *plan
 ) {
     sqlite3_stmt *update = NULL;
-    static const char sql[] = "UPDATE __mylite_table_catalog SET auto_increment = NULL "
+    static const char sql[] = "UPDATE __mylite_table_catalog SET \"auto_increment\" = NULL "
                               "WHERE table_schema = ? AND table_name = ?";
     int rc =
         sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &update, NULL);

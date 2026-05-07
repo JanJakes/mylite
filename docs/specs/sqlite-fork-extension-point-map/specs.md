@@ -51,6 +51,8 @@ Implemented fork points:
 - direct SQLite parser admission for MySQL `TRUNCATE [TABLE] name`, with
   native row clearing plus `sqlite_sequence` reset for AUTOINCREMENT-backed
   tables
+- SQLite keyword admission for MySQL `AUTO_INCREMENT` as an alias of the
+  rowid-backed `AUTOINCREMENT` primitive in the current direct-parser subset
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before

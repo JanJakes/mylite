@@ -187,6 +187,7 @@ static Keyword aKeywordTable[] = {
   { "AS",               "TK_AS",           ALWAYS,           10     },
   { "ASC",              "TK_ASC",          ALWAYS,           0      },
   { "ATTACH",           "TK_ATTACH",       ATTACH,           1      },
+  { "AUTO_INCREMENT",   "TK_AUTOINCR",     AUTOINCR,         0      },
   { "AUTOINCREMENT",    "TK_AUTOINCR",     AUTOINCR,         0      },
   { "BEFORE",           "TK_BEFORE",       TRIGGER,          0      },
   { "BEGIN",            "TK_BEGIN",        ALWAYS,           1      },

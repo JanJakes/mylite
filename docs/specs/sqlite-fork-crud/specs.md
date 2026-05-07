@@ -362,7 +362,8 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
 8. Next, move from MyLite-lowered SQL to direct MySQL SQL by forking the
    SQLite grammar for `TRUNCATE TABLE`, MySQL table options, secondary-key
    table elements, and `AUTO_INCREMENT`. Implemented for direct
-   `TRUNCATE [TABLE] name`.
+   `TRUNCATE [TABLE] name` and the direct-parser `AUTO_INCREMENT` spelling for
+   SQLite-compatible integer primary-key declarations.
 9. Then move type descriptors into SQLite column metadata and enforce MySQL
    conversion/range/length rules in SQLite's insert/update path. Implemented
    for the first signed integer, supported unsigned integer, `DOUBLE`,

@@ -871,6 +871,34 @@ static int eval_binary_cast(
     struct mylite_expression_value *out_value
 );
 
+static int eval_date_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_time_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_datetime_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static unsigned int cast_temporal_fsp(const struct mylite_sql_ast_node *target);
+
+static bool round_temporal_time_to_fsp(struct temporal_time_value *time, unsigned int fsp);
+
+static bool round_temporal_datetime_to_fsp(struct temporal_date_value *date, unsigned int fsp);
+
+static int temporal_fsp_rounding_factor(unsigned int fsp);
+
 static int eval_function_call(
     const struct mylite_sql_ast_node *node,
     const struct mylite_expression_eval_context *context,
@@ -5115,6 +5143,15 @@ static int eval_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
         status = eval_binary_cast(&value, out_value);
         break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
+        status = eval_date_cast(&value, warnings, out_value);
+        break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_TIME:
+        status = eval_time_cast(target, &value, warnings, out_value);
+        break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
+        status = eval_datetime_cast(target, &value, warnings, out_value);
+        break;
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
     case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
@@ -5134,9 +5171,6 @@ static int eval_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
     case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
     case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
-    case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
-    case MYLITE_SQL_AST_COLUMN_TYPE_TIME:
-    case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
     case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         status = -1;
@@ -5273,6 +5307,139 @@ static int eval_binary_cast(
     }
     free(text);
     return status;
+}
+
+static int eval_date_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    struct temporal_date_value date = {0};
+    bool valid = false;
+    int status = temporal_date_from_value(value, false, warnings, &date, &valid);
+
+    if (status != 0) {
+        return status;
+    }
+    if (!valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+    return set_temporal_date_text_value(&date, out_value);
+}
+
+static int eval_time_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    unsigned int fsp = cast_temporal_fsp(target);
+    struct temporal_time_value time = {0};
+    bool valid = false;
+    int status = time_value_from_expression(value, warnings, &time, &valid);
+
+    if (status != 0) {
+        return status;
+    }
+    if (!valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+    if (!round_temporal_time_to_fsp(&time, fsp)) {
+        return append_temporal_time_warning(warnings, value->text_value, value->text_length);
+    }
+    time.fraction_digits = fsp;
+    return set_temporal_time_text_value(&time, out_value);
+}
+
+static int eval_datetime_cast(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    unsigned int fsp = cast_temporal_fsp(target);
+    struct temporal_date_value date = {0};
+    bool valid = false;
+    int status = temporal_date_from_value(value, false, warnings, &date, &valid);
+
+    if (status != 0) {
+        return status;
+    }
+    if (!valid) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return 0;
+    }
+    if (!round_temporal_datetime_to_fsp(&date, fsp)) {
+        return append_temporal_date_warning(
+            warnings,
+            TEMPORAL_DATE_WARNING_DATETIME_OVERFLOW,
+            value->text_value,
+            value->text_length
+        );
+    }
+    date.fraction_digits = fsp;
+    date.preserve_fraction_digits = fsp != 0U;
+    return set_temporal_datetime_text_value(&date, out_value);
+}
+
+static unsigned int cast_temporal_fsp(const struct mylite_sql_ast_node *target) {
+    if (target != NULL && target->has_column_precision &&
+        target->column_precision <= MYLITE_TEMPORAL_MAX_FSP) {
+        return (unsigned int)target->column_precision;
+    }
+    return 0U;
+}
+
+static bool round_temporal_time_to_fsp(struct temporal_time_value *time, unsigned int fsp) {
+    int factor = temporal_fsp_rounding_factor(fsp);
+    int rounded = 0;
+
+    if (time == NULL || factor <= 0) {
+        return false;
+    }
+    if (fsp >= MYLITE_TEMPORAL_MAX_FSP) {
+        return true;
+    }
+    rounded = ((time->microsecond + (factor / 2)) / factor) * factor;
+    if (rounded >= MYLITE_TEMPORAL_MICROSECOND_LIMIT) {
+        time->microsecond = 0;
+        return temporal_time_add_second(time);
+    }
+    time->microsecond = rounded;
+    return true;
+}
+
+static bool round_temporal_datetime_to_fsp(struct temporal_date_value *date, unsigned int fsp) {
+    int factor = temporal_fsp_rounding_factor(fsp);
+    int rounded = 0;
+
+    if (date == NULL || factor <= 0) {
+        return false;
+    }
+    if (fsp >= MYLITE_TEMPORAL_MAX_FSP) {
+        return true;
+    }
+    rounded = ((date->microsecond + (factor / 2)) / factor) * factor;
+    if (rounded >= MYLITE_TEMPORAL_MICROSECOND_LIMIT) {
+        date->microsecond = 0;
+        return add_temporal_seconds(date, 1);
+    }
+    date->microsecond = rounded;
+    return true;
+}
+
+static int temporal_fsp_rounding_factor(unsigned int fsp) {
+    int factor = 1;
+
+    if (fsp > MYLITE_TEMPORAL_MAX_FSP) {
+        return 0;
+    }
+    for (unsigned int index = fsp; index < MYLITE_TEMPORAL_MAX_FSP; ++index) {
+        factor *= MYLITE_EXPRESSION_DECIMAL_BASE;
+    }
+    return factor;
 }
 
 static int eval_function_call(
@@ -12307,8 +12474,19 @@ static bool temporal_time_is_out_of_range(const struct temporal_time_value *time
     if (time->hour < MYLITE_TEMPORAL_MAX_TIME_HOUR) {
         return false;
     }
-    return time->minute > MYLITE_TEMPORAL_MAX_MINUTE_SECOND ||
-           time->second > MYLITE_TEMPORAL_MAX_MINUTE_SECOND || time->microsecond != 0;
+    if (time->minute > MYLITE_TEMPORAL_MAX_MINUTE_SECOND) {
+        return true;
+    }
+    if (time->minute < MYLITE_TEMPORAL_MAX_MINUTE_SECOND) {
+        return false;
+    }
+    if (time->second > MYLITE_TEMPORAL_MAX_MINUTE_SECOND) {
+        return true;
+    }
+    if (time->second < MYLITE_TEMPORAL_MAX_MINUTE_SECOND) {
+        return false;
+    }
+    return time->microsecond != 0;
 }
 
 static void clip_temporal_time(struct temporal_time_value *time) {

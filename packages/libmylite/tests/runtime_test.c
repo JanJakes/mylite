@@ -33343,6 +33343,86 @@ static int test_cast_expression_execution(void) {
          MYLITE_FIELD_FLAG_NUM,
          0},
     };
+    static const struct expected_result_metadata temporal_metadata[] = {
+        {"d",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         10U,
+         MYLITE_FIELD_TYPE_DATE,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"dt0",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         19U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"dt3",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         3U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"t2",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         13U,
+         MYLITE_FIELD_TYPE_TIME,
+         2U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"cdt6",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         26U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"ndt",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         26U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
     static const char *const id_column[] = {"id"};
     static const char *const id_text_columns[] = {"id", "n_text"};
     static const char *const table_projection_values[] = {"1", "1", "2", "2"};
@@ -33415,6 +33495,99 @@ static int test_cast_expression_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('2024-01-02 03:04:05.123456' AS DATE) AS d, "
+        "CAST('2024-01-02 03:04:05.987654' AS DATETIME) AS dt0, "
+        "CAST('2024-01-02 03:04:05.987654' AS DATETIME(3)) AS dt3, "
+        "CAST('03:04:05.987654' AS TIME(2)) AS t2, "
+        "CONVERT('2024-01-02 03:04:05.123456', DATETIME(6)) AS cdt6, "
+        "CAST(NULL AS DATETIME(6)) AS ndt",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        temporal_metadata,
+        (int)(sizeof(temporal_metadata) / sizeof(temporal_metadata[0])),
+        "CAST temporal metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST temporal row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024-01-02", "CAST date value");
+    failures +=
+        expect_string(mylite_column_text(stmt, 1), "2024-01-02 03:04:06", "CAST datetime round");
+    failures += expect_string(
+        mylite_column_text(stmt, 2),
+        "2024-01-02 03:04:05.988",
+        "CAST datetime fsp round"
+    );
+    failures += expect_string(mylite_column_text(stmt, 3), "03:04:05.99", "CAST time fsp round");
+    failures += expect_string(
+        mylite_column_text(stmt, 4),
+        "2024-01-02 03:04:05.123456",
+        "CONVERT datetime fsp value"
+    );
+    failures += expect_null_text(mylite_column_text(stmt, 5), "CAST null datetime");
+    failures += expect_int(mylite_warning_count(database), 0, "CAST temporal warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST temporal done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('838:59:59.400000' AS TIME(6)), "
+        "CAST('838:59:58.999999' AS TIME)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST max time row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "838:59:59.000000", "CAST max time clip");
+    failures += expect_string(mylite_column_text(stmt, 1), "838:59:59", "CAST max time round");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST max time warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CAST max time warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "838:59:59.400000",
+        "CAST max time warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST max time done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT CAST('bad' AS DATE), CAST('bad' AS TIME)", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST invalid temporal row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "CAST invalid date null");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "CAST invalid time null");
+    failures += expect_int(mylite_warning_count(database), 2, "CAST invalid temporal warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CAST invalid date warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "datetime",
+        "CAST invalid date warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "CAST invalid time warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 1),
+        "time",
+        "CAST invalid time warning message"
+    );
     mylite_finalize(stmt);
     stmt = NULL;
 

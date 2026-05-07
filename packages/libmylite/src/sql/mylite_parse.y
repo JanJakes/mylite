@@ -5081,6 +5081,24 @@ cast_target_type(A) ::= NCHAR(T) opt_column_length(B). {
 cast_target_type(A) ::= BINARY(T). {
     A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BINARY);
 }
+cast_target_type(A) ::= DATE(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DATE));
+}
+cast_target_type(A) ::= TIME(T) opt_temporal_fsp(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_precision_scale(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_TIME),
+            B));
+}
+cast_target_type(A) ::= DATETIME(T) opt_temporal_fsp(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_precision_scale(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DATETIME),
+            B));
+}
 
 opt_integer_keyword ::= .
 opt_integer_keyword ::= INTEGERKW.

@@ -17,6 +17,8 @@ This task implements:
   `CHARSET charset_name`
 - `CONVERT(expr, NCHAR)` and `NCHAR(N)`
 - `CONVERT(expr, BINARY)` as the current MyLite binary-string metadata slice
+- `CONVERT(expr, DATE)`, `CONVERT(expr, TIME)`, `CONVERT(expr, TIME(fsp))`,
+  `CONVERT(expr, DATETIME)`, and `CONVERT(expr, DATETIME(fsp))`
 - `CONVERT(expr USING charset_name)` for the current MyLite charset registry:
   `binary`, `latin1`, `utf8mb3` / `utf8`, and `utf8mb4`
 
@@ -33,7 +35,9 @@ already evaluates `CAST`:
 The following behavior is deferred with the same compatibility boundaries as
 `docs/specs/cast-expression/specs.md`:
 
-- temporal, JSON, spatial, and timezone-aware casts
+- `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
+  `YEAR`, JSON, spatial, floating-point, and timezone-aware casts remain
+  deferred
 - multi-valued-index `ARRAY` casts
 - fixed-length binary padding/truncation fidelity
 - full byte transcoding between character sets
@@ -65,6 +69,9 @@ using:
 - `docker exec -i mylite-mysql-849 mysql -h127.0.0.1 -uroot --column-type-info -vvv`
 - `docker exec -i mylite-mysql-849 mysql -h127.0.0.1 -uroot --force --batch --raw --show-warnings`
 
+Temporal target behavior was additionally checked on 2026-05-07 against the
+same MySQL 8.4.9 runtime.
+
 ## MySQL observations
 
 The ODBC-style `CONVERT(expr, type)` form is equivalent to
@@ -79,6 +86,9 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT('abcdef', CHAR(3))` | `abc` | 1292 truncated char |
 | `CONVERT('abc', BINARY)` | `abc` | none |
 | `CONVERT(NULL, SIGNED)` | `NULL` | none |
+| `CONVERT('2024-01-02 03:04:05.123456', DATE)` | `2024-01-02` | none |
+| `CONVERT('2024-01-02 03:04:05.123456', DATETIME(6))` | `2024-01-02 03:04:05.123456` | none |
+| `CONVERT('03:04:05.987654', TIME)` | `03:04:06` | none |
 
 The `CONVERT(expr USING charset_name)` form returns `NULL` when `expr` is
 `NULL`. Otherwise, MySQL returns string bytes exposed with the requested
@@ -132,6 +142,9 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CONVERT('abc', BINARY)` under `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `binary` | `BINARY` |
 | `CONVERT('abc' USING latin1)` under `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `CONVERT('abc' USING binary)` under `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `binary` | `BINARY` |
+| `CONVERT('2024-01-02', DATE)` | `DATE` | `10` | `0` | `binary` | `BINARY` |
+| `CONVERT('2024-01-02 03:04:05', DATETIME(6))` | `DATETIME` | `26` | `6` | `binary` | `BINARY` |
+| `CONVERT('03:04:05', TIME(2))` | `TIME` | `13` | `2` | `binary` | `BINARY` |
 
 MySQL column metadata for non-binary explicit charset conversions can remain
 connection-collation based even though `CHARSET()`, `COLLATION()`, and
@@ -190,6 +203,8 @@ the result is `NULL` without conversion warnings.
 - decimal rounding and string truncation warnings match CAST
 - char length truncation warnings match CAST
 - binary conversion matches the current MyLite `CAST(... AS BINARY)` subset
+- date, time, and datetime parsing, fractional-second rounding, warnings, and
+  metadata match CAST
 
 `CONVERT(expr USING charset_name)`:
 
@@ -249,6 +264,8 @@ Parser tests:
 - `CONVERT('1.25', DECIMAL)`, `DECIMAL(5)`, `DECIMAL(5,2)`, and `DEC(5,2)`
 - `CONVERT('abcdef', CHAR(3))`, `CHAR CHARACTER SET latin1`,
   `CHAR CHARSET utf8mb4`, `NCHAR(4)`, and `BINARY`
+- `CONVERT('2024-01-02', DATE)`, `CONVERT('03:04:05.987654', TIME(2))`,
+  and `CONVERT('2024-01-02 03:04:05.987654', DATETIME(6))`
 - `CONVERT('abc' USING latin1)`, `utf8mb4`, quoted `utf8mb3`, `utf8`, and
   `binary`
 - expression-level `COLLATE` after `CONVERT(... USING ...)` and
@@ -268,6 +285,8 @@ Runtime tests:
 - unsigned negative-string complement warnings
 - decimal scale rounding
 - char truncation and `CHAR(0)` warnings
+- temporal date/datetime/time parsing, fractional-second rounding, invalid
+  input warnings, and metadata through the shared CAST evaluator
 - invalid charset diagnostics for both forms
 - metadata descriptors for signed, unsigned, decimal, char, binary, and
   nullable `USING`
@@ -295,6 +314,7 @@ transcoding project. Known differences after this implementation:
 - binary strings cannot yet preserve embedded NUL bytes through every public
   text-value path
 - fixed-length binary padding remains deferred
-- temporal, JSON, spatial, and timezone-aware casts are separate tasks
+- `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; `YEAR`,
+  JSON, spatial, floating-point, and timezone-aware casts are separate tasks
 - overflow and SQL-mode diagnostics remain incomplete in the same places as
   the existing CAST implementation

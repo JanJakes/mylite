@@ -6,7 +6,7 @@ function calls because the target type is grammar, not a runtime argument.
 
 ## Scope
 
-Task 26 implements the first application-facing CAST slice:
+The current implementation supports the application-facing CAST slice:
 
 - `CAST(expr AS SIGNED)` and `CAST(expr AS SIGNED INTEGER)`
 - `CAST(expr AS UNSIGNED)` and `CAST(expr AS UNSIGNED INTEGER)`
@@ -17,6 +17,8 @@ Task 26 implements the first application-facing CAST slice:
   for the initial MyLite charset registry
 - `CAST(expr AS BINARY)` as a binary-string metadata cast without fixed-length
   zero padding
+- `CAST(expr AS DATE)`, `CAST(expr AS TIME)`, `CAST(expr AS TIME(fsp))`,
+  `CAST(expr AS DATETIME)`, and `CAST(expr AS DATETIME(fsp))`
 
 The expression must work everywhere the current supported scalar expression
 subset works:
@@ -36,8 +38,9 @@ The following behavior is deferred:
 - exhaustive binary-string operator semantics for `BINARY expr`; the prefix
   operator is specified in
   `docs/specs/expression-operator-foundation/specs.md`
-- `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, `YEAR`, `FLOAT`, `DOUBLE`, `REAL`,
-  `JSON`, spatial casts, and `CAST(... AT TIME ZONE ... AS DATETIME)`
+- `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
+  `YEAR`, `FLOAT`, `DOUBLE`, `REAL`, `JSON`, spatial casts, and
+  `CAST(... AT TIME ZONE ... AS DATETIME)` remain deferred
 - multi-valued-index `ARRAY` casts
 - exhaustive overflow/range clipping and every SQL-mode variant
 
@@ -61,6 +64,9 @@ using:
 - `docker exec -i mylite-mysql-849 mysql -h127.0.0.1 -uroot --batch --raw --show-warnings`
 - `docker exec -i mylite-mysql-849 mysql -h127.0.0.1 -uroot --column-type-info -vvv`
 - `docker exec -i mylite-mysql-849 mysql -h127.0.0.1 -uroot --force --batch --raw --show-warnings`
+
+Temporal target behavior was additionally checked on 2026-05-07 against the
+same MySQL 8.4.9 runtime.
 
 ## MySQL observations
 
@@ -119,6 +125,20 @@ binary-string metadata.
 | `LENGTH(CAST('a\\0b' AS BINARY))` | `3` | none |
 | `HEX(CAST('a\\0b' AS CHAR))` | `610062` | none |
 
+Temporal casts use MySQL's temporal parser and target fractional-second
+precision. Fractional values round half up to the requested precision, carrying
+into the next second when needed. Missing fractional precision means `0`.
+
+| SQL | Result | Warnings |
+| --- | --- | --- |
+| `CAST('2024-01-02 03:04:05.123456' AS DATE)` | `2024-01-02` | none |
+| `CAST('2024-01-02 03:04:05.987654' AS DATETIME)` | `2024-01-02 03:04:06` | none |
+| `CAST('2024-01-02 03:04:05.987654' AS DATETIME(3))` | `2024-01-02 03:04:05.988` | none |
+| `CAST('03:04:05.987654' AS TIME(2))` | `03:04:05.99` | none |
+| `CAST('838:59:59.400000' AS TIME(6))` | `838:59:59.000000` | 1292 truncated time |
+| `CAST('bad' AS DATE)` | `NULL` | 1292 truncated datetime |
+| `CAST('bad' AS TIME)` | `NULL` | 1292 truncated time |
+
 Parser errors observed with MySQL 8.4.9:
 
 | SQL | MySQL behavior |
@@ -129,6 +149,8 @@ Parser errors observed with MySQL 8.4.9:
 | `CAST('1' AS DECIMAL(66))` | error 1426 / `42000` |
 | `CAST('1' AS DECIMAL(5,6))` | error 1427 / `42000` |
 | `CAST('x' AS CHAR CHARACTER SET utf8mb4 COLLATE utf8mb4_bin)` | syntax error 1064 |
+| `CAST('x' AS TIMESTAMP)` | syntax error 1064 |
+| `CAST('x' AS TIME(7))` | error 1426 / `42000` |
 
 Metadata observations from `mysql --column-type-info -vvv`:
 
@@ -143,6 +165,10 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CAST('abc' AS CHAR(3))` | `VAR_STRING` | `3` times charset maxlen | `31` | connection dependent | none |
 | `CAST('abc' AS BINARY)` | `VAR_STRING` | source length | `31` | `binary` | `BINARY` |
 | `CAST(NULL AS CHAR)` | `VAR_STRING` | `0` | `31` | connection dependent | nullable |
+| `CAST('2024-01-02' AS DATE)` | `DATE` | `10` | `0` | `binary` | `BINARY` |
+| `CAST('2024-01-02 03:04:05' AS DATETIME(3))` | `DATETIME` | `23` | `3` | `binary` | `BINARY` |
+| `CAST('03:04:05' AS TIME(2))` | `TIME` | `13` | `2` | `binary` | `BINARY` |
+| `CAST(NULL AS DATETIME(6))` | `DATETIME` | `26` | `6` | `binary` | nullable `BINARY` |
 
 ## Syntax
 
@@ -164,6 +190,9 @@ cast_target_type ::= DEC opt_numeric_precision_scale.
 cast_target_type ::= CHAR opt_column_length opt_cast_character_set.
 cast_target_type ::= NCHAR opt_column_length.
 cast_target_type ::= BINARY.
+cast_target_type ::= DATE.
+cast_target_type ::= TIME opt_temporal_fsp.
+cast_target_type ::= DATETIME opt_temporal_fsp.
 
 opt_integer_keyword ::= .
 opt_integer_keyword ::= INTEGERKW.
@@ -248,6 +277,19 @@ deferred to the broader decimal type task.
 - `CHAR CHARACTER SET binary` returns the same bytes as text with binary
   metadata; fixed-length binary padding remains deferred
 
+### Temporal
+
+- `DATE` uses the shared date/datetime parser and formats the date component
+- `TIME(fsp)` uses the shared time parser, rounds fractional seconds to `fsp`,
+  and formats the result with exactly the requested fractional digits
+- out-of-range `TIME` values clip to MySQL's `838:59:59` endpoint with warning
+  1292
+- `DATETIME(fsp)` uses the shared date/datetime parser, rounds fractional
+  seconds to `fsp`, and formats the result with exactly the requested
+  fractional digits
+- omitted `fsp` means `0`; accepted precision is `0` through `6`
+- invalid temporal input returns `NULL` and emits warning 1292
+
 ## Metadata
 
 CAST expression metadata is derived from the target type, not from the runtime
@@ -265,6 +307,11 @@ MyLite descriptors:
 - `CHAR(N)`: same as `CHAR`, length `N * maxlen_for_charset`
 - `CHAR CHARACTER SET binary` and `BINARY`: `VAR_STRING`, decimals `31`,
   binary charset, `BINARY`
+- `DATE`: `DATE`, length `10`, decimals `0`, binary charset, `BINARY`
+- `TIME(fsp)`: `TIME`, length `10` without fractions or `11 + fsp` with
+  fractions, decimals from target, binary charset, `BINARY`
+- `DATETIME(fsp)`: `DATETIME`, length `19` without fractions or `20 + fsp`
+  with fractions, decimals from target, binary charset, `BINARY`
 
 Origin schema/table/column metadata is empty for CAST results.
 
@@ -286,10 +333,13 @@ Parser tests:
 - `CAST('1' AS DECIMAL)`, `DECIMAL(5)`, `DECIMAL(5,2)`, `DEC(5,2)`
 - `CAST(38.8 AS CHAR)`, `CHAR(3)`, `CHAR CHARACTER SET utf8mb4`,
   `CHAR CHARACTER SET binary`, `NCHAR(4)`, and `BINARY`
+- `CAST('2024-01-02' AS DATE)`, `CAST('03:04:05.987654' AS TIME(2))`,
+  and `CAST('2024-01-02 03:04:05.987654' AS DATETIME(6))`
 - expression-level `COLLATE` after a supported character cast
 - nested casts and casts inside `CASE`
 - syntax errors for `INT`, `INTEGER`, `NUMERIC`, `COLLATE` inside the target,
-  missing `AS`, missing target type, and invalid decimal precision/scale
+  missing `AS`, missing target type, invalid decimal precision/scale, invalid
+  temporal precision, and direct `TIMESTAMP` targets
 
 Runtime tests:
 
@@ -300,8 +350,10 @@ Runtime tests:
 - decimal default precision/scale, explicit scale rounding, invalid string
   warning, and result text formatting
 - character truncation and `CHAR(0)` warnings
-- metadata descriptors for signed, unsigned, decimal, char, binary, and nullable
-  char casts
+- temporal date/datetime/time parsing, fractional-second rounding, invalid
+  input warnings, and `CONVERT(expr, temporal_type)` delegation
+- metadata descriptors for signed, unsigned, decimal, char, binary, nullable
+  char, date, time, and datetime casts
 - table projection, `WHERE`, and `ORDER BY`
 - `UPDATE` assignment/predicate/order and strict warning promotion
 - `DELETE` predicate/order and strict warning promotion
@@ -311,7 +363,7 @@ Runtime tests:
 ## Compatibility notes
 
 This task is intentionally a high-value CAST subset rather than a complete type
-conversion engine. The main known differences after Task 26 are:
+conversion engine. The main known differences are:
 
 - decimal runtime values are formatted text with decimal metadata, not native
   fixed-point values
@@ -319,7 +371,8 @@ conversion engine. The main known differences after Task 26 are:
   semantics remain deferred beyond length-aware preservation of source bytes
   for the supported `CAST(... AS BINARY)` form
 - connection charset metadata is limited to the current MyLite charset registry
-- temporal, JSON, spatial, and timezone-aware casts are separate tasks
+- `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; `YEAR`,
+  JSON, spatial, floating-point, and timezone-aware casts are separate tasks
 - overflow and SQL-mode diagnostics are not exhaustive
 
 `CONVERT(expr, type)` and `CONVERT(expr USING charset_name)` are implemented as

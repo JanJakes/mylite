@@ -11309,6 +11309,37 @@ static int test_cast_expression_syntax(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT CAST('2024-01-02' AS DATE), "
+        "CAST('03:04:05.987654' AS TIME(2)), "
+        "CAST('2024-01-02 03:04:05.987654' AS DATETIME(6));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    cast_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DATE,
+        "DATE CAST target"
+    );
+    cast_expression = child_at(child_at(select_list, 1U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_TIME, "TIME CAST target");
+    if (target != NULL && (!target->has_column_precision || target->column_precision != 2U)) {
+        fprintf(stderr, "TIME CAST did not record precision 2\n");
+        failures = 1;
+    }
+    cast_expression = child_at(child_at(select_list, 2U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_DATETIME, "DATETIME CAST target");
+    if (target != NULL && (!target->has_column_precision || target->column_precision != 6U)) {
+        fprintf(stderr, "DATETIME CAST did not record precision 6\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT CAST('x' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -11370,6 +11401,10 @@ static int test_cast_expression_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT CAST('x' AS BINARY(3))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CAST('x' AS TIME(7))", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT CAST('x' AS TIMESTAMP)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     // NOLINTEND(readability-magic-numbers)
     return failures;
@@ -11441,6 +11476,37 @@ static int test_convert_expression_syntax(void) {
         MYLITE_SQL_AST_COLUMN_TYPE_BINARY,
         "BINARY CONVERT target"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT CONVERT('2024-01-02', DATE), "
+        "CONVERT('03:04:05.987654', TIME(2)), "
+        "CONVERT('2024-01-02 03:04:05.987654', DATETIME(6));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    cast_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_DATE,
+        "DATE CONVERT target"
+    );
+    cast_expression = child_at(child_at(select_list, 1U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_TIME, "TIME CONVERT target");
+    if (target != NULL && (!target->has_column_precision || target->column_precision != 2U)) {
+        fprintf(stderr, "TIME CONVERT did not record precision 2\n");
+        failures = 1;
+    }
+    cast_expression = child_at(child_at(select_list, 2U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_DATETIME, "DATETIME CONVERT target");
+    if (target != NULL && (!target->has_column_precision || target->column_precision != 6U)) {
+        fprintf(stderr, "DATETIME CONVERT did not record precision 6\n");
+        failures = 1;
+    }
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

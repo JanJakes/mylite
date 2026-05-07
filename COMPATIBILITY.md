@@ -552,7 +552,7 @@ tests.
 | `SHOW TABLE STATUS` | ❌ | Table metadata result. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `DESCRIBE` | 🟡 | Limited table-column introspection alias for the supported `SHOW COLUMNS` subset; no column filters or execution-plan `EXPLAIN` behavior. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
 | `DESC` | 🟡 | Limited alias for the supported table-only `DESCRIBE` subset. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
-| `EXPLAIN` for tables | ❌ | Table form only; statements excluded. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
+| `EXPLAIN` for tables | 🟡 | Limited table-column introspection alias for the supported `SHOW COLUMNS` subset; supports only `EXPLAIN table_name`, not column filters, wildcard filters, execution plans, `FORMAT`, `ANALYZE`, or `FOR CONNECTION`. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
 
 ### Transactions, Locking, and Maintenance
 

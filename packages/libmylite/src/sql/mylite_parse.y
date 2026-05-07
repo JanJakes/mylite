@@ -83,6 +83,9 @@ statement(A) ::= show_databases_statement(B). {
 statement(A) ::= describe_table_statement(B). {
     A = B;
 }
+statement(A) ::= explain_table_statement(B). {
+    A = B;
+}
 statement(A) ::= rename_table_statement(B). {
     A = B;
 }
@@ -188,6 +191,10 @@ describe_table_statement(A) ::= DESCRIBE(D) table_name(T). {
 }
 describe_table_statement(A) ::= DESC(D) table_name(T). {
     A = mylite_sql_parser_make_show_columns_statement(state, D, T, NULL);
+}
+
+explain_table_statement(A) ::= EXPLAIN(E) table_name(T). {
+    A = mylite_sql_parser_make_show_columns_statement(state, E, T, NULL);
 }
 
 rename_table_statement(A) ::= RENAME(R) TABLE table_name(S) TO table_name(T). {

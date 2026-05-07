@@ -24,6 +24,10 @@ enum mylite_sqlite_utf8_byte_masks {
     mylite_sqlite_utf8_four_byte_prefix = 0xF0U,
 };
 
+enum mylite_sqlite_byte_units {
+    mylite_sqlite_bits_per_byte = 8,
+};
+
 struct mylite_sqlite_pad_trim_request {
     const void *value;
     int length;
@@ -64,6 +68,12 @@ static void mysql_concat_ws(
 );
 
 static void mysql_if(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
+
+static void mysql_bit_length(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
 
 static void mysql_length(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
@@ -248,6 +258,9 @@ static int register_mysql_functions(sqlite3 *database) {
         rc = register_scalar_function(database, "IF", 3, mysql_if);
     }
     if (rc == SQLITE_OK) {
+        rc = register_scalar_function(database, "BIT_LENGTH", 1, mysql_bit_length);
+    }
+    if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "LENGTH", 1, mysql_length);
     }
     if (rc == SQLITE_OK) {
@@ -419,6 +432,29 @@ static void mysql_if(sqlite3_context *context, int argument_count, sqlite3_value
         result_index = 1;
     }
     sqlite3_result_value(context, arguments[result_index]);
+}
+
+static void mysql_bit_length(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    const void *value = NULL;
+    int bytes = 0;
+
+    (void)argument_count;
+    if (sqlite3_value_type(arguments[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    value = sqlite3_value_blob(arguments[0]);
+    bytes = sqlite3_value_bytes(arguments[0]);
+    if (value == NULL && bytes > 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    sqlite3_result_int64(context, (sqlite3_int64)bytes * mylite_sqlite_bits_per_byte);
 }
 
 static void mysql_length(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {

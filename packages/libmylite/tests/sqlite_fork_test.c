@@ -179,6 +179,11 @@ int main(void) {
 }
 
 static int test_registered_functions(void) {
+    enum {
+        utf8_z_caron_bit_length = 16,
+        numeric_123_bit_length = 24,
+    };
+
     sqlite3 *database = NULL;
     int failures = 0;
 
@@ -283,6 +288,20 @@ static int test_registered_functions(void) {
         1,
         "IF preserves NULL branch values"
     );
+    failures += expect_int64(
+        database,
+        "SELECT BIT_LENGTH(CAST(X'C5BE' AS TEXT))",
+        utf8_z_caron_bit_length,
+        "BIT_LENGTH counts UTF-8 bytes in bits"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT BIT_LENGTH(123)",
+        numeric_123_bit_length,
+        "BIT_LENGTH converts numeric arguments to text bytes"
+    );
+    failures +=
+        expect_int64(database, "SELECT BIT_LENGTH(NULL) IS NULL", 1, "BIT_LENGTH propagates NULL");
 
     sqlite3_close(database);
     return failures;
@@ -2162,6 +2181,16 @@ static int test_native_bit_type_coercion(void) {
             .expected = "1:01:1:1:05:1:5:0155:2:341:FFFFFFFFFFFFFFFF:8|"
                         "2:00:1:0:0F:1:15:0001:2:1:0000000000000001:8",
             .context = "direct bit descriptors expose binary display and numeric context",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || BIT_LENGTH(b1) || ':' || "
+                   "BIT_LENGTH(b4) || ':' || BIT_LENGTH(b9) || ':' || BIT_LENGTH(b64), '|') "
+                   "FROM (SELECT id, b1, b4, b9, b64 FROM bit_direct ORDER BY id)",
+            .expected = "1:8:8:16:64|2:8:8:16:64",
+            .context = "BIT_LENGTH reads direct bit descriptor display bytes",
         }
     );
     failures += exec_sql(

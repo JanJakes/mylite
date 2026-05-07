@@ -7,6 +7,8 @@
 #include "sql/mylite_expression.h"
 #include "sqlite3.h"
 
+#include <stdlib.h>
+
 static int execute_update_row(
     mylite_db *database,
     sqlite3_stmt *update,
@@ -15,8 +17,11 @@ static int execute_update_row(
     bool ignore,
     const struct mylite_update_bound_assignment *assignments,
     size_t assignment_count,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
     const struct mylite_dml_expression_callbacks *callbacks,
     const struct mylite_update_row *stored,
+    struct mylite_dml_timestamp_state *timestamp_state,
     uint64_t *next_auto_increment,
     int64_t *affected_rows
 );
@@ -53,6 +58,12 @@ static int evaluate_update_assignment_value(
     struct mylite_expression_value *out_value
 );
 
+static int copy_update_assignment_column_indexes(
+    const struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count,
+    size_t **out_column_indexes
+);
+
 int mylite_dml_execute_update_rows_transaction(
     mylite_db *database,
     const struct mylite_select_table *table,
@@ -67,6 +78,8 @@ int mylite_dml_execute_update_rows_transaction(
     sqlite3_stmt *update = NULL;
     char *update_sql = NULL;
     struct mylite_statement_atomicity atomicity = {0};
+    struct mylite_dml_timestamp_state timestamp_state = {0};
+    size_t *explicit_column_indexes = NULL;
     uint64_t next_auto_increment = 0U;
     int64_t affected_rows = 0;
     int rc = SQLITE_OK;
@@ -81,9 +94,22 @@ int mylite_dml_execute_update_rows_transaction(
     }
 
     *out_affected_rows = 0;
+    status = copy_update_assignment_column_indexes(
+        assignments,
+        assignment_count,
+        &explicit_column_indexes
+    );
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        }
+        return status;
+    }
+
     next_auto_increment = write_table->next_auto_increment;
     status = mylite_transaction_begin_statement_atomicity(database, &atomicity);
     if (status != MYLITE_OK) {
+        free(explicit_column_indexes);
         return status;
     }
 
@@ -91,6 +117,7 @@ int mylite_dml_execute_update_rows_transaction(
     if (update_sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         mylite_transaction_rollback_statement_atomicity(database, &atomicity);
+        free(explicit_column_indexes);
         return MYLITE_NOMEM;
     }
 
@@ -105,6 +132,7 @@ int mylite_dml_execute_update_rows_transaction(
     sqlite3_free(update_sql);
     if (rc != SQLITE_OK) {
         mylite_transaction_rollback_statement_atomicity(database, &atomicity);
+        free(explicit_column_indexes);
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
@@ -117,8 +145,11 @@ int mylite_dml_execute_update_rows_transaction(
             ignore,
             assignments,
             assignment_count,
+            explicit_column_indexes,
+            assignment_count,
             callbacks,
             &rowset->rows[index],
+            &timestamp_state,
             &next_auto_increment,
             &affected_rows
         );
@@ -141,11 +172,13 @@ int mylite_dml_execute_update_rows_transaction(
         status = mylite_transaction_commit_statement_atomicity(database, &atomicity);
         if (status == MYLITE_OK) {
             *out_affected_rows = affected_rows;
+            free(explicit_column_indexes);
             return MYLITE_OK;
         }
     }
 
     mylite_transaction_rollback_statement_atomicity(database, &atomicity);
+    free(explicit_column_indexes);
     return status;
 }
 
@@ -157,8 +190,11 @@ static int execute_update_row(
     bool ignore,
     const struct mylite_update_bound_assignment *assignments,
     size_t assignment_count,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
     const struct mylite_dml_expression_callbacks *callbacks,
     const struct mylite_update_row *stored,
+    struct mylite_dml_timestamp_state *timestamp_state,
     uint64_t *next_auto_increment,
     int64_t *affected_rows
 ) {
@@ -177,6 +213,18 @@ static int execute_update_row(
             assignment_count,
             callbacks,
             &candidate
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_dml_apply_update_on_update_current_timestamps(
+            database,
+            write_table,
+            explicit_column_indexes,
+            explicit_column_count,
+            stored,
+            &candidate,
+            timestamp_state,
+            &row_changed
         );
     }
     if (status == MYLITE_OK) {
@@ -206,9 +254,6 @@ static int execute_update_row(
     if (status == MYLITE_OK && ignored) {
         mylite_dml_update_row_deinit(&candidate);
         return MYLITE_OK;
-    }
-    if (status == MYLITE_OK) {
-        row_changed = mylite_dml_update_row_changed(stored, &candidate);
     }
     if (status == MYLITE_OK && row_changed) {
         status = mylite_dml_validate_update_child_foreign_keys(
@@ -256,6 +301,35 @@ static int execute_update_row(
 
     mylite_dml_update_row_deinit(&candidate);
     return status;
+}
+
+static int copy_update_assignment_column_indexes(
+    const struct mylite_update_bound_assignment *assignments,
+    size_t assignment_count,
+    size_t **out_column_indexes
+) {
+    size_t *column_indexes = NULL;
+
+    if (out_column_indexes == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_column_indexes = NULL;
+    if (assignment_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (assignments == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    column_indexes = calloc(assignment_count, sizeof(*column_indexes));
+    if (column_indexes == NULL) {
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < assignment_count; ++index) {
+        column_indexes[index] = assignments[index].column_index;
+    }
+    *out_column_indexes = column_indexes;
+    return MYLITE_OK;
 }
 
 static int write_update_candidate(

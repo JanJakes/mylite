@@ -32,7 +32,9 @@ struct mylite_joined_update_target {
     const struct mylite_select_table *table;
     struct mylite_insert_table write_table;
     struct mylite_joined_update_assignment *assignments;
+    size_t *assignment_column_indexes;
     size_t assignment_count;
+    struct mylite_dml_timestamp_state timestamp_state;
     sqlite3_stmt *update;
     sqlite3_int64 *seen_rowids;
     size_t seen_rowid_count;
@@ -118,6 +120,11 @@ static int initialize_joined_update_targets(
 );
 
 static int initialize_joined_update_target(
+    mylite_db *database,
+    struct mylite_joined_update_target *target
+);
+
+static int initialize_joined_update_assignment_column_indexes(
     mylite_db *database,
     struct mylite_joined_update_target *target
 );
@@ -582,6 +589,10 @@ static int initialize_joined_update_target(
         return status;
     }
     target->next_auto_increment = target->write_table.next_auto_increment;
+    status = initialize_joined_update_assignment_column_indexes(database, target);
+    if (status != MYLITE_OK) {
+        return status;
+    }
 
     update_sql = mylite_dml_build_update_physical_sql(database, target->table);
     if (update_sql == NULL) {
@@ -598,6 +609,28 @@ static int initialize_joined_update_target(
     );
     sqlite3_free(update_sql);
     return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int initialize_joined_update_assignment_column_indexes(
+    mylite_db *database,
+    struct mylite_joined_update_target *target
+) {
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->assignment_count == 0U) {
+        return MYLITE_OK;
+    }
+    target->assignment_column_indexes =
+        calloc(target->assignment_count, sizeof(*target->assignment_column_indexes));
+    if (target->assignment_column_indexes == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < target->assignment_count; ++index) {
+        target->assignment_column_indexes[index] = target->assignments[index].column_index;
+    }
+    return MYLITE_OK;
 }
 
 static int execute_joined_update_transaction(
@@ -688,6 +721,18 @@ static int execute_joined_update_target_row(
             apply_joined_update_assignments(database, joined_stmt, joined_row, target, &candidate);
     }
     if (status == MYLITE_OK) {
+        status = mylite_dml_apply_update_on_update_current_timestamps(
+            database,
+            &target->write_table,
+            target->assignment_column_indexes,
+            target->assignment_count,
+            &stored,
+            &candidate,
+            &target->timestamp_state,
+            &row_changed
+        );
+    }
+    if (status == MYLITE_OK) {
         status = mylite_dml_validate_update_check_constraints(
             database,
             target->table,
@@ -711,9 +756,6 @@ static int execute_joined_update_target_row(
             false,
             &ignored
         );
-    }
-    if (status == MYLITE_OK) {
-        row_changed = mylite_dml_update_row_changed(&stored, &candidate);
     }
     if (status == MYLITE_OK && row_changed) {
         status = mylite_dml_validate_update_child_foreign_keys(
@@ -983,6 +1025,7 @@ static void joined_update_targets_deinit(
         sqlite3_finalize(targets[index].update);
         mylite_dml_insert_table_deinit(&targets[index].write_table);
         free(targets[index].assignments);
+        free(targets[index].assignment_column_indexes);
         free(targets[index].seen_rowids);
     }
     free(targets);

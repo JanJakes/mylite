@@ -59,7 +59,9 @@ by `SELECT` and multi-table `DELETE`. Assignment nodes are unchanged.
 4. Materialize the joined row source.
 5. For each target table, update each matched physical row at most once.
 6. Evaluate assignment expressions against the matched joined row.
-7. Validate target values and unique indexes, then write all changed target rows
+7. Apply automatic `ON UPDATE CURRENT_TIMESTAMP` refresh for changed target
+   rows when the temporal column is not explicitly assigned.
+8. Validate target values and unique indexes, then write all changed target rows
    in one statement-level transaction.
 
 For duplicate joined matches to the same target row, MyLite updates the row once
@@ -98,6 +100,8 @@ Coverage includes:
 - base table-name qualifiers in `JOIN ... ON` and `SET` targets, such as
   `UPDATE t1 JOIN t2 ON t1.id = t2.t1_id SET t1.a = t2.new_a`
 - no-op affected-row behavior
+- automatic `ON UPDATE CURRENT_TIMESTAMP` refresh for changed target rows and
+  explicit-assignment suppression
 - multi-target assignment in one statement
 - left-join unmatched target updates
 - ambiguous assignment diagnostics

@@ -472,6 +472,26 @@ int mylite_dml_copy_update_candidate_values(
     const struct mylite_update_row *row,
     struct mylite_update_row *candidate
 );
+int mylite_dml_apply_update_on_update_current_timestamps(
+    mylite_db *database,
+    const struct mylite_insert_table *write_table,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
+    const struct mylite_update_row *stored,
+    struct mylite_update_row *candidate,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    bool *out_row_changed
+);
+int mylite_dml_apply_insert_on_update_current_timestamps(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
+    const struct mylite_insert_bound_value *stored,
+    struct mylite_insert_bound_value *candidate,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    bool *out_row_changed
+);
 int mylite_dml_resolve_update_default_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,

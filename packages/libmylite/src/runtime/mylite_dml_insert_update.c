@@ -230,6 +230,18 @@ static int execute_insert_update_bound_row(
         );
     }
     if (status == MYLITE_OK) {
+        status = mylite_dml_apply_insert_on_update_current_timestamps(
+            database,
+            table,
+            column_indexes->update_columns,
+            update_plan->assignment_count,
+            stored_values,
+            updated_values,
+            &state->timestamp_state,
+            &row_changed
+        );
+    }
+    if (status == MYLITE_OK) {
         status = mylite_dml_validate_insert_check_constraints(
             database,
             schema_name,
@@ -251,14 +263,7 @@ static int execute_insert_update_bound_row(
             &update_conflicts
         );
     }
-    if (status == MYLITE_OK && !ignored && !update_conflicts) {
-        row_changed = mylite_dml_insert_update_row_changed(
-            stored_values,
-            updated_values,
-            table->column_count
-        );
-    }
-    if (status == MYLITE_OK && row_changed) {
+    if (status == MYLITE_OK && !update_conflicts && row_changed) {
         status = mylite_dml_validate_insert_child_foreign_keys(
             database,
             schema_name,
@@ -269,7 +274,7 @@ static int execute_insert_update_bound_row(
             &ignored
         );
     }
-    if (status == MYLITE_OK && !ignored && row_changed) {
+    if (status == MYLITE_OK && !ignored && !update_conflicts && row_changed) {
         status = mylite_dml_write_insert_update_candidate(
             database,
             table,

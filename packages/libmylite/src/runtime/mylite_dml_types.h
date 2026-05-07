@@ -165,6 +165,7 @@ struct mylite_insert_table_column {
     bool nullable;
     bool auto_increment;
     bool generated_default;
+    bool on_update_current_timestamp;
     bool has_default;
     bool has_character_maximum_length;
     bool has_numeric_scale;
@@ -204,10 +205,17 @@ struct mylite_insert_bound_value {
     bool generated_auto_increment;
 };
 
+struct mylite_dml_timestamp_state {
+    int64_t seconds;
+    long microseconds;
+    bool initialized;
+};
+
 struct mylite_insert_execution_state {
     uint64_t next_auto_increment;
     uint64_t reserved_auto_increment_end;
     uint64_t first_insert_id;
+    struct mylite_dml_timestamp_state timestamp_state;
     bool *warned_omitted_no_default_columns;
     bool *warned_null_columns;
     size_t accepted_row_count;

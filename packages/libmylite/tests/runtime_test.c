@@ -56185,6 +56185,57 @@ static int test_insert_on_duplicate_key_update_execution(void) {
 
     failures += execute_sql(
         database,
+        "CREATE TABLE odku_on_update ("
+        "id INT PRIMARY KEY, v INT, "
+        "touched DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) "
+        "ON UPDATE CURRENT_TIMESTAMP(6))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO odku_on_update VALUES "
+        "(1,10,'2000-01-01 00:00:00.000000'),"
+        "(2,20,'2000-01-01 00:00:00.000000')",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO odku_on_update VALUES (1,11,'1999-01-01 00:00:00.000000') "
+        "ON DUPLICATE KEY UPDATE v = 11",
+        2,
+        "ODKU on update timestamp affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT v, touched <> '2000-01-01 00:00:00.000000' AS changed, "
+        "LENGTH(touched) AS len "
+        "FROM odku_on_update WHERE id = 1",
+        (const char *[]){"v", "changed", "len"},
+        3,
+        (const char *[]){"11", "1", "26"},
+        1,
+        "ODKU on update timestamp refresh"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO odku_on_update VALUES (2,21,'1999-01-01 00:00:00.000000') "
+        "ON DUPLICATE KEY UPDATE v = 21, touched = touched",
+        2,
+        "ODKU explicit timestamp assignment affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT v, touched = '2000-01-01 00:00:00.000000' AS preserved "
+        "FROM odku_on_update WHERE id = 2",
+        (const char *[]){"v", "preserved"},
+        2,
+        (const char *[]){"21", "1"},
+        1,
+        "ODKU explicit timestamp assignment suppresses refresh"
+    );
+
+    failures += execute_sql(
+        database,
         "CREATE TABLE odku_order ("
         "id INT PRIMARY KEY, a INT UNIQUE, b INT, c INT)",
         MYLITE_DONE
@@ -66657,6 +66708,95 @@ static int test_update_single_table_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += execute_sql(
+        database,
+        "CREATE TABLE on_update_touch ("
+        "id INT PRIMARY KEY, v INT, "
+        "touched TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, "
+        "touched6 DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) "
+        "ON UPDATE CURRENT_TIMESTAMP(6))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO on_update_touch VALUES "
+        "(1,10,'2000-01-01 00:00:00','2000-01-01 00:00:00.000000'),"
+        "(2,20,'2000-01-01 00:00:00','2000-01-01 00:00:00.000000'),"
+        "(3,30,'2000-01-01 00:00:00','2000-01-01 00:00:00.000000'),"
+        "(4,40,'2000-01-01 00:00:00','2000-01-01 00:00:00.000000')",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE on_update_touch SET v = v WHERE id = 1",
+        0,
+        "on update timestamp no-op affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT touched = '2000-01-01 00:00:00' AS touched_same, "
+        "touched6 = '2000-01-01 00:00:00.000000' AS touched6_same "
+        "FROM on_update_touch WHERE id = 1",
+        (const char *[]){"touched_same", "touched6_same"},
+        2,
+        (const char *[]){"1", "1"},
+        1,
+        "on update timestamp no-op preserves values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE on_update_touch SET v = 11 WHERE id = 1",
+        1,
+        "on update timestamp changed affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT v, touched <> '2000-01-01 00:00:00' AS touched_changed, "
+        "touched6 <> '2000-01-01 00:00:00.000000' AS touched6_changed, "
+        "LENGTH(touched6) AS touched6_len "
+        "FROM on_update_touch WHERE id = 1",
+        (const char *[]){"v", "touched_changed", "touched6_changed", "touched6_len"},
+        4,
+        (const char *[]){"11", "1", "1", "26"},
+        1,
+        "on update timestamp changed refreshes values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE on_update_touch SET v = 21, touched = touched, touched6 = touched6 "
+        "WHERE id = 2",
+        1,
+        "on update timestamp explicit assignment affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT v, touched = '2000-01-01 00:00:00' AS touched_same, "
+        "touched6 = '2000-01-01 00:00:00.000000' AS touched6_same "
+        "FROM on_update_touch WHERE id = 2",
+        (const char *[]){"v", "touched_same", "touched6_same"},
+        3,
+        (const char *[]){"21", "1", "1"},
+        1,
+        "on update timestamp explicit assignment suppresses refresh"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE on_update_touch SET v = v + 100 WHERE id IN (3, 4)",
+        2,
+        "on update timestamp multi-row affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(DISTINCT touched6) AS distinct_touched, "
+        "MIN(touched6 <> '2000-01-01 00:00:00.000000') AS all_changed "
+        "FROM on_update_touch WHERE id IN (3, 4)",
+        (const char *[]){"distinct_touched", "all_changed"},
+        2,
+        (const char *[]){"1", "1"},
+        1,
+        "on update timestamp statement-stable value"
+    );
+
     failures += prepare_sql(
         database,
         "UPDATE t SET a = DEFAULT, c = DEFAULT, nn = DEFAULT WHERE id = 13",
@@ -66908,6 +67048,70 @@ static int test_update_single_table_execution(void) {
     failures += expect_int64(mylite_affected_rows(stmt), 0, "joined update no-op affected");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_on_update_target ("
+        "id INT PRIMARY KEY, v INT, "
+        "touched DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) "
+        "ON UPDATE CURRENT_TIMESTAMP(6))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_on_update_source ("
+        "id INT PRIMARY KEY, target_id INT, new_v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_on_update_target VALUES "
+        "(1,10,'2000-01-01 00:00:00.000000'),"
+        "(2,20,'2000-01-01 00:00:00.000000')",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_on_update_source VALUES (1,1,11),(2,2,22)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE joined_on_update_target AS t "
+        "JOIN joined_on_update_source AS s ON s.target_id = t.id "
+        "SET t.v = s.new_v WHERE t.id = 1",
+        1,
+        "joined update on update timestamp affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT v, touched <> '2000-01-01 00:00:00.000000' AS changed, "
+        "LENGTH(touched) AS len "
+        "FROM joined_on_update_target WHERE id = 1",
+        (const char *[]){"v", "changed", "len"},
+        3,
+        (const char *[]){"11", "1", "26"},
+        1,
+        "joined update on update timestamp refresh"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE joined_on_update_target AS t "
+        "JOIN joined_on_update_source AS s ON s.target_id = t.id "
+        "SET t.v = s.new_v, t.touched = t.touched WHERE t.id = 2",
+        1,
+        "joined update explicit timestamp assignment affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT v, touched = '2000-01-01 00:00:00.000000' AS preserved "
+        "FROM joined_on_update_target WHERE id = 2",
+        (const char *[]){"v", "preserved"},
+        2,
+        (const char *[]){"22", "1"},
+        1,
+        "joined update explicit timestamp assignment suppresses refresh"
+    );
 
     failures += prepare_sql(
         database,

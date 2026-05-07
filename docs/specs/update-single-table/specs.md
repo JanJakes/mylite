@@ -52,8 +52,6 @@ Out of scope for Task 19:
 - `DEFAULT(col_name)` function syntax
 - generated-column runtime support until generated columns exist in MyLite's
   catalog and write path
-- `ON UPDATE` automatic timestamp behavior until temporal automatic-update
-  columns are implemented
 - triggers, foreign keys, cascading actions, check constraints, views,
   privileges, binary logging, replication safety, and optimizer plan details
 - full strict/non-strict assignment and predicate conversion behavior beyond
@@ -759,8 +757,10 @@ Use SQLite for durable storage, not as the semantic authority for Task 19.
 - Generated-column DDL/runtime behavior is deferred. Task 19 should include
   hooks and diagnostics rather than storing explicit values into generated
   columns.
-- Automatic `ON UPDATE` temporal column behavior is deferred until the temporal
-  automatic-update feature is specified and implemented.
+- Automatic `ON UPDATE CURRENT_TIMESTAMP` refresh is implemented for supported
+  `TIMESTAMP` and `DATETIME` columns during single-table `UPDATE`; MyLite uses
+  a statement-stable UTC timestamp, skips refresh for no-op rows, and suppresses
+  refresh when the column is explicitly assigned by the statement.
 - Full type conversion, range clipping, string truncation, temporal validation,
   collation coercibility, and non-default SQL modes are deferred except where
   already implemented by the value/type foundations.
@@ -858,7 +858,7 @@ these cases.
 | `UPDATE g SET a = a + 5 WHERE id = 1` for generated columns | generated values recompute; deferred until generated columns exist |
 | `UPDATE g SET b = DEFAULT, c = DEFAULT WHERE id = 1` | accepted no-op for generated columns; deferred until generated columns exist |
 | `UPDATE g SET b = 99 WHERE id = 1` | error 3105; deferred until generated columns exist |
-| automatic `ON UPDATE CURRENT_TIMESTAMP` column refresh | deferred until temporal automatic-update behavior is specified |
+| automatic `ON UPDATE CURRENT_TIMESTAMP` column refresh | supported for changed rows; no-op rows preserve stored values; explicit assignments suppress automatic refresh |
 
 ### Type conversion and warnings
 

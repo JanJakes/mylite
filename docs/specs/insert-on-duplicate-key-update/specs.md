@@ -270,6 +270,14 @@ row's update would duplicate another unique key and the second row inserted
 successfully reported one affected row, duplicate count one, and warnings for
 both the `VALUES()` deprecation and the demoted duplicate.
 
+### Automatic `ON UPDATE` columns
+
+When the duplicate-key branch changes an existing row, supported
+`ON UPDATE CURRENT_TIMESTAMP` columns are refreshed with the statement-stable
+current timestamp unless the update assignment list explicitly assigns that
+column. A duplicate branch that makes no row change leaves automatic-update
+columns unchanged and reports zero affected rows.
+
 ### AUTO_INCREMENT and `LAST_INSERT_ID()`
 
 For an ODKU statement over an `AUTO_INCREMENT` table:

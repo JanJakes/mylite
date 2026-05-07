@@ -176,6 +176,10 @@ static int load_insert_column_from_catalog_row(
     column.has_default = row->has_default;
     column.auto_increment = mylite_text_contains_word(column.extra, "auto_increment");
     column.generated_default = mylite_text_contains_word(column.extra, "DEFAULT_GENERATED");
+    column.on_update_current_timestamp =
+        mylite_text_contains_word(column.extra, "on") &&
+        mylite_text_contains_word(column.extra, "update") &&
+        mylite_text_contains_word(column.extra, "CURRENT_TIMESTAMP");
     column.has_character_maximum_length = row->has_character_maximum_length;
     column.has_numeric_scale = row->has_numeric_scale;
     if (column.auto_increment) {

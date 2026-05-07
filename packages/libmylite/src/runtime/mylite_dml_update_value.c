@@ -2,14 +2,18 @@
 
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
+#include "mylite_dml_insert_bound_value.h"
 #include "mylite_dml_insert_default.h"
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
 #include "sql/mylite_expression.h"
 
+#include <ctype.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static bool update_values_equal(
     const struct mylite_expression_value *left,
@@ -21,6 +25,41 @@ static int resolve_update_implicit_default_value(
     const struct mylite_insert_table_column *column,
     struct mylite_expression_value *out_value
 );
+
+static bool column_is_explicitly_assigned(
+    size_t column_index,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count
+);
+
+static int resolve_on_update_current_timestamp_expression(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    struct mylite_expression_value *out_value
+);
+
+static int resolve_on_update_current_timestamp_bound_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int copy_on_update_current_timestamp_text(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    char **out_text
+);
+
+static int ensure_dml_timestamp_state(struct mylite_dml_timestamp_state *timestamp_state);
+
+static unsigned int on_update_current_timestamp_fsp(
+    const struct mylite_insert_table_column *column
+);
+
+static bool parse_on_update_column_type_fsp(const char *column_type, unsigned int *out_fsp);
 
 int mylite_dml_copy_update_candidate_values(
     mylite_db *database,
@@ -45,6 +84,107 @@ int mylite_dml_copy_update_candidate_values(
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
+    }
+    return MYLITE_OK;
+}
+
+int mylite_dml_apply_update_on_update_current_timestamps(
+    mylite_db *database,
+    const struct mylite_insert_table *write_table,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
+    const struct mylite_update_row *stored,
+    struct mylite_update_row *candidate,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    bool *out_row_changed
+) {
+    bool row_changed = false;
+
+    if (database == NULL || write_table == NULL || stored == NULL || candidate == NULL ||
+        timestamp_state == NULL || out_row_changed == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    row_changed = mylite_dml_update_row_changed(stored, candidate);
+    *out_row_changed = row_changed;
+    if (!row_changed) {
+        return MYLITE_OK;
+    }
+
+    for (size_t index = 0U; index < write_table->column_count; ++index) {
+        const struct mylite_insert_table_column *column = &write_table->columns[index];
+        struct mylite_expression_value value = {0};
+        int status = MYLITE_OK;
+
+        if (!column->on_update_current_timestamp ||
+            column_is_explicitly_assigned(index, explicit_column_indexes, explicit_column_count)) {
+            continue;
+        }
+        if (candidate->values == NULL || index >= candidate->value_count) {
+            return MYLITE_MISUSE;
+        }
+
+        status = resolve_on_update_current_timestamp_expression(
+            database,
+            column,
+            timestamp_state,
+            &value
+        );
+        if (status != MYLITE_OK) {
+            mylite_expression_value_deinit(&value);
+            return status;
+        }
+        mylite_expression_value_deinit(&candidate->values[index]);
+        candidate->values[index] = value;
+    }
+    return MYLITE_OK;
+}
+
+int mylite_dml_apply_insert_on_update_current_timestamps(
+    mylite_db *database,
+    const struct mylite_insert_table *table,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
+    const struct mylite_insert_bound_value *stored,
+    struct mylite_insert_bound_value *candidate,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    bool *out_row_changed
+) {
+    bool row_changed = false;
+
+    if (database == NULL || table == NULL || stored == NULL || candidate == NULL ||
+        timestamp_state == NULL || out_row_changed == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    row_changed = mylite_dml_insert_update_row_changed(stored, candidate, table->column_count);
+    *out_row_changed = row_changed;
+    if (!row_changed) {
+        return MYLITE_OK;
+    }
+
+    for (size_t index = 0U; index < table->column_count; ++index) {
+        const struct mylite_insert_table_column *column = &table->columns[index];
+        struct mylite_insert_bound_value value = {0};
+        int status = MYLITE_OK;
+
+        if (!column->on_update_current_timestamp ||
+            column_is_explicitly_assigned(index, explicit_column_indexes, explicit_column_count)) {
+            continue;
+        }
+
+        status = resolve_on_update_current_timestamp_bound_value(
+            database,
+            column,
+            timestamp_state,
+            &value
+        );
+        if (status != MYLITE_OK) {
+            mylite_dml_insert_bound_value_deinit(&value);
+            return status;
+        }
+        mylite_dml_insert_bound_value_deinit(&candidate[index]);
+        candidate[index] = value;
     }
     return MYLITE_OK;
 }
@@ -284,6 +424,202 @@ static int resolve_update_implicit_default_value(
     }
     mylite_dml_insert_bound_value_deinit(&value);
     return status;
+}
+
+static bool column_is_explicitly_assigned(
+    size_t column_index,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count
+) {
+    for (size_t index = 0U; index < explicit_column_count; ++index) {
+        if (explicit_column_indexes[index] == column_index) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int resolve_on_update_current_timestamp_expression(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    struct mylite_expression_value *out_value
+) {
+    char *timestamp = NULL;
+    int status =
+        copy_on_update_current_timestamp_text(database, column, timestamp_state, &timestamp);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_TEXT,
+        .text_value = timestamp,
+        .text_length = strlen(timestamp),
+    };
+    return MYLITE_OK;
+}
+
+static int resolve_on_update_current_timestamp_bound_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    struct mylite_insert_bound_value *out_value
+) {
+    char *timestamp = NULL;
+    int status =
+        copy_on_update_current_timestamp_text(database, column, timestamp_state, &timestamp);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *out_value = (struct mylite_insert_bound_value){
+        .kind = MYLITE_INSERT_BOUND_TEXT,
+        .text_value = timestamp,
+        .text_length = strlen(timestamp),
+    };
+    return MYLITE_OK;
+}
+
+static int copy_on_update_current_timestamp_text(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_timestamp_state *timestamp_state,
+    char **out_text
+) {
+    enum {
+        timestamp_length = 19U,
+        microsecond_length = 6U,
+    };
+
+    unsigned int fsp = on_update_current_timestamp_fsp(column);
+    size_t text_length = timestamp_length + (fsp == 0U ? 0U : 1U + fsp);
+    char *timestamp = NULL;
+    time_t seconds = 0;
+    struct tm tm_value;
+    int status = MYLITE_OK;
+
+    if (out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+
+    status = ensure_dml_timestamp_state(timestamp_state);
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        }
+        return status;
+    }
+
+    timestamp = malloc(text_length + 1U);
+    if (timestamp == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    seconds = (time_t)timestamp_state->seconds;
+#ifdef _WIN32
+    if (gmtime_s(&tm_value, &seconds) != 0) {
+        free(timestamp);
+        (void)mylite_diagnostics_set_error_message(database, "Could not format timestamp value");
+        return MYLITE_EXEC_ERROR;
+    }
+#else
+    if (gmtime_r(&seconds, &tm_value) == NULL) {
+        free(timestamp);
+        (void)mylite_diagnostics_set_error_message(database, "Could not format timestamp value");
+        return MYLITE_EXEC_ERROR;
+    }
+#endif
+    if (strftime(timestamp, timestamp_length + 1U, "%Y-%m-%d %H:%M:%S", &tm_value) == 0U) {
+        free(timestamp);
+        (void)mylite_diagnostics_set_error_message(database, "Could not format timestamp value");
+        return MYLITE_EXEC_ERROR;
+    }
+    if (fsp > 0U) {
+        char microsecond_text[microsecond_length + 1U];
+
+        if (snprintf(
+                microsecond_text,
+                sizeof(microsecond_text),
+                "%06ld",
+                timestamp_state->microseconds
+            ) != microsecond_length) {
+            free(timestamp);
+            (void)
+                mylite_diagnostics_set_error_message(database, "Could not format timestamp value");
+            return MYLITE_EXEC_ERROR;
+        }
+        timestamp[timestamp_length] = '.';
+        memcpy(timestamp + timestamp_length + 1U, microsecond_text, fsp);
+        timestamp[text_length] = '\0';
+    }
+
+    *out_text = timestamp;
+    return MYLITE_OK;
+}
+
+static int ensure_dml_timestamp_state(struct mylite_dml_timestamp_state *timestamp_state) {
+    time_t now = time(NULL);
+    long microseconds = 0;
+
+    if (timestamp_state == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (timestamp_state->initialized) {
+        return MYLITE_OK;
+    }
+#ifdef TIME_UTC
+    {
+        struct timespec timespec_now;
+
+        if (timespec_get(&timespec_now, TIME_UTC) == TIME_UTC) {
+            now = timespec_now.tv_sec;
+            microseconds = timespec_now.tv_nsec / 1000L;
+        }
+    }
+#endif
+    timestamp_state->seconds = (int64_t)now;
+    timestamp_state->microseconds = microseconds;
+    timestamp_state->initialized = true;
+    return MYLITE_OK;
+}
+
+static unsigned int on_update_current_timestamp_fsp(
+    const struct mylite_insert_table_column *column
+) {
+    unsigned int fsp = 0U;
+
+    if (column == NULL || (!mylite_ascii_case_equal(column->data_type, "datetime") &&
+                           !mylite_ascii_case_equal(column->data_type, "timestamp"))) {
+        return 0U;
+    }
+    (void)parse_on_update_column_type_fsp(column->column_type, &fsp);
+    return fsp > 6U ? 6U : fsp;
+}
+
+static bool parse_on_update_column_type_fsp(const char *column_type, unsigned int *out_fsp) {
+    const char *open = column_type == NULL ? NULL : strchr(column_type, '(');
+    const char *close = open == NULL ? NULL : strchr(open, ')');
+    unsigned int fsp = 0U;
+
+    if (out_fsp != NULL) {
+        *out_fsp = 0U;
+    }
+    if (open == NULL || close == NULL || close <= open + 1) {
+        return false;
+    }
+    for (const char *cursor = open + 1; cursor < close; ++cursor) {
+        if (!isdigit((unsigned char)*cursor)) {
+            return false;
+        }
+        fsp = (fsp * 10U) + (unsigned int)(*cursor - '0');
+    }
+    if (out_fsp != NULL) {
+        *out_fsp = fsp;
+    }
+    return true;
 }
 
 bool mylite_dml_update_row_changed(

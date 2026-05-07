@@ -45175,6 +45175,13 @@ static int test_show_status_execution(void) {
     };
     static const char *const slow_queries_values[] = {"Slow_queries", "0"};
     static const char *const last_query_cost_values[] = {"Last_query_cost", "0.000000"};
+    static const char *const aborted_status_values[] = {
+        "Aborted_clients",
+        "0",
+        "Aborted_connects",
+        "0",
+    };
+    static const char *const com_alter_values[] = {"Com_alter_table", "0"};
     static const char *const com_select_values[] = {"Com_select", "0"};
     static const char *const com_show_values[] = {
         "Com_show_errors",
@@ -45192,9 +45199,70 @@ static int test_show_status_execution(void) {
         "Com_show_warnings",
         "0",
     };
+    static const char *const com_stmt_values[] = {
+        "Com_stmt_close",
+        "0",
+        "Com_stmt_execute",
+        "0",
+        "Com_stmt_fetch",
+        "0",
+        "Com_stmt_prepare",
+        "0",
+        "Com_stmt_reprepare",
+        "0",
+        "Com_stmt_reset",
+        "0",
+        "Com_stmt_send_long_data",
+        "0",
+    };
+    static const char *const handler_status_values[] = {
+        "Handler_commit",    "0", "Handler_delete",    "0", "Handler_external_lock",      "0",
+        "Handler_mrr_init",  "0", "Handler_prepare",   "0", "Handler_read_first",         "0",
+        "Handler_read_key",  "0", "Handler_read_last", "0", "Handler_read_next",          "0",
+        "Handler_read_prev", "0", "Handler_read_rnd",  "0", "Handler_read_rnd_next",      "0",
+        "Handler_rollback",  "0", "Handler_savepoint", "0", "Handler_savepoint_rollback", "0",
+        "Handler_update",    "0", "Handler_write",     "0",
+    };
+    static const char *const open_table_values[] = {
+        "Open_tables",
+        "0",
+        "Opened_tables",
+        "0",
+    };
+    static const char *const select_status_values[] = {
+        "Select_full_join",
+        "0",
+        "Select_full_range_join",
+        "0",
+        "Select_range",
+        "0",
+        "Select_range_check",
+        "0",
+        "Select_scan",
+        "0",
+    };
+    static const char *const sort_status_values[] = {
+        "Sort_merge_passes",
+        "0",
+        "Sort_range",
+        "0",
+        "Sort_rows",
+        "0",
+        "Sort_scan",
+        "0",
+    };
+    static const char *const table_lock_values[] = {
+        "Table_locks_immediate",
+        "0",
+        "Table_locks_waited",
+        "0",
+    };
     static const struct show_status_row_expectation catalog_rows[] = {
+        {"Aborted_clients", "0"},
+        {"Aborted_connects", "0"},
         {"Bytes_received", "0"},
         {"Bytes_sent", "0"},
+        {"Com_alter_table", "0"},
         {"Com_begin", "0"},
         {"Com_commit", "0"},
         {"Com_create_db", "0"},
@@ -45220,15 +45288,52 @@ static int test_show_status_execution(void) {
         {"Com_show_tables", "0"},
         {"Com_show_variables", "0"},
         {"Com_show_warnings", "0"},
+        {"Com_stmt_close", "0"},
+        {"Com_stmt_execute", "0"},
+        {"Com_stmt_fetch", "0"},
+        {"Com_stmt_prepare", "0"},
+        {"Com_stmt_reprepare", "0"},
+        {"Com_stmt_reset", "0"},
+        {"Com_stmt_send_long_data", "0"},
         {"Com_truncate", "0"},
         {"Com_update", "0"},
         {"Connections", "1"},
         {"Created_tmp_disk_tables", "0"},
         {"Created_tmp_tables", "0"},
+        {"Handler_commit", "0"},
+        {"Handler_delete", "0"},
+        {"Handler_external_lock", "0"},
+        {"Handler_mrr_init", "0"},
+        {"Handler_prepare", "0"},
+        {"Handler_read_first", "0"},
+        {"Handler_read_key", "0"},
+        {"Handler_read_last", "0"},
+        {"Handler_read_next", "0"},
+        {"Handler_read_prev", "0"},
+        {"Handler_read_rnd", "0"},
+        {"Handler_read_rnd_next", "0"},
+        {"Handler_rollback", "0"},
+        {"Handler_savepoint", "0"},
+        {"Handler_savepoint_rollback", "0"},
+        {"Handler_update", "0"},
+        {"Handler_write", "0"},
         {"Last_query_cost", "0.000000"},
+        {"Open_tables", "0"},
+        {"Opened_tables", "0"},
         {"Queries", "0"},
         {"Questions", "0"},
+        {"Select_full_join", "0"},
+        {"Select_full_range_join", "0"},
+        {"Select_range", "0"},
+        {"Select_range_check", "0"},
+        {"Select_scan", "0"},
         {"Slow_queries", "0"},
+        {"Sort_merge_passes", "0"},
+        {"Sort_range", "0"},
+        {"Sort_rows", "0"},
+        {"Sort_scan", "0"},
+        {"Table_locks_immediate", "0"},
+        {"Table_locks_waited", "0"},
         {"Threads_cached", "0"},
         {"Threads_connected", "1"},
         {"Threads_created", "1"},
@@ -45365,6 +45470,15 @@ static int test_show_status_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SHOW STATUS LIKE 'Aborted\\_%'",
+        columns,
+        2,
+        aborted_status_values,
+        2,
+        "show status aborted placeholders"
+    );
+    failures += expect_select_rows(
+        database,
         "SHOW STATUS LIKE 'Created\\_tmp\\_%'",
         columns,
         2,
@@ -45380,6 +45494,15 @@ static int test_show_status_execution(void) {
         last_query_cost_values,
         1,
         "show status last query cost placeholder"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW STATUS LIKE 'Com\\_alter\\_%'",
+        columns,
+        2,
+        com_alter_values,
+        1,
+        "show status com alter placeholders"
     );
     failures += expect_select_rows(
         database,
@@ -45407,6 +45530,60 @@ static int test_show_status_execution(void) {
         com_show_values,
         7,
         "show status escaped com show rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW STATUS LIKE 'Com\\_stmt\\_%'",
+        columns,
+        2,
+        com_stmt_values,
+        7,
+        "show status com stmt placeholders"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW STATUS LIKE 'Handler\\_%'",
+        columns,
+        2,
+        handler_status_values,
+        17,
+        "show status handler placeholders"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW STATUS LIKE 'Open%tables'",
+        columns,
+        2,
+        open_table_values,
+        2,
+        "show status open table placeholders"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW STATUS LIKE 'Select\\_%'",
+        columns,
+        2,
+        select_status_values,
+        5,
+        "show status select placeholders"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW STATUS LIKE 'Sort\\_%'",
+        columns,
+        2,
+        sort_status_values,
+        4,
+        "show status sort placeholders"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW STATUS LIKE 'Table\\_locks\\_%'",
+        columns,
+        2,
+        table_lock_values,
+        2,
+        "show status table lock placeholders"
     );
     failures += expect_select_rows(
         database,

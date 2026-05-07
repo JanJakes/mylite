@@ -24,8 +24,9 @@ Deferred surfaces:
 - complete global/session counter accounting
 - `FLUSH STATUS` and resettable counter lifetimes
 - Performance Schema status-variable tables
-- status variables for networking, SSL, replication, plugins, storage engines,
-  table locks, temporary tables, prepared statements, and protocol byte counts
+- accurate status counters for networking, SSL, replication, plugins, storage
+  engines, table locks, temporary tables, prepared statements, and protocol
+  byte counts beyond the documented placeholders below
 
 ## Compatibility Sources
 
@@ -145,6 +146,11 @@ Catalog for this slice:
 
 | Variable | Session value | Global value | Notes |
 | --- | --- | --- | --- |
+| `Aborted_clients` | `0` | `0` | Placeholder connection-abort counter; MyLite has no server-side network connection lifecycle yet. |
+| `Aborted_connects` | `0` | `0` | Placeholder failed-connect counter. |
+| `Bytes_received` | `0` | `0` | Placeholder protocol byte counter. |
+| `Bytes_sent` | `0` | `0` | Placeholder protocol byte counter. |
+| `Com_alter_table` | `0` | `0` | Placeholder command counter. |
 | `Com_begin` | `0` | `0` | Placeholder command counter; exact statement accounting is deferred. |
 | `Com_commit` | `0` | `0` | Placeholder command counter. |
 | `Com_create_db` | `0` | `0` | Placeholder command counter. |
@@ -170,10 +176,52 @@ Catalog for this slice:
 | `Com_show_tables` | `0` | `0` | Placeholder command counter. |
 | `Com_show_variables` | `0` | `0` | Placeholder command counter. |
 | `Com_show_warnings` | `0` | `0` | Placeholder command counter. |
+| `Com_stmt_close` | `0` | `0` | Placeholder prepared-statement command counter. |
+| `Com_stmt_execute` | `0` | `0` | Placeholder prepared-statement command counter. |
+| `Com_stmt_fetch` | `0` | `0` | Placeholder prepared-statement command counter. |
+| `Com_stmt_prepare` | `0` | `0` | Placeholder prepared-statement command counter. |
+| `Com_stmt_reprepare` | `0` | `0` | Placeholder prepared-statement command counter. |
+| `Com_stmt_reset` | `0` | `0` | Placeholder prepared-statement command counter. |
+| `Com_stmt_send_long_data` | `0` | `0` | Placeholder prepared-statement command counter. |
 | `Com_truncate` | `0` | `0` | Placeholder command counter. |
 | `Com_update` | `0` | `0` | Placeholder command counter. |
 | `Connections` | `1` | `1` | A MyLite handle represents one embedded connection. Broader process-wide connection counting is deferred. |
+| `Created_tmp_disk_tables` | `0` | `0` | Placeholder temporary-table counter. |
+| `Created_tmp_tables` | `0` | `0` | Placeholder temporary-table counter. |
+| `Handler_commit` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_delete` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_external_lock` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_mrr_init` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_prepare` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_read_first` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_read_key` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_read_last` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_read_next` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_read_prev` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_read_rnd` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_read_rnd_next` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_rollback` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_savepoint` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_savepoint_rollback` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_update` | `0` | `0` | Placeholder handler operation counter. |
+| `Handler_write` | `0` | `0` | Placeholder handler operation counter. |
+| `Last_query_cost` | `0.000000` | `0.000000` | Placeholder optimizer-cost value. |
+| `Open_tables` | `0` | `0` | Placeholder table-cache counter; MyLite does not expose a MySQL server table cache. |
+| `Opened_tables` | `0` | `0` | Placeholder table-cache counter. |
+| `Queries` | `0` | `0` | Placeholder statement counter; exact prepare/execute/protocol accounting is deferred. |
 | `Questions` | `0` | `0` | Placeholder statement counter; exact prepare/execute/protocol accounting is deferred. |
+| `Select_full_join` | `0` | `0` | Placeholder SELECT optimizer counter. |
+| `Select_full_range_join` | `0` | `0` | Placeholder SELECT optimizer counter. |
+| `Select_range` | `0` | `0` | Placeholder SELECT optimizer counter. |
+| `Select_range_check` | `0` | `0` | Placeholder SELECT optimizer counter. |
+| `Select_scan` | `0` | `0` | Placeholder SELECT optimizer counter. |
+| `Slow_queries` | `0` | `0` | Placeholder slow-query counter. |
+| `Sort_merge_passes` | `0` | `0` | Placeholder sort counter. |
+| `Sort_range` | `0` | `0` | Placeholder sort counter. |
+| `Sort_rows` | `0` | `0` | Placeholder sort counter. |
+| `Sort_scan` | `0` | `0` | Placeholder sort counter. |
+| `Table_locks_immediate` | `0` | `0` | Placeholder table-lock counter. |
+| `Table_locks_waited` | `0` | `0` | Placeholder table-lock counter. |
 | `Threads_cached` | `0` | `0` | MyLite does not maintain a server thread cache. |
 | `Threads_connected` | `1` | `1` | A live MyLite handle represents one embedded connection. |
 | `Threads_created` | `1` | `1` | Placeholder embedded-thread value for the current handle. |

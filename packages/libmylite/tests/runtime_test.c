@@ -44922,11 +44922,12 @@ static int test_show_table_status_execution(void) {
          .nullable = 1},
         {.name = "Comment",
          .table_name = "TABLES",
-         .declared_length = 6144U,
-         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .declared_length = 2048U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
          .charset_id = 8U,
-         .flags_set = MYLITE_FIELD_FLAG_BLOB,
-         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .flags_clear =
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
          .nullable = 1},
     };
     static const char *const selected_values[] = {

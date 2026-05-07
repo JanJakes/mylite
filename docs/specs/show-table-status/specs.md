@@ -155,7 +155,7 @@ for the covered C API surface:
 | `Collation` | `VAR_STRING` | `64` | latin1 id `8` | `NO_DEFAULT_VALUE`, nullable |
 | `Checksum` | `LONGLONG` | `21` | binary id `63` | `NUM`, nullable |
 | `Create_options` | `VAR_STRING` | `256` | latin1 id `8` | nullable |
-| `Comment` | `BLOB` | `6144` | latin1 id `8` | `BLOB`, nullable |
+| `Comment` | `VAR_STRING` | `2048` | latin1 id `8` | nullable, not-fixed decimals |
 
 For `information_schema` system-view rows, MyLite returns deterministic
 MySQL-shaped placeholder rows:

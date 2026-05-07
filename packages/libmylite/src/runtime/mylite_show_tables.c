@@ -38,6 +38,8 @@ static struct mylite_field_descriptor show_tables_latin1_descriptor(
 
 static int attach_show_table_status_result_metadata(mylite_db *database, mylite_stmt *stmt);
 
+static struct mylite_field_descriptor show_table_status_comment_descriptor(void);
+
 static struct mylite_field_descriptor show_table_status_descriptor(
     int type,
     uint64_t length,
@@ -419,12 +421,7 @@ static int attach_show_table_status_result_metadata(mylite_db *database, mylite_
          .descriptor = show_table_status_descriptor(MYLITE_FIELD_TYPE_VAR_STRING, 256U, 0U, true)},
         {.name = "Comment",
          .table_name = "TABLES",
-         .descriptor = show_table_status_descriptor(
-             MYLITE_FIELD_TYPE_BLOB,
-             6144U,
-             MYLITE_FIELD_FLAG_BLOB,
-             true
-         )},
+         .descriptor = show_table_status_comment_descriptor()},
     };
 
     return mylite_result_metadata_attach_columns(
@@ -433,6 +430,13 @@ static int attach_show_table_status_result_metadata(mylite_db *database, mylite_
         columns,
         sizeof(columns) / sizeof(columns[0])
     );
+}
+
+static struct mylite_field_descriptor show_table_status_comment_descriptor(void) {
+    struct mylite_field_descriptor descriptor =
+        show_table_status_descriptor(MYLITE_FIELD_TYPE_VAR_STRING, 2048U, 0U, true);
+    descriptor.decimals = mylite_mysql_not_fixed_decimals;
+    return descriptor;
 }
 
 static struct mylite_field_descriptor show_table_status_descriptor(

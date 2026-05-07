@@ -60,6 +60,13 @@ For `BIGINT UNSIGNED`, MySQL accepts `18446744073709551615` and rejects
 `18446744073709551615` with warning 1264. A quoted unsigned endpoint with
 trailing characters, such as `'18446744073709551615x'`, stores the endpoint in
 non-strict mode with warning 1265 and rejects in strict mode with error 1265.
+For signed `BIGINT`, MySQL accepts `-9223372036854775808` and rejects
+`-9223372036854775809` in strict mode with error 1264. In non-strict or
+`IGNORE` assignment paths, values below the signed endpoint clip to
+`-9223372036854775808` with warning 1264. A quoted signed endpoint with
+trailing characters, such as `'-9223372036854775808x'`, stores the endpoint in
+non-strict mode with warning 1265; when the numeric prefix is already below the
+signed endpoint, MySQL reports the range warning 1264 instead.
 
 For `DECIMAL(5,2)`, numeric or string `4.567` stores as `4.57` and records note
 1265 in both strict and non-strict modes. String `'4.567x'` rejects with error
@@ -86,6 +93,8 @@ For signed integer-family columns, MyLite:
 - clips out-of-range signed and unsigned `TINYINT`, `SMALLINT`, `MEDIUMINT`,
   `INT`, and `BIGINT` values to the nearest MySQL endpoint in non-strict and
   `IGNORE` paths
+- parses signed integer text prefixes by magnitude for values at and below
+  `INT64_MIN`, avoiding lossy floating-point coercion before range diagnostics
 - stores covered `BIGINT UNSIGNED` values above `INT64_MAX` as canonical
   decimal text in MyLite's physical store so they can be read back exactly
 - reports range condition 1264 before truncation condition 1265 when both
@@ -120,6 +129,8 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
   `BIGINT` endpoints
 - exact `BIGINT UNSIGNED` endpoint storage and overflow diagnostics for direct
   numeric literals, quoted values, and `CAST(... AS UNSIGNED)` assignments
+- exact signed `BIGINT` minimum storage, underflow diagnostics, non-strict
+  clipping, and trailing-character precedence for direct and quoted values
 - decimal scale rounding and stored text shape
 - strict rejection and non-strict note coercion for decimal strings with
   trailing characters

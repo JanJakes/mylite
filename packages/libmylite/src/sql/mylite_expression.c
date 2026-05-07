@@ -3150,6 +3150,28 @@ static int eval_literal(
     struct mylite_expression_value *out_value
 );
 
+static int handle_integer_literal_exact_value(
+    char **io_text,
+    struct mylite_expression_value *out_value
+);
+
+static int handle_negative_integer_literal_exact_value(
+    char **io_text,
+    struct mylite_expression_value *out_value
+);
+
+static int handle_unsigned_integer_literal_exact_value(
+    char **io_text,
+    struct mylite_expression_value *out_value
+);
+
+static int handle_decimal_integer_literal_exact_value(
+    char **io_text,
+    struct mylite_expression_value *out_value
+);
+
+static bool integer_literal_is_outside_int64(struct char_integer_parse integer);
+
 static int eval_temporal_literal(
     const struct mylite_sql_ast_node *node,
     enum mylite_expression_temporal_type temporal_type,
@@ -3581,6 +3603,16 @@ static int eval_numeric_unary(
     enum mylite_sql_ast_operator operator_kind,
     const struct mylite_expression_value *operand,
     struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int set_negative_uint64_value(
+    const struct mylite_expression_value *operand,
+    struct mylite_expression_value *out_value
+);
+
+static int set_negative_integer_text_value(
+    const struct mylite_expression_value *operand,
     struct mylite_expression_value *out_value
 );
 
@@ -20509,7 +20541,7 @@ static int eval_literal(
     struct mylite_expression_value *out_value
 ) {
     char *text = NULL;
-    char *end = NULL;
+    int handled = 0;
     errno = 0;
 
     switch (node->literal_kind) {
@@ -20533,23 +20565,9 @@ static int eval_literal(
         if (text == NULL) {
             return -1;
         }
-        if (text[0] != '-' && strlen(text) >= MYLITE_EXPRESSION_UINT64_DIGITS) {
-            unsigned long long unsigned_value =
-                strtoull(text, &end, MYLITE_EXPRESSION_DECIMAL_BASE);
-            if (end != text && *end == '\0') {
-                if (errno == 0 && unsigned_value > (unsigned long long)INT64_MAX) {
-                    out_value->kind = MYLITE_EXPRESSION_VALUE_UINT64;
-                    out_value->uint64_value = (uint64_t)unsigned_value;
-                    free(text);
-                    return 0;
-                }
-                if (errno == ERANGE) {
-                    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-                    out_value->text_value = text;
-                    out_value->text_length = strlen(text);
-                    return 0;
-                }
-            }
+        handled = handle_integer_literal_exact_value(&text, out_value);
+        if (handled != 0) {
+            return 0;
         }
         errno = 0;
         out_value->kind = MYLITE_EXPRESSION_VALUE_INT64;
@@ -20561,6 +20579,10 @@ static int eval_literal(
         text = copy_span_text(node->span.text, node->span.length);
         if (text == NULL) {
             return -1;
+        }
+        handled = handle_decimal_integer_literal_exact_value(&text, out_value);
+        if (handled != 0) {
+            return 0;
         }
         out_value->kind = MYLITE_EXPRESSION_VALUE_REAL;
         out_value->real_value = strtod(text, NULL);
@@ -20586,6 +20608,115 @@ static int eval_literal(
         return -1;
     }
     return -1;
+}
+
+static int handle_integer_literal_exact_value(
+    char **io_text,
+    struct mylite_expression_value *out_value
+) {
+    char *text = *io_text;
+    size_t length = strlen(text);
+
+    if (length == 0U) {
+        return 0;
+    }
+    if (text[0] == '-' && length > 1U) {
+        return handle_negative_integer_literal_exact_value(io_text, out_value);
+    }
+    if (text[0] != '-' && length >= MYLITE_EXPRESSION_UINT64_DIGITS) {
+        return handle_unsigned_integer_literal_exact_value(io_text, out_value);
+    }
+    return 0;
+}
+
+static int handle_negative_integer_literal_exact_value(
+    char **io_text,
+    struct mylite_expression_value *out_value
+) {
+    char *text = *io_text;
+    char *digits = text + 1;
+    char *end = NULL;
+    unsigned long long magnitude = 0U;
+
+    errno = 0;
+    magnitude = strtoull(digits, &end, MYLITE_EXPRESSION_DECIMAL_BASE);
+    if (end == digits || *end != '\0') {
+        return 0;
+    }
+    if (errno == 0 && (uint64_t)magnitude == mylite_expression_int64_min_magnitude) {
+        out_value->kind = MYLITE_EXPRESSION_VALUE_INT64;
+        out_value->int64_value = INT64_MIN;
+        free(text);
+        *io_text = NULL;
+        return 1;
+    }
+    if (errno == ERANGE ||
+        (errno == 0 && (uint64_t)magnitude > mylite_expression_int64_min_magnitude)) {
+        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+        out_value->text_value = text;
+        out_value->text_length = strlen(text);
+        *io_text = NULL;
+        return 1;
+    }
+    return 0;
+}
+
+static int handle_unsigned_integer_literal_exact_value(
+    char **io_text,
+    struct mylite_expression_value *out_value
+) {
+    char *text = *io_text;
+    char *end = NULL;
+    unsigned long long unsigned_value = 0U;
+
+    errno = 0;
+    unsigned_value = strtoull(text, &end, MYLITE_EXPRESSION_DECIMAL_BASE);
+    if (end == text || *end != '\0') {
+        return 0;
+    }
+    if (errno == 0 && unsigned_value > (unsigned long long)INT64_MAX) {
+        out_value->kind = MYLITE_EXPRESSION_VALUE_UINT64;
+        out_value->uint64_value = (uint64_t)unsigned_value;
+        free(text);
+        *io_text = NULL;
+        return 1;
+    }
+    if (errno == ERANGE) {
+        out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+        out_value->text_value = text;
+        out_value->text_length = strlen(text);
+        *io_text = NULL;
+        return 1;
+    }
+    return 0;
+}
+
+static int handle_decimal_integer_literal_exact_value(
+    char **io_text,
+    struct mylite_expression_value *out_value
+) {
+    char *text = *io_text;
+    struct char_integer_parse integer = parse_char_integer_text(text, strlen(text));
+
+    if (!integer.saw_digit || integer.trailing_garbage ||
+        !integer_literal_is_outside_int64(integer)) {
+        return 0;
+    }
+    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->text_value = text;
+    out_value->text_length = strlen(text);
+    *io_text = NULL;
+    return 1;
+}
+
+static bool integer_literal_is_outside_int64(struct char_integer_parse integer) {
+    if (integer.overflow) {
+        return true;
+    }
+    if (integer.negative) {
+        return integer.magnitude > mylite_expression_int64_min_magnitude;
+    }
+    return integer.magnitude > (uint64_t)INT64_MAX;
 }
 
 static int eval_temporal_literal(
@@ -22013,6 +22144,18 @@ static int eval_numeric_unary(
         }
         return 0;
     }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+        operand->kind == MYLITE_EXPRESSION_VALUE_UINT64 &&
+        operand->uint64_value >= mylite_expression_int64_min_magnitude) {
+        return set_negative_uint64_value(operand, out_value);
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+        operand->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        status = set_negative_integer_text_value(operand, out_value);
+        if (status <= 0) {
+            return status;
+        }
+    }
 
     status = value_to_numeric(operand, warnings, &number);
     if (status != 0) {
@@ -22040,6 +22183,70 @@ static int eval_numeric_unary(
         operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ? -number.real_value : number.real_value,
         out_value
     );
+}
+
+static int set_negative_uint64_value(
+    const struct mylite_expression_value *operand,
+    struct mylite_expression_value *out_value
+) {
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int length = 0;
+
+    if (operand->uint64_value == mylite_expression_int64_min_magnitude) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = INT64_MIN
+        };
+        return 0;
+    }
+
+    length = snprintf(buffer, sizeof(buffer), "-%llu", (unsigned long long)operand->uint64_value);
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    out_value->text_value = copy_span_text(buffer, (size_t)length);
+    if (out_value->text_value == NULL) {
+        return -1;
+    }
+    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->text_length = (size_t)length;
+    return 0;
+}
+
+static int set_negative_integer_text_value(
+    const struct mylite_expression_value *operand,
+    struct mylite_expression_value *out_value
+) {
+    struct char_integer_parse parsed =
+        parse_char_integer_text(operand->text_value, operand->text_length);
+    const char *digits = operand->text_value;
+    size_t digit_length = operand->text_length;
+    size_t text_length = 0U;
+
+    if (!parsed.saw_digit || parsed.negative || parsed.trailing_garbage) {
+        return 1;
+    }
+    if (!parsed.overflow && parsed.magnitude < mylite_expression_int64_min_magnitude) {
+        return 1;
+    }
+    if (!parsed.overflow && parsed.magnitude == mylite_expression_int64_min_magnitude) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = INT64_MIN
+        };
+        return 0;
+    }
+    if (digit_length > 0U && digits[0] == '+') {
+        ++digits;
+        --digit_length;
+    }
+    out_value->text_value = copy_prefixed_text('-', digits, digit_length, &text_length);
+    if (out_value->text_value == NULL) {
+        return -1;
+    }
+    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->text_length = text_length;
+    return 0;
 }
 
 static int set_unary_real_value(

@@ -169,6 +169,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
       diagnostics, direct integer literals above `UINT64_MAX`, and
       `CAST(... AS UNSIGNED)` update assignments into narrower unsigned
       integer columns.
+- [x] Align signed `BIGINT` DML underflow for direct and quoted integer values.
+      Covered behavior includes exact `-9223372036854775808` endpoint storage,
+      strict error 1264 for `-9223372036854775809`, non-strict clipping to the
+      signed endpoint, negative unsigned clipping to zero, and underflow range
+      warnings before truncation warnings for numeric strings.
 - [x] Align `CHAR`/`VARCHAR` length coercion in strict and non-strict modes for
       currently supported `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`,
       ODKU update assignments, single-table `UPDATE`, and joined `UPDATE`
@@ -178,9 +183,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [ ] Align remaining numeric/string casts and coercions in strict and
       non-strict modes, including TEXT/BLOB limits, binary-string byte edge
       cases, charset-specific string validation, floating-point column edge
-      cases, signed negative `BIGINT` underflow text paths, `BIGINT UNSIGNED`
-      auto-increment and broad unsigned arithmetic beyond signed 64-bit range,
-      scalar `CAST`/`CONVERT` value semantics, and conversion/truncation
+      cases, `BIGINT UNSIGNED` auto-increment and broad unsigned arithmetic
+      beyond signed 64-bit range, scalar `CAST`/`CONVERT` value semantics, and
+      conversion/truncation
       `IGNORE` demotion beyond the currently covered `INSERT IGNORE` invalid
       integer, integer range, invalid date, and `VARCHAR` truncation slice plus
       single-table `UPDATE IGNORE` numeric, temporal, string-length, `NULL`

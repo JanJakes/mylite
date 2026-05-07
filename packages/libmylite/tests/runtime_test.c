@@ -53887,6 +53887,24 @@ static int test_bigint_unsigned_dml_coercion_execution(void) {
         "9223372036854775807",
         NULL,
     };
+    static const char *const negative_overflow_values[] = {
+        "5",
+        "0",
+        "-9223372036854775808",
+        "0",
+    };
+    static const char *const negative_trailing_values[] = {
+        "6",
+        "0",
+        "-9223372036854775808",
+        NULL,
+    };
+    static const char *const negative_trailing_range_values[] = {
+        "7",
+        NULL,
+        "-9223372036854775808",
+        NULL,
+    };
     static const char *const update_ignore_values[] = {
         "4",
         "18446744073709551615",
@@ -53960,6 +53978,46 @@ static int test_bigint_unsigned_dml_coercion_execution(void) {
         (int)mylite_warning_code(database, 0),
         mysql_warning_data_out_of_range,
         "strict signed bigint overflow insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO bigint_unsigned_ranges(id,s) VALUES (2,-9223372036854775809)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 's' at row 1",
+        "strict signed bigint underflow insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict signed bigint underflow insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO bigint_unsigned_ranges(id,s) VALUES (2,'-9223372036854775809')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 's' at row 1",
+        "strict signed bigint text underflow insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict signed bigint text underflow insert code"
     );
     mylite_finalize(stmt);
     stmt = NULL;
@@ -54041,6 +54099,92 @@ static int test_bigint_unsigned_dml_coercion_execution(void) {
         trailing_values,
         1,
         "non-strict bigint trailing stored values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ranges(id,u,s,ui) "
+        "VALUES (5,-1,-9223372036854775809,-1)",
+        1,
+        "non-strict signed bigint underflow insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        bigint_overflow_warning_count,
+        "non-strict signed bigint underflow warning count"
+    );
+    for (int warning = 0; warning < bigint_overflow_warning_count; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "non-strict signed bigint underflow warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,u,s,ui FROM bigint_unsigned_ranges WHERE id = 5",
+        bigint_columns,
+        bigint_column_count,
+        negative_overflow_values,
+        1,
+        "non-strict signed bigint underflow values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ranges(id,u,s) VALUES (6,'-1x','-9223372036854775808x')",
+        1,
+        "non-strict signed bigint negative trailing insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        bigint_trailing_warning_count,
+        "non-strict signed bigint negative trailing warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "non-strict negative unsigned trailing warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "non-strict signed bigint min trailing warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,u,s,ui FROM bigint_unsigned_ranges WHERE id = 6",
+        bigint_columns,
+        bigint_column_count,
+        negative_trailing_values,
+        1,
+        "non-strict signed bigint negative trailing values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ranges(id,s) VALUES (7,'-9223372036854775809x')",
+        1,
+        "non-strict signed bigint trailing underflow insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "non-strict signed bigint trailing underflow warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "non-strict signed bigint trailing underflow warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,u,s,ui FROM bigint_unsigned_ranges WHERE id = 7",
+        bigint_columns,
+        bigint_column_count,
+        negative_trailing_range_values,
+        1,
+        "non-strict signed bigint trailing underflow values"
     );
 
     failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);

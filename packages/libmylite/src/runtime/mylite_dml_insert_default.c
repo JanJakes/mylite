@@ -604,6 +604,7 @@ static bool insert_text_integer_prefix_exceeds_int64(const char *text, size_t te
 
     uint64_t magnitude = 0U;
     size_t offset = 0U;
+    uint64_t limit = (uint64_t)INT64_MAX;
     bool saw_digit = false;
 
     if (text == NULL) {
@@ -615,19 +616,20 @@ static bool insert_text_integer_prefix_exceeds_int64(const char *text, size_t te
     if (offset < text_length && text[offset] == '+') {
         ++offset;
     } else if (offset < text_length && text[offset] == '-') {
-        return false;
+        limit = (uint64_t)INT64_MAX + UINT64_C(1);
+        ++offset;
     }
     while (offset < text_length && isdigit((unsigned char)text[offset])) {
         uint64_t digit = (uint64_t)(text[offset] - '0');
 
         saw_digit = true;
-        if (magnitude > ((uint64_t)INT64_MAX - digit) / decimal_base) {
+        if (magnitude > (limit - digit) / decimal_base) {
             return true;
         }
         magnitude = (magnitude * decimal_base) + digit;
         ++offset;
     }
-    return (saw_digit && magnitude > (uint64_t)INT64_MAX) != 0;
+    return (saw_digit && magnitude > limit) != 0;
 }
 
 static char *insert_current_timestamp_text(void) {

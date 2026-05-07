@@ -12,13 +12,17 @@ This slice aligns write-time length coercion for currently supported `CHAR`,
 - single-table `UPDATE`
 - joined `UPDATE`
 
-It also covers the first TEXT/BLOB-family runtime edge: `TINYTEXT` and
-`TINYBLOB` 255-byte write limits for `INSERT ... VALUES`, `INSERT IGNORE`,
-single-table `UPDATE`, and single-table `UPDATE IGNORE`.
+It also covers the first TEXT/BLOB-family runtime edges:
 
-Larger TEXT/BLOB family maximum sizes, exhaustive TEXT/BLOB coverage across
-all write forms, charset-specific byte validation beyond the verified UTF-8
-boundary behavior, strict SQLSTATE details, `LOAD DATA`, and full
+- `TINYTEXT` and `TINYBLOB` 255-byte write limits for `INSERT ... VALUES`,
+  `INSERT IGNORE`, single-table `UPDATE`, and single-table `UPDATE IGNORE`
+- plain `TEXT` and `BLOB` 65,535-byte write limits for `INSERT ... VALUES`,
+  `INSERT IGNORE`, single-table `UPDATE`, and single-table `UPDATE IGNORE`
+
+`MEDIUMTEXT`/`MEDIUMBLOB`/`LONGTEXT`/`LONGBLOB` maximum sizes, exhaustive
+TEXT/BLOB coverage across all write forms, charset-specific byte validation
+beyond the verified UTF-8 boundary behavior, strict SQLSTATE details,
+`LOAD DATA`, and full
 numeric-to-string format fidelity remain separate tasks.
 
 ## Sources
@@ -55,6 +59,14 @@ bytes and emits warning 1265 per truncated column. For multibyte `TINYTEXT`,
 non-strict truncation does not store a partial UTF-8 character; 128 two-byte
 characters become 127 characters / 254 bytes with one warning.
 
+For plain `TEXT` and `BLOB`, MySQL enforces a 65,535-byte maximum. In strict
+mode, assigning 65,536 ASCII bytes to `TEXT` and `BLOB` rejects the statement at
+the first overflowing column with error 1406 and leaves rows unchanged. In
+non-strict mode and the covered `IGNORE` forms, MySQL stores 65,535 bytes and
+emits warning 1265 per truncated column. For multibyte `TEXT`, non-strict
+truncation does not store a partial UTF-8 character; 32,768 two-byte characters
+become 32,767 characters / 65,534 bytes with one warning.
+
 ## MyLite Design
 
 MyLite carries `CHARACTER_MAXIMUM_LENGTH` from the catalog into DML write-table
@@ -68,9 +80,9 @@ byte accounting remains deferred.
 
 For binary string columns, MyLite applies the catalog length as bytes.
 
-For the covered `TINYTEXT` slice, MyLite applies the catalog length as a byte
-limit and truncates to a complete UTF-8 prefix. For the covered `TINYBLOB`
-slice, MyLite applies the catalog length as raw bytes.
+For the covered `TINYTEXT` and `TEXT` slices, MyLite applies the catalog length
+as a byte limit and truncates to a complete UTF-8 prefix. For the covered
+`TINYBLOB` and `BLOB` slices, MyLite applies the catalog length as raw bytes.
 
 When a value exceeds the target length, MyLite:
 
@@ -89,3 +101,6 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - strict rejection, non-strict truncation, `INSERT IGNORE`, and
   single-table `UPDATE IGNORE` for `TINYTEXT` and `TINYBLOB`
 - `TINYTEXT` byte-limit truncation at a complete UTF-8 character boundary
+- strict rejection, non-strict truncation, `INSERT IGNORE`, and
+  single-table `UPDATE IGNORE` for `TEXT` and `BLOB`
+- `TEXT` byte-limit truncation at a complete UTF-8 character boundary

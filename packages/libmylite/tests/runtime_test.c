@@ -56044,6 +56044,13 @@ static int test_string_dml_coercion_execution(void) {
     static const char *const tiny_lob_row1_update_values[] = {"1", "255", "255", "g", "68"};
     static const char *const tiny_text_utf8_columns[] = {"id", "t_len", "t_chars"};
     static const char *const tiny_text_utf8_values[] = {"3", "254", "127"};
+    static const char *const lob_columns[] = {"id", "t_len", "b_len", "t_last", "b_last"};
+    static const char *const lob_row1_insert_values[] = {"1", "65535", "65535", "a", "62"};
+    static const char *const lob_insert_ignore_values[] =
+        {"1", "65535", "65535", "a", "62", "2", "65535", "65535", "c", "64"};
+    static const char *const lob_row1_update_values[] = {"1", "65535", "65535", "x", "79"};
+    static const char *const text_utf8_columns[] = {"id", "t_len", "t_chars"};
+    static const char *const text_utf8_values[] = {"3", "65534", "32767"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -56333,6 +56340,157 @@ static int test_string_dml_coercion_execution(void) {
         tiny_text_utf8_values,
         1,
         "tinytext multibyte clipped values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE lobs (id INT PRIMARY KEY, t TEXT, b BLOB)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO lobs VALUES (1, REPEAT('a', 65536), REPEAT('b', 65536))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict text insert length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict text insert length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(database, "SELECT id FROM lobs", 0, "strict lob no row");
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO lobs VALUES (1, REPEAT('a', 65536), REPEAT('b', 65536))",
+        1,
+        "non-strict lob insert"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "lob insert warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "text insert warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "blob insert warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM lobs ORDER BY id",
+        lob_columns,
+        5,
+        lob_row1_insert_values,
+        1,
+        "lob non-strict clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO lobs VALUES (2, REPEAT('c', 65536), REPEAT('d', 65536))",
+        1,
+        "insert ignore lob truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "lob insert ignore warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM lobs ORDER BY id",
+        lob_columns,
+        5,
+        lob_insert_ignore_values,
+        2,
+        "lob insert ignore clipped values"
+    );
+
+    failures += prepare_sql(
+        database,
+        "UPDATE lobs SET t = REPEAT('e', 65536), b = REPEAT('f', 65536) WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict text update length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict text update length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM lobs WHERE id = 1",
+        lob_columns,
+        5,
+        lob_row1_insert_values,
+        1,
+        "strict lob update rollback"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE lobs SET t = REPEAT('x', 65536), b = REPEAT('y', 65536) "
+        "WHERE id = 1",
+        1,
+        "update ignore lob truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "lob update ignore warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM lobs WHERE id = 1",
+        lob_columns,
+        5,
+        lob_row1_update_values,
+        1,
+        "lob update ignore clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO lobs VALUES (3, REPEAT('\xC3\xA9', 32768), '')",
+        1,
+        "non-strict text multibyte insert"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "text multibyte warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "text multibyte warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, CHAR_LENGTH(t) AS t_chars FROM lobs WHERE id = 3",
+        text_utf8_columns,
+        3,
+        text_utf8_values,
+        1,
+        "text multibyte clipped values"
     );
 
     mylite_close(database);

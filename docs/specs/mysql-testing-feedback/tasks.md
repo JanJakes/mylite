@@ -196,10 +196,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`, and covered `BIGINT` range
       clipping is covered for strict, non-strict, `INSERT IGNORE`, and
       single-table `UPDATE IGNORE` paths. `TINYTEXT` and `TINYBLOB`
-      255-byte write limits are now covered for strict and non-strict
-      `INSERT ... VALUES`, `INSERT IGNORE`, strict single-table `UPDATE`, and
-      single-table `UPDATE IGNORE`, including UTF-8 boundary truncation for
-      `TINYTEXT`.
+      255-byte write limits and plain `TEXT`/`BLOB` 65,535-byte write limits
+      are now covered for strict and non-strict `INSERT ... VALUES`,
+      `INSERT IGNORE`, strict single-table `UPDATE`, and single-table
+      `UPDATE IGNORE`, including UTF-8 boundary truncation for `TINYTEXT` and
+      `TEXT`.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719 and DATE/TIME/DATETIME temporal target casts.

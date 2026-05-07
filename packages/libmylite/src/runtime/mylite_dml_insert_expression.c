@@ -59,6 +59,7 @@ static int resolve_insert_expression_uint64_value(
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
+    bool ignore,
     struct mylite_insert_bound_value *out_value
 );
 
@@ -68,6 +69,7 @@ static int resolve_insert_expression_text_value(
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
+    bool ignore,
     struct mylite_insert_bound_value *out_value
 );
 
@@ -206,6 +208,8 @@ static int resolve_insert_expression_bound_value(
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
 ) {
+    bool ignore = (plan != NULL && plan->ignore) != 0;
+
     switch (value->kind) {
     case MYLITE_EXPRESSION_VALUE_NULL:
         return resolve_insert_expression_null_value(
@@ -239,6 +243,7 @@ static int resolve_insert_expression_bound_value(
             value,
             statement_row_count,
             state,
+            ignore,
             out_value
         );
     case MYLITE_EXPRESSION_VALUE_REAL:
@@ -266,6 +271,7 @@ static int resolve_insert_expression_bound_value(
             value,
             statement_row_count,
             state,
+            ignore,
             out_value
         );
     }
@@ -315,6 +321,7 @@ static int resolve_insert_expression_uint64_value(
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
+    bool ignore,
     struct mylite_insert_bound_value *out_value
 ) {
     if (value->uint64_value <= (uint64_t)INT64_MAX) {
@@ -341,6 +348,7 @@ static int resolve_insert_expression_uint64_value(
         value,
         statement_row_count,
         state,
+        ignore,
         out_value
     );
 }
@@ -351,6 +359,7 @@ static int resolve_insert_expression_text_value(
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
+    bool ignore,
     struct mylite_insert_bound_value *out_value
 ) {
     char *text = mylite_expression_value_to_text(value);
@@ -374,6 +383,7 @@ static int resolve_insert_expression_text_value(
                        text_length,
                        statement_row_count,
                        state,
+                       ignore,
                        out_value
                    )
                  : mylite_dml_resolve_insert_text_value(
@@ -383,6 +393,7 @@ static int resolve_insert_expression_text_value(
                        text_length,
                        statement_row_count,
                        state,
+                       ignore,
                        out_value
                    );
     free(text);

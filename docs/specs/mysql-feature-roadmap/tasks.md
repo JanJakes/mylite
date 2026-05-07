@@ -94,8 +94,11 @@ level application surfaces.
        parentheses, and metadata.
 31. [ ] `INSERT IGNORE`: duplicate, conversion, and constraint warning-demotion
        rules. Partially implemented for duplicate-key and required-column
-       demotion on supported `INSERT ... VALUES`/`INSERT ... SET` forms; full
-       conversion/range/truncation/temporal demotion remains deferred. Spec:
+       demotion on supported `INSERT ... VALUES`/`INSERT ... SET` forms, plus
+       invalid integer text, invalid date text, and `CHAR`/`VARCHAR`
+       truncation demotion. Range clipping, broader temporal variants, binary
+       and large-text limits, and broader conversion demotion remain deferred.
+       Spec:
        [INSERT IGNORE](../insert-ignore/specs.md).
 32. [ ] `INSERT ... ON DUPLICATE KEY UPDATE`: conflict selection, assignment
        evaluation, affected rows, insert ids, aliases, and warnings. Partially

@@ -483,18 +483,21 @@ int mylite_dml_coerce_insert_temporal_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 );
 int mylite_dml_coerce_insert_numeric_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 );
 int mylite_dml_coerce_insert_string_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 );
 int mylite_dml_coerce_update_temporal_value(

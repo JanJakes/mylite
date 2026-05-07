@@ -112,6 +112,7 @@ int mylite_dml_resolve_default_function_value(
         column->default_text == NULL ? 0U : strlen(column->default_text),
         0U,
         NULL,
+        false,
         &value
     );
     if (status == MYLITE_OK) {

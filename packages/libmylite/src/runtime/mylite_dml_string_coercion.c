@@ -35,6 +35,7 @@ static int coerce_insert_string_value(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 );
 
@@ -132,6 +133,7 @@ int mylite_dml_coerce_insert_string_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 ) {
     enum mylite_dml_string_kind kind = string_kind_for_column(column);
@@ -142,7 +144,7 @@ int mylite_dml_coerce_insert_string_value(
     if (kind == MYLITE_DML_STRING_NONE || value->kind == MYLITE_INSERT_BOUND_NULL) {
         return MYLITE_OK;
     }
-    return coerce_insert_string_value(database, column, kind, row_number, value);
+    return coerce_insert_string_value(database, column, kind, row_number, ignore, value);
 }
 
 int mylite_dml_coerce_update_string_value(
@@ -168,6 +170,7 @@ static int coerce_insert_string_value(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 ) {
     struct mylite_dml_string_text text = {0};
@@ -175,7 +178,7 @@ static int coerce_insert_string_value(
     int status = insert_value_to_string_text(value, &text);
 
     if (status == MYLITE_OK) {
-        status = coerce_string_text(database, column, kind, row_number, false, &text, &output);
+        status = coerce_string_text(database, column, kind, row_number, ignore, &text, &output);
     }
     if (status == MYLITE_OK && output.replace) {
         status = replace_insert_string_value(&output, value);

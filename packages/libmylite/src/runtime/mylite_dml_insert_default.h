@@ -48,6 +48,7 @@ int mylite_dml_resolve_insert_text_value(
     size_t text_length,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
+    bool ignore,
     struct mylite_insert_bound_value *out_value
 );
 int mylite_dml_resolve_insert_quoted_text_value(
@@ -57,6 +58,7 @@ int mylite_dml_resolve_insert_quoted_text_value(
     size_t text_length,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
+    bool ignore,
     struct mylite_insert_bound_value *out_value
 );
 bool mylite_dml_insert_auto_increment_zero_generates(

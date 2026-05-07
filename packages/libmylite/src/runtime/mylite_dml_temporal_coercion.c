@@ -149,6 +149,7 @@ int mylite_dml_coerce_insert_temporal_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 ) {
     enum mylite_dml_temporal_kind kind = temporal_kind_for_column(column);
@@ -168,7 +169,7 @@ int mylite_dml_coerce_insert_temporal_value(
         value->text_value,
         value->text_length,
         row_number,
-        false,
+        ignore,
         &output
     );
     if (status != MYLITE_OK || !output.replace) {

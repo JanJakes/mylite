@@ -316,6 +316,7 @@ static int evaluate_insert_set_assignment_value(
     const struct mylite_dml_expression_callbacks *callbacks
 ) {
     const struct mylite_insert_table_column *column = &table->columns[target_column];
+    bool ignore = (plan != NULL && plan->ignore) != 0;
     int status = MYLITE_OK;
 
     *out_generate_auto_increment = false;
@@ -363,15 +364,15 @@ static int evaluate_insert_set_assignment_value(
         return status;
     }
 
-    status = mylite_dml_coerce_insert_temporal_value(database, column, 1U, out_value);
+    status = mylite_dml_coerce_insert_temporal_value(database, column, 1U, ignore, out_value);
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, out_value);
+    status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_dml_coerce_insert_string_value(database, column, 1U, out_value);
+    status = mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value);
     if (status != MYLITE_OK) {
         return status;
     }

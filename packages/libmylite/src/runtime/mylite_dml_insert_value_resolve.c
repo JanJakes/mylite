@@ -350,6 +350,7 @@ static int resolve_insert_explicit_value(
             value->text_length,
             statement_row_count,
             state,
+            (plan != NULL && plan->ignore) != 0,
             out_value
         );
     case MYLITE_INSERT_VALUE_REAL:
@@ -363,6 +364,7 @@ static int resolve_insert_explicit_value(
             value->text_length,
             statement_row_count,
             state,
+            (plan != NULL && plan->ignore) != 0,
             out_value
         );
     case MYLITE_INSERT_VALUE_TEXT:
@@ -373,6 +375,7 @@ static int resolve_insert_explicit_value(
             value->text_length,
             statement_row_count,
             state,
+            (plan != NULL && plan->ignore) != 0,
             out_value
         );
     case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:

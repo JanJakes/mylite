@@ -17,12 +17,16 @@ Current implementation status:
 - Implemented demotions are primary/unique duplicate-key row skipping and
   required-column implicit defaults for explicit `NULL`, explicit `DEFAULT`,
   and omitted required no-default non-auto columns.
-- The first slice records warnings through `mylite_warning_count()`,
+- Current conversion demotion covers invalid integer text, malformed/invalid
+  `DATE` text, and `CHAR`/`VARCHAR` truncation for the supported
+  `INSERT ... VALUES` and `INSERT ... SET` text-value paths.
+- The current slices record warnings through `mylite_warning_count()`,
   `mylite_warning_code()`, and `mylite_warning_message()` for MySQL codes
-  1062, 1048, and 1364.
-- Full data conversion, range clipping, string truncation, and invalid temporal
-  value demotion remain deferred and must not be treated as supported by this
-  slice.
+  1062, 1048, 1265, 1364, and 1366.
+- Numeric range clipping, width-specific integer endpoint behavior, broader
+  temporal variants, binary/TEXT/BLOB truncation limits, and broader expression
+  conversion demotion remain deferred and must not be treated as supported by
+  this slice.
 
 In scope:
 
@@ -225,6 +229,32 @@ Values that would otherwise fail under strict mode are coerced to MySQL's
 chosen stored value and recorded as warnings.
 
 Observed probe:
+
+```sql
+CREATE TABLE conv_basic(
+  id INT PRIMARY KEY,
+  i INT NOT NULL,
+  d DATE NOT NULL,
+  v VARCHAR(3) NOT NULL
+) ENGINE=InnoDB;
+INSERT IGNORE INTO conv_basic
+VALUES (1, 'bad', '2022-31-01', 'abcdef');
+INSERT IGNORE INTO conv_basic
+SET id = 2, i = 'oops', d = '2022-31-01', v = 'uvwxyz';
+```
+
+MySQL inserted two rows:
+
+| id | i | d | v |
+| --- | --- | --- | --- |
+| `1` | `0` | `0000-00-00` | `abc` |
+| `2` | `0` | `0000-00-00` | `uvw` |
+
+Each statement reported affected rows `1` and three warnings in column order:
+1366 for invalid integer text, then 1265 for the date value, then 1265 for the
+truncated `VARCHAR` value.
+
+Observed range-oriented probe:
 
 ```sql
 CREATE TABLE conv_range(
@@ -502,17 +532,19 @@ conversion. `INSERT IGNORE` should not be marked supported until the conversion
 paths needed by this feature can emit MySQL-compatible warnings and store
 compatible values for the currently supported column types.
 
+Implemented conversion slices:
+
+- invalid integer text to zero for the covered integer insert path
+- malformed/invalid `DATE` text to the zero date for the covered insert path
+- `CHAR`/`VARCHAR` truncation to declared character length
+
 Deferred conversion slices:
 
-- signed and unsigned integer clipping
-- string-to-integer conversion for invalid and partially numeric strings
-- string and binary truncation to declared length
-- date/time zero value insertion for invalid strict-mode temporal values where
-  the temporal type is already supported by MyLite
-
-The first implementation slice only uses type metadata to construct implicit
-defaults for required-column `NULL`, `DEFAULT`, and omission demotions. It does
-not demote invalid input values, out-of-range values, or truncation.
+- signed and unsigned integer range clipping and width-specific endpoints
+- partially numeric string warning details beyond the covered numeric coercion
+  path
+- binary, `TEXT`, and `BLOB` truncation and size-limit behavior
+- broader temporal type variants and SQL-mode edge cases
 
 If the implementation lands before broad conversion support, the compatibility
 row must remain partial with explicit gaps, not fully supported.
@@ -585,7 +617,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | string too long for `VARCHAR(3)` | Truncated value stored; warning 1265. |
 | invalid integer text | Numeric zero stored; warning 1366. |
 | signed/unsigned integer range overflow | Clipped endpoint stored; warning 1264. |
-| invalid or strict-disallowed date | Zero date stored where MySQL stores it; warning 1264 in verified date probe. |
+| malformed date text such as `'2022-31-01'` | Zero date stored; warning 1265. |
+| calendar-invalid or strict-disallowed date | Zero date stored where MySQL stores it; warning 1264 in verified range/date probe. |
 | mixed duplicate plus coerced required value | Accepted/coerced rows remain; duplicate row skipped; affected rows count accepted rows only. |
 | all rows duplicates after a previous successful generated insert | Affected rows `0`; last insert id unchanged; generated ids consumed. |
 | first generated candidate ignored, later generated row accepted | Last insert id becomes first generated value from the accepted row, not the ignored row. |
@@ -619,9 +652,10 @@ Runtime tests:
 - required-column explicit `NULL`, explicit `DEFAULT`, and omission
 - implicit defaults for signed/unsigned integers, strings/binary values, and
   temporal values supported by MyLite
-- conversion warnings for invalid integer text, partial numeric text, range
-  clipping, string truncation, invalid dates, zero dates, and division by zero
-  once expression evaluation supports it
+- conversion warnings for invalid integer text, string truncation, and malformed
+  date text, plus future coverage for partial numeric text, range clipping,
+  broader invalid/zero temporal values, and division by zero once expression
+  evaluation supports it
 - affected rows, warning records, duplicate count, processed records, and
   session last insert id
 - auto-increment sequence advancement for accepted rows, skipped duplicates,

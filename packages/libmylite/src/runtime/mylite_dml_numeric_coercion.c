@@ -51,6 +51,7 @@ static int coerce_insert_numeric_value(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_numeric_kind kind,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 );
 
@@ -183,6 +184,7 @@ int mylite_dml_coerce_insert_numeric_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 ) {
     enum mylite_dml_numeric_kind kind = numeric_kind_for_column(column);
@@ -193,7 +195,7 @@ int mylite_dml_coerce_insert_numeric_value(
     if (kind == MYLITE_DML_NUMERIC_NONE || value->kind == MYLITE_INSERT_BOUND_NULL) {
         return MYLITE_OK;
     }
-    return coerce_insert_numeric_value(database, column, kind, row_number, value);
+    return coerce_insert_numeric_value(database, column, kind, row_number, ignore, value);
 }
 
 int mylite_dml_coerce_update_numeric_value(
@@ -219,6 +221,7 @@ static int coerce_insert_numeric_value(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_numeric_kind kind,
     uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 ) {
     struct mylite_dml_numeric_output output = {0};
@@ -233,7 +236,7 @@ static int coerce_insert_numeric_value(
             (double)value->integer_value,
             MYLITE_DML_NUMERIC_PROBLEM_NONE,
             row_number,
-            false,
+            ignore,
             &output
         );
         break;
@@ -245,7 +248,7 @@ static int coerce_insert_numeric_value(
             value->real_value,
             MYLITE_DML_NUMERIC_PROBLEM_NONE,
             row_number,
-            false,
+            ignore,
             &output
         );
         break;
@@ -257,7 +260,7 @@ static int coerce_insert_numeric_value(
             value->text_value,
             value->text_length,
             row_number,
-            false,
+            ignore,
             &output
         );
         break;

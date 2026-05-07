@@ -49604,6 +49604,17 @@ static int test_replace_execution(void) {
 static int test_insert_ignore_execution(void) {
     static const char *const pk_null_columns[] = {"id"};
     static const char *const pk_null_values[] = {"0"};
+    static const char *const coerce_columns[] = {"id", "i", "d", "v"};
+    static const char *const coerce_values[] = {
+        "1",
+        "0",
+        "0000-00-00",
+        "abc",
+        "2",
+        "0",
+        "0000-00-00",
+        "uvw",
+    };
 
     enum {
         duplicate_seed_id = 10,
@@ -49997,6 +50008,81 @@ static int test_insert_ignore_execution(void) {
         pk_null_values,
         1,
         "insert ignore primary null stored row"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE ign_coerce("
+        "id INT PRIMARY KEY, i INT NOT NULL, d DATE NOT NULL, v VARCHAR(3) NOT NULL)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT IGNORE INTO ign_coerce VALUES (1, 'bad', '2022-31-01', 'abcdef')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore values coercion");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 1, "insert ignore values coercion affected rows");
+    failures += expect_int(
+        mylite_warning_count(database),
+        3,
+        "insert ignore values coercion warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "insert ignore values incorrect integer warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "insert ignore values invalid date warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_data_truncated,
+        "insert ignore values string truncation warning"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "INSERT IGNORE INTO ign_coerce SET id = 2, i = 'oops', d = '2022-31-01', v = 'uvwxyz'",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "insert ignore set coercion");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 1, "insert ignore set coercion affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "insert ignore set coercion warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "insert ignore set incorrect integer warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "insert ignore set invalid date warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_data_truncated,
+        "insert ignore set string truncation warning"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, i, d, v FROM ign_coerce ORDER BY id",
+        coerce_columns,
+        4,
+        coerce_values,
+        2,
+        "insert ignore coerces invalid values"
     );
 
     if (required_physical != NULL) {

@@ -237,6 +237,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       positive approximate overflow clipping behavior. Hex and bit literal
       `CAST` / `CONVERT` to signed and unsigned integer targets now use the
       literal's numeric value instead of the decoded binary string bytes.
+      Scalar numeric conversion for embedded-NUL text values now keeps the
+      numeric prefix and still treats the NUL plus following bytes as trailing
+      garbage for warning emission.
       Scalar `CAST` and
       `CONVERT` to explicit `utf8mb4`/`utf8mb3` character targets now reject
       invalid byte sequences with warning 1300 and return `NULL`, while

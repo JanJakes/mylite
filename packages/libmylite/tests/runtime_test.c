@@ -34640,6 +34640,12 @@ static int test_cast_expression_execution(void) {
         "12594",
         "10",
     };
+    static const char *const nul_numeric_columns[] = {
+        "signed_value",
+        "unsigned_value",
+        "plus_value",
+    };
+    static const char *const nul_numeric_values[] = {"12", "12", "12"};
     static const struct expected_result_metadata metadata[] = {
         {"signed_value",
          NULL,
@@ -35062,6 +35068,26 @@ static int test_cast_expression_execution(void) {
         0,
         "CAST hex and bit literal integer warning count"
     );
+
+    failures += expect_select_rows(
+        database,
+        "SELECT CAST(CONCAT('12', CHAR(0 USING binary), '3') AS SIGNED) AS signed_value, "
+        "CAST(CONCAT('12', CHAR(0 USING binary), '3') AS UNSIGNED) AS unsigned_value, "
+        "CONCAT('12', CHAR(0 USING binary), '3') + 0 AS plus_value",
+        nul_numeric_columns,
+        (int)(sizeof(nul_numeric_columns) / sizeof(nul_numeric_columns[0])),
+        nul_numeric_values,
+        1,
+        "CAST embedded NUL numeric values"
+    );
+    failures += expect_int(mylite_warning_count(database), 3, "CAST embedded NUL warning count");
+    for (int index = 0; index < 3; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_truncated_wrong_value,
+            "CAST embedded NUL warning code"
+        );
+    }
 
     failures += prepare_sql(
         database,

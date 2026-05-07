@@ -183,11 +183,13 @@ struct numeric_value {
 struct numeric_text_input {
     const char *start;
     const char *text;
+    const char *end;
 };
 
 struct numeric_text_parse_input {
     char *text;
     char *start;
+    char *end;
 };
 
 struct between_truth {
@@ -3859,9 +3861,9 @@ static int text_value_to_numeric_without_warnings(
 
 static bool numeric_text_prefix_is_integer(const char *start, const char *end);
 
-static bool numeric_text_has_digit(const char *start);
+static bool numeric_text_has_digit(const char *start, const char *end);
 
-static bool numeric_text_is_hex_like(const char *start);
+static bool numeric_text_is_hex_like(const char *start, const char *end);
 
 static int parse_numeric_text_double(
     struct numeric_text_parse_input input,
@@ -3892,17 +3894,24 @@ static int cast_value_to_unsigned_integer(
 
 static int cast_string_to_signed_integer(
     const char *text,
+    size_t text_length,
     struct mylite_expression_warnings *warnings,
     int64_t *out_integer
 );
 
 static int cast_string_to_unsigned_integer(
     const char *text,
+    size_t text_length,
     struct mylite_expression_warnings *warnings,
     uint64_t *out_integer
 );
 
 static struct cast_integer_parse parse_cast_integer_text(const char *text);
+
+static struct cast_integer_parse parse_cast_integer_text_with_length(
+    const char *text,
+    size_t text_length
+);
 
 static int64_t signed_integer_from_uint64(uint64_t value);
 
@@ -9697,6 +9706,7 @@ static int from_days_number_from_value(
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return cast_string_to_signed_integer(
             value->text_value == NULL ? "" : value->text_value,
+            value->text_value == NULL ? 0U : value->text_length,
             warnings,
             out_number
         );
@@ -23829,10 +23839,10 @@ static int text_value_to_numeric(
         return text_value_to_numeric_without_warnings(value, out_numeric);
     }
 
-    char *text = value->text_value == NULL
-                     ? copy_span_text("", 0U)
-                     : copy_span_text(value->text_value, strlen(value->text_value));
+    char *text = value->text_value == NULL ? copy_span_text("", 0U)
+                                           : copy_span_text(value->text_value, value->text_length);
     char *start = text;
+    char *end = text == NULL ? NULL : text + (value->text_value == NULL ? 0U : value->text_length);
     int status = 0;
 
     if (text == NULL) {
@@ -23842,16 +23852,16 @@ static int text_value_to_numeric(
         ++start;
     }
 
-    if (!numeric_text_has_digit(start)) {
+    if (!numeric_text_has_digit(start, end)) {
         status = append_numeric_text_without_digits_warning(
             warnings,
-            (struct numeric_text_input){.start = start, .text = text}
+            (struct numeric_text_input){.start = start, .text = text, .end = end}
         );
-    } else if (numeric_text_is_hex_like(start)) {
+    } else if (numeric_text_is_hex_like(start, end)) {
         status = append_truncation_warning(warnings, text);
     } else {
         status = parse_numeric_text_double(
-            (struct numeric_text_parse_input){.text = text, .start = start},
+            (struct numeric_text_parse_input){.text = text, .start = start, .end = end},
             warnings,
             out_numeric
         );
@@ -23864,11 +23874,12 @@ static int text_value_to_numeric_without_warnings(
     const struct mylite_expression_value *value,
     struct numeric_value *out_numeric
 ) {
-    char *text = value->text_value == NULL
-                     ? copy_span_text("", 0U)
-                     : copy_span_text(value->text_value, strlen(value->text_value));
+    char *text = value->text_value == NULL ? copy_span_text("", 0U)
+                                           : copy_span_text(value->text_value, value->text_length);
     char *start = text;
     char *end = NULL;
+    char *text_end =
+        text == NULL ? NULL : text + (value->text_value == NULL ? 0U : value->text_length);
     bool overflow = false;
 
     if (text == NULL) {
@@ -23877,7 +23888,7 @@ static int text_value_to_numeric_without_warnings(
     while (isspace((unsigned char)*start)) {
         ++start;
     }
-    if (!numeric_text_has_digit(start) || numeric_text_is_hex_like(start)) {
+    if (!numeric_text_has_digit(start, text_end) || numeric_text_is_hex_like(start, text_end)) {
         out_numeric->is_integer = true;
         free(text);
         return 0;
@@ -23914,13 +23925,13 @@ static bool numeric_text_prefix_is_integer(const char *start, const char *end) {
     return true;
 }
 
-static bool numeric_text_has_digit(const char *start) {
+static bool numeric_text_has_digit(const char *start, const char *end) {
     const char *scan = start;
 
-    if (*scan == '+' || *scan == '-') {
+    if (scan < end && (*scan == '+' || *scan == '-')) {
         ++scan;
     }
-    for (; *scan != '\0'; ++scan) {
+    for (; scan < end; ++scan) {
         if (isdigit((unsigned char)*scan)) {
             return true;
         }
@@ -23931,13 +23942,14 @@ static bool numeric_text_has_digit(const char *start) {
     return false;
 }
 
-static bool numeric_text_is_hex_like(const char *start) {
+static bool numeric_text_is_hex_like(const char *start, const char *end) {
     const char *number_start = start;
 
-    if (*number_start == '+' || *number_start == '-') {
+    if (number_start < end && (*number_start == '+' || *number_start == '-')) {
         ++number_start;
     }
-    return number_start[0] == '0' && (number_start[1] == 'x' || number_start[1] == 'X');
+    return number_start + 1 < end && number_start[0] == '0' &&
+           (number_start[1] == 'x' || number_start[1] == 'X');
 }
 
 static int parse_numeric_text_double(
@@ -23951,7 +23963,7 @@ static int parse_numeric_text_double(
     errno = 0;
     out_numeric->real_value = strtod(input.start, &end);
     overflow = errno == ERANGE && isinf(out_numeric->real_value);
-    while (end != NULL && isspace((unsigned char)*end)) {
+    while (end != NULL && end < input.end && isspace((unsigned char)*end)) {
         ++end;
     }
     if (overflow) {
@@ -23959,7 +23971,7 @@ static int parse_numeric_text_double(
     } else {
         out_numeric->int64_value = numeric_real_to_truncated_int64(out_numeric->real_value);
     }
-    if (end == input.start || (end != NULL && *end != '\0') || overflow) {
+    if (end == input.start || (end != NULL && end < input.end) || overflow) {
         return append_truncation_warning(warnings, input.text);
     }
     return 0;
@@ -23987,7 +23999,7 @@ static int append_numeric_text_without_digits_warning(
     struct mylite_expression_warnings *warnings,
     struct numeric_text_input input
 ) {
-    if (*input.start == '\0') {
+    if (input.start >= input.end) {
         return 0;
     }
     return append_truncation_warning(warnings, input.text);
@@ -24016,6 +24028,7 @@ static int cast_value_to_signed_integer(
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return cast_string_to_signed_integer(
             value->text_value == NULL ? "" : value->text_value,
+            value->text_value == NULL ? 0U : value->text_length,
             warnings,
             out_integer
         );
@@ -24046,6 +24059,7 @@ static int cast_value_to_unsigned_integer(
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return cast_string_to_unsigned_integer(
             value->text_value == NULL ? "" : value->text_value,
+            value->text_value == NULL ? 0U : value->text_length,
             warnings,
             out_integer
         );
@@ -24055,10 +24069,11 @@ static int cast_value_to_unsigned_integer(
 
 static int cast_string_to_signed_integer(
     const char *text,
+    size_t text_length,
     struct mylite_expression_warnings *warnings,
     int64_t *out_integer
 ) {
-    struct cast_integer_parse parsed = parse_cast_integer_text(text);
+    struct cast_integer_parse parsed = parse_cast_integer_text_with_length(text, text_length);
     bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
 
     if (truncated) {
@@ -24087,10 +24102,11 @@ static int cast_string_to_signed_integer(
 
 static int cast_string_to_unsigned_integer(
     const char *text,
+    size_t text_length,
     struct mylite_expression_warnings *warnings,
     uint64_t *out_integer
 ) {
-    struct cast_integer_parse parsed = parse_cast_integer_text(text);
+    struct cast_integer_parse parsed = parse_cast_integer_text_with_length(text, text_length);
     bool truncated = !parsed.saw_digit || parsed.trailing_garbage || parsed.overflow;
 
     if (truncated) {
@@ -24116,20 +24132,28 @@ static int cast_string_to_unsigned_integer(
 }
 
 static struct cast_integer_parse parse_cast_integer_text(const char *text) {
+    return parse_cast_integer_text_with_length(text, text == NULL ? 0U : strlen(text));
+}
+
+static struct cast_integer_parse parse_cast_integer_text_with_length(
+    const char *text,
+    size_t text_length
+) {
     const char *start = text == NULL ? "" : text;
+    const char *end = start + text_length;
     const char *scan = NULL;
     const uint64_t radix = (uint64_t)MYLITE_EXPRESSION_DECIMAL_BASE;
     struct cast_integer_parse parsed = {0};
 
-    while (isspace((unsigned char)*start)) {
+    while (start < end && isspace((unsigned char)*start)) {
         ++start;
     }
-    if (*start == '+' || *start == '-') {
+    if (start < end && (*start == '+' || *start == '-')) {
         parsed.negative = *start == '-';
         ++start;
     }
     scan = start;
-    while (isdigit((unsigned char)*scan)) {
+    while (scan < end && isdigit((unsigned char)*scan)) {
         uint64_t digit = (uint64_t)(*scan - '0');
         uint64_t limit = parsed.negative ? mylite_expression_int64_min_magnitude : UINT64_MAX;
 
@@ -24142,10 +24166,10 @@ static struct cast_integer_parse parse_cast_integer_text(const char *text) {
         }
         ++scan;
     }
-    while (isspace((unsigned char)*scan)) {
+    while (scan < end && isspace((unsigned char)*scan)) {
         ++scan;
     }
-    parsed.trailing_garbage = *scan != '\0';
+    parsed.trailing_garbage = scan < end;
     return parsed;
 }
 

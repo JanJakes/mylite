@@ -73,6 +73,10 @@ static struct mylite_field_descriptor information_schema_collations_column_descr
     const char *name
 );
 
+static struct mylite_field_descriptor information_schema_collation_character_set_applicability_column_descriptor(
+    const char *name
+);
+
 static struct mylite_field_descriptor information_schema_keywords_column_descriptor(
     const char *name
 );
@@ -265,12 +269,13 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
         return information_schema_character_sets_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_COLLATIONS:
         return information_schema_collations_column_descriptor(name);
+    case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
+        return information_schema_collation_character_set_applicability_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
         return information_schema_keywords_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
-    case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         break;
     }
@@ -763,6 +768,24 @@ static struct mylite_field_descriptor information_schema_collations_column_descr
     }
     if (mylite_ascii_case_equal(name, "PAD_ATTRIBUTE")) {
         return information_schema_enum_descriptor(information_schema_pad_attribute_length);
+    }
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_INVALID,
+    };
+}
+
+static struct mylite_field_descriptor information_schema_collation_character_set_applicability_column_descriptor(
+    const char *name
+) {
+    if (mylite_ascii_case_equal(name, "COLLATION_NAME") ||
+        mylite_ascii_case_equal(name, "CHARACTER_SET_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+            0U,
+            false
+        );
     }
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_INVALID,

@@ -174,15 +174,12 @@ including `SHOW FULL TABLES FROM information_schema LIKE
 'collation_character_set_applicability'` returning
 `COLLATION_CHARACTER_SET_APPLICABILITY`, `SYSTEM VIEW`.
 
-## Metadata Limitation
+## Result Metadata
 
-Existing `INFORMATION_SCHEMA` `SELECT` execution prepares SQLite-backed
-statements directly and does not attach full MySQL field metadata for any
-supported information-schema table. This first slice keeps that behavior
-consistent: tests verify column names, values, row order, and case-insensitive
-resolution, while exact field descriptors for
-`INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` remain deferred to a
-unified information-schema metadata pass.
+MyLite attaches MySQL-shaped result descriptors for the two output columns.
+Both `COLLATION_NAME` and `CHARACTER_SET_NAME` report latin1
+`VAR_STRING(64)` metadata with `NOT_NULL`, `UNIQUE_KEY`, `NO_DEFAULT_VALUE`,
+and `PART_KEY` flags.
 
 ## Composable Query Forms
 
@@ -226,6 +223,8 @@ Parser coverage:
 Runtime coverage:
 
 - exact uppercase result column names
+- MySQL-shaped result-column descriptors for `COLLATION_NAME` and
+  `CHARACTER_SET_NAME`
 - exact row values in collation-name order
 - lower-case, mixed-case, and quoted table references resolve successfully
 - explicit projection, `DISTINCT`, `ALL`, `WHERE`, `ORDER BY`, `LIMIT`,
@@ -241,5 +240,3 @@ Runtime coverage:
 
 - MyLite exposes only the collations implemented in its registry instead of
   MySQL's full collation catalog.
-- Full MySQL field metadata for information-schema `SELECT` statements remains
-  deferred.

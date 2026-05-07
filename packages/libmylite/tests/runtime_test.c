@@ -3169,6 +3169,36 @@ static int test_information_schema_collations_execution(void) {
 static int test_information_schema_collation_character_set_applicability_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"COLLATION_NAME", "CHARACTER_SET_NAME"};
+    static const struct expected_result_metadata metadata[] = {
+        {"COLLATION_NAME",
+         "information_schema",
+         "COLLATION_CHARACTER_SET_APPLICABILITY",
+         "information_schema",
+         "COLLATION_CHARACTER_SET_APPLICABILITY",
+         "COLLATION_NAME",
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+         MYLITE_FIELD_FLAG_BINARY,
+         0},
+        {"CHARACTER_SET_NAME",
+         "information_schema",
+         "COLLATION_CHARACTER_SET_APPLICABILITY",
+         "information_schema",
+         "COLLATION_CHARACTER_SET_APPLICABILITY",
+         "CHARACTER_SET_NAME",
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+         MYLITE_FIELD_FLAG_BINARY,
+         0},
+    };
     static const char *const show_tables_name_columns[] = {
         "Tables_in_information_schema (COLLATION_CHARACTER_SET_APPLICABILITY)"
     };
@@ -3277,6 +3307,12 @@ static int test_information_schema_collation_character_set_applicability_executi
         columns,
         2,
         "information schema collation charset applicability columns"
+    );
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        2,
+        "information schema collation charset applicability metadata"
     );
     failures += expect_status(
         mylite_step(stmt),

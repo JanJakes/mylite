@@ -304,6 +304,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       no-argument, `NULL`, integer, date, and non-fractional temporal inputs,
       plus `NEWDECIMAL(13+fsp, fsp)` metadata for fractional temporal, text,
       approximate, and fixed-point inputs.
+      Table-backed `LEFT()` / `RIGHT()` expressions with nonnegative literal
+      counts now infer MySQL-shaped connection-character-set widths capped at
+      the source width, negative literal counts infer length 0, and dynamic or
+      `NULL` counts use the source width.
       Table-backed `LPAD()` / `RPAD()` expressions with nonnegative literal
       target lengths and `REPEAT()` expressions with nonnegative literal counts
       now infer MySQL-shaped connection-character-set string widths.

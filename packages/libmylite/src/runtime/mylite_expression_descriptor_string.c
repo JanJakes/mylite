@@ -11,6 +11,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+struct integer_constant_value {
+    bool is_unsigned;
+    int64_t signed_value;
+    uint64_t unsigned_value;
+};
+
 static int infer_elt_function_descriptor(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -108,15 +114,31 @@ static uint64_t padding_function_result_length(
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
+static uint64_t left_right_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static uint64_t add_text_display_lengths(uint64_t left, uint64_t right);
 
 static uint64_t multiply_text_display_length(uint64_t length, uint64_t factor);
 
+static uint64_t minimum_text_display_length(uint64_t left, uint64_t right);
+
 static bool function_name_is_padding(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_left_right(const struct mylite_sql_ast_node *name);
 
 static bool nonnegative_integer_constant(
     const struct mylite_sql_ast_node *expression,
     uint64_t *out_value
+);
+
+static bool integer_constant_value(
+    const struct mylite_sql_ast_node *expression,
+    struct integer_constant_value *out_value
 );
 
 static int infer_function_arguments_nullable(
@@ -578,6 +600,9 @@ static uint64_t slice_string_function_result_length(
     if (function_name_is_padding(name)) {
         return padding_function_result_length(database, plan, arguments, callbacks);
     }
+    if (function_name_is_left_right(name)) {
+        return left_right_function_result_length(database, plan, arguments, callbacks);
+    }
     if (!mylite_function_name_uses_source_length(name) && value != NULL &&
         value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return mylite_expression_descriptor_string_length(database, value, NULL);
@@ -628,6 +653,34 @@ static uint64_t padding_function_result_length(
     return multiply_text_display_length(target_characters, max_bytes_per_character);
 }
 
+static uint64_t left_right_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *target = mylite_ast_child_at(arguments, 1U);
+    struct integer_constant_value target_characters = {0};
+    uint64_t source_length = expression_text_display_length(database, plan, source, callbacks);
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t target_length = 0U;
+
+    if (!integer_constant_value(target, &target_characters)) {
+        return source_length;
+    }
+    if (!target_characters.is_unsigned && target_characters.signed_value < 0) {
+        return 0U;
+    }
+    target_length = multiply_text_display_length(
+        target_characters.is_unsigned ? target_characters.unsigned_value
+                                      : (uint64_t)target_characters.signed_value,
+        max_bytes_per_character
+    );
+    return minimum_text_display_length(source_length, target_length);
+}
+
 static uint64_t add_text_display_lengths(uint64_t left, uint64_t right) {
     if (left > UINT64_MAX - right) {
         return mylite_mysql_long_text_length;
@@ -642,14 +695,43 @@ static uint64_t multiply_text_display_length(uint64_t length, uint64_t factor) {
     return length * factor;
 }
 
+static uint64_t minimum_text_display_length(uint64_t left, uint64_t right) {
+    return left < right ? left : right;
+}
+
 static bool function_name_is_padding(const struct mylite_sql_ast_node *name) {
     return name != NULL &&
            (mylite_span_equal_ci(name->span, "LPAD") || mylite_span_equal_ci(name->span, "RPAD"));
 }
 
+static bool function_name_is_left_right(const struct mylite_sql_ast_node *name) {
+    return name != NULL &&
+           (mylite_span_equal_ci(name->span, "LEFT") || mylite_span_equal_ci(name->span, "RIGHT"));
+}
+
 static bool nonnegative_integer_constant(
     const struct mylite_sql_ast_node *expression,
     uint64_t *out_value
+) {
+    struct integer_constant_value value = {0};
+
+    if (out_value == NULL || !integer_constant_value(expression, &value)) {
+        return false;
+    }
+    if (value.is_unsigned) {
+        *out_value = value.unsigned_value;
+        return true;
+    }
+    if (value.signed_value >= 0) {
+        *out_value = (uint64_t)value.signed_value;
+        return true;
+    }
+    return false;
+}
+
+static bool integer_constant_value(
+    const struct mylite_sql_ast_node *expression,
+    struct integer_constant_value *out_value
 ) {
     struct mylite_expression_warnings warnings = {0};
     struct mylite_expression_value value = {0};
@@ -664,11 +746,13 @@ static bool nonnegative_integer_constant(
         mylite_expression_warnings_deinit(&warnings);
         return false;
     }
-    if (value.kind == MYLITE_EXPRESSION_VALUE_INT64 && value.int64_value >= 0) {
-        *out_value = (uint64_t)value.int64_value;
+    if (value.kind == MYLITE_EXPRESSION_VALUE_INT64) {
+        out_value->is_unsigned = false;
+        out_value->signed_value = value.int64_value;
         matched = true;
     } else if (value.kind == MYLITE_EXPRESSION_VALUE_UINT64) {
-        *out_value = value.uint64_value;
+        out_value->is_unsigned = true;
+        out_value->unsigned_value = value.uint64_value;
         matched = true;
     }
     mylite_expression_value_deinit(&value);

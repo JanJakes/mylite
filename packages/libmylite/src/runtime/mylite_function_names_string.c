@@ -9,8 +9,6 @@ bool mylite_function_name_has_text_result(const struct mylite_sql_ast_node *name
         "LCASE",
         "UPPER",
         "UCASE",
-        "LEFT",
-        "RIGHT",
         "REPLACE",
         "IF",
         "IFNULL",
@@ -26,6 +24,8 @@ bool mylite_function_name_has_text_result(const struct mylite_sql_ast_node *name
 bool mylite_function_name_has_slice_string_result(const struct mylite_sql_ast_node *name) {
     static const char *const names[] = {
         "CONCAT_WS",
+        "LEFT",
+        "RIGHT",
         "SUBSTRING",
         "SUBSTR",
         "MID",

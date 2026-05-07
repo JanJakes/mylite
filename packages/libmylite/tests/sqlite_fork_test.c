@@ -237,6 +237,52 @@ static int test_registered_functions(void) {
             .context = "CONCAT_WS rejects missing value arguments",
         }
     );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF(1, 'yes', 'no')",
+            .expected = "yes",
+            .context = "IF returns true branch for nonzero values",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF(0, 'yes', 'no')",
+            .expected = "no",
+            .context = "IF returns false branch for zero",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF(NULL, 'yes', 'no')",
+            .expected = "no",
+            .context = "IF treats NULL condition as false",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF('2', 'yes', 'no')",
+            .expected = "yes",
+            .context = "IF coerces numeric text conditions",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT IF('abc', 'yes', 'no')",
+            .expected = "no",
+            .context = "IF treats nonnumeric text conditions as zero",
+        }
+    );
+    failures += expect_int64(
+        database,
+        "SELECT IF(1, NULL, 'no') IS NULL",
+        1,
+        "IF preserves NULL branch values"
+    );
 
     sqlite3_close(database);
     return failures;

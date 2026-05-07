@@ -63,6 +63,8 @@ static void mysql_concat_ws(
     sqlite3_value **arguments
 );
 
+static void mysql_if(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
+
 static void mysql_length(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
 static void mysql_char_length(
@@ -110,6 +112,8 @@ static bool double_to_rounded_int64(
 );
 
 static bool coerce_value_to_double(sqlite3_value *value, double *out_value);
+
+static bool coerce_value_to_mysql_bool(sqlite3_value *value);
 
 static bool parse_complete_double(sqlite3_value *value, double *out_value);
 
@@ -239,6 +243,9 @@ static int register_mysql_functions(sqlite3 *database) {
 
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "CONCAT_WS", -1, mysql_concat_ws);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function(database, "IF", 3, mysql_if);
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "LENGTH", 1, mysql_length);
@@ -402,6 +409,16 @@ static void mysql_concat_ws(
         return;
     }
     sqlite3_result_text(context, text, -1, sqlite3_free);
+}
+
+static void mysql_if(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {
+    int result_index = 2;
+
+    (void)argument_count;
+    if (coerce_value_to_mysql_bool(arguments[0])) {
+        result_index = 1;
+    }
+    sqlite3_result_value(context, arguments[result_index]);
 }
 
 static void mysql_length(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {
@@ -665,6 +682,13 @@ static bool coerce_value_to_double(sqlite3_value *value, double *out_value) {
         return true;
     }
     return parse_complete_double(value, out_value);
+}
+
+static bool coerce_value_to_mysql_bool(sqlite3_value *value) {
+    if (sqlite3_value_type(value) == SQLITE_NULL) {
+        return false;
+    }
+    return sqlite3_value_double(value) != 0.0;
 }
 
 static bool parse_complete_double(sqlite3_value *value, double *out_value) {

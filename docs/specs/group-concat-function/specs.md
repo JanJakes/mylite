@@ -23,8 +23,8 @@ Out of scope for this slice:
 - window-function `OVER (...)`
 - global or persisted `group_concat_max_len` mutation
 - binary-string display fidelity for embedded NUL bytes
-- full charset/collation derivation beyond the existing expression descriptor
-  model
+- full charset/collation derivation beyond the current binary-vs-connection
+  descriptor split
 - optimizer pushdown or SQLite aggregate delegation
 
 ## Sources
@@ -122,13 +122,18 @@ With MySQL's default `group_concat_max_len=1024`, text inputs return a
 `LONG_BLOB`-family descriptor with the connection/table collation and nullable
 result. When the session value is `512` bytes or lower, MySQL reports a
 `VAR_STRING`-family descriptor for nonbinary inputs. Binary inputs return a
-binary descriptor. MyLite maps current nonbinary results to nullable `BLOB`
+binary descriptor. MyLite maps nonbinary results to nullable `BLOB`
 metadata when the session limit is above `512`, and nullable `VAR_STRING`
-metadata when it is `512` or lower. Declared length is the session limit
-multiplied by the connection charset maxlen, decimals are `31`, and the current
-connection charset is reported. Binary-specific metadata is deferred until
-MyLite's expression descriptors preserve binary string provenance through
-aggregate arguments.
+metadata when it is `512` or lower. Declared nonbinary length is the session
+limit multiplied by the connection charset maxlen, decimals are `31`, and the
+current connection charset is reported.
+
+If any concatenated argument expression has binary string metadata, MyLite
+reports a binary result: charset id `63`, `BINARY` flag, nullable, decimals
+`31`, and declared byte length equal to `group_concat_max_len`. Numeric
+arguments do not make the result binary even though numeric descriptors use the
+binary charset. A binary separator alone does not make nonbinary arguments
+report binary metadata.
 
 ## MyLite Grammar
 
@@ -186,5 +191,7 @@ Tests cover:
 - empty input and all-`NULL` input
 - `HAVING` and statement `ORDER BY` over a `GROUP_CONCAT()` alias
 - metadata for the default text descriptor
+- metadata for binary arguments, mixed binary/text arguments, numeric
+  arguments, and short binary results under low `group_concat_max_len`
 - truncation at the default 1024-byte cap and warning 1260
 - truncation and metadata after `SET SESSION group_concat_max_len = 4`

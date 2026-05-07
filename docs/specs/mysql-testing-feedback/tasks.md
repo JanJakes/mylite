@@ -352,6 +352,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       neighboring session integer functions retain their verified signedness.
       `RAND()` / `RAND(seed)` now report MySQL-shaped `DOUBLE` metadata with
       seed-nullability-aware `NOT_NULL` flags.
+      `GROUP_CONCAT()` over `VARBINARY` and mixed binary/text argument lists now
+      reports MySQL-shaped binary metadata with byte-counted lengths, while
+      numeric arguments remain connection-text results.
       Remaining expression and other SQLite-backed result metadata gaps are
       still tracked here.
 

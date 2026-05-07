@@ -37682,6 +37682,75 @@ static int test_aggregate_grouping_execution(void) {
          MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
+    static const struct expected_result_metadata group_concat_binary_metadata[] = {
+        {"gc_bin",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1024U,
+         MYLITE_FIELD_TYPE_BLOB,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"gc_bin_first",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1024U,
+         MYLITE_FIELD_TYPE_BLOB,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"gc_bin_second",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1024U,
+         MYLITE_FIELD_TYPE_BLOB,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"gc_num",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         4096U,
+         MYLITE_FIELD_TYPE_BLOB,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BLOB,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+    };
+    static const struct expected_result_metadata group_concat_binary_short_metadata[] = {
+        {"gc_bin",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         4U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -38522,6 +38591,17 @@ static int test_aggregate_grouping_execution(void) {
         1,
         "GROUP_CONCAT distinct expression tuple"
     );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE gc_meta ("
+        "id INT PRIMARY KEY, s VARCHAR(8), vb VARBINARY(8))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO gc_meta VALUES (1,'a',UNHEX('61')),(2,'b',UNHEX('62'))",
+        MYLITE_DONE
+    );
     failures += prepare_sql(database, "SELECT GROUP_CONCAT(txt) AS gc FROM t", MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt,
@@ -38531,6 +38611,27 @@ static int test_aggregate_grouping_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "GROUP_CONCAT metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "GROUP_CONCAT metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT GROUP_CONCAT(vb ORDER BY id) AS gc_bin, "
+        "GROUP_CONCAT(vb, s ORDER BY id) AS gc_bin_first, "
+        "GROUP_CONCAT(s, vb ORDER BY id) AS gc_bin_second, "
+        "GROUP_CONCAT(id ORDER BY id) AS gc_num "
+        "FROM gc_meta",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        group_concat_binary_metadata,
+        (int)(sizeof(group_concat_binary_metadata) / sizeof(group_concat_binary_metadata[0])),
+        "GROUP_CONCAT binary metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "GROUP_CONCAT binary metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "GROUP_CONCAT binary metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -38606,6 +38707,22 @@ static int test_aggregate_grouping_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "GROUP_CONCAT short metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "GROUP_CONCAT short metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT GROUP_CONCAT(vb) AS gc_bin FROM gc_meta", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        group_concat_binary_short_metadata,
+        (int)(sizeof(group_concat_binary_short_metadata) /
+              sizeof(group_concat_binary_short_metadata[0])),
+        "GROUP_CONCAT binary short metadata"
+    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_ROW, "GROUP_CONCAT binary short metadata row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "GROUP_CONCAT binary short metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "SET SESSION group_concat_max_len = DEFAULT", MYLITE_DONE);

@@ -501,26 +501,26 @@ tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
 tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
                                  {sqlite3CreateIndex(pParse,0,0,0,X,R,0,0,0,0,
                                        SQLITE_IDXTYPE_UNIQUE);}
-tcons ::= KEY mysql_index_name_opt(N) mysql_index_type_opt LP sortlist(X) RP
+tcons ::= KEY mysql_index_name_opt(N) mysql_index_type_opt LP mysql_index_part_list(X) RP
           mysql_index_options.
                                  {sqlite3CreateIndex(pParse,N.n ? &N : 0,0,0,
                                       X,OE_None,0,0,SQLITE_SO_ASC,0,
                                       SQLITE_IDXTYPE_APPDEF);}
-tcons ::= INDEX mysql_index_name_opt(N) mysql_index_type_opt LP sortlist(X) RP
+tcons ::= INDEX mysql_index_name_opt(N) mysql_index_type_opt LP mysql_index_part_list(X) RP
           mysql_index_options.
                                  {sqlite3CreateIndex(pParse,N.n ? &N : 0,0,0,
                                       X,OE_None,0,0,SQLITE_SO_ASC,0,
                                       SQLITE_IDXTYPE_APPDEF);}
 tcons ::= UNIQUE KEY mysql_index_name_opt(N) mysql_index_type_opt
-          LP sortlist(X) RP mysql_index_options.
+          LP mysql_index_part_list(X) RP mysql_index_options.
                                  {sqlite3CreateIndex(pParse,N.n ? &N : 0,0,0,
                                       X,OE_Abort,0,0,SQLITE_SO_ASC,0,
-                                      SQLITE_IDXTYPE_UNIQUE);}
+                                      SQLITE_IDXTYPE_APPDEF);}
 tcons ::= UNIQUE INDEX mysql_index_name_opt(N) mysql_index_type_opt
-          LP sortlist(X) RP mysql_index_options.
+          LP mysql_index_part_list(X) RP mysql_index_options.
                                  {sqlite3CreateIndex(pParse,N.n ? &N : 0,0,0,
                                       X,OE_Abort,0,0,SQLITE_SO_ASC,0,
-                                      SQLITE_IDXTYPE_UNIQUE);}
+                                      SQLITE_IDXTYPE_APPDEF);}
 tcons ::= CHECK LP(A) expr(E) RP(B) onconf.
                                  {sqlite3AddCheckConstraint(pParse,E,A.z,B.z);}
 tcons ::= FOREIGN KEY LP eidlist(FA) RP
@@ -538,6 +538,27 @@ mysql_index_name_opt(A) ::= nm(A).
 
 mysql_index_type_opt ::= .
 mysql_index_type_opt ::= USING nm.
+
+%type mysql_index_part_list {ExprList*}
+%destructor mysql_index_part_list {sqlite3ExprListDelete(pParse->db, $$);}
+%type mysql_index_part {Expr*}
+%destructor mysql_index_part {sqlite3ExprDelete(pParse->db, $$);}
+
+mysql_index_part_list(A) ::= mysql_index_part_list(A) COMMA mysql_index_part(Y)
+                             sortorder(Z). {
+  A = sqlite3ExprListAppend(pParse,A,Y);
+  sqlite3ExprListSetSortOrder(A,Z,SQLITE_SO_UNDEFINED);
+}
+mysql_index_part_list(A) ::= mysql_index_part(Y) sortorder(Z). {
+  A = sqlite3ExprListAppend(pParse,0,Y);
+  sqlite3ExprListSetSortOrder(A,Z,SQLITE_SO_UNDEFINED);
+}
+mysql_index_part(A) ::= nm(X). {
+  A = tokenExpr(pParse,TK_ID,X);
+}
+mysql_index_part(A) ::= nm(X) LP INTEGER(Y) RP. {
+  A = myliteIndexPrefixExpr(pParse, X, Y);
+}
 
 mysql_index_options ::= .
 mysql_index_options ::= mysql_index_options mysql_index_option.
@@ -1277,6 +1298,22 @@ idlist(A) ::= nm(Y).
       }
     }
     return p;
+  }
+
+  static Expr *myliteIndexPrefixExpr(Parse *pParse, Token column, Token length){
+    static const char zSubstr[] = "substr";
+    sqlite3 *db = pParse->db;
+    Token functionName;
+    ExprList *pArgs = 0;
+    Expr *pLength;
+
+    functionName.z = zSubstr;
+    functionName.n = sizeof(zSubstr) - 1;
+    pLength = sqlite3ExprAlloc(db, TK_INTEGER, &length, 0);
+    pArgs = sqlite3ExprListAppend(pParse, pArgs, tokenExpr(pParse, TK_ID, column));
+    pArgs = sqlite3ExprListAppend(pParse, pArgs, sqlite3ExprInt32(db, 1));
+    pArgs = sqlite3ExprListAppend(pParse, pArgs, pLength);
+    return sqlite3ExprFunction(pParse, pArgs, &functionName, 0);
   }
 
   static void myliteInsertSet(

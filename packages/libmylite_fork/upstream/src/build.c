@@ -4297,7 +4297,7 @@ void sqlite3CreateIndex(
     if( pParse->nErr ) goto exit_create_index;
     pCExpr = sqlite3ExprSkipCollate(pListItem->pExpr);
     if( pCExpr->op!=TK_COLUMN ){
-      if( pTab==pParse->pNewTable ){
+      if( pTab==pParse->pNewTable && idxType!=SQLITE_IDXTYPE_APPDEF ){
         sqlite3ErrorMsg(pParse, "expressions prohibited in PRIMARY KEY and "
                                 "UNIQUE constraints");
         goto exit_create_index;

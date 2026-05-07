@@ -35,6 +35,9 @@ slices:
 - admit MySQL table-level `KEY`, `INDEX`, `UNIQUE KEY`, and `UNIQUE INDEX`
   declarations over simple column key parts in the direct fork parser and
   build native SQLite indexes while the table is created
+- admit MySQL prefix index key parts such as `slug(191)` in table-level direct
+  parser indexes and lower them to native SQLite expression-index keys over
+  `substr(column, 1, length)`
 - admit MySQL column-level `AUTO_INCREMENT` in the direct fork parser and
   promote matching integer-affinity single-column primary keys, including
   `BIGINT UNSIGNED ... AUTO_INCREMENT, PRIMARY KEY(id)`, onto SQLite rowid
@@ -480,6 +483,15 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
     unchanged; later descriptor/catalog work must persist the authored column
     charset, collation, and comment metadata for `SHOW` and information-schema
     surfaces.
+19. Admit MySQL prefix index key parts in table-level direct parser indexes.
+    Implemented by lowering `column(length)` to SQLite expression-index keys
+    over `substr(column, 1, length)` and allowing expression keys for
+    MyLite-owned application-defined inline indexes while preserving SQLite's
+    expression prohibition for native primary-key and unique constraints.
+    Native uniqueness enforcement therefore covers the common WordPress-style
+    prefix-key shape. Broader collation propagation, expression key parts,
+    functional key parts, and standalone `CREATE INDEX` prefix syntax remain
+    deferred.
 
 ## Lemon Grammar Direction
 
@@ -513,6 +525,7 @@ table_constraint ::= KEY nm_opt LP indexed_column_list RP index_options.
 table_constraint ::= INDEX nm_opt LP indexed_column_list RP index_options.
 table_constraint ::= UNIQUE KEY nm_opt LP indexed_column_list RP index_options.
 table_constraint ::= UNIQUE INDEX nm_opt LP indexed_column_list RP index_options.
+indexed_column ::= column_name LP integer_literal RP.
 ```
 
 ## Known Risks

@@ -3493,6 +3493,46 @@ static int test_wordpress_like_crud(void) {
     );
     failures += exec_sql(
         database,
+        "CREATE TABLE prefix_index_forms ("
+        "id INTEGER PRIMARY KEY,"
+        "slug VARCHAR(191) NOT NULL,"
+        "UNIQUE KEY ux_slug_prefix (slug(5)),"
+        "KEY slug_lookup (slug(3))"
+        ")",
+        "create direct MySQL prefix index key parts"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(name, '|') FROM ("
+                   "SELECT name FROM sqlite_schema WHERE type = 'index' "
+                   "AND tbl_name = 'prefix_index_forms' "
+                   "AND name IN ('slug_lookup', 'ux_slug_prefix') ORDER BY name"
+                   ")",
+            .expected = "slug_lookup|ux_slug_prefix",
+            .context = "MySQL prefix key parts create native SQLite indexes",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO prefix_index_forms (id, slug) VALUES (1, 'alpha-one')",
+        "insert direct prefix index form row"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT IGNORE INTO prefix_index_forms (id, slug) VALUES (2, 'alpha-two')",
+        "ignore duplicate prefix unique row through native expression index"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(COUNT(*), ':', ROW_COUNT()) FROM prefix_index_forms",
+            .expected = "1:0",
+            .context = "direct prefix unique key enforces MySQL prefix uniqueness",
+        }
+    );
+    failures += exec_sql(
+        database,
         "INSERT INTO inline_index_forms (id, name, slug) VALUES "
         "(1, 'Alpha', 'alpha'), (2, 'Alpha Again', 'alpha-again')",
         "insert direct inline index form rows"

@@ -72,6 +72,11 @@ Implemented fork points:
 - direct SQLite parser and schema-builder admission for MySQL table-level
   `KEY`, `INDEX`, `UNIQUE KEY`, and `UNIQUE INDEX` declarations over simple
   column key parts, creating native SQLite indexes during `CREATE TABLE`
+- direct SQLite parser and schema-builder admission for MySQL prefix index key
+  parts in table-level indexes, lowering `column(length)` to native SQLite
+  expression-index keys over `substr(column, 1, length)` and opening SQLite's
+  create-table expression-index guard only for MyLite-owned
+  application-defined inline indexes
 - direct SQLite parser and schema-builder admission for MySQL column-level
   `AUTO_INCREMENT`, including table-level primary-key promotion to native
   rowid autoincrement storage for integer-affinity single-column keys

@@ -34737,6 +34737,7 @@ static int test_cast_expression_execution(void) {
     static const char *const decimal_range_values[] = {"999.99", "999.99", "999.99", "-0.99"};
     static const char *const decimal_nonfinite_columns[] = {"nan_value", "inf_value"};
     static const char *const decimal_nonfinite_values[] = {"0.00", "0.00"};
+    static const char *const cast_charset_columns[] = {"bad_utf8mb4", "good_utf8mb4"};
     static const unsigned char binary_padded[] = {'a', '\0', '\0'};
     static const unsigned char binary_truncated[] = {'a', 'b', 'c'};
     mylite_db *database = NULL;
@@ -35338,6 +35339,32 @@ static int test_cast_expression_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(
+        database,
+        "SELECT HEX(CAST(UNHEX('61FF62') AS CHAR CHARACTER SET utf8mb4)) AS bad_utf8mb4, "
+        "HEX(CAST(UNHEX('61E282AC62') AS CHAR CHARACTER SET utf8mb4)) AS good_utf8mb4",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(stmt, cast_charset_columns, 2, "CAST charset columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST charset validation row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "CAST invalid utf8mb4 value");
+    failures += expect_string(mylite_column_text(stmt, 1), "61E282AC62", "CAST valid utf8mb4");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST charset warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_invalid_character_string,
+        "CAST charset warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Invalid utf8mb4 character string: 'FF62'",
+        "CAST charset warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST charset validation done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += execute_sql(
         database,
         "CREATE DATABASE mylite_cast_expression "
@@ -35576,6 +35603,11 @@ static int test_convert_expression_execution(void) {
         "abc",
         "abc",
         "abc",
+    };
+    static const char *const convert_charset_columns[] = {
+        "bad_utf8mb4",
+        "good_utf8mb4",
+        "binary_passthrough",
     };
     static const struct expected_result_metadata metadata[] = {
         {"signed_value",
@@ -35905,6 +35937,35 @@ static int test_convert_expression_execution(void) {
         "CHAR(3)",
         "CONVERT char warning message"
     );
+
+    failures += prepare_sql(
+        database,
+        "SELECT HEX(CONVERT(UNHEX('61FF62') USING utf8mb4)) AS bad_utf8mb4, "
+        "HEX(CONVERT(UNHEX('61E282AC62') USING utf8mb4)) AS good_utf8mb4, "
+        "HEX(CONVERT(UNHEX('61FF62') USING binary)) AS binary_passthrough",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(stmt, convert_charset_columns, 3, "CONVERT charset columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT charset validation row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "CONVERT invalid utf8mb4 value");
+    failures += expect_string(mylite_column_text(stmt, 1), "61E282AC62", "CONVERT valid utf8mb4");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), "61FF62", "CONVERT binary passthrough value");
+    failures += expect_int(mylite_warning_count(database), 1, "CONVERT charset warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_invalid_character_string,
+        "CONVERT charset warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Invalid utf8mb4 character string: 'FF62'",
+        "CONVERT charset warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT charset validation done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += prepare_sql(
         database,

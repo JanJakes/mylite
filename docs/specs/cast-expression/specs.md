@@ -141,6 +141,8 @@ binary-string metadata.
 | `CAST('abcdef' AS CHAR(3))` | `abc` | 1292 truncated char |
 | `CAST('abc' AS CHAR(5))` | `abc` | none |
 | `CAST('abc' AS CHAR CHARACTER SET binary)` | `abc` | none |
+| `HEX(CAST(UNHEX('61FF62') AS CHAR CHARACTER SET utf8mb4))` | `NULL` | 1300 invalid character string |
+| `HEX(CAST(UNHEX('61E282AC62') AS CHAR CHARACTER SET utf8mb4))` | `61E282AC62` | none |
 | `HEX(CAST('a\\0b' AS BINARY))` | `610062` | none |
 | `LENGTH(CAST('a\\0b' AS BINARY))` | `3` | none |
 | `HEX(CAST('a' AS BINARY(3)))` | `610000` | none |

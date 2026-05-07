@@ -44,6 +44,8 @@ Implemented fork points:
   beginning with `IF()` condition conversion warnings
 - narrow parser admission for MySQL function names that SQLite tokenizes as
   syntax instead of identifiers, beginning with `ISNULL(expr)`
+- tokenizer/parser admission for MySQL-only operators that SQLite rejects
+  before expression lowering, beginning with scalar `<=>`
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before
@@ -125,6 +127,10 @@ Use existing SQLite APIs for:
   can be represented by compact callbacks. Function names that SQLite tokenizes
   as operators or other syntax still need a small fork grammar rule before they
   can lower to those callbacks.
+- Operators only when SQLite already tokenizes the syntax and its expression
+  semantics can be expressed by existing parse nodes. MySQL-only operators such
+  as `<=>` need fork tokenizer/parser admission before they can lower to a
+  function or opcode.
 - Collations where the comparison algorithm can be implemented directly and
   registered by MySQL collation name. MyLite-generated expressions must still
   carry the intended `COLLATE` clause when SQLite would otherwise treat a
@@ -287,8 +293,8 @@ For the next foundation work, prefer this order:
    after catalog-fed descriptors cover the semantic primitive.
 4. Add fork diagnostics only when a conversion or constraint behavior needs
    MySQL warning/error semantics that cannot be represented by SQLite errors.
-5. Add narrow grammar hooks when MySQL-compatible syntax is blocked before the
-   public extension registry is consulted.
+5. Add narrow tokenizer and grammar hooks when MySQL-compatible syntax is
+   blocked before the public extension registry is consulted.
 6. Move row identity, sequence allocation, and constraint mapping into the fork
    when public MyLite SQL lowering cannot preserve MySQL affected-row,
    duplicate-key, or auto-increment side effects without duplicated logic.

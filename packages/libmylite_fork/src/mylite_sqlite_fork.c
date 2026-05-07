@@ -82,6 +82,12 @@ static void mysql_bit_length(
 
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
+static void mysql_nullsafe_eq(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
+
 static void mysql_length(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
 static void mysql_char_length(
@@ -131,6 +137,28 @@ static bool double_to_rounded_int64(
 static bool coerce_value_to_double(sqlite3_value *value, double *out_value);
 
 static bool coerce_value_to_mysql_bool(sqlite3_context *context, sqlite3_value *value);
+
+static bool coerce_value_to_mysql_comparison_double(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    double *out_value
+);
+
+static bool value_is_sql_numeric(sqlite3_value *value);
+
+static bool compare_values_as_mysql_text(
+    sqlite3_value *left,
+    sqlite3_value *right,
+    bool *out_equal
+);
+
+static bool compare_values_as_mysql_binary(
+    sqlite3_value *left,
+    sqlite3_value *right,
+    bool *out_equal
+);
+
+static void publish_truncated_wrong_value_warning(sqlite3_context *context);
 
 static bool parse_complete_double(sqlite3_value *value, double *out_value);
 
@@ -271,6 +299,9 @@ static int register_mysql_functions(sqlite3 *database) {
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "ISNULL", 1, mysql_isnull);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function(database, "_mylite_nullsafe_eq", 2, mysql_nullsafe_eq);
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "LENGTH", 1, mysql_length);
@@ -472,6 +503,58 @@ static void mysql_bit_length(
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {
     (void)argument_count;
     sqlite3_result_int(context, sqlite3_value_type(arguments[0]) == SQLITE_NULL);
+}
+
+static void mysql_nullsafe_eq(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    int left_type = sqlite3_value_type(arguments[0]);
+    int right_type = sqlite3_value_type(arguments[1]);
+    bool equal = false;
+
+    (void)argument_count;
+    if (left_type == SQLITE_NULL || right_type == SQLITE_NULL) {
+        sqlite3_result_int(context, left_type == SQLITE_NULL && right_type == SQLITE_NULL);
+        return;
+    }
+    if (value_is_sql_numeric(arguments[0]) || value_is_sql_numeric(arguments[1])) {
+        double left = 0.0;
+        double right = 0.0;
+
+        if (!coerce_value_to_mysql_comparison_double(context, arguments[0], &left) ||
+            !coerce_value_to_mysql_comparison_double(context, arguments[1], &right)) {
+            return;
+        }
+        sqlite3_result_int(context, left == right);
+        return;
+    }
+    if (left_type == SQLITE_BLOB || right_type == SQLITE_BLOB) {
+        int result = 0;
+
+        if (!compare_values_as_mysql_binary(arguments[0], arguments[1], &equal)) {
+            sqlite3_result_error_nomem(context);
+            return;
+        }
+        if (equal) {
+            result = 1;
+        }
+        sqlite3_result_int(context, result);
+        return;
+    }
+    if (!compare_values_as_mysql_text(arguments[0], arguments[1], &equal)) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    {
+        int result = 0;
+
+        if (equal) {
+            result = 1;
+        }
+        sqlite3_result_int(context, result);
+    }
 }
 
 static void mysql_length(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {
@@ -738,7 +821,6 @@ static bool coerce_value_to_double(sqlite3_value *value, double *out_value) {
 }
 
 static bool coerce_value_to_mysql_bool(sqlite3_context *context, sqlite3_value *value) {
-    static const char truncated_sqlstate[] = "22007";
     int type = sqlite3_value_type(value);
     const unsigned char *text = NULL;
     int bytes = 0;
@@ -774,14 +856,135 @@ static bool coerce_value_to_mysql_bool(sqlite3_context *context, sqlite3_value *
         truncated = true;
     }
     if (truncated) {
-        (void)mylite_sqlite_fork_set_condition(
-            sqlite3_context_db_handle(context),
-            MYLITE_SQLITE_FORK_CONDITION_WARNING,
-            mylite_sqlite_mysql_truncated_wrong_value,
-            truncated_sqlstate
-        );
+        publish_truncated_wrong_value_warning(context);
     }
     return number != 0.0;
+}
+
+static bool coerce_value_to_mysql_comparison_double(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    double *out_value
+) {
+    int type = sqlite3_value_type(value);
+    const unsigned char *text = NULL;
+    int bytes = 0;
+    const char *start = NULL;
+    const char *end = NULL;
+    char *cursor = NULL;
+    double number = 0.0;
+    bool truncated = false;
+
+    if (type == SQLITE_INTEGER || type == SQLITE_FLOAT) {
+        *out_value = sqlite3_value_double(value);
+        return true;
+    }
+
+    text = sqlite3_value_text(value);
+    bytes = sqlite3_value_bytes(value);
+    if (text == NULL && bytes > 0) {
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+
+    start = text == NULL ? "" : (const char *)text;
+    end = start + bytes;
+    while (start < end && isspace((unsigned char)*start)) {
+        ++start;
+    }
+
+    errno = 0;
+    number = strtod(start, &cursor);
+    truncated = cursor == start;
+    if (errno == ERANGE || text_has_non_space_tail(cursor, end)) {
+        truncated = true;
+    }
+    if (truncated) {
+        publish_truncated_wrong_value_warning(context);
+    }
+    *out_value = number;
+    return true;
+}
+
+static bool value_is_sql_numeric(sqlite3_value *value) {
+    int type = sqlite3_value_type(value);
+
+    if (type == SQLITE_INTEGER) {
+        return true;
+    }
+    if (type == SQLITE_FLOAT) {
+        return true;
+    }
+    return false;
+}
+
+static bool compare_values_as_mysql_text(
+    sqlite3_value *left,
+    sqlite3_value *right,
+    bool *out_equal
+) {
+    static const unsigned char empty[] = "";
+    const unsigned char *left_text = sqlite3_value_text(left);
+    int left_length = sqlite3_value_bytes(left);
+    const unsigned char *right_text = sqlite3_value_text(right);
+    int right_length = sqlite3_value_bytes(right);
+
+    if ((left_text == NULL && left_length > 0) || (right_text == NULL && right_length > 0)) {
+        return false;
+    }
+    if (left_text == NULL) {
+        left_text = empty;
+    }
+    if (right_text == NULL) {
+        right_text = empty;
+    }
+    left_length = trim_pad_space((struct mylite_sqlite_pad_trim_request){
+        .value = left_text,
+        .length = left_length,
+        .flags = mylite_sqlite_collation_pad_space,
+    });
+    right_length = trim_pad_space((struct mylite_sqlite_pad_trim_request){
+        .value = right_text,
+        .length = right_length,
+        .flags = mylite_sqlite_collation_pad_space,
+    });
+    *out_equal = compare_ascii_ci_bytes(left_text, left_length, right_text, right_length) == 0;
+    return true;
+}
+
+static bool compare_values_as_mysql_binary(
+    sqlite3_value *left,
+    sqlite3_value *right,
+    bool *out_equal
+) {
+    static const unsigned char empty[] = "";
+    const unsigned char *left_value = sqlite3_value_blob(left);
+    int left_length = sqlite3_value_bytes(left);
+    const unsigned char *right_value = sqlite3_value_blob(right);
+    int right_length = sqlite3_value_bytes(right);
+
+    if ((left_value == NULL && left_length > 0) || (right_value == NULL && right_length > 0)) {
+        return false;
+    }
+    if (left_value == NULL) {
+        left_value = empty;
+    }
+    if (right_value == NULL) {
+        right_value = empty;
+    }
+    *out_equal = compare_binary_bytes(left_value, left_length, right_value, right_length) == 0;
+    return true;
+}
+
+static void publish_truncated_wrong_value_warning(sqlite3_context *context) {
+    static const char truncated_sqlstate[] = "22007";
+
+    (void)mylite_sqlite_fork_set_condition(
+        sqlite3_context_db_handle(context),
+        MYLITE_SQLITE_FORK_CONDITION_WARNING,
+        mylite_sqlite_mysql_truncated_wrong_value,
+        truncated_sqlstate
+    );
 }
 
 static bool parse_complete_double(sqlite3_value *value, double *out_value) {

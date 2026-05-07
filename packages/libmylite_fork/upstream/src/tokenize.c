@@ -338,8 +338,13 @@ i64 sqlite3GetToken(const unsigned char *z, int *tokenType){
     }
     case CC_LT: {
       if( (c=z[1])=='=' ){
-        *tokenType = TK_LE;
-        return 2;
+        if( z[2]=='>' ){
+          *tokenType = TK_MYSQL_NULLSAFE_EQ;
+          return 3;
+        }else{
+          *tokenType = TK_LE;
+          return 2;
+        }
       }else if( c=='>' ){
         *tokenType = TK_NE;
         return 2;

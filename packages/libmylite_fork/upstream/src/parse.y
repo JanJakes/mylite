@@ -263,7 +263,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
 %token ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST.
 %token CONFLICT DATABASE DEFERRED DESC DETACH EACH END EXCLUSIVE EXPLAIN FAIL.
 %token OR AND NOT IS ISNOT MATCH LIKE_KW BETWEEN IN ISNULL NOTNULL NE EQ.
-%token GT LE LT GE ESCAPE.
+%token GT LE LT GE MYSQL_NULLSAFE_EQ ESCAPE.
 
 // The following directive causes tokens ABORT, AFTER, ASC, etc. to
 // fallback to ID if they will not parse as their original value.
@@ -310,7 +310,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
 %left AND.
 %right NOT.
 %left IS MATCH LIKE_KW BETWEEN IN ISNULL NOTNULL NE EQ.
-%left GT LE LT GE.
+%left GT LE LT GE MYSQL_NULLSAFE_EQ.
 %right ESCAPE.
 %left BITAND BITOR LSHIFT RSHIFT.
 %left PLUS MINUS.
@@ -1352,6 +1352,13 @@ expr(A) ::= expr(A) OR(OP) expr(Y).     {A=sqlite3PExpr(pParse,@OP,A,Y);}
 expr(A) ::= expr(A) LT|GT|GE|LE(OP) expr(Y).
                                         {A=sqlite3PExpr(pParse,@OP,A,Y);}
 expr(A) ::= expr(A) EQ|NE(OP) expr(Y).  {A=sqlite3PExpr(pParse,@OP,A,Y);}
+expr(A) ::= expr(A) MYSQL_NULLSAFE_EQ expr(Y). [EQ] {
+  static const char zMyliteNullsafeEq[] = "_mylite_nullsafe_eq";
+  Token functionName = {zMyliteNullsafeEq, sizeof(zMyliteNullsafeEq) - 1};
+  ExprList *pList = sqlite3ExprListAppend(pParse, 0, A);
+  pList = sqlite3ExprListAppend(pParse, pList, Y);
+  A = sqlite3ExprFunction(pParse, pList, &functionName, 0);
+}
 expr(A) ::= expr(A) BITAND|BITOR|LSHIFT|RSHIFT(OP) expr(Y).
                                         {A=sqlite3PExpr(pParse,@OP,A,Y);}
 expr(A) ::= expr(A) PLUS|MINUS(OP) expr(Y).

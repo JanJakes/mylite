@@ -285,6 +285,24 @@ SQLite scalar callbacks until they need parser, broader statement-state,
 multi-warning diagnostics, or storage hooks that SQLite's public function API
 cannot provide.
 
+### Operators
+
+MySQL operators that SQLite already tokenizes should use existing expression
+nodes when their semantics match. MySQL-only operators need fork tokenizer and
+parser admission because the public extension surface is too late.
+
+The current executable slice recognizes scalar `<=>` in the SQLite fork and
+lowers it to a compact runtime primitive. The covered behavior is:
+
+- `NULL <=> NULL` returns `1`; one `NULL` returns `0`.
+- Mixed numeric comparisons coerce text with MySQL-style leading-number parsing
+  and warning 1292 on truncation.
+- Default text comparison is ASCII case-insensitive and trims pad spaces.
+- Binary-string comparison is bytewise.
+
+Full collation-weight comparison, row `<=>`, optimizer/index mapping, and exact
+MySQL warning text remain deferred.
+
 ### Auto-increment
 
 SQLite rowid allocation is the correct starting point for MySQL

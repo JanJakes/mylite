@@ -352,6 +352,43 @@ static int test_registered_functions(void) {
     failures += expect_int64(database, "SELECT ISNULL(NULL)", 1, "ISNULL returns 1 for NULL");
     failures +=
         expect_int64(database, "SELECT ISNULL(0)", 0, "ISNULL returns 0 for non-NULL values");
+    failures += expect_int64(database, "SELECT 1 <=> 1", 1, "<=> returns 1 for equal numbers");
+    failures += expect_int64(database, "SELECT 1 <=> 2", 0, "<=> returns 0 for unequal numbers");
+    failures += expect_int64(database, "SELECT NULL <=> NULL", 1, "<=> returns 1 for two NULLs");
+    failures += expect_int64(database, "SELECT NULL <=> 0", 0, "<=> returns 0 for one NULL");
+    failures += expect_int64(
+        database,
+        "SELECT 'a' <=> 'A'",
+        1,
+        "<=> uses default case-insensitive text comparison"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT 'a' <=> 'a '",
+        1,
+        "<=> ignores trailing spaces for default text comparison"
+    );
+    failures +=
+        expect_int64(database, "SELECT X'61' <=> X'41'", 0, "<=> compares binary strings bytewise");
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear condition before <=> truncation warning"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT 1 <=> '1x'",
+        1,
+        "<=> uses leading numeric text for mixed numeric comparisons"
+    );
+    failures += expect_fork_warning_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "<=> trailing text publishes truncation warning",
+        }
+    );
 
     sqlite3_close(database);
     return failures;

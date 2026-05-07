@@ -289,6 +289,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       All-`NULL` `ELT()` result lists now report MySQL-shaped binary
       `VAR_STRING` metadata with length 0, collation id 63, decimals 31, and
       the `BINARY` flag.
+      `UNIX_TIMESTAMP()` now reports MySQL-shaped `LONGLONG` metadata for
+      no-argument, `NULL`, integer, date, and non-fractional temporal inputs,
+      plus `NEWDECIMAL(13+fsp, fsp)` metadata for fractional temporal, text,
+      approximate, and fixed-point inputs.
       Table-backed `LPAD()` / `RPAD()` expressions with nonnegative literal
       target lengths and `REPEAT()` expressions with nonnegative literal counts
       now infer MySQL-shaped connection-character-set string widths.

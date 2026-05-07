@@ -34,3 +34,26 @@ Verified against MySQL 8.4.9:
 | `UNIX_TIMESTAMP('3001-01-19 00:00:00')` | `0` |
 | `UNIX_TIMESTAMP(NULL)` | `NULL` |
 | `UNIX_TIMESTAMP('bad')` | `0.000000` plus warning 1292 |
+
+## Result metadata
+
+MySQL reports `UNIX_TIMESTAMP()` and non-fractional arguments as signed
+`LONGLONG` metadata with binary collation id `63`, display length `21`, scale
+`0`, and `BINARY NUM` flags. The no-argument form and non-`NULL` literal
+arguments include `NOT_NULL`; nullable arguments omit it.
+
+Fractional temporal, fractional fixed-point, text, and approximate arguments report
+`NEWDECIMAL` metadata with binary collation id `63`, display length
+`13 + fsp`, scale `fsp`, and `BINARY NUM` flags. Dynamic text and approximate
+arguments use scale `6`.
+
+Verified metadata:
+
+| Expression | Type | Collation id | Length | Decimals | Flags |
+| --- | --- | ---: | ---: | ---: | --- |
+| `UNIX_TIMESTAMP()` | `LONGLONG` | `63` | `21` | `0` | `NOT_NULL BINARY NUM` |
+| `UNIX_TIMESTAMP(NULL)` | `LONGLONG` | `63` | `21` | `0` | `BINARY NUM` |
+| `UNIX_TIMESTAMP('1970-01-01 00:00:00')` | `LONGLONG` | `63` | `21` | `0` | `NOT_NULL BINARY NUM` |
+| `UNIX_TIMESTAMP('2000-01-02 03:04:05.123')` | `NEWDECIMAL` | `63` | `16` | `3` | `NOT_NULL BINARY NUM` |
+| `UNIX_TIMESTAMP('bad')` | `NEWDECIMAL` | `63` | `19` | `6` | `NOT_NULL BINARY NUM` |
+| `UNIX_TIMESTAMP(DATETIME(6) column)` | `NEWDECIMAL` | `63` | `19` | `6` | `BINARY NUM` |

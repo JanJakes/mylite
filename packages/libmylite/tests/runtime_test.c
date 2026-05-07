@@ -20856,12 +20856,133 @@ static int test_unix_timestamp_function_execution(void) {
         "0",
         NULL,
     };
+    static const struct expected_result_metadata scalar_metadata[] = {
+        {"no_arg",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"null_arg",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"text_plain",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"text_f3",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         16U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         3U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"bad_text",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         19U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"num_f6",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         19U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+    };
     static const char *const projection_columns[] = {"id", "ts"};
     static const char *const projection_values[] = {
         "1",
-        "0",
+        "0.000000",
         "2",
         "946782245.123456",
+    };
+    static const struct expected_result_metadata table_metadata[] = {
+        {"dt0_ts",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"dt6_ts",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         19U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"n_ts",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
     };
     static const char *const remaining_columns[] = {"id"};
     static const char *const remaining_values[] = {"2", "3"};
@@ -20889,6 +21010,26 @@ static int test_unix_timestamp_function_execution(void) {
         1,
         "UNIX_TIMESTAMP scalar values"
     );
+
+    failures += prepare_sql(
+        database,
+        "SELECT UNIX_TIMESTAMP() AS no_arg, "
+        "UNIX_TIMESTAMP(NULL) AS null_arg, "
+        "UNIX_TIMESTAMP('1970-01-01 00:00:00') AS text_plain, "
+        "UNIX_TIMESTAMP('2000-01-02 03:04:05.123') AS text_f3, "
+        "UNIX_TIMESTAMP('bad') AS bad_text, "
+        "UNIX_TIMESTAMP(20000102030405.123456) AS num_f6",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        scalar_metadata,
+        (int)(sizeof(scalar_metadata) / sizeof(scalar_metadata[0])),
+        "UNIX_TIMESTAMP scalar metadata"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += prepare_sql(
         database,
@@ -20934,17 +21075,35 @@ static int test_unix_timestamp_function_execution(void) {
     failures += execute_sql(
         database,
         "CREATE TABLE temporal_unix_timestamp ("
-        "id INT PRIMARY KEY, dt DATETIME(6), n BIGINT)",
+        "id INT PRIMARY KEY, dt DATETIME(6), dt0 DATETIME, n BIGINT)",
         MYLITE_DONE
     );
     failures += execute_sql(
         database,
         "INSERT INTO temporal_unix_timestamp VALUES "
-        "(1, '1970-01-01 00:00:00', 0), "
-        "(2, '2000-01-02 03:04:05.123456', 0), "
-        "(3, NULL, 0)",
+        "(1, '1970-01-01 00:00:00', '1970-01-01 00:00:00', 0), "
+        "(2, '2000-01-02 03:04:05.123456', '2000-01-02 03:04:05', 0), "
+        "(3, NULL, NULL, 0)",
         MYLITE_DONE
     );
+    failures += prepare_sql(
+        database,
+        "SELECT UNIX_TIMESTAMP(dt0) AS dt0_ts, "
+        "UNIX_TIMESTAMP(dt) AS dt6_ts, "
+        "UNIX_TIMESTAMP(n) AS n_ts "
+        "FROM temporal_unix_timestamp LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        table_metadata,
+        (int)(sizeof(table_metadata) / sizeof(table_metadata[0])),
+        "UNIX_TIMESTAMP table metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "UNIX_TIMESTAMP metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SELECT id, UNIX_TIMESTAMP(dt) AS ts "

@@ -39,8 +39,12 @@ Implemented scope:
   `REPLACE`, and duplicate-key update SQL
 - load MyLite catalog value-list metadata into those descriptors before public
   MyLite table-backed `SELECT` statements prepare physical SQLite scans
+- load MyLite catalog `BIT(M)` metadata into read descriptors before public
+  MyLite table-backed `SELECT` statements prepare physical SQLite scans
 - preserve `ENUM`/`SET` direct display text and numeric-context ordinals or
   bitmasks through MyLite row materialization
+- preserve `BIT(M)` fixed-width binary display and numeric context after
+  reopening a database through public MyLite
 
 Deferred scope:
 
@@ -52,7 +56,7 @@ Deferred scope:
 - exact MySQL diagnostic messages, row interpolation, complete warning records,
   and `IGNORE` demotion
 - non-strict SQL mode clipping and string truncation behavior
-- `TIMESTAMP`, JSON, bit, and spatial assignment conversion
+- spatial assignment conversion
 - preserving MyLite descriptors through SQLite-native schema rebuilds that are
   not coordinated by MyLite
 

@@ -363,6 +363,9 @@ if(BUILD_TESTING)
   )
   target_link_libraries(mylite_sqlite_fork_test PRIVATE MyLite::mylite MyLite::mylite_fork)
   target_include_directories(mylite_sqlite_fork_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  target_compile_definitions(mylite_sqlite_fork_test PRIVATE
+    MYLITE_SQLITE_FORK_TEST_FILE_PATH="${CMAKE_CURRENT_BINARY_DIR}/mylite-sqlite-fork-test.mylite"
+  )
   mylite_configure_c_target(mylite_sqlite_fork_test)
 
   add_executable(mylite_column_type_test

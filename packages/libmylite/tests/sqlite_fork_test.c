@@ -83,6 +83,8 @@ static int test_mylite_year_type_coercion(void);
 
 static int test_mylite_bit_type_coercion(void);
 
+static int test_mylite_select_descriptor_hydration(void);
+
 static int test_mylite_json_type_coercion(void);
 
 static int test_mylite_collation_unique_semantics(void);
@@ -136,6 +138,8 @@ static int expect_mylite_sql_status(
     const char *context
 );
 
+static void remove_sqlite_fork_test_files(void);
+
 int main(void) {
     int failures = 0;
 
@@ -164,6 +168,7 @@ int main(void) {
     failures += test_mylite_time_type_coercion();
     failures += test_mylite_year_type_coercion();
     failures += test_mylite_bit_type_coercion();
+    failures += test_mylite_select_descriptor_hydration();
     failures += test_mylite_json_type_coercion();
     failures += test_mylite_collation_unique_semantics();
 
@@ -4506,6 +4511,95 @@ static int test_mylite_bit_type_coercion(void) {
     return failures;
 }
 
+static int test_mylite_select_descriptor_hydration(void) {
+    enum {
+        reopened_column_count = 5,
+        single_row_count = 1,
+    };
+
+    static const char *const reopened_rows[] = {"1", "search", "341", "2", "16"};
+    const char *path = MYLITE_SQLITE_FORK_TEST_FILE_PATH;
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    remove_sqlite_fork_test_files();
+
+    failures += expect_mylite_ok(
+        mylite_open(path, &database),
+        database,
+        "open MyLite descriptor hydration database"
+    );
+    if (failures != 0) {
+        remove_sqlite_fork_test_files();
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_descriptor_hydration CHARACTER SET utf8mb4 "
+        "COLLATE utf8mb4_unicode_ci",
+        "create MyLite descriptor hydration schema"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "USE mylite_descriptor_hydration",
+        "use descriptor hydration schema"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE wp_flags_reopen_like ("
+        "flag_id INT NOT NULL AUTO_INCREMENT,"
+        "flag_key VARCHAR(64) NOT NULL,"
+        "rollout BIT(9) NOT NULL,"
+        "PRIMARY KEY(flag_id)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite descriptor hydration table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_flags_reopen_like(flag_key, rollout) VALUES "
+        "('search', b'101010101')",
+        "insert MyLite descriptor hydration row"
+    );
+
+    mylite_close(database);
+    database = NULL;
+    if (failures != 0) {
+        remove_sqlite_fork_test_files();
+        return failures;
+    }
+
+    failures += expect_mylite_ok(
+        mylite_open(path, &database),
+        database,
+        "reopen MyLite descriptor hydration database"
+    );
+    if (failures == 0) {
+        failures += exec_mylite_sql(
+            database,
+            "USE mylite_descriptor_hydration",
+            "reuse descriptor hydration schema"
+        );
+    }
+    if (failures == 0) {
+        failures += expect_mylite_rows(
+            database,
+            (struct expected_mylite_rows){
+                .sql = "SELECT flag_id, flag_key, rollout + 0, LENGTH(rollout), "
+                       "BIT_LENGTH(rollout) FROM wp_flags_reopen_like",
+                .values = reopened_rows,
+                .column_count = reopened_column_count,
+                .row_count = single_row_count,
+                .context = "MyLite SELECT reload hydrates BIT read descriptors after reopen",
+            }
+        );
+    }
+
+    mylite_close(database);
+    remove_sqlite_fork_test_files();
+    return failures;
+}
+
 static int test_mylite_json_type_coercion(void) {
     enum {
         json_after_delete_column_count = 8,
@@ -5208,4 +5302,11 @@ static int expect_mylite_sql_status(
         mylite_finalize(statement);
     }
     return failures;
+}
+
+static void remove_sqlite_fork_test_files(void) {
+    (void)remove(MYLITE_SQLITE_FORK_TEST_FILE_PATH);
+    (void)remove(MYLITE_SQLITE_FORK_TEST_FILE_PATH "-journal");
+    (void)remove(MYLITE_SQLITE_FORK_TEST_FILE_PATH "-wal");
+    (void)remove(MYLITE_SQLITE_FORK_TEST_FILE_PATH "-shm");
 }

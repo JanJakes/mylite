@@ -41,6 +41,8 @@ Implemented fork points:
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before
   physical SQLite scan statements are prepared
+- public MyLite SELECT table loading that applies scalar read descriptors,
+  beginning with `BIT(M)`, before physical SQLite scan statements are prepared
 - MyLite expression values with a MySQL numeric-context side channel for fork
   results such as `ENUM`, `SET`, and `BIT`, where direct display and arithmetic
   context intentionally differ
@@ -92,6 +94,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-json-column-descriptors/specs.md`
 - SQLite fork TIMESTAMP column descriptors:
   `docs/specs/sqlite-fork-timestamp-column-descriptors/specs.md`
+- SQLite fork SELECT descriptor hydration:
+  `docs/specs/sqlite-fork-select-descriptor-hydration/specs.md`
 - SQLite collation prefix uniqueness:
   `docs/specs/sqlite-collation-prefix-unique/specs.md`
 
@@ -162,7 +166,8 @@ Implemented first slice:
 - `OP_MyliteTypeCheck` before `OP_MakeRecord`
 - assignment-aware `UPDATE` checks using SQLite's changed-column map
 - catalog-fed descriptors for public MyLite write paths
-- catalog-fed value-list descriptors for public MyLite table-backed read paths
+- catalog-fed value-list and `BIT` read descriptors for public MyLite
+  table-backed read paths
 - MyLite result materialization that preserves fork-provided display strings
   and numeric context for `ENUM`/`SET`
 
@@ -185,15 +190,16 @@ separate range and future time-zone semantics.
 The next type-adjacent fork points are accepted-assignment warnings,
 SQL-mode-sensitive zero date handling, `TIME_TRUNCATE_FRACTIONAL`,
 `TIMESTAMP` time-zone conversion, `YEAR(4)` declaration warnings, direct
-SQLite parser/catalog descriptor loading, and descriptor hydration after schema
-reload. The next decimal-specific fork points are comparison/index ordering and
-direct SQLite parser numeric-literal preservation. The next JSON-specific fork
-points are binary JSON normalization/storage, exact diagnostic messages with
-parser positions, JSON comparison/index semantics, mutator/partial-update
-storage metadata, and direct SQLite parser/catalog descriptor loading. The
-expression side still needs continued MySQL numeric-context coercion work for
-collation-aware value-list string comparisons, unsigned 64-bit bit rendering,
-cross-column descriptor comparisons, and optimizer/index ordering.
+SQLite parser/catalog descriptor loading, and broader scalar read-descriptor
+hydration after schema reload. The next decimal-specific fork points are
+comparison/index ordering and direct SQLite parser numeric-literal
+preservation. The next JSON-specific fork points are binary JSON
+normalization/storage, exact diagnostic messages with parser positions, JSON
+comparison/index semantics, mutator/partial-update storage metadata, and direct
+SQLite parser/catalog descriptor loading. The expression side still needs
+continued MySQL numeric-context coercion work for collation-aware value-list
+string comparisons, unsigned 64-bit bit rendering, cross-column descriptor
+comparisons, and optimizer/index ordering.
 
 ### Diagnostics and warnings
 

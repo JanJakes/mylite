@@ -7,9 +7,11 @@
 #include "mylite_runtime.h"
 #include "mylite_select.h"
 #include "mylite_select_catalog_descriptor.h"
+#include "mylite_select_catalog_descriptor_source.h"
 #include "mylite_span.h"
 #include "mylite_value_list_column_type.h"
 #include "sqlite3.h"
+#include <mylite_fork/mylite_sqlite_fork.h>
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -32,6 +34,30 @@ static int load_select_column_from_catalog_row(
     mylite_db *database,
     struct mylite_select_table *table,
     sqlite3_stmt *select
+);
+
+static int configure_select_column_read_descriptor(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const char *column_name,
+    const struct mylite_catalog_column_descriptor_source *source
+);
+
+static bool select_column_uses_bit_read_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source
+);
+
+static int set_select_column_read_descriptor_error(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const char *column_name,
+    int rc
+);
+
+static int set_malformed_select_column_read_descriptor_error(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const char *column_name
 );
 
 static int load_information_schema_table_columns(
@@ -340,10 +366,8 @@ static int load_select_column_from_catalog_row(
 ) {
     const char *name = (const char *)sqlite3_column_text(select, select_catalog_column_name_index);
     const char *extra = (const char *)sqlite3_column_text(select, select_catalog_extra_index);
-    const char *data_type =
-        (const char *)sqlite3_column_text(select, select_catalog_data_type_index);
-    const char *column_type =
-        (const char *)sqlite3_column_text(select, select_catalog_column_type_index);
+    struct mylite_catalog_column_descriptor_source source =
+        mylite_select_catalog_column_descriptor_source(select);
     struct mylite_select_column column = {
         .visible = select_column_extra_is_visible(extra),
     };
@@ -358,18 +382,23 @@ static int load_select_column_from_catalog_row(
         mylite_select_column_deinit(&column);
         return status;
     }
-    if (mylite_value_list_column_type_is_supported(data_type)) {
+    if (mylite_value_list_column_type_is_supported(source.data_type)) {
         status = mylite_configure_value_list_column_type(
             database,
             table->physical_name,
             column.name,
-            data_type,
-            column_type
+            source.data_type,
+            source.column_type
         );
         if (status != MYLITE_OK) {
             mylite_select_column_deinit(&column);
             return status;
         }
+    }
+    status = configure_select_column_read_descriptor(database, table, column.name, &source);
+    if (status != MYLITE_OK) {
+        mylite_select_column_deinit(&column);
+        return status;
     }
 
     columns = realloc(table->columns, (table->column_count + 1U) * sizeof(*table->columns));
@@ -381,6 +410,93 @@ static int load_select_column_from_catalog_row(
     table->columns = columns;
     table->columns[table->column_count++] = column;
     return MYLITE_OK;
+}
+
+static int configure_select_column_read_descriptor(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const char *column_name,
+    const struct mylite_catalog_column_descriptor_source *source
+) {
+    struct mylite_sqlite_fork_column_type type = {0};
+    int rc = SQLITE_OK;
+
+    if (!select_column_uses_bit_read_descriptor(source)) {
+        return MYLITE_OK;
+    }
+    if (sqlite3_column_type(source->select, source->numeric_precision_index) == SQLITE_NULL) {
+        return set_malformed_select_column_read_descriptor_error(database, table, column_name);
+    }
+
+    type = (struct mylite_sqlite_fork_column_type){
+        .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_BIT,
+        .numeric_precision =
+            (sqlite3_uint64)sqlite3_column_int64(source->select, source->numeric_precision_index),
+    };
+    rc = mylite_sqlite_fork_set_column_type(
+        database->sqlite,
+        NULL,
+        table->physical_name,
+        column_name,
+        &type
+    );
+    if (rc != SQLITE_OK) {
+        return set_select_column_read_descriptor_error(database, table, column_name, rc);
+    }
+    return MYLITE_OK;
+}
+
+static bool select_column_uses_bit_read_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source
+) {
+    if (source == NULL) {
+        return false;
+    }
+    return mylite_ascii_case_equal(source->data_type, "bit");
+}
+
+static int set_select_column_read_descriptor_error(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const char *column_name,
+    int rc
+) {
+    char *message = sqlite3_mprintf(
+        "failed to configure SQLite fork read descriptor for '%q.%q' (rc=%d)",
+        table == NULL ? "" : table->physical_name,
+        column_name == NULL ? "" : column_name,
+        rc
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_SQLITE_ERROR;
+}
+
+static int set_malformed_select_column_read_descriptor_error(
+    mylite_db *database,
+    const struct mylite_select_table *table,
+    const char *column_name
+) {
+    char *message = sqlite3_mprintf(
+        "malformed MySQL read descriptor metadata for '%q.%q'",
+        table == NULL ? "" : table->physical_name,
+        column_name == NULL ? "" : column_name
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int load_select_table_unique_not_null_keys(

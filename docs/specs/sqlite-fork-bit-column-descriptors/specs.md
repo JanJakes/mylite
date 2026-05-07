@@ -34,6 +34,8 @@ Implement the first executable `BIT` column-storage slice:
 - coerce assignment values at the VDBE record-construction boundary;
 - read values back as fixed-width binary strings with a numeric-context side
   channel;
+- rehydrate read descriptors from MyLite catalog metadata before public
+  table-backed `SELECT` statements after reopen;
 - support public MyLite `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, and
   `DROP TABLE` CRUD paths for tables containing `BIT` columns.
 
@@ -110,7 +112,8 @@ The descriptor layer writes:
 
 Physical SQLite tables use `INTEGER` affinity for `BIT` columns. The catalog
 loader maps `DATA_TYPE='bit'` back into the fork descriptor for public MyLite
-write paths and into `MYSQL_TYPE_BIT` result metadata for read paths.
+write paths, public table-backed read paths, and `MYSQL_TYPE_BIT` result
+metadata.
 
 ## Fixture
 
@@ -128,6 +131,7 @@ is deferred to the expression-value numeric-context extension.
 
 MyLite now has partial executable `BIT` support: parser/catalog integration,
 fork assignment checks, fixed-width binary readback, numeric context,
-information-schema metadata, and CRUD coverage are implemented. Non-strict
-demotion, direct SQLite parser MySQL syntax, full unsigned 64-bit expression
-rendering, and broader optimizer/index interactions remain deferred.
+information-schema metadata, CRUD coverage, and SELECT-time descriptor
+hydration after reopen are implemented. Non-strict demotion, direct SQLite
+parser MySQL syntax, full unsigned 64-bit expression rendering, and broader
+optimizer/index interactions remain deferred.

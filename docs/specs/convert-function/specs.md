@@ -22,8 +22,8 @@ This task implements:
   `REAL_AS_FLOAT`, `REAL` uses the `FLOAT` value and metadata path
 - `CONVERT(expr, DATE)`, `CONVERT(expr, TIME)`, `CONVERT(expr, TIME(fsp))`,
   `CONVERT(expr, DATETIME)`, and `CONVERT(expr, DATETIME(fsp))`
-- `CONVERT(expr USING charset_name)` for the current MyLite charset registry:
-  `binary`, `latin1`, `utf8mb3` / `utf8`, and `utf8mb4`
+- `CONVERT(expr USING charset_name)` for the current MyLite expression-level
+  charset set: `binary`, `latin1`, `utf8mb3` / `utf8`, `utf8mb4`, and `ascii`
 
 The expression must work everywhere the supported scalar expression subset
 already evaluates `CAST`:
@@ -129,7 +129,10 @@ set for the same validation decision.
 | `HEX(CONVERT(UNHEX('61FF62') USING utf8mb4))` | `NULL`, warning 1300 |
 | `HEX(CONVERT(UNHEX('61E282AC62') USING utf8mb4))` | `61E282AC62` |
 | `HEX(CONVERT(UNHEX('61FF62') USING binary))` | `61FF62` |
+| `HEX(CONVERT(UNHEX('61FF62') USING ascii))` | `61FF62` |
+| `COLLATION(CONVERT('abc' USING ascii))` | `ascii_general_ci` |
 | `SET NAMES utf8mb4; HEX(CONVERT(UNHEX('61FF62'), CHAR))` | `NULL`, warning 1300 |
+| `HEX(CONVERT(UNHEX('61FF62'), CHAR CHARACTER SET ascii))` | `61FF62` |
 | `SET NAMES latin1; HEX(CONVERT(UNHEX('61FF62'), CHAR))` | `61FF62` |
 | `COLLATION(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `latin1_bin` |
 | `COERCIBILITY(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `0` |

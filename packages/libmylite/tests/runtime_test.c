@@ -36131,6 +36131,21 @@ static int test_cast_expression_execution(void) {
 
     failures += prepare_sql(
         database,
+        "SELECT HEX(CAST(UNHEX('61FF62') AS CHAR CHARACTER SET ascii)) AS value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_column_names(stmt, cast_connection_charset_column, 1, "CAST ascii charset column");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST ascii charset row");
+    failures += expect_string(mylite_column_text(stmt, 0), "61FF62", "CAST ascii preserves bytes");
+    failures += expect_int(mylite_warning_count(database), 0, "CAST ascii warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST ascii charset done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
         "SELECT HEX(CAST(UNHEX('61FF62') AS CHAR(1) CHARACTER SET utf8mb4)) AS value",
         MYLITE_OK,
         &stmt
@@ -36494,6 +36509,7 @@ static int test_convert_expression_execution(void) {
         "bad_utf8mb4",
         "good_utf8mb4",
         "binary_passthrough",
+        "ascii_passthrough",
     };
     static const char *const convert_connection_charset_column[] = {"value"};
     static const struct expected_result_metadata metadata[] = {
@@ -36709,6 +36725,9 @@ static int test_convert_expression_execution(void) {
         "cs_utf8mb4",
         "co_utf8mb4",
         "cc_utf8mb4",
+        "cs_ascii",
+        "co_ascii",
+        "cc_ascii",
         "cs_binary",
         "co_binary",
         "cc_binary",
@@ -36735,6 +36754,9 @@ static int test_convert_expression_execution(void) {
         "2",
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
+        "2",
+        "ascii",
+        "ascii_general_ci",
         "2",
         "binary",
         "binary",
@@ -36829,16 +36851,24 @@ static int test_convert_expression_execution(void) {
         database,
         "SELECT HEX(CONVERT(UNHEX('61FF62') USING utf8mb4)) AS bad_utf8mb4, "
         "HEX(CONVERT(UNHEX('61E282AC62') USING utf8mb4)) AS good_utf8mb4, "
-        "HEX(CONVERT(UNHEX('61FF62') USING binary)) AS binary_passthrough",
+        "HEX(CONVERT(UNHEX('61FF62') USING binary)) AS binary_passthrough, "
+        "HEX(CONVERT(UNHEX('61FF62') USING ascii)) AS ascii_passthrough",
         MYLITE_OK,
         &stmt
     );
-    failures += expect_column_names(stmt, convert_charset_columns, 3, "CONVERT charset columns");
+    failures += expect_column_names(
+        stmt,
+        convert_charset_columns,
+        (int)(sizeof(convert_charset_columns) / sizeof(convert_charset_columns[0])),
+        "CONVERT charset columns"
+    );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT charset validation row");
     failures += expect_null_text(mylite_column_text(stmt, 0), "CONVERT invalid utf8mb4 value");
     failures += expect_string(mylite_column_text(stmt, 1), "61E282AC62", "CONVERT valid utf8mb4");
     failures +=
         expect_string(mylite_column_text(stmt, 2), "61FF62", "CONVERT binary passthrough value");
+    failures +=
+        expect_string(mylite_column_text(stmt, 3), "61FF62", "CONVERT ascii passthrough value");
     failures += expect_int(mylite_warning_count(database), 1, "CONVERT charset warning count");
     failures += expect_int(
         (int)mylite_warning_code(database, 0),
@@ -36851,6 +36881,29 @@ static int test_convert_expression_execution(void) {
         "CONVERT charset warning message"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT charset validation done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT HEX(CONVERT(UNHEX('61FF62'), CHAR CHARACTER SET ascii)) AS value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(
+        stmt,
+        convert_connection_charset_column,
+        1,
+        "CONVERT ascii target column"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT ascii target row");
+    failures += expect_string(
+        mylite_column_text(stmt, 0),
+        "61FF62",
+        "CONVERT ascii target preserves bytes"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "CONVERT ascii target warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT ascii target done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -37116,6 +37169,9 @@ static int test_convert_expression_execution(void) {
         "CHARSET(CONVERT('abc' USING utf8mb4)) AS cs_utf8mb4, "
         "COLLATION(CONVERT('abc' USING utf8mb4)) AS co_utf8mb4, "
         "COERCIBILITY(CONVERT('abc' USING utf8mb4)) AS cc_utf8mb4, "
+        "CHARSET(CONVERT('abc' USING ascii)) AS cs_ascii, "
+        "COLLATION(CONVERT('abc' USING ascii)) AS co_ascii, "
+        "COERCIBILITY(CONVERT('abc' USING ascii)) AS cc_ascii, "
         "CHARSET(CONVERT('abc' USING binary)) AS cs_binary, "
         "COLLATION(CONVERT('abc' USING binary)) AS co_binary, "
         "COERCIBILITY(CONVERT('abc' USING binary)) AS cc_binary, "
@@ -37134,7 +37190,7 @@ static int test_convert_expression_execution(void) {
         "COERCIBILITY(CONVERT('abc', CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) "
         "AS cc_char_utf8mb4_bin",
         introspection_columns,
-        25,
+        (int)(sizeof(introspection_columns) / sizeof(introspection_columns[0])),
         introspection_values,
         1,
         "CONVERT charset introspection"

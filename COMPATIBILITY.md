@@ -489,7 +489,7 @@ The parser should eventually recognize the full MySQL grammar. Unsupported embed
 | Character set | Status | Priority | Target behavior | Implementation notes |
 | --- | --- | --- | --- | --- |
 | `armscii8` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
-| `ascii` | ❌ | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
+| `ascii` | 🟡 | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. | Supported for expression-level `CHAR(... USING ascii)`, `CAST(... AS CHAR CHARACTER SET ascii)`, `CONVERT(..., CHAR CHARACTER SET ascii)`, `CONVERT(... USING ascii)`, and charset/collation/coercibility introspection. Schema/table charset support and full transcoding remain deferred. See [CAST expression spec](docs/specs/cast-expression/specs.md), [CONVERT cast expressions spec](docs/specs/convert-function/specs.md), and [string `CHAR()` function spec](docs/specs/string-char-function/specs.md). |
 | `big5` | ❌ | medium | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |
 | `binary` | 🟡 | high | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. | Recognized in the internal registry with default collation `binary` for schema defaults and connection charset state; binary string comparison/conversion semantics and metadata listing are deferred. See [character set/collation foundation spec](docs/specs/character-set-collation-foundation/specs.md). |
 | `cp1250` | ❌ | low | Recognize, store, expose, and apply MySQL-compatible character set metadata and conversions. |  |

@@ -267,7 +267,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       binary targets preserve raw bytes. Default scalar `CHAR` casts and
       `CONVERT(..., CHAR)` now use the connection character set for the same
       invalid-byte validation, while `latin1` connection casts preserve raw
-      bytes. Length-qualified nonbinary `CHAR(N)` casts now validate the full
+      bytes. Explicit `ascii` character targets and `CONVERT(... USING ascii)`
+      now preserve source bytes and expose `ascii_general_ci` introspection like
+      MySQL. Length-qualified nonbinary `CHAR(N)` casts now validate the full
       source byte string before truncation, matching MySQL's warning 1300
       precedence for invalid UTF-8 after the retained prefix. Length-qualified
       `CAST`/`CONVERT` to `CHAR(N) CHARACTER SET binary` now share `BINARY(N)`

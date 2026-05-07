@@ -55,7 +55,7 @@ int mylite_expression_validate_cast_target_charset(
     if (charset_name == NULL) {
         return MYLITE_NOMEM;
     }
-    if (mylite_charset_lookup(charset_name) == NULL) {
+    if (!mylite_expression_char_function_charset_name_is_supported(charset_name)) {
         status = mylite_diagnostics_set_unknown_charset_error(database, charset_name);
     }
     if (status == MYLITE_OK) {

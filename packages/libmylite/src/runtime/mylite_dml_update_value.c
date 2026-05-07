@@ -57,8 +57,7 @@ int mylite_dml_resolve_update_default_value(
     struct mylite_insert_bound_value value = {0};
     int status = MYLITE_OK;
 
-    if (!mylite_connection_sql_mode_is_strict(database) && column != NULL &&
-        !column->auto_increment && !column->nullable && column->default_text == NULL) {
+    if (!mylite_connection_sql_mode_is_strict(database) && column != NULL && !column->has_default) {
         status = mylite_dml_insert_append_no_default_warning(database, column->name);
         if (status == MYLITE_OK) {
             status = resolve_update_implicit_default_value(database, column, out_value);
@@ -90,6 +89,9 @@ int mylite_dml_resolve_default_function_value(
         return MYLITE_MISUSE;
     }
 
+    if (!column->has_default) {
+        return mylite_dml_insert_set_no_default_error(database, column->name);
+    }
     if (column->default_text == NULL) {
         if (column->nullable) {
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};

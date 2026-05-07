@@ -257,7 +257,8 @@ int mylite_show_columns_sql(
     sqlite3_str_appendf(
         sql,
         ", is_nullable AS \"Null\", column_key AS \"Key\", "
-        "column_default AS \"Default\", extra AS \"Extra\""
+        "CASE WHEN extra LIKE '%%auto_increment%%' THEN NULL ELSE column_default END AS "
+        "\"Default\", extra AS \"Extra\""
     );
     if (query->full) {
         sqlite3_str_appendf(sql, ", privileges AS \"Privileges\", column_comment AS \"Comment\"");

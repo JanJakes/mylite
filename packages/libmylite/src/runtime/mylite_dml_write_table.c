@@ -173,6 +173,7 @@ static int load_insert_column_from_catalog_row(
 
     column.character_maximum_length = row->character_maximum_length;
     column.numeric_scale = row->numeric_scale;
+    column.has_default = row->has_default;
     column.auto_increment = mylite_text_contains_word(column.extra, "auto_increment");
     column.generated_default = mylite_text_contains_word(column.extra, "DEFAULT_GENERATED");
     column.has_character_maximum_length = row->has_character_maximum_length;

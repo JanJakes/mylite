@@ -118,7 +118,7 @@ static int load_alter_table_columns(mylite_db *database, struct mylite_alter_tab
         "SELECT column_name, column_default, is_nullable, data_type, "
         "character_maximum_length, character_octet_length, numeric_precision, numeric_scale, "
         "datetime_precision, character_set_name, collation_name, column_type, column_key, extra, "
-        "column_comment, generation_expression, srs_id FROM %s "
+        "column_comment, generation_expression, srs_id, has_default FROM %s "
         "WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position",
         mylite_catalog_column_catalog_name(model->temporary)
     );
@@ -312,6 +312,8 @@ static void load_alter_table_column_numeric_catalog_fields(
         column->srs_id = sqlite3_column_int64(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_SRS_ID);
         column->has_srs_id = true;
     }
+    column->has_default =
+        sqlite3_column_int(select, MYLITE_ALTER_TABLE_COLUMN_CATALOG_HAS_DEFAULT) != 0;
 }
 
 static void load_alter_table_column_flags(struct mylite_alter_table_column *column) {

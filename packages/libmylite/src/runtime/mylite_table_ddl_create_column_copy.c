@@ -68,6 +68,9 @@ int mylite_table_ddl_copy_create_table_column(
         mylite_table_ddl_create_table_column_deinit(&column);
         return status;
     }
+    if (!column.has_default && (column.nullable || column.auto_increment)) {
+        column.has_default = true;
+    }
 
     columns = realloc(plan->columns, (plan->column_count + 1U) * sizeof(*plan->columns));
     if (columns == NULL) {
@@ -226,6 +229,7 @@ static int copy_create_table_column_attributes(
             }
             free(column->default_text);
             column->default_text = copy;
+            column->has_default = true;
             if (mylite_ast_child_at(attribute, 0U) != NULL &&
                 (mylite_ast_child_at(attribute, 0U)->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP ||
                  mylite_ast_child_at(attribute, 0U)->kind ==

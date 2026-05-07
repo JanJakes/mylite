@@ -119,11 +119,11 @@ static int insert_alter_table_column_catalog_rows(
     char *sql = sqlite3_mprintf(
         "INSERT INTO %s("
         "table_catalog, table_schema, table_name, column_name, ordinal_position, column_default, "
-        "is_nullable, data_type, character_maximum_length, character_octet_length, "
+        "has_default, is_nullable, data_type, character_maximum_length, character_octet_length, "
         "numeric_precision, numeric_scale, datetime_precision, character_set_name, "
         "collation_name, column_type, column_key, extra, privileges, column_comment, "
         "generation_expression, srs_id)"
-        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
         "'select,insert,update,references', ?, ?, ?)",
         mylite_catalog_column_catalog_name(model->temporary)
     );
@@ -170,21 +170,22 @@ static int insert_alter_table_column_catalog_row(
         bind_column_name = 3,
         bind_ordinal_position = 4,
         bind_column_default = 5,
-        bind_is_nullable = 6,
-        bind_data_type = 7,
-        bind_character_maximum_length = 8,
-        bind_character_octet_length = 9,
-        bind_numeric_precision = 10,
-        bind_numeric_scale = 11,
-        bind_datetime_precision = 12,
-        bind_character_set_name = 13,
-        bind_collation_name = 14,
-        bind_column_type = 15,
-        bind_column_key = 16,
-        bind_extra = 17,
-        bind_column_comment = 18,
-        bind_generation_expression = 19,
-        bind_srs_id = 20,
+        bind_has_default = 6,
+        bind_is_nullable = 7,
+        bind_data_type = 8,
+        bind_character_maximum_length = 9,
+        bind_character_octet_length = 10,
+        bind_numeric_precision = 11,
+        bind_numeric_scale = 12,
+        bind_datetime_precision = 13,
+        bind_character_set_name = 14,
+        bind_collation_name = 15,
+        bind_column_type = 16,
+        bind_column_key = 17,
+        bind_extra = 18,
+        bind_column_comment = 19,
+        bind_generation_expression = 20,
+        bind_srs_id = 21,
     };
 
     int rc = SQLITE_OK;
@@ -218,6 +219,7 @@ static int insert_alter_table_column_catalog_row(
             sqlite_transient_destructor()
         );
     }
+    sqlite3_bind_int(insert, bind_has_default, (int)column->has_default);
     sqlite3_bind_text(
         insert,
         bind_is_nullable,

@@ -53,6 +53,9 @@ int mylite_dml_resolve_insert_default_bound_value(
         return MYLITE_MISUSE;
     }
 
+    if (!column->has_default) {
+        return mylite_dml_insert_set_no_default_error(database, column->name);
+    }
     if (column->auto_increment && state == NULL) {
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_INTEGER,
@@ -60,7 +63,7 @@ int mylite_dml_resolve_insert_default_bound_value(
         };
         return MYLITE_OK;
     }
-    if (column->auto_increment) {
+    if (column->auto_increment && column->default_text == NULL) {
         return mylite_dml_allocate_insert_auto_increment(
             database,
             statement_row_count,
@@ -92,7 +95,7 @@ int mylite_dml_resolve_insert_default_bound_value(
     if (column->generated_default) {
         return mylite_dml_insert_set_unsupported_generated_default_error(database, column->name);
     }
-    return mylite_dml_resolve_insert_text_value(
+    int status = mylite_dml_resolve_insert_text_value(
         database,
         column,
         column->default_text,
@@ -102,6 +105,14 @@ int mylite_dml_resolve_insert_default_bound_value(
         false,
         out_value
     );
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (column->auto_increment && out_value->kind == MYLITE_INSERT_BOUND_INTEGER &&
+        out_value->integer_value > 0) {
+        out_value->generated_auto_increment = true;
+    }
+    return MYLITE_OK;
 }
 
 int mylite_dml_resolve_insert_implicit_expression_default(
@@ -115,6 +126,10 @@ int mylite_dml_resolve_insert_implicit_expression_default(
         return MYLITE_MISUSE;
     }
 
+    if (column != NULL && column->nullable) {
+        *out_value = (struct mylite_insert_bound_value){.kind = MYLITE_INSERT_BOUND_NULL};
+        return MYLITE_OK;
+    }
     if (insert_column_uses_numeric_implicit_default(column)) {
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_INTEGER,
@@ -424,9 +439,8 @@ static bool insert_plan_coerces_missing_required_default(
     const struct mylite_insert_values_plan *plan,
     const struct mylite_insert_table_column *column
 ) {
-    return plan != NULL && column != NULL && !column->auto_increment && !column->nullable &&
-           column->default_text == NULL &&
-           (plan->ignore || !mylite_connection_sql_mode_is_strict(database));
+    return (plan != NULL && column != NULL && !column->has_default &&
+            (plan->ignore || !mylite_connection_sql_mode_is_strict(database))) != 0;
 }
 
 static bool insert_column_uses_numeric_implicit_default(

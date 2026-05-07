@@ -161,6 +161,7 @@ struct mylite_insert_table_column {
     bool nullable;
     bool auto_increment;
     bool generated_default;
+    bool has_default;
     bool has_character_maximum_length;
     bool has_numeric_scale;
 };

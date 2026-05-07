@@ -598,6 +598,20 @@ alter_table_action(A) ::= MODIFY(T) opt_column(C) column_definition(D) opt_colum
         (struct mylite_sql_parser_alter_table_action_tokens){.action = T, .column = C},
         D, P);
 }
+alter_table_action(A) ::= ALTER(T) opt_column(C) identifier(B) SET(S) DEFAULT(D) column_default_value(V). {
+    A = mylite_sql_parser_make_alter_table_column_set_default_action(
+        state,
+        (struct mylite_sql_parser_alter_table_default_tokens){
+            .action = {.action = T, .column = C}, .verb = S, .default_keyword = D},
+        B, V);
+}
+alter_table_action(A) ::= ALTER(T) opt_column(C) identifier(B) DROP(R) DEFAULT(D). {
+    A = mylite_sql_parser_make_alter_table_column_drop_default_action(
+        state,
+        (struct mylite_sql_parser_alter_table_default_tokens){
+            .action = {.action = T, .column = C}, .verb = R, .default_keyword = D},
+        B);
+}
 
 opt_index_or_key(A) ::= . {
     A = (struct mylite_sql_token){0};

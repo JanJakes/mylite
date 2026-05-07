@@ -61,6 +61,7 @@ static const char column_catalog_sql[] = "CREATE TABLE IF NOT EXISTS __mylite_co
                                          "column_name TEXT,"
                                          "ordinal_position INTEGER NOT NULL,"
                                          "column_default TEXT,"
+                                         "has_default INTEGER NOT NULL DEFAULT 1,"
                                          "is_nullable TEXT NOT NULL,"
                                          "data_type TEXT,"
                                          "character_maximum_length INTEGER,"
@@ -169,6 +170,7 @@ static const char temporary_column_catalog_sql[] =
     "column_name TEXT,"
     "ordinal_position INTEGER NOT NULL,"
     "column_default TEXT,"
+    "has_default INTEGER NOT NULL DEFAULT 1,"
     "is_nullable TEXT NOT NULL,"
     "data_type TEXT,"
     "character_maximum_length INTEGER,"
@@ -306,6 +308,8 @@ static int update_table_statistics(
 
 static int ensure_index_catalog_display_type_column(mylite_db *database, const char *catalog_name);
 
+static int ensure_column_catalog_has_default_column(mylite_db *database, const char *catalog_name);
+
 static int catalog_column_exists(
     mylite_db *database,
     const char *catalog_name,
@@ -330,6 +334,10 @@ int mylite_catalog_initialize(mylite_db *database) {
     rc = sqlite3_exec(database->sqlite, column_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
+    }
+    rc = ensure_column_catalog_has_default_column(database, column_catalog_name);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     rc = sqlite3_exec(database->sqlite, index_catalog_sql, NULL, NULL, NULL);
@@ -359,6 +367,10 @@ int mylite_catalog_initialize(mylite_db *database) {
     rc = sqlite3_exec(database->sqlite, temporary_column_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
+    }
+    rc = ensure_column_catalog_has_default_column(database, temporary_column_catalog_name);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     rc = sqlite3_exec(database->sqlite, temporary_index_catalog_sql, NULL, NULL, NULL);
@@ -417,6 +429,45 @@ static int ensure_index_catalog_display_type_column(mylite_db *database, const c
 
     sql = sqlite3_mprintf(
         "ALTER TABLE %s ADD COLUMN display_index_type INTEGER NOT NULL DEFAULT 0",
+        catalog_name
+    );
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
+    sqlite3_free(sql);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int ensure_column_catalog_has_default_column(mylite_db *database, const char *catalog_name) {
+    bool exists = false;
+    char *sql = NULL;
+    int rc = SQLITE_OK;
+    int status = catalog_column_exists(database, catalog_name, "has_default", &exists);
+
+    if (status != MYLITE_OK || exists) {
+        return status;
+    }
+
+    sql = sqlite3_mprintf(
+        "ALTER TABLE %s ADD COLUMN has_default INTEGER NOT NULL DEFAULT 0",
+        catalog_name
+    );
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+
+    sql = sqlite3_mprintf(
+        "UPDATE %s SET has_default = CASE "
+        "WHEN column_default IS NOT NULL OR is_nullable = 'YES' OR extra LIKE '%%auto_increment%%' "
+        "THEN 1 ELSE 0 END",
         catalog_name
     );
     if (sql == NULL) {
@@ -799,7 +850,7 @@ int mylite_catalog_load_table_columns(
     }
     sql = sqlite3_mprintf(
         "SELECT column_name, column_default, is_nullable, data_type, column_type, extra, "
-        "character_maximum_length, numeric_scale "
+        "character_maximum_length, numeric_scale, has_default "
         "FROM %s WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position",
         mylite_catalog_column_catalog_name(temporary)
@@ -828,6 +879,7 @@ int mylite_catalog_load_table_columns(
             .numeric_scale = (uint64_t)sqlite3_column_int64(stmt, 7),
             .has_character_maximum_length = sqlite3_column_type(stmt, 6) != SQLITE_NULL,
             .has_numeric_scale = sqlite3_column_type(stmt, 7) != SQLITE_NULL,
+            .has_default = sqlite3_column_int(stmt, 8) != 0,
         };
         int callback_status = callback(context, &row);
 

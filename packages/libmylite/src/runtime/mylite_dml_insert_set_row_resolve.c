@@ -70,6 +70,14 @@ static int evaluate_insert_set_assignment_value(
     const struct mylite_dml_expression_callbacks *callbacks
 );
 
+static int evaluate_insert_set_default_assignment(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table_column *column,
+    bool *out_generate_auto_increment,
+    struct mylite_insert_bound_value *out_value
+);
+
 static int set_insert_set_candidate_auto_value(struct mylite_insert_bound_value *out_value);
 
 static bool insert_set_plan_coerces_missing_required_default(
@@ -151,7 +159,7 @@ static int initialize_insert_set_row_values(
         if (table->columns[column].auto_increment) {
             status = set_insert_set_candidate_auto_value(&values[column]);
             row_state->generate_auto_increment[column] = true;
-        } else if (table->columns[column].default_text != NULL || table->columns[column].nullable) {
+        } else if (table->columns[column].has_default) {
             status = mylite_dml_resolve_insert_default_bound_value(
                 database,
                 &table->columns[column],
@@ -271,8 +279,7 @@ static int finish_insert_set_required_omission(
     size_t column_index,
     const struct mylite_insert_set_row_state *row_state
 ) {
-    if (column->auto_increment || column->nullable || column->default_text != NULL ||
-        row_state->assigned_columns[column_index]) {
+    if (column->has_default || row_state->assigned_columns[column_index]) {
         return MYLITE_OK;
     }
     if (!insert_set_plan_coerces_missing_required_default(database, plan)) {
@@ -321,16 +328,11 @@ static int evaluate_insert_set_assignment_value(
 
     *out_generate_auto_increment = false;
     if (value->kind == MYLITE_INSERT_VALUE_DEFAULT) {
-        if (column->auto_increment) {
-            *out_generate_auto_increment = true;
-            return set_insert_set_candidate_auto_value(out_value);
-        }
-        return mylite_dml_resolve_insert_explicit_default_value(
+        return evaluate_insert_set_default_assignment(
             database,
             plan,
             column,
-            1U,
-            NULL,
+            out_generate_auto_increment,
             out_value
         );
     }
@@ -412,6 +414,27 @@ static int evaluate_insert_set_assignment_value(
     return MYLITE_OK;
 }
 
+static int evaluate_insert_set_default_assignment(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table_column *column,
+    bool *out_generate_auto_increment,
+    struct mylite_insert_bound_value *out_value
+) {
+    if (column->auto_increment && column->has_default && column->default_text == NULL) {
+        *out_generate_auto_increment = true;
+        return set_insert_set_candidate_auto_value(out_value);
+    }
+    return mylite_dml_resolve_insert_explicit_default_value(
+        database,
+        plan,
+        column,
+        1U,
+        NULL,
+        out_value
+    );
+}
+
 static int set_insert_set_candidate_auto_value(struct mylite_insert_bound_value *out_value) {
     *out_value = (struct mylite_insert_bound_value){
         .kind = MYLITE_INSERT_BOUND_INTEGER,
@@ -424,5 +447,5 @@ static bool insert_set_plan_coerces_missing_required_default(
     const mylite_db *database,
     const struct mylite_insert_values_plan *plan
 ) {
-    return plan != NULL && (plan->ignore || !mylite_connection_sql_mode_is_strict(database));
+    return (plan != NULL && (plan->ignore || !mylite_connection_sql_mode_is_strict(database))) != 0;
 }

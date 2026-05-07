@@ -12,6 +12,8 @@ This feature specifies MyLite support for the column-changing subset of
   [FIRST | AFTER col]`
 - `ALTER TABLE table_name MODIFY [COLUMN] column_definition
   [FIRST | AFTER col]`
+- `ALTER TABLE table_name ALTER [COLUMN] column_name SET DEFAULT value`
+- `ALTER TABLE table_name ALTER [COLUMN] column_name DROP DEFAULT`
 - multiple column operations in one `ALTER TABLE` statement
 - schema-qualified and selected-schema table resolution
 - column type, nullability, default, comment, visibility, and
@@ -30,8 +32,7 @@ separate roadmap features or later slices:
 - `ALTER TABLE ... ADD/DROP/RENAME/ALTER INDEX`, `ADD/DROP PRIMARY KEY`,
   `ADD/DROP UNIQUE`, and other key or constraint actions from Task 36
 - `ALTER TABLE ... RENAME TO` from Task 37
-- `ALTER COLUMN SET DEFAULT`, `ALTER COLUMN DROP DEFAULT`,
-  `ALTER COLUMN SET VISIBLE`, and `ALTER COLUMN SET INVISIBLE`
+- `ALTER COLUMN SET VISIBLE` and `ALTER COLUMN SET INVISIBLE`
 - table options such as `CONVERT TO CHARACTER SET`, `DEFAULT CHARACTER SET`,
   `ORDER BY`, `FORCE`, tablespace actions, and partition maintenance
 - full `ALGORITHM` and `LOCK` compatibility
@@ -54,6 +55,8 @@ without absorbing the later key/constraint task:
   visibility.
 - Support ordinary physical column addition, removal, rename, type/attribute
   replacement, and ordinal repositioning.
+- Support metadata-only `ALTER COLUMN SET DEFAULT` and `ALTER COLUMN DROP
+  DEFAULT` for literal defaults in the already executable default subset.
 - Backfill existing rows for added columns from explicit defaults, `NULL`, or
   MySQL-compatible implicit type defaults when a `NOT NULL` column has no
   explicit default.
@@ -288,6 +291,27 @@ Warnings and row-count reporting depend on the conversion path and selected DDL
 algorithm. MyLite tests should target specific verified cases rather than
 assuming every rewrite reports the same affected-row count.
 
+`ALTER [COLUMN] c SET DEFAULT value` changes only future default resolution.
+It leaves existing rows unchanged, reports `0 rows affected` for the verified
+metadata-only shapes, and updates `INFORMATION_SCHEMA.COLUMNS.COLUMN_DEFAULT`
+and `SHOW CREATE TABLE` for ordinary columns. `DROP DEFAULT` removes the
+authored default. For nullable columns this is not the same as an implicit
+`DEFAULT NULL`: `SHOW CREATE TABLE` omits `DEFAULT NULL`, strict omitted
+inserts fail with error 1364, and non-strict omitted inserts warn 1364 and
+insert `NULL`.
+
+`SET DEFAULT NULL` on a `NOT NULL` column fails with error 1067. Parenthesized
+default expressions are accepted by MySQL, but full generated default
+expression evaluation remains outside this slice except for already-supported
+current timestamp handling.
+
+`AUTO_INCREMENT` default mutation has a MySQL-specific hidden state. `DROP
+DEFAULT` makes omitted inserts fail with error 1364, while explicit `NULL` or
+`0` still generates values. `SET DEFAULT 10` does not expose a column default in
+`INFORMATION_SCHEMA.COLUMNS`, `SHOW COLUMNS`, or `SHOW CREATE TABLE`, and does
+not immediately change the displayed table `AUTO_INCREMENT`; the next omitted
+insert stores `10` and then advances the normal sequence.
+
 ### Visibility
 
 Column visibility affects metadata and wildcard expansion. The verified
@@ -394,6 +418,10 @@ Each action should preserve source span. Column action nodes:
   column definition, optional position
 - `MODIFY_COLUMN`: optional `COLUMN` spelling, replacement column definition,
   optional position
+- `ALTER_COLUMN_SET_DEFAULT`: optional `COLUMN` spelling, target column
+  identifier, and default expression
+- `ALTER_COLUMN_DROP_DEFAULT`: optional `COLUMN` spelling and target column
+  identifier
 
 `CHANGE` and `MODIFY` reuse the existing column-definition parser. The parser
 must not treat the old name in `CHANGE` as part of the replacement definition;
@@ -433,6 +461,9 @@ alter_table_action ::= RENAME COLUMN identifier TO identifier.
 alter_table_action ::= CHANGE opt_column identifier column_definition
                        opt_column_position.
 alter_table_action ::= MODIFY opt_column column_definition opt_column_position.
+alter_table_action ::= ALTER opt_column identifier SET DEFAULT
+                       column_default_value.
+alter_table_action ::= ALTER opt_column identifier DROP DEFAULT.
 
 opt_column ::= .
 opt_column ::= COLUMN.
@@ -540,6 +571,11 @@ type conversion, generated values, warnings, and diagnostics.
 - rewrite rows for the target table after every successful action sequence
 - preserve old metadata for pure `RENAME`
 - replace metadata for `CHANGE` and `MODIFY`
+- preserve an internal `has_default` flag distinct from `column_default`; this
+  is required because MySQL distinguishes an implicit nullable default from a
+  default explicitly removed by `DROP DEFAULT`
+- store hidden auto-increment defaults internally while exposing `NULL` through
+  MySQL metadata surfaces
 - assign one-based `ordinal_position` values in final visible/invisible order
 - record `EXTRA='INVISIBLE'` for invisible ordinary columns
 - record `EXTRA` values such as `auto_increment`, `DEFAULT_GENERATED`, and
@@ -649,6 +685,17 @@ own schema so results are isolated.
 | `MODIFY v INT NOT NULL` where existing `v` contains `NULL` | Error 1138-style `Invalid use of NULL value`; physical rows and column metadata remain unchanged. |
 | `MODIFY s VARCHAR(2)` where existing `s` contains `abcd` | Error 1265-style `Data too long`; physical rows and column metadata remain unchanged. |
 
+### Default mutation
+
+| SQL or behavior | Expected MyLite-compatible outcome |
+| --- | --- |
+| `ALTER TABLE t ALTER COLUMN a SET DEFAULT 9` | Succeeds with affected rows `0`; existing rows are unchanged; later omitted inserts use `9`; `INFORMATION_SCHEMA.COLUMNS.COLUMN_DEFAULT` reports `9`; `SHOW CREATE TABLE` renders `DEFAULT '9'` for the ordinary integer column. |
+| `ALTER TABLE t ALTER a DROP DEFAULT` on nullable `a` | Succeeds with affected rows `0`; `SHOW CREATE TABLE` omits `DEFAULT NULL`; strict omitted inserts fail with error 1364; non-strict omitted inserts warn 1364 and insert `NULL`. |
+| `ALTER TABLE t ALTER COLUMN b SET DEFAULT 'qq'` | Succeeds; later omitted `b` values use `qq`. |
+| `ALTER TABLE t ALTER COLUMN c SET DEFAULT NULL` where `c` is `NOT NULL` | Error 1067; table definition and rows are unchanged. |
+| `ALTER TABLE ai ALTER COLUMN id DROP DEFAULT` where `id` is `AUTO_INCREMENT` | Succeeds; omitted inserts fail with 1364, but explicit `NULL` and `0` still generate auto values. |
+| `ALTER TABLE ai ALTER COLUMN id SET DEFAULT 10` where `id` is `AUTO_INCREMENT` | Succeeds; MySQL metadata still exposes no column default and `SHOW CREATE TABLE` does not render a default; the next omitted insert stores `10`, then explicit auto generation continues at `11`. |
+
 ### Visibility
 
 | SQL or behavior | Expected MyLite-compatible outcome |
@@ -681,6 +728,7 @@ own schema so results are isolated.
   - `FIRST`, `AFTER`, and omitted position
   - multiple actions and malformed trailing-comma lists
   - `CHANGE` old/new name separation
+  - `ALTER [COLUMN] ... SET DEFAULT` and `DROP DEFAULT`
   - column definitions that reuse current type and attribute grammar
   - parse and preserve `ALGORITHM` and `LOCK` options
   - reject malformed `RENAME COLUMN`, `AFTER`, and option values
@@ -701,6 +749,8 @@ own schema so results are isolated.
   - `CHANGE` and `MODIFY` replacing metadata completely rather than preserving
     old attributes
   - physical row preservation/backfill/conversion through the shadow-table path
+  - default mutation metadata, strict/non-strict later DML, and hidden
+    `AUTO_INCREMENT` default behavior
   - `INFORMATION_SCHEMA.COLUMNS` and `STATISTICS` side effects
   - affected-row values for the verified OK-packet shapes
   - warning 1831 when dropping a column creates duplicate remaining indexes

@@ -142,6 +142,7 @@ int mylite_table_ddl_init_alter_table_column_from_definition(
     out_column->nullable = definition->nullable;
     out_column->auto_increment = definition->auto_increment;
     out_column->visible = definition->visible;
+    out_column->has_default = definition->has_default;
     out_column->added = added;
     return MYLITE_OK;
 }

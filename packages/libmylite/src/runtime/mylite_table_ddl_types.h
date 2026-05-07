@@ -36,6 +36,7 @@ struct mylite_create_table_column {
     bool unique_key;
     bool visible;
     bool has_generated_default;
+    bool has_default;
     bool has_on_update_current_timestamp;
     enum mylite_sql_ast_generated_column_storage generated_column_storage;
 };
@@ -171,6 +172,8 @@ enum mylite_alter_table_action_kind {
     MYLITE_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY = 19,
     MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_FOREIGN_KEY = 20,
     MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE = 21,
+    MYLITE_ALTER_TABLE_ACTION_ALTER_COLUMN_SET_DEFAULT = 22,
+    MYLITE_ALTER_TABLE_ACTION_ALTER_COLUMN_DROP_DEFAULT = 23,
 };
 
 enum mylite_alter_table_column_position_kind {
@@ -240,6 +243,7 @@ struct mylite_alter_table_column {
     bool nullable;
     bool auto_increment;
     bool visible;
+    bool has_default;
     bool added;
 };
 
@@ -300,6 +304,7 @@ enum mylite_alter_table_column_catalog_field {
     MYLITE_ALTER_TABLE_COLUMN_CATALOG_COMMENT = 14,
     MYLITE_ALTER_TABLE_COLUMN_CATALOG_GENERATION_EXPRESSION = 15,
     MYLITE_ALTER_TABLE_COLUMN_CATALOG_SRS_ID = 16,
+    MYLITE_ALTER_TABLE_COLUMN_CATALOG_HAS_DEFAULT = 17,
 };
 
 enum mylite_alter_table_index_catalog_field {

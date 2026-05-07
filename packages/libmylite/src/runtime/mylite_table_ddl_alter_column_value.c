@@ -24,6 +24,7 @@ int mylite_table_ddl_resolve_alter_table_added_column_value(
         .nullable = column->nullable,
         .auto_increment = column->auto_increment,
         .generated_default = mylite_text_contains_word(column->extra, "DEFAULT_GENERATED"),
+        .has_default = column->has_default,
     };
 
     if (column->auto_increment) {

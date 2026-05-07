@@ -1472,6 +1472,10 @@ const char *mylite_sql_ast_alter_table_action_name(enum mylite_sql_ast_alter_tab
         return "drop_foreign_key";
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_RENAME_TABLE:
         return "rename_table";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_COLUMN_SET_DEFAULT:
+        return "alter_column_set_default";
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_COLUMN_DROP_DEFAULT:
+        return "alter_column_drop_default";
     }
 
     return "unknown";

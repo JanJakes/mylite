@@ -37,6 +37,12 @@ int mylite_dml_insert_set_no_default_error(mylite_db *database, const char *colu
         "' doesn't have a default value"
     );
 
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_current_error_condition(
+            database,
+            MYLITE_MYSQL_ER_NO_DEFAULT_FOR_FIELD
+        );
+    }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 

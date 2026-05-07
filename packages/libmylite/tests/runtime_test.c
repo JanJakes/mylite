@@ -114,6 +114,7 @@ enum {
     mysql_warning_unknown_column = 1054,
     mysql_warning_duplicate_field = 1060,
     mysql_warning_duplicate_entry = 1062,
+    mysql_warning_invalid_default = 1067,
     mysql_warning_multiple_primary = 1068,
     mysql_warning_key_column_missing = 1072,
     mysql_warning_wrong_auto_key = 1075,
@@ -491,6 +492,8 @@ static int test_temporary_table_execution(void);
 static int test_create_drop_index_execution(void);
 
 static int test_alter_table_column_operations_execution(void);
+
+static int test_alter_table_column_default_execution(void);
 
 static int test_alter_table_key_operations_execution(void);
 
@@ -1012,6 +1015,7 @@ int main(void) {
     failures += test_temporary_table_execution();
     failures += test_create_drop_index_execution();
     failures += test_alter_table_column_operations_execution();
+    failures += test_alter_table_column_default_execution();
     failures += test_alter_table_key_operations_execution();
     failures += test_rename_table_execution();
     failures += test_truncate_table_execution();
@@ -39724,6 +39728,344 @@ static int test_alter_table_column_operations_execution(void) {
     stmt = NULL;
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_alter_table_column_default_execution(void) {
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const columns_rows[] = {"COLUMN_NAME", "COLUMN_DEFAULT", "IS_NULLABLE"};
+    static const char *const default_rows[] = {
+        "id",
+        NULL,
+        "NO",
+        "a",
+        "9",
+        "YES",
+        "b",
+        "x",
+        "NO",
+        "c",
+        NULL,
+        "NO",
+        "nullable_drop",
+        NULL,
+        "YES",
+    };
+    static const char *const show_create_columns[] = {"Table", "Create Table"};
+    static const char show_create_set_default[] =
+        "CREATE TABLE `alter_defaults` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `a` int DEFAULT '9',\n"
+        "  `b` varchar(10) NOT NULL DEFAULT 'x',\n"
+        "  `c` int NOT NULL,\n"
+        "  `nullable_drop` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_0900_ai_ci";
+    static const char show_create_drop_default[] =
+        "CREATE TABLE `alter_defaults` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `a` int,\n"
+        "  `b` varchar(10) NOT NULL DEFAULT 'x',\n"
+        "  `c` int NOT NULL,\n"
+        "  `nullable_drop` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_0900_ai_ci";
+    static const char show_create_auto_default[] =
+        "CREATE TABLE `alter_ai_defaults` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const show_create_set_values[] = {"alter_defaults", show_create_set_default};
+    static const char *const show_create_drop_values[] = {
+        "alter_defaults",
+        show_create_drop_default
+    };
+    static const char *const show_create_auto_values[] = {
+        "alter_ai_defaults",
+        show_create_auto_default
+    };
+    static const char *const default_data_columns[] = {"id", "a", "b", "c", "nullable_drop"};
+    static const char *const initial_default_values[] = {
+        "1",
+        "1",
+        "x",
+        "5",
+        NULL,
+        "2",
+        "9",
+        "x",
+        "6",
+        NULL,
+    };
+    static const char *const non_strict_default_values[] = {
+        "1",
+        "1",
+        "x",
+        "5",
+        NULL,
+        "2",
+        "9",
+        "x",
+        "6",
+        NULL,
+        "3",
+        NULL,
+        "x",
+        "7",
+        NULL,
+    };
+    static const char *const string_default_values[] = {
+        "1", "1",  "x", "5", NULL, "2", "9", "x",  "6", NULL,
+        "3", NULL, "x", "7", NULL, "4", "8", "qq", "8", NULL,
+    };
+    static const char *const auto_data_columns[] = {"id", "v"};
+    static const char *const auto_data_values[] = {"1", "1", "2", "2", "10", "3", "11", "4"};
+    static const char *const auto_default_columns[] = {"COLUMN_DEFAULT"};
+    static const char *const auto_default_value[] = {NULL};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open alter defaults database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_alter_defaults", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_alter_defaults", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE alter_defaults ("
+        "id INT PRIMARY KEY AUTO_INCREMENT, "
+        "a INT DEFAULT 1, "
+        "b VARCHAR(10) NOT NULL DEFAULT 'x', "
+        "c INT NOT NULL, "
+        "nullable_drop INT NULL DEFAULT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO alter_defaults (c) VALUES (5)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_defaults ALTER COLUMN a SET DEFAULT 9",
+        0,
+        "alter column set default affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "alter set default warning count");
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, COLUMN_DEFAULT, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alter_defaults' "
+        "ORDER BY ORDINAL_POSITION",
+        columns_rows,
+        3,
+        default_rows,
+        5,
+        "alter set default metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE alter_defaults",
+        show_create_columns,
+        2,
+        show_create_set_values,
+        1,
+        "show create after alter set default"
+    );
+    failures += execute_sql(database, "INSERT INTO alter_defaults (c) VALUES (6)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, a, b, c, nullable_drop FROM alter_defaults ORDER BY id",
+        default_data_columns,
+        5,
+        initial_default_values,
+        2,
+        "alter set default insert data"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_defaults ALTER a DROP DEFAULT",
+        0,
+        "alter column drop default affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE alter_defaults",
+        show_create_columns,
+        2,
+        show_create_drop_values,
+        1,
+        "show create after alter drop default"
+    );
+    failures +=
+        prepare_sql(database, "INSERT INTO alter_defaults (c) VALUES (7)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Field 'a' doesn't have a default value",
+        "strict insert rejects dropped nullable default"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_default,
+        "strict insert dropped default warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO alter_defaults (c) VALUES (7)",
+        1,
+        "non-strict insert coerces dropped nullable default"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "non-strict dropped nullable default warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_default,
+        "non-strict dropped nullable default warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, a, b, c, nullable_drop FROM alter_defaults ORDER BY id",
+        default_data_columns,
+        5,
+        non_strict_default_values,
+        3,
+        "non-strict dropped nullable default data"
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_defaults ALTER COLUMN b SET DEFAULT 'qq'",
+        0,
+        "alter string column set default affected rows"
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO alter_defaults (a, c) VALUES (8, 8)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, a, b, c, nullable_drop FROM alter_defaults ORDER BY id",
+        default_data_columns,
+        5,
+        string_default_values,
+        4,
+        "alter string default insert data"
+    );
+
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE alter_defaults ALTER COLUMN c SET DEFAULT NULL",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_exec_error(stmt, database, "Invalid default value", "alter rejects null not null");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_invalid_default,
+        "alter invalid default warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE alter_defaults ALTER COLUMN missing SET DEFAULT 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Unknown column",
+        "alter set default rejects unknown column"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE alter_ai_defaults (id INT PRIMARY KEY AUTO_INCREMENT, v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_ai_defaults ALTER COLUMN id DROP DEFAULT",
+        0,
+        "alter auto increment drop default affected rows"
+    );
+    failures +=
+        prepare_sql(database, "INSERT INTO alter_ai_defaults (v) VALUES (1)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Field 'id' doesn't have a default value",
+        "strict insert rejects dropped auto increment default"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_default,
+        "strict insert dropped auto increment default warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(
+        database,
+        "INSERT INTO alter_ai_defaults (id, v) VALUES (NULL, 1), (0, 2)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_ai_defaults ALTER COLUMN id SET DEFAULT 10",
+        0,
+        "alter auto increment set hidden default affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alter_ai_defaults' "
+        "AND COLUMN_NAME = 'id'",
+        auto_default_columns,
+        1,
+        auto_default_value,
+        1,
+        "auto increment hidden default is not information schema default"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE alter_ai_defaults",
+        show_create_columns,
+        2,
+        show_create_auto_values,
+        1,
+        "auto increment hidden default is not shown"
+    );
+    failures += execute_sql(database, "INSERT INTO alter_ai_defaults (v) VALUES (3)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO alter_ai_defaults (id, v) VALUES (NULL, 4)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM alter_ai_defaults ORDER BY id",
+        auto_data_columns,
+        2,
+        auto_data_values,
+        4,
+        "auto increment hidden default data"
+    );
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
 

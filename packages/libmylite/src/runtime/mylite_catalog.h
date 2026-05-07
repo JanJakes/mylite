@@ -32,6 +32,7 @@ struct mylite_catalog_column_row {
     uint64_t numeric_scale;
     bool has_character_maximum_length;
     bool has_numeric_scale;
+    bool has_default;
 };
 
 struct mylite_catalog_unique_index_part_row {

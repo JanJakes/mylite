@@ -26,6 +26,14 @@ static const struct mylite_insert_value *insert_column_list_value_for_column(
     size_t column
 );
 
+static int validate_insert_column_list_omitted_defaults(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_row *row,
+    const size_t *column_indexes
+);
+
 static int resolve_insert_positional_row_values(
     mylite_db *database,
     const struct mylite_insert_values_plan *plan,
@@ -45,6 +53,12 @@ static int resolve_insert_default_row_values(
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *values
+);
+
+static int validate_insert_default_row_omitted_defaults(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table
 );
 
 static int resolve_insert_explicit_value(
@@ -67,6 +81,11 @@ static bool insert_row_uses_all_defaults(
 );
 
 static bool insert_plan_coerces_explicit_null(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan
+);
+
+static bool insert_plan_errors_on_omitted_no_default(
     const mylite_db *database,
     const struct mylite_insert_values_plan *plan
 );
@@ -155,31 +174,37 @@ static int resolve_insert_column_list_row_values(
         return MYLITE_UNSUPPORTED;
     }
 
+    int status =
+        validate_insert_column_list_omitted_defaults(database, plan, table, row, column_indexes);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
     for (size_t column = 0U; column < table->column_count; ++column) {
         const struct mylite_insert_value *explicit_value =
             insert_column_list_value_for_column(plan, row, column_indexes, column);
-        int status = explicit_value == NULL ? mylite_dml_resolve_insert_omitted_default_value(
-                                                  database,
-                                                  plan,
-                                                  &table->columns[column],
-                                                  statement_row_count,
-                                                  state,
-                                                  column,
-                                                  &values[column]
-                                              )
-                                            : resolve_insert_explicit_value(
-                                                  database,
-                                                  plan,
-                                                  schema_name,
-                                                  table,
-                                                  &table->columns[column],
-                                                  explicit_value,
-                                                  statement_row_count,
-                                                  state,
-                                                  column,
-                                                  &values[column],
-                                                  callbacks
-                                              );
+        status = explicit_value == NULL ? mylite_dml_resolve_insert_omitted_default_value(
+                                              database,
+                                              plan,
+                                              &table->columns[column],
+                                              statement_row_count,
+                                              state,
+                                              column,
+                                              &values[column]
+                                          )
+                                        : resolve_insert_explicit_value(
+                                              database,
+                                              plan,
+                                              schema_name,
+                                              table,
+                                              &table->columns[column],
+                                              explicit_value,
+                                              statement_row_count,
+                                              state,
+                                              column,
+                                              &values[column],
+                                              callbacks
+                                          );
 
         if (status != MYLITE_OK) {
             return status;
@@ -200,6 +225,27 @@ static const struct mylite_insert_value *insert_column_list_value_for_column(
         }
     }
     return NULL;
+}
+
+static int validate_insert_column_list_omitted_defaults(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table,
+    const struct mylite_insert_row *row,
+    const size_t *column_indexes
+) {
+    if (!insert_plan_errors_on_omitted_no_default(database, plan)) {
+        return MYLITE_OK;
+    }
+    for (size_t column = 0U; column < table->column_count; ++column) {
+        const struct mylite_insert_value *explicit_value =
+            insert_column_list_value_for_column(plan, row, column_indexes, column);
+
+        if (explicit_value == NULL && !table->columns[column].has_default) {
+            return mylite_dml_insert_set_no_default_error(database, table->columns[column].name);
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int resolve_insert_positional_row_values(
@@ -254,8 +300,13 @@ static int resolve_insert_default_row_values(
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *values
 ) {
+    int status = validate_insert_default_row_omitted_defaults(database, plan, table);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
     for (size_t column = 0U; column < table->column_count; ++column) {
-        int status = mylite_dml_resolve_insert_omitted_default_value(
+        status = mylite_dml_resolve_insert_omitted_default_value(
             database,
             plan,
             &table->columns[column],
@@ -267,6 +318,22 @@ static int resolve_insert_default_row_values(
 
         if (status != MYLITE_OK) {
             return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int validate_insert_default_row_omitted_defaults(
+    mylite_db *database,
+    const struct mylite_insert_values_plan *plan,
+    const struct mylite_insert_table *table
+) {
+    if (!insert_plan_errors_on_omitted_no_default(database, plan)) {
+        return MYLITE_OK;
+    }
+    for (size_t column = 0U; column < table->column_count; ++column) {
+        if (!table->columns[column].has_default) {
+            return mylite_dml_insert_set_no_default_error(database, table->columns[column].name);
         }
     }
     return MYLITE_OK;
@@ -406,8 +473,15 @@ static bool insert_plan_coerces_explicit_null(
     const mylite_db *database,
     const struct mylite_insert_values_plan *plan
 ) {
-    return plan != NULL && (plan->ignore || (!mylite_connection_sql_mode_is_strict(database) &&
-                                             plan->row_count > 1U));
+    return (plan != NULL && (plan->ignore || (!mylite_connection_sql_mode_is_strict(database) &&
+                                              plan->row_count > 1U))) != 0;
+}
+
+static bool insert_plan_errors_on_omitted_no_default(
+    const mylite_db *database,
+    const struct mylite_insert_values_plan *plan
+) {
+    return (plan != NULL && !plan->ignore && mylite_connection_sql_mode_is_strict(database)) != 0;
 }
 
 static size_t insert_row_target_column_count(

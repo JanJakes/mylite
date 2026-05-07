@@ -1882,6 +1882,73 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_act
     return action;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_column_set_default_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_alter_table_default_tokens tokens,
+    struct mylite_sql_ast_node *column_name,
+    struct mylite_sql_ast_node *default_value
+) {
+    struct mylite_sql_source_span span = span_from_token(&tokens.action.action);
+    struct mylite_sql_ast_node *action = NULL;
+
+    if (tokens.action.column.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.action.column));
+    }
+    if (column_name != NULL) {
+        span = span_join(span, column_name->span);
+    }
+    span = span_join(span, span_from_token(&tokens.verb));
+    span = span_join(span, span_from_token(&tokens.default_keyword));
+    if (default_value != NULL) {
+        span = span_join(span, default_value->span);
+    }
+
+    action = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ACTION, span);
+    if (action == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_COLUMN_SET_DEFAULT,
+        tokens.action.column.text != NULL
+    );
+    mylite_sql_ast_node_append_child(action, column_name);
+    mylite_sql_ast_node_append_child(action, default_value);
+    return action;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_column_drop_default_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_alter_table_default_tokens tokens,
+    struct mylite_sql_ast_node *column_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&tokens.action.action);
+    struct mylite_sql_ast_node *action = NULL;
+
+    if (tokens.action.column.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.action.column));
+    }
+    if (column_name != NULL) {
+        span = span_join(span, column_name->span);
+    }
+    span = span_join(span, span_from_token(&tokens.verb));
+    span = span_join(span, span_from_token(&tokens.default_keyword));
+
+    action = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ACTION, span);
+    if (action == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_COLUMN_DROP_DEFAULT,
+        tokens.action.column.text != NULL
+    );
+    mylite_sql_ast_node_append_child(action, column_name);
+    return action;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_column_position(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,

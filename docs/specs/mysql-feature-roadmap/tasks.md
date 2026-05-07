@@ -130,9 +130,10 @@ level application surfaces.
        First executable slice is implemented for existing MyLite base tables,
        including parser coverage, multi-action atomic shadow rewrites,
        default backfill, column positioning, column/index metadata rewrites,
-       duplicate-index warnings, and rejection of non-default `ALGORITHM` and
-       `LOCK` before mutation. Inline key/constraint creation, generated
-       column dependencies, foreign-key dependencies, and full MySQL
+       default mutation through `ALTER COLUMN SET/DROP DEFAULT`, duplicate-index
+       warnings, and rejection of non-default `ALGORITHM` and `LOCK` before
+       mutation. Inline key/constraint creation, generated column dependencies,
+       foreign-key dependencies, generated default expressions, and full MySQL
        conversion fidelity remain deferred. Spec:
        [ALTER TABLE column operations](../alter-table-column-operations/specs.md).
 36. [ ] `ALTER TABLE` key and constraint operations: primary, unique, index,

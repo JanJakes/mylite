@@ -42,7 +42,7 @@ int mylite_show_create_table_append_columns(
     sqlite3_stmt *select = NULL;
     char *sql = sqlite3_mprintf(
         "SELECT column_name, column_type, is_nullable, column_default, extra, column_comment, "
-        "character_set_name, collation_name, data_type "
+        "character_set_name, collation_name, data_type, has_default "
         "FROM %s WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position",
         mylite_catalog_column_catalog_name(target->temporary)
@@ -94,6 +94,7 @@ static int append_show_create_table_column(
         character_set_column = 6,
         collation_column = 7,
         data_type_column = 8,
+        has_default_column = 9,
     };
 
     const char *column_name = (const char *)sqlite3_column_text(select, column_name_column);
@@ -105,7 +106,9 @@ static int append_show_create_table_column(
     const char *character_set = (const char *)sqlite3_column_text(select, character_set_column);
     const char *column_collation = (const char *)sqlite3_column_text(select, collation_column);
     const char *data_type = (const char *)sqlite3_column_text(select, data_type_column);
+    bool auto_increment = mylite_text_contains_word(extra, "auto_increment");
     bool nullable = mylite_ascii_case_equal(is_nullable, "YES");
+    bool has_default = sqlite3_column_int(select, has_default_column) != 0;
 
     mylite_show_create_append_identifier(create_sql, column_name);
     sqlite3_str_appendf(create_sql, " %s", column_type == NULL ? "" : column_type);
@@ -124,17 +127,19 @@ static int append_show_create_table_column(
     ) {
         sqlite3_str_appendall(create_sql, " NULL");
     }
-    if (column_default != NULL) {
+    if (column_default != NULL && !auto_increment) {
         sqlite3_str_appendall(create_sql, " DEFAULT ");
         if (mylite_column_default_is_current_timestamp(column_default)) {
             sqlite3_str_appendall(create_sql, "CURRENT_TIMESTAMP");
         } else {
             mylite_show_create_append_string_literal(create_sql, column_default);
         }
-    } else if (nullable && show_create_column_needs_implicit_default_null(data_type)) {
+    } else if (
+        nullable && has_default && show_create_column_needs_implicit_default_null(data_type)
+    ) {
         sqlite3_str_appendall(create_sql, " DEFAULT NULL");
     }
-    if (mylite_text_contains_word(extra, "auto_increment")) {
+    if (auto_increment) {
         sqlite3_str_appendall(create_sql, " AUTO_INCREMENT");
     }
     if (mylite_text_contains_word(extra, "on") && mylite_text_contains_word(extra, "update") &&

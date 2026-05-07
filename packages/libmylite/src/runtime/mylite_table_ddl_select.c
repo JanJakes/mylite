@@ -355,6 +355,9 @@ static int append_create_select_column(
             &column
         );
     }
+    if (status == MYLITE_OK && !column.has_default && column.nullable) {
+        column.has_default = true;
+    }
     if (status == MYLITE_OK) {
         status = append_create_select_column_to_plan(plan, column);
     }
@@ -427,7 +430,7 @@ static int load_origin_create_select_column_from_catalog(
     char *sql = sqlite3_mprintf(
         "SELECT column_default, is_nullable, data_type, character_maximum_length, "
         "numeric_precision, numeric_scale, datetime_precision, character_set_name, "
-        "collation_name, column_type, column_comment FROM %s "
+        "collation_name, column_type, column_comment, has_default FROM %s "
         "WHERE table_schema = ? AND table_name = ? AND column_name = ?",
         catalog_name
     );
@@ -476,6 +479,7 @@ static int copy_origin_create_select_column_row(
         select_collation_name = 8,
         select_column_type = 9,
         select_column_comment = 10,
+        select_has_default = 11,
     };
 
     const char *is_nullable = (const char *)sqlite3_column_text(select, select_is_nullable);
@@ -493,6 +497,7 @@ static int copy_origin_create_select_column_row(
     int status = assign_create_select_type_from_data_type(&origin, column);
 
     column->nullable = mylite_ascii_case_equal(is_nullable, "YES");
+    column->has_default = sqlite3_column_int(select, select_has_default) != 0;
     if (status == MYLITE_OK && sqlite3_column_type(select, select_column_default) != SQLITE_NULL) {
         column->default_text =
             copy_nullable_text((const char *)sqlite3_column_text(select, select_column_default));
@@ -871,7 +876,11 @@ static int set_create_select_implicit_default(struct mylite_create_table_column 
     } else {
         column->default_text = copy_nullable_text("0");
     }
-    return column->default_text == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    if (column->default_text == NULL) {
+        return MYLITE_NOMEM;
+    }
+    column->has_default = true;
+    return MYLITE_OK;
 }
 
 static bool create_select_column_uses_empty_string_default(

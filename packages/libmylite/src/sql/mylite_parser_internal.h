@@ -249,6 +249,12 @@ struct mylite_sql_parser_alter_table_action_tokens {
     struct mylite_sql_token column;
 };
 
+struct mylite_sql_parser_alter_table_default_tokens {
+    struct mylite_sql_parser_alter_table_action_tokens action;
+    struct mylite_sql_token verb;
+    struct mylite_sql_token default_keyword;
+};
+
 struct mylite_sql_parser_index_class_token {
     struct mylite_sql_token token;
     enum mylite_sql_ast_index_class index_class;
@@ -697,6 +703,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_act
     struct mylite_sql_parser_alter_table_action_tokens tokens,
     struct mylite_sql_ast_node *column_definition,
     struct mylite_sql_ast_node *position
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_column_set_default_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_alter_table_default_tokens tokens,
+    struct mylite_sql_ast_node *column_name,
+    struct mylite_sql_ast_node *default_value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_column_drop_default_action(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_alter_table_default_tokens tokens,
+    struct mylite_sql_ast_node *column_name
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_column_position(
     struct mylite_sql_parser_state *state,

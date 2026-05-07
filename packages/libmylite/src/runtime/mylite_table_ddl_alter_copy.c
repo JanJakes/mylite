@@ -48,6 +48,11 @@ static int copy_alter_table_modify_column_action(
     struct mylite_alter_table_action *action
 );
 
+static int copy_alter_table_column_set_default_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+);
+
 static int copy_alter_table_alter_index_visibility_action(
     const struct mylite_sql_ast_node *action_node,
     struct mylite_alter_table_action *action
@@ -103,6 +108,8 @@ static int copy_alter_table_column_position(
     const struct mylite_sql_ast_node *position_node,
     struct mylite_alter_table_action *action
 );
+
+static char *copy_alter_table_default_expression_text(const struct mylite_sql_ast_node *node);
 
 static int add_alter_table_action(
     struct mylite_alter_table_plan *plan,
@@ -215,6 +222,16 @@ static int copy_alter_table_action(
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_MODIFY_COLUMN:
         status = copy_alter_table_modify_column_action(action_node, &action);
+        break;
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_COLUMN_SET_DEFAULT:
+        status = copy_alter_table_column_set_default_action(action_node, &action);
+        break;
+    case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_COLUMN_DROP_DEFAULT:
+        status = copy_alter_table_named_action(
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_ALTER_COLUMN_DROP_DEFAULT,
+            &action
+        );
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY:
         status = copy_alter_table_index_action(
@@ -390,6 +407,30 @@ static int copy_alter_table_modify_column_action(
         return status;
     }
     return copy_alter_table_column_position(mylite_ast_child_at(action_node, 1U), action);
+}
+
+static int copy_alter_table_column_set_default_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
+    const struct mylite_sql_ast_node *default_value = mylite_ast_child_at(action_node, 1U);
+
+    action->kind = MYLITE_ALTER_TABLE_ACTION_ALTER_COLUMN_SET_DEFAULT;
+    action->old_name = mylite_copy_identifier_span(mylite_ast_child_at(action_node, 0U));
+    action->column.has_default = true;
+    if (action->old_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    action->column.default_text = copy_alter_table_default_expression_text(default_value);
+    if (action->column.default_text == NULL && default_value != NULL &&
+        default_value->literal_kind != MYLITE_SQL_AST_LITERAL_NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (default_value != NULL && (default_value->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP ||
+                                  default_value->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION)) {
+        action->column.has_generated_default = true;
+    }
+    return MYLITE_OK;
 }
 
 static int copy_alter_table_alter_index_visibility_action(
@@ -717,6 +758,23 @@ static int copy_alter_table_column_position(
         return action->after_column == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     return MYLITE_UNSUPPORTED;
+}
+
+static char *copy_alter_table_default_expression_text(const struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return NULL;
+    }
+    if (node->kind == MYLITE_SQL_AST_LITERAL &&
+        node->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        return mylite_copy_string_literal_span(node);
+    }
+    if (node->kind == MYLITE_SQL_AST_LITERAL && node->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        return NULL;
+    }
+    if (node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP) {
+        return mylite_copy_span_text("CURRENT_TIMESTAMP", strlen("CURRENT_TIMESTAMP"));
+    }
+    return mylite_copy_span_text(node->span.text, node->span.length);
 }
 
 static int add_alter_table_action(

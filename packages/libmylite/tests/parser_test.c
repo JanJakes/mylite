@@ -4316,6 +4316,46 @@ static int test_alter_table_column_operations_syntax(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE t ALTER COLUMN a SET DEFAULT 9, "
+        "ALTER b DROP DEFAULT, ALTER COLUMN c SET DEFAULT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    failures += expect_child_count(items, 3U, "alter default action count");
+    action = child_at(items, 0U);
+    failures += expect_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_COLUMN_SET_DEFAULT,
+        true,
+        "alter column set default action"
+    );
+    failures += expect_span_text(child_at(action, 0U), "a", "alter set default column");
+    failures += expect_span_text(child_at(action, 1U), "9", "alter set default value");
+    action = child_at(items, 1U);
+    failures += expect_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_COLUMN_DROP_DEFAULT,
+        false,
+        "alter column drop default action"
+    );
+    failures += expect_span_text(child_at(action, 0U), "b", "alter drop default column");
+    action = child_at(items, 2U);
+    failures += expect_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_COLUMN_SET_DEFAULT,
+        true,
+        "alter column set null default action"
+    );
+    failures += expect_literal(
+        child_at(action, 1U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "alter set default null value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE t ADD COLUMN complex_col VARCHAR(20) "
         "CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'q' "
         "COMMENT 'text' INVISIBLE;",

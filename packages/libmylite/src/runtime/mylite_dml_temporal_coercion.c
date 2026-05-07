@@ -187,24 +187,42 @@ int mylite_dml_coerce_update_temporal_value(
 ) {
     enum mylite_dml_temporal_kind kind = temporal_kind_for_column(column);
     struct mylite_dml_temporal_output output = {0};
+    char *converted_text = NULL;
+    const char *text = NULL;
+    size_t text_length = 0U;
     int status = MYLITE_OK;
 
     if (database == NULL || column == NULL || value == NULL) {
         return MYLITE_MISUSE;
     }
-    if (kind == MYLITE_DML_TEMPORAL_NONE || value->kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+    if (kind == MYLITE_DML_TEMPORAL_NONE || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
         return MYLITE_OK;
     }
+
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        text = value->text_value;
+        text_length = value->text_length;
+    } else {
+        converted_text = mylite_expression_value_to_text(value);
+        if (converted_text == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        text = converted_text;
+        text_length = strlen(converted_text);
+    }
+
     status = coerce_temporal_text_value(
         database,
         column,
         kind,
-        value->text_value,
-        value->text_length,
+        text,
+        text_length,
         row_number,
         ignore,
         &output
     );
+    free(converted_text);
     if (status != MYLITE_OK || !output.replace) {
         return status;
     }

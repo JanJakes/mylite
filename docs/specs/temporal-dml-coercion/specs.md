@@ -70,6 +70,9 @@ SQLite write. This keeps all write forms on the same behavior:
   `0000-00-00 00:00:00` in non-strict mode
 - already valid accepted temporal text keeps the existing MyLite storage shape
   in this slice
+- non-null non-text update RHS values are converted to their scalar text form
+  for classification, so numeric assignments such as `d = 20220001` still
+  observe strict zero-date SQL modes before the SQLite write
 
 For supported formats, MyLite classifies the input as:
 
@@ -103,3 +106,4 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - non-strict `NO_ZERO_DATE` and `NO_ZERO_IN_DATE` warnings
 - `REPLACE` and `ON DUPLICATE KEY UPDATE` write-path coercion
 - update-path coercion and strict rejection without mutating existing rows
+- numeric update RHS strict rejection for zero and zero-in-date values

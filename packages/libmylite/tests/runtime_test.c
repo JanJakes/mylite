@@ -56849,6 +56849,12 @@ static int test_temporal_dml_coercion_execution(void) {
         "0000-00-00 00:00:00",
         "0000-00-00 00:00:00",
     };
+    static const char *const strict_numeric_update_values[] = {
+        "4",
+        "2022-02-31",
+        "2022-02-31 12:34:56",
+        "0000-00-00 00:00:00",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -56894,6 +56900,54 @@ static int test_temporal_dml_coercion_execution(void) {
         1,
         "default temporal invalid date rollback"
     );
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO temporal_values(id,d,dt,ts) VALUES "
+        "(10,'0000-00-00','2024-01-01 00:00:00','2024-01-01 00:00:00')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '0000-00-00' for column 'd' at row 1",
+        "default temporal zero-date insert error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO temporal_values(id,d,dt,ts) VALUES "
+        "(11,'2024-01-01','2022-00-01 00:00:00','2024-01-01 00:00:00')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect datetime value: '2022-00-01 00:00:00' for column 'dt' at row 1",
+        "default temporal zero-in-datetime insert error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO temporal_values(id,d,dt,ts) VALUES "
+        "(12,'2024-01-01','2024-01-01 00:00:00','2022-00-01 00:00:00')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect datetime value: '2022-00-01 00:00:00' for column 'ts' at row 1",
+        "default temporal zero-in-timestamp insert error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
     failures += execute_sql_expect_done_affected(
@@ -57022,6 +57076,102 @@ static int test_temporal_dml_coercion_execution(void) {
     );
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "UPDATE temporal_values SET d = 00000000 WHERE id = 4",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '0' for column 'd' at row 1",
+        "strict temporal update numeric zero-date error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM temporal_values WHERE id = 4",
+        temporal_columns,
+        4,
+        strict_numeric_update_values,
+        1,
+        "strict temporal update numeric zero-date unchanged"
+    );
+
+    failures += prepare_sql(
+        database,
+        "UPDATE temporal_values SET d = 20220001 WHERE id = 4",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '20220001' for column 'd' at row 1",
+        "strict temporal update numeric zero-in-date error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM temporal_values WHERE id = 4",
+        temporal_columns,
+        4,
+        strict_numeric_update_values,
+        1,
+        "strict temporal update numeric zero-in-date unchanged"
+    );
+
+    failures += prepare_sql(
+        database,
+        "UPDATE temporal_values SET dt = 20220001000000 WHERE id = 4",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect datetime value: '20220001000000' for column 'dt' at row 1",
+        "strict temporal update numeric zero-in-datetime error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM temporal_values WHERE id = 4",
+        temporal_columns,
+        4,
+        strict_numeric_update_values,
+        1,
+        "strict temporal update numeric zero-in-datetime unchanged"
+    );
+
+    failures += prepare_sql(
+        database,
+        "UPDATE temporal_values SET ts = 20220001000000 WHERE id = 4",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect datetime value: '20220001000000' for column 'ts' at row 1",
+        "strict temporal update numeric zero-in-timestamp error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM temporal_values WHERE id = 4",
+        temporal_columns,
+        4,
+        strict_numeric_update_values,
+        1,
+        "strict temporal update numeric zero-in-timestamp unchanged"
+    );
 
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
     failures += execute_sql_expect_done_affected(

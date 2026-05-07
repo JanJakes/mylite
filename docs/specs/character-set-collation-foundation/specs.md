@@ -14,13 +14,16 @@ This feature adds the first MyLite character set and collation foundation:
   `collation_connection`
 - `SET NAMES charset [COLLATE collation]`, `SET NAMES DEFAULT`,
   `SET CHARACTER SET charset`, and `SET CHARACTER SET DEFAULT`
+- direct session assignment for `character_set_client`,
+  `character_set_results`, and `collation_connection`
 - schema default charset/collation normalization and validation for
   `CREATE DATABASE` and `ALTER DATABASE`
 
 This is a foundation, not a full string semantics feature. String literal
 conversion, expression collation derivation, table/column charset metadata,
-`SHOW CHARACTER SET`, `SHOW COLLATION`, `SHOW VARIABLES`, and protocol-level
-metadata are later tasks unless explicitly listed here.
+`SHOW CHARACTER SET`, `SHOW COLLATION`, broader direct system-variable
+assignment, and protocol-level metadata are later tasks unless explicitly
+listed here.
 
 ## Sources
 
@@ -118,6 +121,18 @@ whose defaults are `latin1` / `latin1_bin`, `SET CHARACTER SET utf8mb4` leaves
 client/results as `utf8mb4` but makes connection/collation
 `latin1` / `latin1_bin`.
 
+Direct session assignment to `character_set_client` changes only the client
+charset. Direct session assignment to `character_set_results` changes only the
+results charset and accepts `NULL`; `SHOW VARIABLES` displays the `NULL` value
+as an empty string while `@@character_set_results` evaluates to SQL `NULL`.
+Direct session assignment to `collation_connection` validates the collation,
+then updates both `collation_connection` and `character_set_connection` to the
+collation's associated charset. `DEFAULT` restores `utf8mb4` for
+`character_set_client` and `character_set_results`, and
+`utf8mb4_0900_ai_ci` / `utf8mb4` for `collation_connection` /
+`character_set_connection`. The supported direct assignments accept saved
+user-variable values, which covers common dump restore trailers.
+
 Charset and collation names are accepted quoted or unquoted and are resolved
 case-insensitively. MySQL stores normalized lowercase names in session variables
 and `INFORMATION_SCHEMA.SCHEMATA`.
@@ -169,9 +184,9 @@ Each `mylite_db` handle stores these connection variables:
 Opening a handle initializes all three charset variables to `utf8mb4` and
 `collation_connection` to `utf8mb4_0900_ai_ci`.
 
-`SHOW VARIABLES`, `SELECT @@character_set_client`, and general system-variable
-assignment are deferred. Tests may use narrow internal test helpers to inspect
-this handle-owned state until the general variable surface is implemented.
+`SHOW VARIABLES`, `SELECT @@character_set_client`, and the focused direct
+session assignments listed in this spec expose this state. Broader
+system-variable assignment remains deferred.
 
 ### Schema default validation
 

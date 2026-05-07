@@ -19,7 +19,8 @@ Deferred surfaces:
 
 - execution of `SHOW VARIABLES ... WHERE expr`
 - direct `SET` assignment to system variables beyond the current scoped
-  session-variable slices
+  session-variable slices; focused connection charset/collation assignment is
+  included in this slice
 - complete MySQL server variable catalog
 - variable metadata tables in Performance Schema
 - privilege-sensitive or plugin/build-dependent variable behavior
@@ -144,15 +145,15 @@ Catalog for this slice:
 | Variable | Session value | Global value | Notes |
 | --- | --- | --- | --- |
 | `autocommit` | `ON` | `ON` | MyLite currently implements autocommit-on behavior except inside explicit transaction statements; direct `SET autocommit` is deferred. |
-| `character_set_client` | current handle state | `utf8mb4` | Updated by `SET NAMES` and `SET CHARACTER SET`. |
+| `character_set_client` | current handle state | `utf8mb4` | Updated by `SET NAMES`, `SET CHARACTER SET`, and direct session assignment. |
 | `character_set_connection` | current handle state | `utf8mb4` | Updated by `SET NAMES` and selected-schema/default-schema behavior in `SET CHARACTER SET`. |
 | `character_set_database` | selected schema default, or server default when no schema is selected | `utf8mb4` | Backed by MyLite schema defaults for session scope. |
 | `character_set_filesystem` | `binary` | `binary` | Fixed compatibility value. |
-| `character_set_results` | current handle state | `utf8mb4` | Updated by `SET NAMES` and `SET CHARACTER SET`. |
+| `character_set_results` | current handle state, displayed as an empty string when set to `NULL` | `utf8mb4` | Updated by `SET NAMES`, `SET CHARACTER SET`, and direct session assignment. |
 | `character_set_server` | `utf8mb4` | `utf8mb4` | MyLite's current server default. |
 | `character_set_system` | `utf8mb3` | `utf8mb3` | Fixed MySQL-compatible system charset value. |
 | `character_sets_dir` | empty string | empty string | MyLite uses an embedded registry rather than a filesystem charset directory. |
-| `collation_connection` | current handle state | `utf8mb4_0900_ai_ci` | Updated by `SET NAMES` and `SET CHARACTER SET`. |
+| `collation_connection` | current handle state | `utf8mb4_0900_ai_ci` | Updated by `SET NAMES`, `SET CHARACTER SET`, and direct session assignment. |
 | `collation_database` | selected schema default, or server default when no schema is selected | `utf8mb4_0900_ai_ci` | Backed by MyLite schema defaults for session scope. |
 | `collation_server` | `utf8mb4_0900_ai_ci` | `utf8mb4_0900_ai_ci` | MyLite's current server default collation. |
 | `error_count` | `0` | omitted | SHOW VARIABLES clears prior diagnostics before reporting. |

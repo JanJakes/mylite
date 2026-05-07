@@ -65,6 +65,21 @@ static int execute_set_wait_timeout_statement(
     const struct mylite_connection_system_variable_plan *plan
 );
 
+static int execute_set_character_set_client_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
+static int execute_set_character_set_results_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
+static int execute_set_collation_connection_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
 static int copy_connection_group_concat_max_len_value(
     mylite_db *database,
     const struct mylite_sql_ast_node *value,
@@ -89,6 +104,13 @@ static int copy_connection_string_system_variable_value(
     mylite_db *database,
     const struct mylite_sql_ast_node *value,
     const char *variable_name,
+    struct mylite_connection_system_variable_plan *plan
+);
+
+static int copy_connection_charset_system_variable_value(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    enum mylite_connection_system_variable variable,
     struct mylite_connection_system_variable_plan *plan
 );
 
@@ -122,6 +144,11 @@ static int set_system_variable_wrong_value_error(
     mylite_db *database,
     const char *variable_name,
     const struct mylite_sql_ast_node *value
+);
+
+static int set_system_variable_wrong_null_value_error(
+    mylite_db *database,
+    const char *variable_name
 );
 
 static int set_group_concat_max_len_type_error(mylite_db *database);
@@ -165,6 +192,8 @@ static int resolve_unsigned_user_variable_value(
 );
 
 static int resolve_string_user_variable_value(
+    mylite_db *database,
+    const struct mylite_connection_system_variable_plan *plan,
     const struct mylite_expression_value *value,
     struct mylite_connection_system_variable_plan *out_plan
 );
@@ -331,6 +360,15 @@ int mylite_connection_execute_system_variable_plan(
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         status = execute_set_wait_timeout_statement(stmt, plan);
         break;
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
+        status = execute_set_character_set_client_statement(stmt, plan);
+        break;
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
+        status = execute_set_character_set_results_statement(stmt, plan);
+        break;
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+        status = execute_set_collation_connection_statement(stmt, plan);
+        break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE:
         (void)mylite_diagnostics_set_error_message(stmt->database, "unsupported SET variable");
         status = MYLITE_UNSUPPORTED;
@@ -438,6 +476,48 @@ static int execute_set_wait_timeout_statement(
         return mylite_connection_set_default_wait_timeout(stmt->database);
     }
     return mylite_connection_set_wait_timeout(stmt->database, plan->unsigned_value);
+}
+
+static int execute_set_character_set_client_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
+    if (plan->use_default) {
+        return mylite_connection_set_character_set_client(
+            stmt->database,
+            mylite_charset_default_name()
+        );
+    }
+    return mylite_connection_set_character_set_client(stmt->database, plan->value);
+}
+
+static int execute_set_character_set_results_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
+    if (plan->use_default) {
+        return mylite_connection_set_character_set_results(
+            stmt->database,
+            mylite_charset_default_name()
+        );
+    }
+    return mylite_connection_set_character_set_results(
+        stmt->database,
+        plan->use_null_value ? NULL : plan->value
+    );
+}
+
+static int execute_set_collation_connection_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
+    if (plan->use_default) {
+        return mylite_connection_set_collation_connection(
+            stmt->database,
+            mylite_charset_default_collation_name()
+        );
+    }
+    return mylite_connection_set_collation_connection(stmt->database, plan->value);
 }
 
 void mylite_connection_charset_plan_deinit(struct mylite_connection_charset_plan *plan) {
@@ -566,6 +646,12 @@ int mylite_connection_copy_system_variable_statement(
         );
     }
 
+    if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT ||
+        plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS ||
+        plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION) {
+        return copy_connection_charset_system_variable_value(database, value, plan->variable, plan);
+    }
+
     if (value != NULL && value->kind == MYLITE_SQL_AST_DEFAULT) {
         plan->use_default = true;
         return MYLITE_OK;
@@ -686,6 +772,37 @@ static int copy_connection_string_system_variable_value(
     return plan->value == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
+static int copy_connection_charset_system_variable_value(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    enum mylite_connection_system_variable variable,
+    struct mylite_connection_system_variable_plan *plan
+) {
+    const char *variable_name = set_system_variable_name(variable);
+
+    if (value != NULL && value->kind == MYLITE_SQL_AST_DEFAULT) {
+        plan->use_default = true;
+        return MYLITE_OK;
+    }
+    if (value != NULL && value->kind == MYLITE_SQL_AST_LITERAL &&
+        value->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        if (variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS) {
+            plan->use_null_value = true;
+            return MYLITE_OK;
+        }
+        return set_system_variable_wrong_value_error(database, variable_name, value);
+    }
+    if (value == NULL || (value->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                          (value->kind != MYLITE_SQL_AST_LITERAL ||
+                           value->literal_kind != MYLITE_SQL_AST_LITERAL_STRING))) {
+        return set_system_variable_type_error(database, variable_name);
+    }
+
+    plan->value = value->kind == MYLITE_SQL_AST_IDENTIFIER ? mylite_copy_schema_text_span(value)
+                                                           : mylite_copy_string_literal_span(value);
+    return plan->value == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
 static int copy_connection_sql_mode_replace_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *value,
@@ -778,6 +895,7 @@ int mylite_connection_resolve_system_variable_plan(
         out_plan->use_default = plan->use_default;
         out_plan->replace_current_value = plan->replace_current_value;
         out_plan->emit_truncation_warning = plan->emit_truncation_warning;
+        out_plan->use_null_value = plan->use_null_value;
         if ((plan->value != NULL && out_plan->value == NULL) ||
             (plan->replace_search != NULL && out_plan->replace_search == NULL) ||
             (plan->replace_replacement != NULL && out_plan->replace_replacement == NULL)) {
@@ -804,9 +922,12 @@ static int resolve_user_variable_system_value(
 
     switch (plan->variable) {
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_MODE:
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_TIME_ZONE:
-        status = resolve_string_user_variable_value(&value, out_plan);
+        status = resolve_string_user_variable_value(database, plan, &value, out_plan);
         break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES:
@@ -866,10 +987,23 @@ static int resolve_unsigned_user_variable_value(
 }
 
 static int resolve_string_user_variable_value(
+    mylite_db *database,
+    const struct mylite_connection_system_variable_plan *plan,
     const struct mylite_expression_value *value,
     struct mylite_connection_system_variable_plan *out_plan
 ) {
     if (value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS) {
+            out_plan->use_null_value = true;
+            return MYLITE_OK;
+        }
+        if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT ||
+            plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION) {
+            return set_system_variable_wrong_null_value_error(
+                database,
+                set_system_variable_name(plan->variable)
+            );
+        }
         out_plan->value = mylite_copy_span_text("", 0U);
     } else {
         out_plan->value = mylite_expression_value_to_text(value);
@@ -924,6 +1058,15 @@ static enum mylite_connection_system_variable set_system_variable_kind(
     }
     if (mylite_ascii_case_equal(name, "wait_timeout")) {
         return MYLITE_CONNECTION_SYSTEM_VARIABLE_WAIT_TIMEOUT;
+    }
+    if (mylite_ascii_case_equal(name, "character_set_client")) {
+        return MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT;
+    }
+    if (mylite_ascii_case_equal(name, "character_set_results")) {
+        return MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS;
+    }
+    if (mylite_ascii_case_equal(name, "collation_connection")) {
+        return MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION;
     }
     return MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE;
 }
@@ -981,6 +1124,12 @@ static const char *set_system_variable_name(enum mylite_connection_system_variab
         return "unique_checks";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         return "wait_timeout";
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
+        return "character_set_client";
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
+        return "character_set_results";
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+        return "collation_connection";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE:
         break;
     }
@@ -1062,6 +1211,28 @@ static int set_system_variable_wrong_value_error(
         value_text
     );
     free(value_text);
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_VALUE_FOR_VAR, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_system_variable_wrong_null_value_error(
+    mylite_db *database,
+    const char *variable_name
+) {
+    char *message =
+        sqlite3_mprintf("Variable '%q' can't be set to the value of 'NULL'", variable_name);
+    int status = MYLITE_OK;
+
     if (message == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;

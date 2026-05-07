@@ -46638,6 +46638,27 @@ static int test_show_variables_execution(void) {
         "collation_connection",
         "utf8mb4_0900_ai_ci"
     };
+    static const char *const direct_charset_columns[] =
+        {"client", "connection", "results", "collation"};
+    static const char *const direct_charset_values[] = {
+        "utf8mb4",
+        "utf8mb4",
+        NULL,
+        "utf8mb4_bin",
+    };
+    static const char *const empty_character_set_results_values[] = {"character_set_results", ""};
+    static const char *const restored_direct_charset_values[] = {
+        "latin1",
+        "latin1",
+        "latin1",
+        "latin1_bin",
+    };
+    static const char *const default_direct_charset_values[] = {
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+    };
     static const char *const empty_sql_mode_values[] = {"sql_mode", ""};
     static const char *const canonical_sql_mode_values[] = {
         "sql_mode",
@@ -47787,6 +47808,81 @@ static int test_show_variables_execution(void) {
         system_variable_charset_values,
         1,
         "system variable charset state"
+    );
+    failures += execute_sql(
+        database,
+        "SET @old_client = @@character_set_client, "
+        "@old_results = @@character_set_results, "
+        "@old_collation = @@collation_connection",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET character_set_client = utf8mb4", MYLITE_DONE);
+    failures += execute_sql(database, "SET character_set_results = NULL", MYLITE_DONE);
+    failures += execute_sql(database, "SET collation_connection = utf8mb4_bin", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@character_set_client AS client, "
+        "@@character_set_connection AS connection, "
+        "@@character_set_results AS results, "
+        "@@collation_connection AS collation",
+        direct_charset_columns,
+        4,
+        direct_charset_values,
+        1,
+        "direct SET charset variables"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'character_set_results'",
+        columns,
+        2,
+        empty_character_set_results_values,
+        1,
+        "show variables null character_set_results"
+    );
+    failures += execute_sql(database, "SET character_set_client = @old_client", MYLITE_DONE);
+    failures += execute_sql(database, "SET character_set_results = @old_results", MYLITE_DONE);
+    failures += execute_sql(database, "SET collation_connection = @old_collation", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@character_set_client AS client, "
+        "@@character_set_connection AS connection, "
+        "@@character_set_results AS results, "
+        "@@collation_connection AS collation",
+        direct_charset_columns,
+        4,
+        restored_direct_charset_values,
+        1,
+        "direct SET charset restore from user variables"
+    );
+    failures += execute_sql(database, "SET character_set_client = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET character_set_results = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET collation_connection = DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@character_set_client AS client, "
+        "@@character_set_connection AS connection, "
+        "@@character_set_results AS results, "
+        "@@collation_connection AS collation",
+        direct_charset_columns,
+        4,
+        default_direct_charset_values,
+        1,
+        "direct SET charset defaults"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SET character_set_client = NULL",
+        MYLITE_EXEC_ERROR,
+        "can't be set to the value of 'NULL'",
+        "reject NULL character_set_client"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SET collation_connection = NULL",
+        MYLITE_EXEC_ERROR,
+        "can't be set to the value of 'NULL'",
+        "reject NULL collation_connection"
     );
     failures += expect_select_rows(
         database,

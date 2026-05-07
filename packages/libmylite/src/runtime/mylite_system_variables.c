@@ -853,10 +853,16 @@ static int set_system_variable_text_value(
     const char *value,
     struct mylite_expression_value *out_value
 ) {
-    const char *safe_value = value == NULL ? "" : value;
-    size_t value_length = strlen(safe_value);
-    char *copy = mylite_copy_span_text(safe_value, value_length);
+    size_t value_length = 0U;
+    char *copy = NULL;
 
+    if (value == NULL) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return MYLITE_OK;
+    }
+
+    value_length = strlen(value);
+    copy = mylite_copy_span_text(value, value_length);
     if (copy == NULL) {
         return MYLITE_NOMEM;
     }

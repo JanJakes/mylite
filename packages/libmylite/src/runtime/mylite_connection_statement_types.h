@@ -21,6 +21,9 @@ enum mylite_connection_system_variable {
     MYLITE_CONNECTION_SYSTEM_VARIABLE_WAIT_TIMEOUT = 7,
     MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_NOTES = 8,
     MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN = 9,
+    MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT = 10,
+    MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS = 11,
+    MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION = 12,
 };
 
 struct mylite_connection_system_variable_plan {
@@ -34,6 +37,7 @@ struct mylite_connection_system_variable_plan {
     bool use_user_variable_value;
     bool replace_current_value;
     bool emit_truncation_warning;
+    bool use_null_value;
 };
 
 #endif

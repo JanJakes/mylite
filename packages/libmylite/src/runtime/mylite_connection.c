@@ -286,6 +286,66 @@ int mylite_connection_set_character_set_state(mylite_db *database, const char *c
     return MYLITE_OK;
 }
 
+int mylite_connection_set_character_set_client(
+    mylite_db *database,
+    const char *character_set_name
+) {
+    const struct mylite_charset *character_set = mylite_charset_lookup(character_set_name);
+
+    if (character_set == NULL) {
+        return mylite_diagnostics_set_unknown_charset_error(database, character_set_name);
+    }
+    if (mylite_charset_name_is_utf8_alias(character_set_name)) {
+        int status = mylite_diagnostics_append_utf8_alias_warning(database);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+
+    database->character_set_client = character_set->name;
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_character_set_results(
+    mylite_db *database,
+    const char *character_set_name
+) {
+    const struct mylite_charset *character_set = NULL;
+
+    if (character_set_name == NULL) {
+        database->character_set_results = NULL;
+        return MYLITE_OK;
+    }
+
+    character_set = mylite_charset_lookup(character_set_name);
+    if (character_set == NULL) {
+        return mylite_diagnostics_set_unknown_charset_error(database, character_set_name);
+    }
+    if (mylite_charset_name_is_utf8_alias(character_set_name)) {
+        int status = mylite_diagnostics_append_utf8_alias_warning(database);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+
+    database->character_set_results = character_set->name;
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_collation_connection(mylite_db *database, const char *collation_name) {
+    const struct mylite_collation *collation = mylite_collation_lookup(collation_name);
+
+    if (collation == NULL) {
+        return mylite_diagnostics_set_unknown_collation_error(database, collation_name);
+    }
+
+    database->character_set_connection = collation->character_set;
+    database->collation_connection = collation->name;
+    return MYLITE_OK;
+}
+
 int mylite_connection_set_default_sql_mode(mylite_db *database) {
     return mylite_connection_set_sql_mode(database, mylite_default_sql_mode);
 }

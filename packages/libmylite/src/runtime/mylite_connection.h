@@ -24,6 +24,12 @@ int mylite_connection_set_names_state(
     struct mylite_connection_names_state state
 );
 int mylite_connection_set_character_set_state(mylite_db *database, const char *character_set_name);
+int mylite_connection_set_character_set_client(mylite_db *database, const char *character_set_name);
+int mylite_connection_set_character_set_results(
+    mylite_db *database,
+    const char *character_set_name
+);
+int mylite_connection_set_collation_connection(mylite_db *database, const char *collation_name);
 int mylite_connection_set_default_sql_mode(mylite_db *database);
 int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode);
 int mylite_connection_set_default_storage_engine(mylite_db *database);

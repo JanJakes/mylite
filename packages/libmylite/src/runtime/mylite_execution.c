@@ -38,6 +38,7 @@ enum {
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
     sqlite_use_nul_terminated_string = -1,
+    decimal_base = 10,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
 };
@@ -387,6 +388,12 @@ static int build_create_table_sql(
 );
 static int build_drop_table_sql(const char *physical_name, char **out_sql);
 static int build_insert_sql(const struct planned_insert *plan, char **out_sql);
+static int append_insert_column_names(
+    struct dynamic_string *string,
+    const struct planned_insert *plan
+);
+static int append_insert_parameters(struct dynamic_string *string, size_t column_count);
+static int append_numbered_parameter(struct dynamic_string *string, size_t parameter_index);
 static int build_select_sql(const struct planned_select *plan, char **out_sql);
 static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql);
 static int execute_sqlite_control_sql(const struct mylite_db *database, const char *sql);
@@ -2157,10 +2164,10 @@ static int parse_unsigned_integer_literal(
             return MYLITE_ERROR;
         }
         digit = (uint64_t)(byte - '0');
-        if (value > (UINT64_MAX - digit) / 10U) {
+        if (value > (UINT64_MAX - digit) / decimal_base) {
             return MYLITE_ERROR;
         }
-        value = (value * 10U) + digit;
+        value = (value * decimal_base) + digit;
     }
 
     *out_value = value;
@@ -2283,8 +2290,12 @@ static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_lis
     const struct mylite_sql_ast_node *item = child_at(select_list, 0U);
     const struct mylite_sql_ast_node *expression = child_at(item, 0U);
 
-    return mylite_sql_ast_node_child_count(select_list) == 1U && expression != NULL &&
-           expression->kind == MYLITE_SQL_AST_WILDCARD;
+    if (mylite_sql_ast_node_child_count(select_list) == 1U && expression != NULL &&
+        expression->kind == MYLITE_SQL_AST_WILDCARD) {
+        return true;
+    }
+
+    return false;
 }
 
 static int append_select_column(
@@ -2437,35 +2448,14 @@ static int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " (");
     }
-    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
-         ++column_index) {
-        if (column_index != 0U) {
-            rc = dynamic_string_append(&string, ", ");
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_quoted_identifier(&string, plan->columns[column_index].name);
-        }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_column_names(&string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, ") VALUES (");
     }
-    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
-         ++column_index) {
-        char parameter[integer_text_capacity];
-        int written = 0;
-
-        if (column_index != 0U) {
-            rc = dynamic_string_append(&string, ", ");
-        }
-        if (rc == MYLITE_OK) {
-            written = snprintf(parameter, sizeof(parameter), "?%zu", column_index + 1U);
-            if (written < 0 || (size_t)written >= sizeof(parameter)) {
-                rc = MYLITE_NOMEM;
-            }
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append(&string, parameter);
-        }
+    if (rc == MYLITE_OK) {
+        rc = append_insert_parameters(&string, plan->column_count);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(&string, ')');
@@ -2480,6 +2470,51 @@ static int build_insert_sql(const struct planned_insert *plan, char **out_sql) {
     dynamic_string_deinit(&string);
 
     return rc;
+}
+
+static int append_insert_column_names(
+    struct dynamic_string *string,
+    const struct planned_insert *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, plan->columns[column_index].name);
+        }
+    }
+
+    return rc;
+}
+
+static int append_insert_parameters(struct dynamic_string *string, size_t column_count) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, column_index + 1U);
+        }
+    }
+
+    return rc;
+}
+
+static int append_numbered_parameter(struct dynamic_string *string, size_t parameter_index) {
+    char parameter[integer_text_capacity];
+    int written = snprintf(parameter, sizeof(parameter), "?%zu", parameter_index);
+
+    if (written < 0 || (size_t)written >= sizeof(parameter)) {
+        return MYLITE_NOMEM;
+    }
+
+    return dynamic_string_append(string, parameter);
 }
 
 static int build_select_sql(const struct planned_select *plan, char **out_sql) {
@@ -2626,15 +2661,14 @@ static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *re
     char *texts = NULL;
     int rc = MYLITE_OK;
 
-    if (column_count > (size_t)INT_MAX || column_count > SIZE_MAX / sizeof(*values) ||
-        column_count > SIZE_MAX / integer_text_capacity) {
+    if (column_count > (size_t)INT_MAX) {
         return MYLITE_NOMEM;
     }
 
-    values = calloc(column_count, sizeof(*values));
+    values = (const char **)calloc(column_count, sizeof(*values));
     texts = calloc(column_count, integer_text_capacity);
     if (values == NULL || texts == NULL) {
-        free(values);
+        free((void *)values);
         free(texts);
         return MYLITE_NOMEM;
     }
@@ -2666,7 +2700,7 @@ static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *re
         rc = mylite_result_append_text_row(result, values);
     }
 
-    free(values);
+    free((void *)values);
     free(texts);
 
     return rc;

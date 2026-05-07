@@ -20,6 +20,13 @@ enum {
     sqlite_sql_capacity = 512,
     expected_generation_after_schema = 2,
     expected_generation_after_create = 3,
+    numbers_column_i = 0,
+    numbers_column_iu = 1,
+    numbers_column_b = 2,
+    numbers_column_bu = 3,
+    numbers_column_n = 4,
+    numbers_column_nn = 5,
+    numbers_column_count = 6,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -166,20 +173,39 @@ static int test_insert_select_persistence_rename_and_drop(void) {
     }
 
     failures += execute_ok(database, "SELECT * FROM numbers", &result);
-    failures += expect_size(mylite_result_column_count(result), 6U, "SELECT * column count");
-    failures += expect_text(mylite_result_column_name(result, 0U), "i", "SELECT * column i");
-    failures += expect_text(mylite_result_column_name(result, 1U), "iu", "SELECT * column iu");
-    failures += expect_text(mylite_result_column_name(result, 2U), "b", "SELECT * column b");
-    failures += expect_text(mylite_result_column_name(result, 3U), "bu", "SELECT * column bu");
-    failures += expect_text(mylite_result_column_name(result, 4U), "n", "SELECT * column n");
-    failures += expect_text(mylite_result_column_name(result, 5U), "nn", "SELECT * column nn");
+    failures += expect_size(
+        mylite_result_column_count(result),
+        numbers_column_count,
+        "SELECT * column count"
+    );
+    failures +=
+        expect_text(mylite_result_column_name(result, numbers_column_i), "i", "SELECT * column i");
+    failures += expect_text(
+        mylite_result_column_name(result, numbers_column_iu),
+        "iu",
+        "SELECT * column iu"
+    );
+    failures +=
+        expect_text(mylite_result_column_name(result, numbers_column_b), "b", "SELECT * column b");
+    failures += expect_text(
+        mylite_result_column_name(result, numbers_column_bu),
+        "bu",
+        "SELECT * column bu"
+    );
+    failures +=
+        expect_text(mylite_result_column_name(result, numbers_column_n), "n", "SELECT * column n");
+    failures += expect_text(
+        mylite_result_column_name(result, numbers_column_nn),
+        "nn",
+        "SELECT * column nn"
+    );
     failures += expect_size(mylite_result_row_count(result), 1U, "SELECT * row count");
-    failures += expect_select_value(result, 0U, 0U, "1", "SELECT * i");
-    failures += expect_select_value(result, 0U, 1U, "2", "SELECT * iu");
-    failures += expect_select_value(result, 0U, 2U, "3", "SELECT * b");
-    failures += expect_select_value(result, 0U, 3U, "4", "SELECT * bu");
-    failures += expect_select_value(result, 0U, 4U, NULL, "SELECT * n");
-    failures += expect_select_value(result, 0U, 5U, "5", "SELECT * nn");
+    failures += expect_select_value(result, 0U, numbers_column_i, "1", "SELECT * i");
+    failures += expect_select_value(result, 0U, numbers_column_iu, "2", "SELECT * iu");
+    failures += expect_select_value(result, 0U, numbers_column_b, "3", "SELECT * b");
+    failures += expect_select_value(result, 0U, numbers_column_bu, "4", "SELECT * bu");
+    failures += expect_select_value(result, 0U, numbers_column_n, NULL, "SELECT * n");
+    failures += expect_select_value(result, 0U, numbers_column_nn, "5", "SELECT * nn");
     failures += expect_int64(mylite_result_affected_rows(result), 0, "SELECT affected rows");
     failures += expect_size(mylite_result_warning_count(result), 0U, "SELECT warning count");
     mylite_result_free(result);

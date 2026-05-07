@@ -44,6 +44,9 @@ Implemented fork points:
   beginning with `IF()` condition conversion warnings
 - connection-local session state backed by SQLite client data, beginning with
   the default-schema value consumed by native `DATABASE()` and `SCHEMA()`
+- connection-local VDBE completion state for native `ROW_COUNT()` and
+  `LAST_INSERT_ID()`, including generated `AUTO_INCREMENT` rowid capture and
+  MySQL's zero row count for direct `TRUNCATE`
 - narrow parser admission for MySQL function names that SQLite tokenizes as
   syntax instead of identifiers, beginning with `ISNULL(expr)`
 - tokenizer/parser admission for MySQL-only operators that SQLite rejects
@@ -154,8 +157,9 @@ Use existing SQLite APIs for:
 - Connection client data for compact MyLite session state used by native
   callbacks, such as the selected default schema. This public SQLite surface is
   sufficient while the state is read by callbacks and owned by the connection;
-  statement-completion state, warning lists, and row-identity allocation still
-  need fork points where SQLite completes VDBE execution.
+  statement-completion state, warning lists, and row-identity allocation need
+  fork points where SQLite completes VDBE execution. Implemented first for
+  `ROW_COUNT()` and `LAST_INSERT_ID()`.
 - Pure comparison helpers such as the first native `STRCMP()` slice when the
   result can be computed from the argument values plus the current supported
   collation subset. Broader collation coercibility, Unicode weights, and
@@ -267,6 +271,28 @@ Required fork direction:
   statement share the same MySQL-visible timestamp.
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
+
+### Statement and session completion state
+
+Some MySQL information functions can be registered through
+`sqlite3_create_function_v2()`, but the values they expose are not computable
+inside the callback alone. `ROW_COUNT()` depends on the previous completed
+statement, result-producing statements must publish `-1` only after their
+result set is drained, write statements must publish the post-rollback affected
+row count, and `TRUNCATE` must publish zero even when SQLite internally deletes
+rows. `LAST_INSERT_ID()` depends on the first generated auto-increment value of
+the previous successful statement, not merely the last rowid SQLite touched.
+
+The implemented fork point stores compact MyLite session fields on `sqlite3`
+and statement-local generated-id flags on `Vdbe`. `OP_NewRowid` records the
+first generated `AUTOINCREMENT` rowid for a statement, and `sqlite3VdbeHalt()`
+publishes `ROW_COUNT()` and `LAST_INSERT_ID()` only after SQLite knows whether
+the statement succeeded, rolled back, read rows, or ran as direct `TRUNCATE`.
+SQLite schema-initialization VDBEs are explicitly ignored so internal metadata
+loads do not alter MySQL-visible session state. The public MyLite runtime keeps
+its existing `last_insert_id` and `previous_row_count` fields synchronized with
+the fork state while broader MySQL auto-increment allocation remains in the
+current public layer.
 
 ### File format and pager
 

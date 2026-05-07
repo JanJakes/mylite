@@ -108,6 +108,42 @@ int mylite_sqlite_fork_set_set_column_type(
   return myliteSetSetColumnType(db, zSchema, zTable, zColumn, pType);
 }
 
+sqlite3_uint64 mylite_sqlite_fork_last_insert_id(sqlite3 *db){
+  sqlite3_uint64 v = 0;
+
+  if( db==0 ) return 0;
+  sqlite3_mutex_enter(db->mutex);
+  v = db->myliteLastInsertId;
+  sqlite3_mutex_leave(db->mutex);
+  return v;
+}
+
+int mylite_sqlite_fork_set_last_insert_id(sqlite3 *db, sqlite3_uint64 v){
+  if( db==0 ) return SQLITE_MISUSE;
+  sqlite3_mutex_enter(db->mutex);
+  db->myliteLastInsertId = v;
+  sqlite3_mutex_leave(db->mutex);
+  return SQLITE_OK;
+}
+
+sqlite3_int64 mylite_sqlite_fork_previous_row_count(sqlite3 *db){
+  sqlite3_int64 v = 0;
+
+  if( db==0 ) return 0;
+  sqlite3_mutex_enter(db->mutex);
+  v = db->mylitePreviousRowCount;
+  sqlite3_mutex_leave(db->mutex);
+  return v;
+}
+
+int mylite_sqlite_fork_set_previous_row_count(sqlite3 *db, sqlite3_int64 v){
+  if( db==0 ) return SQLITE_MISUSE;
+  sqlite3_mutex_enter(db->mutex);
+  db->mylitePreviousRowCount = v;
+  sqlite3_mutex_leave(db->mutex);
+  return SQLITE_OK;
+}
+
 int mylite_sqlite_fork_last_condition(
   sqlite3 *db,
   struct mylite_sqlite_fork_condition *pOut
@@ -183,6 +219,9 @@ void sqlite3MyliteTruncateTable(Parse *pParse, SrcList *pName){
     );
   }
 #endif
+  if( pParse->nErr==0 ){
+    sqlite3MyliteForceZeroRowCount(pParse);
+  }
   return;
 
 truncate_table_exit:

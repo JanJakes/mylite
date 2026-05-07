@@ -1,5 +1,6 @@
 #include "mylite_dml_insert_transaction_finish.h"
 
+#include "mylite_connection.h"
 #include "mylite_dml_insert_default.h"
 #include "mylite_runtime.h"
 #include "mylite_transactions.h"
@@ -30,7 +31,7 @@ int mylite_dml_finish_failed_insert_transaction(
         }
     }
     if (state->generated_insert_id) {
-        database->last_insert_id = state->first_insert_id;
+        mylite_connection_set_last_insert_id(database, state->first_insert_id);
     }
     return original_status;
 }

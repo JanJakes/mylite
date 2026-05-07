@@ -1755,6 +1755,8 @@ struct sqlite3 {
     u32 iMyErrno;               /* MySQL condition code */
     char zSqlState[6];          /* Five-character SQLSTATE plus NUL */
   } myliteCondition;
+  u64 myliteLastInsertId;       /* MySQL LAST_INSERT_ID() session state */
+  i64 mylitePreviousRowCount;   /* MySQL ROW_COUNT() session state */
 #endif
   union {
     volatile int isInterrupted; /* True if sqlite3_interrupt has been called */
@@ -5428,6 +5430,7 @@ char *sqlite3TableAffinityStr(sqlite3*,const Table*);
 void sqlite3TableAffinity(Vdbe*, Table*, int);
 #ifdef SQLITE_ENABLE_MYLITE
 void sqlite3MyliteUpdateAffinity(Vdbe*, Table*, int, int*);
+void sqlite3MyliteForceZeroRowCount(Parse*);
 void sqlite3MyliteSetCondition(sqlite3*, u8, u32, const char*);
 void sqlite3MyliteSetConstraintCondition(sqlite3*, int, u8);
 void sqlite3MyliteClearCondition(sqlite3*);

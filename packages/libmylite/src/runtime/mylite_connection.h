@@ -19,6 +19,9 @@ void mylite_connection_clear_selected_schema_if_matches(
     mylite_db *database,
     const char *schema_name
 );
+void mylite_connection_set_last_insert_id(mylite_db *database, uint64_t value);
+void mylite_connection_sync_last_insert_id_from_fork(mylite_db *database);
+void mylite_connection_set_previous_row_count(mylite_db *database, int64_t value);
 int mylite_connection_set_names_state(
     mylite_db *database,
     struct mylite_connection_names_state state

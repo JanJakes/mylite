@@ -8147,6 +8147,12 @@ case OP_NewRowid: {           /* out2 */
     pC->cacheStatus = CACHE_STALE;
   }
   pOut->u.i = v;
+#ifdef SQLITE_ENABLE_MYLITE
+  if( pOp->p3!=0 && p->bMyliteGeneratedRowid==0 ){
+    p->myliteFirstGeneratedRowid = (u64)v;
+    p->bMyliteGeneratedRowid = 1;
+  }
+#endif
   break;
 }
 

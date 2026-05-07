@@ -1,5 +1,6 @@
 #include "mylite_dml_statement.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_dml.h"
 #include "mylite_error_codes.h"
@@ -183,7 +184,7 @@ cleanup:
     } else {
         stmt->affected_rows = result.affected_rows;
         if (result.generated_insert_id) {
-            stmt->database->last_insert_id = result.last_insert_id;
+            mylite_connection_set_last_insert_id(stmt->database, result.last_insert_id);
         }
     }
     return status;
@@ -277,7 +278,7 @@ int mylite_dml_execute_insert_set_statement(
     } else {
         stmt->affected_rows = result.affected_rows;
         if (result.generated_insert_id) {
-            stmt->database->last_insert_id = result.last_insert_id;
+            mylite_connection_set_last_insert_id(stmt->database, result.last_insert_id);
         }
     }
     return status;
@@ -349,7 +350,7 @@ int mylite_dml_execute_replace_values_statement(
     } else {
         stmt->affected_rows = result.affected_rows;
         if (result.generated_insert_id) {
-            stmt->database->last_insert_id = result.last_insert_id;
+            mylite_connection_set_last_insert_id(stmt->database, result.last_insert_id);
         }
     }
     return status;
@@ -415,7 +416,7 @@ int mylite_dml_execute_replace_set_statement(
     } else {
         stmt->affected_rows = result.affected_rows;
         if (result.generated_insert_id) {
-            stmt->database->last_insert_id = result.last_insert_id;
+            mylite_connection_set_last_insert_id(stmt->database, result.last_insert_id);
         }
     }
     return status;

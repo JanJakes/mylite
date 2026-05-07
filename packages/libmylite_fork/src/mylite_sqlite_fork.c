@@ -4,10 +4,12 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -74,7 +76,14 @@ static int register_scalar_function(
     void (*callback)(sqlite3_context *, int, sqlite3_value **)
 );
 
-static int register_scalar_function_with_user_data(
+static int register_session_function(
+    sqlite3 *database,
+    const char *name,
+    int argument_count,
+    void (*callback)(sqlite3_context *, int, sqlite3_value **)
+);
+
+static int register_session_function_with_user_data(
     sqlite3 *database,
     const char *name,
     int argument_count,
@@ -105,6 +114,18 @@ static void mysql_bit_count(
 );
 
 static void mysql_database(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
+
+static void mysql_last_insert_id(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
+
+static void mysql_row_count(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
 
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
@@ -198,6 +219,10 @@ static int set_session_default_schema(
 static void destroy_session(void *user_data);
 
 static bool value_is_sql_numeric(sqlite3_value *value);
+
+static sqlite3_uint64 value_to_uint64(sqlite3_value *value);
+
+static void result_uint64(sqlite3_context *context, sqlite3_uint64 value);
 
 static bool compare_values_as_mysql_text(
     sqlite3_value *left,
@@ -327,6 +352,9 @@ int mylite_sqlite_fork_truncate_table(sqlite3 *database, const char *table_name)
 
     rc = sqlite_sequence_exists(database, &has_sqlite_sequence);
     if (rc != SQLITE_OK || !has_sqlite_sequence) {
+        if (rc == SQLITE_OK) {
+            (void)mylite_sqlite_fork_set_previous_row_count(database, 0);
+        }
         return rc;
     }
 
@@ -336,6 +364,9 @@ int mylite_sqlite_fork_truncate_table(sqlite3 *database, const char *table_name)
     }
     rc = sqlite3_exec(database, sql, NULL, NULL, NULL);
     sqlite3_free(sql);
+    if (rc == SQLITE_OK) {
+        (void)mylite_sqlite_fork_set_previous_row_count(database, 0);
+    }
     return rc;
 }
 
@@ -391,7 +422,16 @@ static int register_mysql_functions(sqlite3 *database) {
         rc = register_scalar_function(database, "BIT_COUNT", 1, mysql_bit_count);
     }
     if (rc == SQLITE_OK) {
-        rc = register_scalar_function_with_user_data(
+        rc = register_session_function(database, "LAST_INSERT_ID", 0, mysql_last_insert_id);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_session_function(database, "LAST_INSERT_ID", 1, mysql_last_insert_id);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_session_function(database, "ROW_COUNT", 0, mysql_row_count);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_session_function_with_user_data(
             database,
             "DATABASE",
             0,
@@ -400,8 +440,13 @@ static int register_mysql_functions(sqlite3 *database) {
         );
     }
     if (rc == SQLITE_OK) {
-        rc =
-            register_scalar_function_with_user_data(database, "SCHEMA", 0, mysql_database, session);
+        rc = register_session_function_with_user_data(
+            database,
+            "SCHEMA",
+            0,
+            mysql_database,
+            session
+        );
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "ISNULL", 1, mysql_isnull);
@@ -468,7 +513,26 @@ static int register_scalar_function(
     );
 }
 
-static int register_scalar_function_with_user_data(
+static int register_session_function(
+    sqlite3 *database,
+    const char *name,
+    int argument_count,
+    void (*callback)(sqlite3_context *, int, sqlite3_value **)
+) {
+    return sqlite3_create_function_v2(
+        database,
+        name,
+        argument_count,
+        SQLITE_UTF8,
+        NULL,
+        callback,
+        NULL,
+        NULL,
+        NULL
+    );
+}
+
+static int register_session_function_with_user_data(
     sqlite3 *database,
     const char *name,
     int argument_count,
@@ -479,7 +543,7 @@ static int register_scalar_function_with_user_data(
         database,
         name,
         argument_count,
-        SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+        SQLITE_UTF8,
         user_data,
         callback,
         NULL,
@@ -661,6 +725,86 @@ static void mysql_database(
         return;
     }
     sqlite3_result_text(context, session->default_schema, -1, sqlite_transient_destructor());
+}
+
+static void mysql_last_insert_id(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    sqlite3 *database = sqlite3_context_db_handle(context);
+    sqlite3_uint64 value = 0;
+
+    if (argument_count == 0) {
+        result_uint64(context, mylite_sqlite_fork_last_insert_id(database));
+        return;
+    }
+    if (sqlite3_value_type(arguments[0]) == SQLITE_NULL) {
+        (void)mylite_sqlite_fork_set_last_insert_id(database, 0U);
+        sqlite3_result_null(context);
+        return;
+    }
+
+    value = value_to_uint64(arguments[0]);
+    if (mylite_sqlite_fork_set_last_insert_id(database, value) != SQLITE_OK) {
+        sqlite3_result_error_code(context, SQLITE_MISUSE);
+        return;
+    }
+    result_uint64(context, value);
+}
+
+static void mysql_row_count(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    (void)argument_count;
+    (void)arguments;
+    sqlite3_result_int64(
+        context,
+        mylite_sqlite_fork_previous_row_count(sqlite3_context_db_handle(context))
+    );
+}
+
+static sqlite3_uint64 value_to_uint64(sqlite3_value *value) {
+    const unsigned char *text = NULL;
+
+    switch (sqlite3_value_type(value)) {
+    case SQLITE_FLOAT:
+        return (sqlite3_uint64)sqlite3_value_double(value);
+    case SQLITE_TEXT:
+    case SQLITE_BLOB:
+        text = sqlite3_value_text(value);
+        return text == NULL
+                   ? 0U
+                   : (sqlite3_uint64)strtoull((const char *)text, NULL, mylite_sqlite_decimal_base);
+    case SQLITE_NULL:
+        return 0U;
+    case SQLITE_INTEGER:
+    default:
+        return (sqlite3_uint64)sqlite3_value_int64(value);
+    }
+}
+
+static void result_uint64(sqlite3_context *context, sqlite3_uint64 value) {
+    enum {
+        uint64_decimal_buffer_size = 21,
+    };
+
+    char buffer[uint64_decimal_buffer_size] = {0};
+    int length = 0;
+
+    if (value <= (sqlite3_uint64)INT64_MAX) {
+        sqlite3_result_int64(context, (sqlite3_int64)value);
+        return;
+    }
+
+    length = snprintf(buffer, sizeof(buffer), "%" PRIu64, (uint64_t)value);
+    if (length <= 0 || (size_t)length >= sizeof(buffer)) {
+        sqlite3_result_error(context, "failed to format unsigned integer", -1);
+        return;
+    }
+    sqlite3_result_text(context, buffer, length, sqlite_transient_destructor());
 }
 
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {

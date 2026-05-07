@@ -32,6 +32,12 @@ Vdbe *sqlite3VdbeCreate(Parse *pParse){
   if( db->pVdbe ){
     db->pVdbe->ppVPrev = &p->pVNext;
   }
+#ifdef SQLITE_ENABLE_MYLITE
+  p->myliteFirstGeneratedRowid = 0;
+  p->bMyliteGeneratedRowid = 0;
+  p->bMyliteForceZeroRowCount = 0;
+  p->eMyliteFkConstraint = 0;
+#endif
   p->pVNext = db->pVdbe;
   p->ppVPrev = &db->pVdbe;
   db->pVdbe = p;
@@ -2619,6 +2625,8 @@ void sqlite3VdbeRewind(Vdbe *p){
   p->iStatement = 0;
   p->nFkConstraint = 0;
 #ifdef SQLITE_ENABLE_MYLITE
+  p->myliteFirstGeneratedRowid = 0;
+  p->bMyliteGeneratedRowid = 0;
   p->eMyliteFkConstraint = 0;
 #endif
 #ifdef VDBE_PROFILE
@@ -3323,6 +3331,10 @@ int sqlite3VdbeCheckFkDeferred(Vdbe *p){
 int sqlite3VdbeHalt(Vdbe *p){
   int rc;                         /* Used to store transient return codes */
   sqlite3 *db = p->db;
+#ifdef SQLITE_ENABLE_MYLITE
+  i64 myliteRowCount = 0;
+  int bMyliteRowCountFromChangeCounter = 0;
+#endif
 
   /* This function contains the logic that determines if a statement or
   ** transaction will be committed or rolled back as a result of the
@@ -3488,8 +3500,16 @@ int sqlite3VdbeHalt(Vdbe *p){
     */
     if( p->changeCntOn ){
       if( eStatementOp!=SAVEPOINT_ROLLBACK ){
+#ifdef SQLITE_ENABLE_MYLITE
+        myliteRowCount = p->nChange;
+        bMyliteRowCountFromChangeCounter = 1;
+#endif
         sqlite3VdbeSetChanges(db, p->nChange);
       }else{
+#ifdef SQLITE_ENABLE_MYLITE
+        myliteRowCount = 0;
+        bMyliteRowCountFromChangeCounter = 1;
+#endif
         sqlite3VdbeSetChanges(db, 0);
       }
       p->nChange = 0;
@@ -3511,6 +3531,22 @@ int sqlite3VdbeHalt(Vdbe *p){
   if( db->mallocFailed ){
     p->rc = SQLITE_NOMEM_BKPT;
   }
+#ifdef SQLITE_ENABLE_MYLITE
+  if( p->rc==SQLITE_OK && db->init.busy==0 ){
+    if( p->readOnly ){
+      db->mylitePreviousRowCount = -1;
+    }else if( p->bMyliteForceZeroRowCount ){
+      db->mylitePreviousRowCount = 0;
+    }else if( bMyliteRowCountFromChangeCounter ){
+      db->mylitePreviousRowCount = myliteRowCount;
+    }else{
+      db->mylitePreviousRowCount = 0;
+    }
+    if( p->bMyliteGeneratedRowid ){
+      db->myliteLastInsertId = p->myliteFirstGeneratedRowid;
+    }
+  }
+#endif
 
   /* If the auto-commit flag is set to true, then any locks that were held
   ** by connection db have now been released. Call sqlite3ConnectionUnlocked()
@@ -3523,6 +3559,15 @@ int sqlite3VdbeHalt(Vdbe *p){
   assert( db->nVdbeActive>0 || db->autoCommit==0 || db->nStatement==0 );
   return (p->rc==SQLITE_BUSY ? SQLITE_BUSY : SQLITE_OK);
 }
+
+#ifdef SQLITE_ENABLE_MYLITE
+void sqlite3MyliteForceZeroRowCount(Parse *pParse){
+  Vdbe *v = sqlite3GetVdbe(pParse);
+  if( v!=0 ){
+    v->bMyliteForceZeroRowCount = 1;
+  }
+}
+#endif
 
 
 /*

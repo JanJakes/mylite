@@ -157,6 +157,36 @@ uint64_t mylite_last_insert_id(const mylite_db *database) {
     return database->last_insert_id;
 }
 
+void mylite_connection_set_last_insert_id(mylite_db *database, uint64_t value) {
+    if (database == NULL) {
+        return;
+    }
+
+    database->last_insert_id = value;
+    if (database->sqlite != NULL) {
+        (void)mylite_sqlite_fork_set_last_insert_id(database->sqlite, (sqlite3_uint64)value);
+    }
+}
+
+void mylite_connection_sync_last_insert_id_from_fork(mylite_db *database) {
+    if (database == NULL || database->sqlite == NULL) {
+        return;
+    }
+
+    database->last_insert_id = (uint64_t)mylite_sqlite_fork_last_insert_id(database->sqlite);
+}
+
+void mylite_connection_set_previous_row_count(mylite_db *database, int64_t value) {
+    if (database == NULL) {
+        return;
+    }
+
+    database->previous_row_count = value;
+    if (database->sqlite != NULL) {
+        (void)mylite_sqlite_fork_set_previous_row_count(database->sqlite, (sqlite3_int64)value);
+    }
+}
+
 const char *mylite_connection_character_set_client(const mylite_db *database) {
     return database == NULL ? NULL : database->character_set_client;
 }

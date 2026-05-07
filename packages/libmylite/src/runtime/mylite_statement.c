@@ -81,6 +81,7 @@ int mylite_step(mylite_stmt *stmt) {
             stmt->affected_rows = -1;
         } else {
             stmt->affected_rows = sqlite3_changes(stmt->database->sqlite);
+            mylite_connection_sync_last_insert_id_from_fork(stmt->database);
         }
         if (readonly && !stmt->previous_found_rows_recorded) {
             stmt->database->previous_found_rows = stmt->found_rows;
@@ -391,7 +392,7 @@ void mylite_statement_record_row_count(mylite_stmt *stmt) {
         return;
     }
 
-    stmt->database->previous_row_count = stmt->affected_rows;
+    mylite_connection_set_previous_row_count(stmt->database, stmt->affected_rows);
     stmt->previous_row_count_recorded = true;
 }
 

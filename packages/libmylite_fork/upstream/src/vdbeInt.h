@@ -466,6 +466,11 @@ struct Vdbe {
   int pc;                 /* The program counter */
   int rc;                 /* Value to return */
   i64 nChange;            /* Number of db changes made since last reset */
+#ifdef SQLITE_ENABLE_MYLITE
+  u64 myliteFirstGeneratedRowid; /* First generated AUTO_INCREMENT rowid */
+  u8 bMyliteGeneratedRowid;      /* True once generated rowid is recorded */
+  u8 bMyliteForceZeroRowCount;   /* True for statements such as TRUNCATE */
+#endif
   int iStatement;         /* Statement number (or 0 if has no opened stmt) */
   i64 iCurrentTime;       /* Value of julianday('now') for this statement */
   i64 nFkConstraint;      /* Number of imm. FK constraints this VM */

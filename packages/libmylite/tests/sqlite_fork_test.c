@@ -206,6 +206,12 @@ static int test_registered_functions(void) {
         return failures;
     }
 
+    failures += expect_int64(
+        database,
+        "SELECT ROW_COUNT()",
+        0,
+        "ROW_COUNT starts at zero on a fresh fork connection"
+    );
     failures += expect_text(
         database,
         (struct expected_text_row){
@@ -253,6 +259,60 @@ static int test_registered_functions(void) {
         "SELECT DATABASE() IS NULL",
         1,
         "DATABASE returns NULL before a default schema is selected"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .expected = "0",
+            .context = "LAST_INSERT_ID starts at zero on a fresh fork connection",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT LAST_INSERT_ID(456)",
+            .expected = "456",
+            .context = "LAST_INSERT_ID(expr) returns the assigned session value",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .expected = "456",
+            .context = "LAST_INSERT_ID reads the assigned session value",
+        }
+    );
+    failures += expect_int64(
+        database,
+        "SELECT LAST_INSERT_ID(NULL) IS NULL",
+        1,
+        "LAST_INSERT_ID(NULL) returns NULL"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .expected = "0",
+            .context = "LAST_INSERT_ID(NULL) resets the session value",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT LAST_INSERT_ID(-5)",
+            .expected = "18446744073709551611",
+            .context = "LAST_INSERT_ID stores negative values as unsigned 64-bit",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT LAST_INSERT_ID()",
+            .expected = "18446744073709551611",
+            .context = "LAST_INSERT_ID returns unsigned 64-bit values as decimal text",
+        }
     );
     failures += expect_int64(
         database,
@@ -3205,6 +3265,14 @@ static int test_wordpress_like_crud(void) {
         "'publish', 1)",
         "insert WordPress-like posts"
     );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(LAST_INSERT_ID(), ':', ROW_COUNT())",
+            .expected = "1:3",
+            .context = "post insert records first generated id and affected rows",
+        }
+    );
     failures += exec_sql(
         database,
         "INSERT INTO wp_postmeta_like (post_id, meta_key, meta_value) VALUES "
@@ -3213,6 +3281,14 @@ static int test_wordpress_like_crud(void) {
         "(3, '_wp_page_template', 'default')",
         "insert WordPress-like metadata"
     );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(LAST_INSERT_ID(), ':', ROW_COUNT())",
+            .expected = "1:3",
+            .context = "metadata insert records first generated id and affected rows",
+        }
+    );
     failures += exec_sql(
         database,
         "UPDATE wp_posts_like "
@@ -3220,11 +3296,14 @@ static int test_wordpress_like_crud(void) {
         "WHERE post_name = 'draft-notes'",
         "publish draft post"
     );
+    failures +=
+        expect_int64(database, "SELECT ROW_COUNT()", 1, "update records matched affected rows");
     failures += exec_sql(
         database,
         "DELETE FROM wp_postmeta_like WHERE meta_key = '_edit_lock'",
         "delete edit lock metadata"
     );
+    failures += expect_int64(database, "SELECT ROW_COUNT()", 1, "delete records affected rows");
 
     failures += expect_text(
         database,
@@ -3235,6 +3314,12 @@ static int test_wordpress_like_crud(void) {
             .expected = "3:1:3:4",
             .context = "post summary matches MySQL fixture",
         }
+    );
+    failures += expect_int64(
+        database,
+        "SELECT ROW_COUNT()",
+        -1,
+        "result-producing SELECT records ROW_COUNT as -1 after completion"
     );
     failures += expect_text(
         database,
@@ -3267,6 +3352,8 @@ static int test_wordpress_like_crud(void) {
     );
 
     failures += exec_sql(database, "TRUNCATE TABLE wp_postmeta_like", "truncate wp_postmeta_like");
+    failures +=
+        expect_int64(database, "SELECT ROW_COUNT()", 0, "truncate records zero affected rows");
     failures += expect_text(
         database,
         (struct expected_text_row){
@@ -3286,6 +3373,14 @@ static int test_wordpress_like_crud(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
+            .sql = "SELECT CONCAT(LAST_INSERT_ID(), ':', ROW_COUNT())",
+            .expected = "1:1",
+            .context = "insert after truncate records reset generated id and affected row",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
             .sql = "SELECT CONCAT(meta_id, ':', post_id, ':', "
                    "meta_key, ':', meta_value) "
                    "FROM wp_postmeta_like",
@@ -3301,6 +3396,37 @@ static int test_wordpress_like_crud(void) {
                    "FROM wp_postmeta_like",
             .expected = "0:0",
             .context = "truncate without TABLE empties metadata table",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO wp_postmeta_like (post_id, meta_key, meta_value) "
+        "VALUES (2, '_helper_seed', 'yes')",
+        "insert metadata before truncate helper"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_truncate_table(database, "wp_postmeta_like"),
+        database,
+        "truncate helper resets metadata table"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT ROW_COUNT()",
+        0,
+        "truncate helper records zero affected rows"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO wp_postmeta_like (post_id, meta_key, meta_value) "
+        "VALUES (2, '_helper_reset', 'yes')",
+        "insert metadata after truncate helper"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(LAST_INSERT_ID(), ':', ROW_COUNT())",
+            .expected = "1:1",
+            .context = "truncate helper resets generated id and records insert row",
         }
     );
     failures += exec_sql(database, "DROP TABLE wp_postmeta_like", "drop metadata table");

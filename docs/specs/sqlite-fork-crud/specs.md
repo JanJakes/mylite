@@ -24,6 +24,9 @@ slices:
   single-column integer `AUTO_INCREMENT` primary keys, MySQL collation names,
   physical defaults, and secondary SQLite indexes where prefix semantics do not
   make a physical index too strict
+- track native MySQL statement/session state for the direct fork subset,
+  including `ROW_COUNT()`, `LAST_INSERT_ID()`, generated rowids, result-set
+  completion, and `TRUNCATE` affected-row semantics
 - execute the MySQL-runtime-verified WordPress-like CRUD fixture through
   MyLite's public SQL API
 
@@ -144,6 +147,10 @@ The behavior that matters for the first CRUD foundation is:
 - `DELETE` removes only rows matching the predicate.
 - `TRUNCATE TABLE` empties the table, reports no row count requirement for the
   deleted rows, and resets the next `AUTO_INCREMENT` value.
+- `ROW_COUNT()` reports write affected rows, reports `-1` after a completed
+  result-producing `SELECT`, and reports `0` after `TRUNCATE`.
+- `LAST_INSERT_ID()` reports the first generated `AUTO_INCREMENT` value for
+  successful inserts and can be explicitly set with `LAST_INSERT_ID(expr)`.
 - `DROP TABLE` removes the table and its metadata.
 
 Configured MyLite fork connections enable SQLite's native foreign-key
@@ -275,19 +282,23 @@ specs should guide implementation. Function descriptors need:
   `LAST_INSERT_ID()`, `ROW_COUNT()`, user variables, and locks
 
 The current executable slice registers compact callbacks for `CONCAT`,
-`CONCAT_WS`, `IF`, `BIT_LENGTH`, `BIT_COUNT`, `DATABASE`, `SCHEMA`, `ISNULL`,
-`STRCMP`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`, and `CHARACTER_LENGTH`.
-`IF()` also proves the first successful-statement scalar warning path by
-publishing MySQL warning 1292 for truncated numeric condition conversion.
-`DATABASE()` and `SCHEMA()` prove a connection-local session-state path using
-SQLite client data. `ISNULL()` proves the first narrow parser admission hook
-for a MySQL function name that SQLite otherwise tokenizes as syntax before
-function lookup. `STRCMP()` proves a native comparison callback where the first
-slice can reuse MyLite's current ASCII case-insensitive PAD SPACE text
-comparison and bytewise binary-string comparison. Broader function families
-stay in public SQLite scalar callbacks until they need parser, broader
-statement-state, multi-warning diagnostics, or storage hooks that SQLite's
-public function API cannot provide.
+`CONCAT_WS`, `IF`, `BIT_LENGTH`, `BIT_COUNT`, `DATABASE`, `SCHEMA`,
+`LAST_INSERT_ID`, `ROW_COUNT`, `ISNULL`, `STRCMP`, `LENGTH`, `OCTET_LENGTH`,
+`CHAR_LENGTH`, and `CHARACTER_LENGTH`. `IF()` also proves the first
+successful-statement scalar warning path by publishing MySQL warning 1292 for
+truncated numeric condition conversion. `DATABASE()` and `SCHEMA()` prove a
+connection-local session-state path using SQLite client data.
+`LAST_INSERT_ID()` and `ROW_COUNT()` prove the first VDBE completion state
+path: callbacks expose the values, but SQLite-fork statement halt logic records
+previous row counts and generated auto-increment identity only after statement
+success, rollback, read completion, or direct `TRUNCATE` lowering is known.
+`ISNULL()` proves the first narrow parser admission hook for a MySQL function
+name that SQLite otherwise tokenizes as syntax before function lookup.
+`STRCMP()` proves a native comparison callback where the first slice can reuse
+MyLite's current ASCII case-insensitive PAD SPACE text comparison and bytewise
+binary-string comparison. Broader function families stay in public SQLite
+scalar callbacks until they need parser, broader statement-state, multi-warning
+diagnostics, or storage hooks that SQLite's public function API cannot provide.
 
 ### Operators
 
@@ -323,7 +334,20 @@ SQLite rowid allocation is the correct starting point for MySQL
 
 The first executable slice uses SQLite `AUTOINCREMENT` for the physical
 WordPress-like tables and a helper that deletes from `sqlite_sequence` during
-truncate.
+truncate. The fork now also records the first generated `AUTOINCREMENT` rowid
+inside `OP_NewRowid` and publishes it to MySQL `LAST_INSERT_ID()` state from
+`sqlite3VdbeHalt()` after successful statement completion.
+
+### Statement state
+
+`ROW_COUNT()` and `LAST_INSERT_ID()` cannot be implemented transparently with
+public scalar callbacks alone. A callback can read connection state, but it
+cannot know whether the previous VDBE program was a write, a completed result
+set, a failed statement, a rolled-back statement, or direct `TRUNCATE`. The
+fork stores compact MyLite state on `sqlite3`, tracks statement-local generated
+rowids on `Vdbe`, and updates the connection state during VDBE halt. This also
+keeps SQLite internal schema-initialization statements from changing
+MySQL-visible session state.
 
 ### Metadata
 
@@ -371,6 +395,10 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
    `DATE`, `DATETIME`, and `TIME` subset,
    with MyLite's public write paths now loading descriptors from the catalog
    before preparing physical writes.
+10. Add VDBE statement-completion state for MySQL session functions.
+    Implemented for native `ROW_COUNT()` and `LAST_INSERT_ID()` over the
+    current direct CRUD subset, including generated `AUTO_INCREMENT` ids,
+    result-producing `SELECT`, and direct `TRUNCATE` row-count behavior.
 
 ## Lemon Grammar Direction
 

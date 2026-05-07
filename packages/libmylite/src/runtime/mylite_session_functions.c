@@ -1,6 +1,7 @@
 #include "mylite_session_functions.h"
 
 #include "mylite_advisory_locks.h"
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_expression.h"
@@ -23,6 +24,8 @@ static const uint64_t mylite_uuid_100ns_per_second = UINT64_C(10000000);
 
 static const uint64_t mylite_uuid_short_startup_mask = UINT64_C(0xffffffff);
 static const uint32_t mylite_uuid_short_counter_mask = 0x00ffffffU;
+static const unsigned int mylite_rand_microsecond_seed_shift = 24U;
+static const unsigned int mylite_rand_seed2_addend = 33U;
 static const unsigned int mylite_uuid_short_server_shift = 56U;
 static const unsigned int mylite_uuid_short_startup_shift = 24U;
 
@@ -35,8 +38,19 @@ enum mylite_uuid_constants {
     MYLITE_UUID_TIME_MID_TEXT_END = 13,
     MYLITE_UUID_TIME_HIGH_TEXT_END = 18,
     MYLITE_UUID_CLOCK_SEQ_TEXT_END = 23,
+    MYLITE_UUID_BYTE_SHIFT_8 = 8,
+    MYLITE_UUID_BYTE_SHIFT_16 = 16,
+    MYLITE_UUID_BYTE_SHIFT_24 = 24,
+    MYLITE_UUID_TIME_MID_SHIFT = 32,
+    MYLITE_UUID_TIME_HIGH_SHIFT = 48,
     MYLITE_UUID_RANDOM_NODE_OFFSET = 2,
+    MYLITE_UUID_TIME_MID_LOW_BYTE_OFFSET = 5,
+    MYLITE_UUID_TIME_HIGH_HIGH_BYTE_OFFSET = 6,
+    MYLITE_UUID_TIME_HIGH_LOW_BYTE_OFFSET = 7,
+    MYLITE_UUID_CLOCK_SEQUENCE_HIGH_BYTE_OFFSET = 8,
+    MYLITE_UUID_CLOCK_SEQUENCE_LOW_BYTE_OFFSET = 9,
     MYLITE_UUID_NODE_OFFSET = 10,
+    MYLITE_UUID_NANOSECONDS_PER_100NS = 100,
     MYLITE_UUID_VERSION_1_MASK = 0x1000U,
     MYLITE_UUID_TIME_HIGH_MASK = 0x0fffU,
     MYLITE_UUID_CLOCK_SEQ_MASK = 0x3fffU,
@@ -47,7 +61,15 @@ enum mylite_uuid_constants {
     MYLITE_UUID_SHORT_RANDOM_BYTES = 4,
     MYLITE_UUID_SHORT_SERVER_ID_MASK = 0x7fU,
     MYLITE_UUID_SHORT_SERVER_ID_FALLBACK = 1,
+    MYLITE_UUID_SHORT_RANDOM_COUNTER_HIGH_SHIFT = 16,
+    MYLITE_UUID_SHORT_RANDOM_COUNTER_MID_SHIFT = 8,
 };
+
+static bool session_function_name_is_database(const struct mylite_sql_ast_node *name);
+
+static bool session_function_name_is_advisory_lock(const struct mylite_sql_ast_node *name);
+
+static bool session_function_name_is_current_user(const struct mylite_sql_ast_node *name);
 
 static int evaluate_last_insert_id_function(
     mylite_stmt *stmt,
@@ -62,6 +84,33 @@ static int evaluate_advisory_lock_function(
     const struct mylite_sql_ast_node *function_call,
     const struct mylite_expression_eval_context *expression_context,
     struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_get_lock_function(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_advisory_lock_name *lock_name,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_release_lock_function(
+    mylite_db *database,
+    const struct mylite_advisory_lock_name *lock_name,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_is_free_lock_function(
+    mylite_db *database,
+    const struct mylite_advisory_lock_name *lock_name,
+    struct mylite_expression_value *out_value
+);
+
+static int evaluate_is_used_lock_function(
+    mylite_db *database,
+    const struct mylite_advisory_lock_name *lock_name,
     struct mylite_expression_value *out_value
 );
 
@@ -185,8 +234,7 @@ int mylite_session_evaluate_core_function(
     if (mylite_temporal_function_name_is_current(name)) {
         return mylite_temporal_evaluate_current_function(stmt, function_call, out_value);
     }
-    if (mylite_span_equal_ci(name->span, "DATABASE") ||
-        mylite_span_equal_ci(name->span, "SCHEMA")) {
+    if (session_function_name_is_database(name)) {
         if (database->selected_schema == NULL) {
             *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
             return 0;
@@ -215,11 +263,7 @@ int mylite_session_evaluate_core_function(
     if (mylite_span_equal_ci(name->span, "RAND")) {
         return evaluate_rand_function(stmt, function_call, expression_context, warnings, out_value);
     }
-    if (mylite_span_equal_ci(name->span, "GET_LOCK") ||
-        mylite_span_equal_ci(name->span, "RELEASE_LOCK") ||
-        mylite_span_equal_ci(name->span, "IS_FREE_LOCK") ||
-        mylite_span_equal_ci(name->span, "IS_USED_LOCK") ||
-        mylite_span_equal_ci(name->span, "RELEASE_ALL_LOCKS")) {
+    if (session_function_name_is_advisory_lock(name)) {
         return evaluate_advisory_lock_function(
             stmt,
             function_call,
@@ -266,10 +310,7 @@ int mylite_session_evaluate_core_function(
     if (mylite_span_equal_ci(name->span, "CURRENT_ROLE")) {
         return mylite_session_set_text_function_value(database, "NONE", out_value);
     }
-    if (mylite_span_equal_ci(name->span, "USER") ||
-        mylite_span_equal_ci(name->span, "SESSION_USER") ||
-        mylite_span_equal_ci(name->span, "SYSTEM_USER") ||
-        mylite_span_equal_ci(name->span, "CURRENT_USER")) {
+    if (session_function_name_is_current_user(name)) {
         return mylite_session_set_text_function_value(
             database,
             mylite_embedded_identity,
@@ -296,6 +337,42 @@ int mylite_session_set_text_function_value(
     return MYLITE_OK;
 }
 
+static bool session_function_name_is_database(const struct mylite_sql_ast_node *name) {
+    if (mylite_span_equal_ci(name->span, "DATABASE")) {
+        return true;
+    }
+    return mylite_span_equal_ci(name->span, "SCHEMA");
+}
+
+static bool session_function_name_is_advisory_lock(const struct mylite_sql_ast_node *name) {
+    if (mylite_span_equal_ci(name->span, "GET_LOCK")) {
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "RELEASE_LOCK")) {
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "IS_FREE_LOCK")) {
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "IS_USED_LOCK")) {
+        return true;
+    }
+    return mylite_span_equal_ci(name->span, "RELEASE_ALL_LOCKS");
+}
+
+static bool session_function_name_is_current_user(const struct mylite_sql_ast_node *name) {
+    if (mylite_span_equal_ci(name->span, "USER")) {
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "SESSION_USER")) {
+        return true;
+    }
+    if (mylite_span_equal_ci(name->span, "SYSTEM_USER")) {
+        return true;
+    }
+    return mylite_span_equal_ci(name->span, "CURRENT_USER");
+}
+
 static int evaluate_advisory_lock_function(
     mylite_stmt *stmt,
     const struct mylite_sql_ast_node *function_call,
@@ -308,8 +385,6 @@ static int evaluate_advisory_lock_function(
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(function_call, 1U);
     const struct mylite_sql_ast_node *lock_name_argument = mylite_ast_child_at(arguments, 0U);
     struct mylite_advisory_lock_name lock_name = {0};
-    struct mylite_advisory_lock_result result = {0};
-    uint64_t value = 0U;
     int status = MYLITE_OK;
 
     if (database == NULL || name_node == NULL || out_value == NULL) {
@@ -332,46 +407,103 @@ static int evaluate_advisory_lock_function(
     }
 
     if (mylite_span_equal_ci(name_node->span, "GET_LOCK")) {
-        status = evaluate_get_lock_timeout_argument(
-            mylite_ast_child_at(arguments, 1U),
+        status = evaluate_get_lock_function(
+            database,
+            arguments,
             expression_context,
-            warnings
+            warnings,
+            &lock_name,
+            out_value
         );
-        if (status == MYLITE_OK) {
-            status = mylite_advisory_lock_get(database, &lock_name, &value);
-        }
-        if (status == MYLITE_OK) {
-            set_signed_lock_value(value, out_value);
-        }
     } else if (mylite_span_equal_ci(name_node->span, "RELEASE_LOCK")) {
-        status = mylite_advisory_lock_release(database, &lock_name, &result);
-        if (status == MYLITE_OK) {
-            if (result.is_null) {
-                *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
-            } else {
-                set_signed_lock_value(result.value, out_value);
-            }
-        }
+        status = evaluate_release_lock_function(database, &lock_name, out_value);
     } else if (mylite_span_equal_ci(name_node->span, "IS_FREE_LOCK")) {
-        status = mylite_advisory_lock_is_free(database, &lock_name, &value);
-        if (status == MYLITE_OK) {
-            set_signed_lock_value(value, out_value);
-        }
+        status = evaluate_is_free_lock_function(database, &lock_name, out_value);
     } else if (mylite_span_equal_ci(name_node->span, "IS_USED_LOCK")) {
-        status = mylite_advisory_lock_is_used(database, &lock_name, &result);
-        if (status == MYLITE_OK) {
-            if (result.is_null) {
-                *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
-            } else {
-                set_unsigned_lock_value(result.value, out_value);
-            }
-        }
+        status = evaluate_is_used_lock_function(database, &lock_name, out_value);
     } else {
         status = -1;
     }
 
     mylite_advisory_lock_name_deinit(&lock_name);
     return status;
+}
+
+static int evaluate_get_lock_function(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_advisory_lock_name *lock_name,
+    struct mylite_expression_value *out_value
+) {
+    uint64_t value = 0U;
+    int status = evaluate_get_lock_timeout_argument(
+        mylite_ast_child_at(arguments, 1U),
+        expression_context,
+        warnings
+    );
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = mylite_advisory_lock_get(database, lock_name, &value);
+    if (status == MYLITE_OK) {
+        set_signed_lock_value(value, out_value);
+    }
+    return status;
+}
+
+static int evaluate_release_lock_function(
+    mylite_db *database,
+    const struct mylite_advisory_lock_name *lock_name,
+    struct mylite_expression_value *out_value
+) {
+    struct mylite_advisory_lock_result result = {.is_null = false, .value = 0U};
+    int status = mylite_advisory_lock_release(database, lock_name, &result);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (result.is_null) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else {
+        set_signed_lock_value(result.value, out_value);
+    }
+    return MYLITE_OK;
+}
+
+static int evaluate_is_free_lock_function(
+    mylite_db *database,
+    const struct mylite_advisory_lock_name *lock_name,
+    struct mylite_expression_value *out_value
+) {
+    uint64_t value = 0U;
+    int status = mylite_advisory_lock_is_free(database, lock_name, &value);
+
+    if (status == MYLITE_OK) {
+        set_signed_lock_value(value, out_value);
+    }
+    return status;
+}
+
+static int evaluate_is_used_lock_function(
+    mylite_db *database,
+    const struct mylite_advisory_lock_name *lock_name,
+    struct mylite_expression_value *out_value
+) {
+    struct mylite_advisory_lock_result result = {.is_null = false, .value = 0U};
+    int status = mylite_advisory_lock_is_used(database, lock_name, &result);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (result.is_null) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+    } else {
+        set_unsigned_lock_value(result.value, out_value);
+    }
+    return MYLITE_OK;
 }
 
 static int evaluate_advisory_lock_name_argument(
@@ -456,13 +588,13 @@ static int evaluate_last_insert_id_function(
         return status;
     }
     if (value.kind == MYLITE_EXPRESSION_VALUE_NULL) {
-        stmt->database->last_insert_id = 0U;
+        mylite_connection_set_last_insert_id(stmt->database, 0U);
         mylite_expression_value_deinit(&value);
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         return 0;
     }
 
-    stmt->database->last_insert_id = session_function_value_to_uint64(&value);
+    mylite_connection_set_last_insert_id(stmt->database, session_function_value_to_uint64(&value));
     mylite_expression_value_deinit(&value);
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_UINT64,
@@ -637,7 +769,7 @@ static uint64_t unseeded_rand_seed(
     }
     if (mylite_temporal_statement_timestamp(stmt, &timestamp) == MYLITE_OK && timestamp != NULL) {
         seed ^= (uint64_t)timestamp->seconds;
-        seed ^= ((uint64_t)timestamp->microseconds << 24U);
+        seed ^= ((uint64_t)timestamp->microseconds << mylite_rand_microsecond_seed_shift);
     }
     return seed;
 }
@@ -654,8 +786,8 @@ static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed)
 static double next_rand_value(struct mylite_rand_state *state) {
     state->seed1 = (uint32_t)((((uint64_t)state->seed1 * 3U) + state->seed2) %
                               (uint64_t)mylite_rand_max_value);
-    state->seed2 =
-        (uint32_t)(((uint64_t)state->seed1 + state->seed2 + 33U) % (uint64_t)mylite_rand_max_value);
+    state->seed2 = (uint32_t)(((uint64_t)state->seed1 + state->seed2 + mylite_rand_seed2_addend) %
+                              (uint64_t)mylite_rand_max_value);
     return (double)state->seed1 / (double)mylite_rand_max_value;
 }
 
@@ -706,22 +838,26 @@ static void next_uuid_bytes(mylite_db *database, unsigned char bytes[MYLITE_UUID
     state->last_timestamp = timestamp;
 
     time_low = (uint32_t)(timestamp & UINT64_C(0xffffffff));
-    time_mid = (uint16_t)((timestamp >> 32U) & UINT64_C(0xffff));
+    time_mid = (uint16_t)((timestamp >> MYLITE_UUID_TIME_MID_SHIFT) & UINT64_C(0xffff));
     time_high =
-        (uint16_t)(((timestamp >> 48U) & MYLITE_UUID_TIME_HIGH_MASK) | MYLITE_UUID_VERSION_1_MASK);
+        (uint16_t)(((timestamp >> MYLITE_UUID_TIME_HIGH_SHIFT) & MYLITE_UUID_TIME_HIGH_MASK) |
+                   MYLITE_UUID_VERSION_1_MASK);
     clock_sequence = (uint16_t)(state->clock_sequence & MYLITE_UUID_CLOCK_SEQ_MASK);
 
-    bytes[0] = (unsigned char)(time_low >> 24U);
-    bytes[1] = (unsigned char)(time_low >> 16U);
-    bytes[2] = (unsigned char)(time_low >> 8U);
+    bytes[0] = (unsigned char)(time_low >> MYLITE_UUID_BYTE_SHIFT_24);
+    bytes[1] = (unsigned char)(time_low >> MYLITE_UUID_BYTE_SHIFT_16);
+    bytes[2] = (unsigned char)(time_low >> MYLITE_UUID_BYTE_SHIFT_8);
     bytes[3] = (unsigned char)time_low;
-    bytes[4] = (unsigned char)(time_mid >> 8U);
-    bytes[5] = (unsigned char)time_mid;
-    bytes[6] = (unsigned char)(time_high >> 8U);
-    bytes[7] = (unsigned char)time_high;
-    bytes[8] = (unsigned char)(((clock_sequence >> 8U) & MYLITE_UUID_VARIANT_VALUE_MASK) |
-                               MYLITE_UUID_VARIANT_MASK);
-    bytes[9] = (unsigned char)clock_sequence;
+    bytes[4] = (unsigned char)(time_mid >> MYLITE_UUID_BYTE_SHIFT_8);
+    bytes[MYLITE_UUID_TIME_MID_LOW_BYTE_OFFSET] = (unsigned char)time_mid;
+    bytes[MYLITE_UUID_TIME_HIGH_HIGH_BYTE_OFFSET] =
+        (unsigned char)(time_high >> MYLITE_UUID_BYTE_SHIFT_8);
+    bytes[MYLITE_UUID_TIME_HIGH_LOW_BYTE_OFFSET] = (unsigned char)time_high;
+    bytes[MYLITE_UUID_CLOCK_SEQUENCE_HIGH_BYTE_OFFSET] =
+        (unsigned char)(((clock_sequence >> MYLITE_UUID_BYTE_SHIFT_8) &
+                         MYLITE_UUID_VARIANT_VALUE_MASK) |
+                        MYLITE_UUID_VARIANT_MASK);
+    bytes[MYLITE_UUID_CLOCK_SEQUENCE_LOW_BYTE_OFFSET] = (unsigned char)clock_sequence;
     memcpy(bytes + MYLITE_UUID_NODE_OFFSET, state->node, MYLITE_UUID_NODE_LENGTH);
 }
 
@@ -729,8 +865,9 @@ static void initialize_uuid_state(struct mylite_uuid_state *state) {
     unsigned char random[MYLITE_UUID_RANDOM_BYTES] = {0};
 
     sqlite3_randomness((int)sizeof(random), random);
-    state->clock_sequence = (uint16_t)((((uint16_t)random[0] << 8U) | (uint16_t)random[1]) &
-                                       (uint16_t)MYLITE_UUID_CLOCK_SEQ_MASK);
+    state->clock_sequence =
+        (uint16_t)((((uint16_t)random[0] << MYLITE_UUID_BYTE_SHIFT_8) | (uint16_t)random[1]) &
+                   (uint16_t)MYLITE_UUID_CLOCK_SEQ_MASK);
     memcpy(state->node, random + MYLITE_UUID_RANDOM_NODE_OFFSET, MYLITE_UUID_NODE_LENGTH);
     state->node[0] = (unsigned char)(state->node[0] | MYLITE_UUID_MULTICAST_NODE_MASK);
     state->initialized = true;
@@ -744,13 +881,13 @@ static uint64_t uuid_current_timestamp_100ns(void) {
         timestamp.tv_nsec >= 0L) {
         return mylite_uuid_epoch_offset_100ns +
                ((uint64_t)timestamp.tv_sec * mylite_uuid_100ns_per_second) +
-               ((uint64_t)timestamp.tv_nsec / 100U);
+               ((uint64_t)timestamp.tv_nsec / MYLITE_UUID_NANOSECONDS_PER_100NS);
     }
 #endif
     {
         time_t seconds = time(NULL);
 
-        if (seconds == (time_t)-1 || seconds < (time_t)0) {
+        if (seconds < (time_t)0) {
             seconds = 0;
         }
         return mylite_uuid_epoch_offset_100ns + ((uint64_t)seconds * mylite_uuid_100ns_per_second);
@@ -810,16 +947,17 @@ static void initialize_uuid_short_state(struct mylite_uuid_short_state *state) {
         state->server_id = MYLITE_UUID_SHORT_SERVER_ID_FALLBACK;
     }
     state->startup_seconds = current_unix_seconds();
-    state->counter =
-        (((uint32_t)random[1] << 16U) | ((uint32_t)random[2] << 8U) | (uint32_t)random[3]) &
-        mylite_uuid_short_counter_mask;
+    state->counter = (((uint32_t)random[1] << MYLITE_UUID_SHORT_RANDOM_COUNTER_HIGH_SHIFT) |
+                      ((uint32_t)random[2] << MYLITE_UUID_SHORT_RANDOM_COUNTER_MID_SHIFT) |
+                      (uint32_t)random[3]) &
+                     mylite_uuid_short_counter_mask;
     state->initialized = true;
 }
 
 static uint64_t current_unix_seconds(void) {
     time_t seconds = time(NULL);
 
-    if (seconds == (time_t)-1 || seconds < (time_t)0) {
+    if (seconds < (time_t)0) {
         return 0U;
     }
     return (uint64_t)seconds;

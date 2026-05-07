@@ -131,6 +131,11 @@ Use existing SQLite APIs for:
   semantics can be expressed by existing parse nodes. MySQL-only operators such
   as `<=>` need fork tokenizer/parser admission before they can lower to a
   function or opcode.
+- User-facing token changes must not be applied blindly to all SQLite parses.
+  SQLite runs internally generated SQL for schema rewrites, including
+  `ALTER TABLE`, and that SQL may rely on SQLite-native syntax such as `||`
+  string concatenation. MySQL remapping for `||` therefore needs a user-SQL mode
+  boundary or internal-parse escape hatch rather than a global tokenizer change.
 - Collations where the comparison algorithm can be implemented directly and
   registered by MySQL collation name. MyLite-generated expressions must still
   carry the intended `COLLATE` clause when SQLite would otherwise treat a
@@ -294,7 +299,9 @@ For the next foundation work, prefer this order:
 4. Add fork diagnostics only when a conversion or constraint behavior needs
    MySQL warning/error semantics that cannot be represented by SQLite errors.
 5. Add narrow tokenizer and grammar hooks when MySQL-compatible syntax is
-   blocked before the public extension registry is consulted.
+   blocked before the public extension registry is consulted, but separate
+   user SQL from SQLite internal SQL before changing meanings of existing
+   SQLite tokens such as `||`.
 6. Move row identity, sequence allocation, and constraint mapping into the fork
    when public MyLite SQL lowering cannot preserve MySQL affected-row,
    duplicate-key, or auto-increment side effects without duplicated logic.

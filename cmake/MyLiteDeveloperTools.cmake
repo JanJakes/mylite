@@ -38,8 +38,37 @@ function(mylite_add_developer_tool_targets)
 
   find_program(MYLITE_RUN_CLANG_TIDY_EXECUTABLE NAMES run-clang-tidy)
   if(MYLITE_RUN_CLANG_TIDY_EXECUTABLE)
+    set(mylite_run_clang_tidy_args
+      -p "${CMAKE_BINARY_DIR}"
+      packages
+      tools
+      tests
+    )
+
+    if(APPLE)
+      set(mylite_macos_sdk_path "${CMAKE_OSX_SYSROOT}")
+      if(NOT mylite_macos_sdk_path)
+        find_program(MYLITE_XCRUN_EXECUTABLE NAMES xcrun)
+        if(MYLITE_XCRUN_EXECUTABLE)
+          execute_process(
+            COMMAND "${MYLITE_XCRUN_EXECUTABLE}" --show-sdk-path
+            OUTPUT_VARIABLE mylite_macos_sdk_path
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+          )
+        endif()
+      endif()
+
+      if(mylite_macos_sdk_path)
+        list(APPEND mylite_run_clang_tidy_args
+          "-extra-arg=-isysroot"
+          "-extra-arg=${mylite_macos_sdk_path}"
+        )
+      endif()
+    endif()
+
     add_custom_target(tidy
-      COMMAND "${MYLITE_RUN_CLANG_TIDY_EXECUTABLE}" -p "${CMAKE_BINARY_DIR}" packages tools tests
+      COMMAND "${MYLITE_RUN_CLANG_TIDY_EXECUTABLE}" ${mylite_run_clang_tidy_args}
       WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
       COMMENT "Running clang-tidy on first-party C sources"
       VERBATIM

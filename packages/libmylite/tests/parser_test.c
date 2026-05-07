@@ -11960,6 +11960,13 @@ static int test_information_schema_select(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT ENFORCED FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS;",
         MYLITE_SQL_PARSE_OK,
         &result

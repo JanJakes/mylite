@@ -5639,6 +5639,9 @@ nonreserved_identifier_keyword(A) ::= EXCHANGE(T). {
 nonreserved_identifier_keyword(A) ::= EXCLUSIVE(T). {
     A = T;
 }
+nonreserved_identifier_keyword(A) ::= ENFORCED(T). {
+    A = T;
+}
 nonreserved_identifier_keyword(A) ::= EXTENDED(T). {
     A = T;
 }

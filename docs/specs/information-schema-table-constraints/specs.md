@@ -60,6 +60,9 @@ to MyLite's CHECK catalog.
 The verified MySQL 8.4.9 runtime accepts case-insensitive references such as
 `information_schema.table_constraints`, mixed-case references, and quoted forms
 such as `` `information_schema`.`TABLE_CONSTRAINTS` ``.
+The `ENFORCED` column name is selectable without quotes; MyLite treats
+`ENFORCED` as a nonreserved identifier keyword outside CHECK enforcement
+clauses.
 
 The result has exactly these columns in order:
 

@@ -4033,7 +4033,7 @@ static int test_alter_table_check_constraint_execution(void) {
     );
     failures += expect_select_rows(
         database,
-        "SELECT CONSTRAINT_NAME, `ENFORCED` FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+        "SELECT CONSTRAINT_NAME, ENFORCED FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
         "WHERE TABLE_SCHEMA = 'mylite_alter_check' "
         "AND CONSTRAINT_NAME = 'invalid_checks_chk_1'",
         enforcement_columns,

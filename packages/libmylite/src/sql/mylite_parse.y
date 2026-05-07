@@ -4233,6 +4233,21 @@ select_duplicate_mode_item(A) ::= DISTINCTROW(T). {
 select_duplicate_mode_item(A) ::= SQL_CALC_FOUND_ROWS(T). {
     A = mylite_sql_parser_make_sql_calc_found_rows_select_duplicate_mode(T);
 }
+select_duplicate_mode_item(A) ::= HIGH_PRIORITY. {
+    A = mylite_sql_parser_make_implicit_select_duplicate_mode();
+}
+select_duplicate_mode_item(A) ::= SQL_SMALL_RESULT. {
+    A = mylite_sql_parser_make_implicit_select_duplicate_mode();
+}
+select_duplicate_mode_item(A) ::= SQL_BIG_RESULT. {
+    A = mylite_sql_parser_make_implicit_select_duplicate_mode();
+}
+select_duplicate_mode_item(A) ::= SQL_BUFFER_RESULT. {
+    A = mylite_sql_parser_make_implicit_select_duplicate_mode();
+}
+select_duplicate_mode_item(A) ::= STRAIGHT_JOIN. {
+    A = mylite_sql_parser_make_implicit_select_duplicate_mode();
+}
 
 opt_where_clause(A) ::= . {
     A = NULL;

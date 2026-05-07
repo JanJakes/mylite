@@ -63790,6 +63790,10 @@ static int test_select_table_core_execution(void) {
     static const char *const visible_columns[] = {"a", "b", "CamelCase"};
     static const char *const visible_values[] = {"1", "one", "7", "2", "two", "8"};
     static const char *const visible_first_values[] = {"1", "one", "7"};
+    static const char *const modifier_scalar_columns[] = {"x"};
+    static const char *const modifier_scalar_values[] = {"1"};
+    static const char *const modifier_table_columns[] = {"a"};
+    static const char *const modifier_table_values[] = {"1", "2"};
     static const char *const hidden_columns[] = {"hidden"};
     static const char *const hidden_values[] = {"99", "88"};
     static const char *const scalar_locking_columns[] = {"1"};
@@ -63829,6 +63833,18 @@ static int test_select_table_core_execution(void) {
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open select database");
+
+    failures += expect_select_rows(
+        database,
+        "SELECT HIGH_PRIORITY SQL_SMALL_RESULT SQL_BIG_RESULT SQL_BUFFER_RESULT 1 AS x",
+        modifier_scalar_columns,
+        1,
+        modifier_scalar_values,
+        1,
+        "select optimizer modifiers scalar no-op"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "select optimizer modifiers scalar warnings");
 
     failures += expect_prepare_error(
         database,
@@ -63873,6 +63889,28 @@ static int test_select_table_core_execution(void) {
     );
 
     failures += execute_sql(database, "USE mylite_select15", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT SQL_SMALL_RESULT SQL_BIG_RESULT SQL_BUFFER_RESULT a FROM t ORDER BY a",
+        modifier_table_columns,
+        1,
+        modifier_table_values,
+        2,
+        "select optimizer modifiers table no-op"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "select optimizer modifiers table warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT SQL_BUFFER_RESULT DISTINCT a FROM t ORDER BY a",
+        modifier_table_columns,
+        1,
+        modifier_table_values,
+        2,
+        "select buffer result distinct no-op"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "select buffer result distinct warnings");
     failures += expect_select_rows(
         database,
         "SELECT * FROM t",
@@ -64264,6 +64302,19 @@ static int test_inner_join_execution(void) {
         2,
         "inner join on rows"
     );
+    failures += expect_select_rows(
+        database,
+        "SELECT HIGH_PRIORITY STRAIGHT_JOIN l.id AS left_id, r.id AS right_id, r.label "
+        "FROM left_t AS l INNER JOIN right_t AS r ON l.id = r.left_id "
+        "WHERE r.id < 20 ORDER BY r.id",
+        join_columns,
+        3,
+        join_values,
+        2,
+        "select straight join modifier no-op"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "select straight join modifier warnings");
     failures += expect_select_rows(
         database,
         "SELECT l.id AS left_id, r.id AS right_id, r.label "

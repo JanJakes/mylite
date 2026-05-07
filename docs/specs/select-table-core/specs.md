@@ -38,8 +38,9 @@ Out of scope:
 - subqueries
 - locking clauses
 - `SELECT ... INTO`
-- optimizer hints, partitions, and SELECT modifiers; index hints are parsed
-  and ignored by the separate placeholder slice
+- optimizer hints, partitions, and SELECT modifiers beyond separately specified
+  placeholders; index hints are parsed and ignored by the separate placeholder
+  slice
 - parameter markers and prepared statement marker binding
 - expression operator expansion, function calls, aggregate calls, expression
   type inference, and broad expression evaluation
@@ -419,7 +420,7 @@ The following MySQL grammar surface is intentionally deferred and should not be
 accepted as Task 15 support:
 
 ```lemon
-/* Deferred: SELECT modifiers and duplicate elimination. */
+/* Deferred in this task: duplicate elimination and unsupported SELECT modifiers. */
 select_statement ::= SELECT select_modifier_list select_list FROM single_table_reference.
 
 /* Deferred: common table expressions. */

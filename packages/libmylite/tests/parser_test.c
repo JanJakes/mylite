@@ -13495,6 +13495,104 @@ static int test_select_distinct_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT HIGH_PRIORITY 1;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(
+        select,
+        MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL,
+        false,
+        false,
+        0U,
+        "high priority no-op modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SQL_SMALL_RESULT SQL_BIG_RESULT SQL_BUFFER_RESULT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(
+        select,
+        MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL,
+        false,
+        false,
+        0U,
+        "optimizer no-op modifiers"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT HIGH_PRIORITY STRAIGHT_JOIN a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(
+        select,
+        MYLITE_SQL_AST_SELECT_DUPLICATES_IMPLICIT_ALL,
+        false,
+        false,
+        0U,
+        "straight join select modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DISTINCT HIGH_PRIORITY a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(
+        select,
+        MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+        true,
+        false,
+        1U,
+        "distinct high priority no-op modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT SQL_BUFFER_RESULT DISTINCT a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(
+        select,
+        MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+        true,
+        false,
+        1U,
+        "buffer result distinct no-op modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT DISTINCT SQL_BUFFER_RESULT a FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(
+        select,
+        MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+        true,
+        false,
+        1U,
+        "distinct buffer result no-op modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SQL_BUFFER_RESULT SQL_CALC_FOUND_ROWS DISTINCT a FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_select_duplicate_mode(
+        select,
+        MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT,
+        true,
+        false,
+        1U,
+        "buffer result calc distinct modifiers"
+    );
+    if (select != NULL) {
+        failures += expect_bool(select->select_calc_found_rows, true, "buffer calc found rows");
+    }
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

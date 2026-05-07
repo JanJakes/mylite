@@ -781,6 +781,9 @@ struct mylite_sql_parser_select_duplicate_mode mylite_sql_parser_append_select_d
         list.calc_found_rows = true;
         return list;
     }
+    if (item.modifier_count == 0U) {
+        return list;
+    }
     if (list.modifier_count == 0U) {
         item.calc_found_rows = list.calc_found_rows;
         return item;
@@ -8144,6 +8147,7 @@ static bool lookup_keyword_parser_token(
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"HASH", MYLITE_SQL_PARSE_HASH},
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
+        {"HIGH_PRIORITY", MYLITE_SQL_PARSE_HIGH_PRIORITY},
         {"HOUR", MYLITE_SQL_PARSE_HOUR},
         {"HOUR_MINUTE", MYLITE_SQL_PARSE_HOUR_MINUTE},
         {"HOUR_SECOND", MYLITE_SQL_PARSE_HOUR_SECOND},
@@ -8304,7 +8308,10 @@ static bool lookup_keyword_parser_token(
         {"SOME", MYLITE_SQL_PARSE_SOME},
         {"SPATIAL", MYLITE_SQL_PARSE_SPATIAL},
         {"SQL", MYLITE_SQL_PARSE_SQL},
+        {"SQL_BIG_RESULT", MYLITE_SQL_PARSE_SQL_BIG_RESULT},
+        {"SQL_BUFFER_RESULT", MYLITE_SQL_PARSE_SQL_BUFFER_RESULT},
         {"SQL_CALC_FOUND_ROWS", MYLITE_SQL_PARSE_SQL_CALC_FOUND_ROWS},
+        {"SQL_SMALL_RESULT", MYLITE_SQL_PARSE_SQL_SMALL_RESULT},
         {"SQLSTATE", MYLITE_SQL_PARSE_SQLSTATE},
         {"SSL", MYLITE_SQL_PARSE_SSL},
         {"START", MYLITE_SQL_PARSE_START},
@@ -8312,6 +8319,7 @@ static bool lookup_keyword_parser_token(
         {"STATUS", MYLITE_SQL_PARSE_STATUS},
         {"STORED", MYLITE_SQL_PARSE_STORED},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
+        {"STRAIGHT_JOIN", MYLITE_SQL_PARSE_STRAIGHT_JOIN},
         {"STRING", MYLITE_SQL_PARSE_STRINGKW},
         {"SUBCLASS_ORIGIN", MYLITE_SQL_PARSE_SUBCLASS_ORIGIN},
         {"SUBDATE", MYLITE_SQL_PARSE_SUBDATE},

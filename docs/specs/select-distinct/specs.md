@@ -44,8 +44,8 @@ Out of scope:
   and parenthesized query expressions
 - `GROUP BY ... WITH ROLLUP` and `DISTINCT` with rollup, because rollup is not
   implemented yet
-- optimizer modifiers such as `SQL_SMALL_RESULT`, `SQL_BIG_RESULT`,
-  `SQL_BUFFER_RESULT`, and `SQL_CALC_FOUND_ROWS`
+- optimizer modifiers beyond the no-op SELECT-level placeholders specified in
+  `docs/specs/select-modifier-placeholders/specs.md`
 - optimizer-specific choices, temporary-table implementation details, stable
   tie ordering when the query lacks a complete `ORDER BY`, and early-stop
   execution behavior beyond externally visible rows, errors, warnings, and

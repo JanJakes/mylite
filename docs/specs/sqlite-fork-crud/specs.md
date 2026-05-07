@@ -274,8 +274,11 @@ specs should guide implementation. Function descriptors need:
 - statement and session state access for `NOW()`, `DATABASE()`,
   `LAST_INSERT_ID()`, `ROW_COUNT()`, user variables, and locks
 
-The first executable slice only registers compact callbacks for `CONCAT`,
-`LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`, and `CHARACTER_LENGTH`.
+The current executable slice registers compact callbacks for `CONCAT`,
+`CONCAT_WS`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`, and
+`CHARACTER_LENGTH`. Broader function families stay in public SQLite scalar
+callbacks until they need parser, statement-state, diagnostics, or storage
+hooks that SQLite's public function API cannot provide.
 
 ### Auto-increment
 

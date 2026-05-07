@@ -57,6 +57,12 @@ static int register_scalar_function(
 
 static void mysql_concat(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
+static void mysql_concat_ws(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
+
 static void mysql_length(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
 static void mysql_char_length(
@@ -232,6 +238,9 @@ static int register_mysql_functions(sqlite3 *database) {
     int rc = register_scalar_function(database, "CONCAT", -1, mysql_concat);
 
     if (rc == SQLITE_OK) {
+        rc = register_scalar_function(database, "CONCAT_WS", -1, mysql_concat_ws);
+    }
+    if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "LENGTH", 1, mysql_length);
     }
     if (rc == SQLITE_OK) {
@@ -320,6 +329,73 @@ static void mysql_concat(sqlite3_context *context, int argument_count, sqlite3_v
 
     rc = sqlite3_str_errcode(result);
     char *text = sqlite3_str_finish(result);
+    if (rc != SQLITE_OK) {
+        sqlite3_free(text);
+        sqlite3_result_error_code(context, rc);
+        return;
+    }
+    sqlite3_result_text(context, text, -1, sqlite3_free);
+}
+
+static void mysql_concat_ws(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    sqlite3 *database = sqlite3_context_db_handle(context);
+    sqlite3_str *result = NULL;
+    const unsigned char *separator = NULL;
+    int separator_bytes = 0;
+    bool appended = false;
+    int rc = SQLITE_OK;
+    char *text = NULL;
+
+    if (argument_count < 2) {
+        sqlite3_result_error(context, "CONCAT_WS requires at least 2 arguments", -1);
+        return;
+    }
+    if (sqlite3_value_type(arguments[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    separator = sqlite3_value_text(arguments[0]);
+    separator_bytes = sqlite3_value_bytes(arguments[0]);
+    if (separator == NULL && separator_bytes > 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    result = sqlite3_str_new(database);
+    if (result == NULL) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    for (int index = 1; index < argument_count; ++index) {
+        const unsigned char *value = NULL;
+        int value_bytes = 0;
+
+        if (sqlite3_value_type(arguments[index]) == SQLITE_NULL) {
+            continue;
+        }
+
+        value = sqlite3_value_text(arguments[index]);
+        value_bytes = sqlite3_value_bytes(arguments[index]);
+        if (value == NULL && value_bytes > 0) {
+            sqlite3_free(sqlite3_str_finish(result));
+            sqlite3_result_error_nomem(context);
+            return;
+        }
+        if (appended) {
+            sqlite3_str_append(result, (const char *)separator, separator_bytes);
+        }
+        sqlite3_str_append(result, (const char *)value, value_bytes);
+        appended = true;
+    }
+
+    rc = sqlite3_str_errcode(result);
+    text = sqlite3_str_finish(result);
     if (rc != SQLITE_OK) {
         sqlite3_free(text);
         sqlite3_result_error_code(context, rc);

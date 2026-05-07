@@ -209,6 +209,34 @@ static int test_registered_functions(void) {
         1,
         "CONCAT returns NULL when an argument is NULL"
     );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT_WS(',', 'a', NULL, '', 'b')",
+            .expected = "a,,b",
+            .context = "CONCAT_WS skips NULL arguments and preserves empty strings",
+        }
+    );
+    failures += expect_int64(
+        database,
+        "SELECT CONCAT_WS(NULL, 'a') IS NULL",
+        1,
+        "CONCAT_WS returns NULL for a NULL separator"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT LENGTH(CONCAT_WS(',', NULL, NULL))",
+        0,
+        "CONCAT_WS returns an empty string when all values are NULL"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "SELECT CONCAT_WS(',')",
+            .message_fragment = "CONCAT_WS requires at least 2 arguments",
+            .context = "CONCAT_WS rejects missing value arguments",
+        }
+    );
 
     sqlite3_close(database);
     return failures;

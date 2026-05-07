@@ -308,6 +308,7 @@ static Keyword aKeywordTable[] = {
   { "TO",               "TK_TO",           ALWAYS,           3      },
   { "TRANSACTION",      "TK_TRANSACTION",  ALWAYS,           1      },
   { "TRIGGER",          "TK_TRIGGER",      TRIGGER,          1      },
+  { "TRUNCATE",         "TK_TRUNCATE",     ALWAYS,           1      },
   { "UNBOUNDED",        "TK_UNBOUNDED",    WINDOWFUNC,       3      },
   { "UNION",            "TK_UNION",        COMPOUND,         3      },
   { "UNIQUE",           "TK_UNIQUE",       ALWAYS,           1      },

@@ -344,7 +344,8 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
 1. Add a fork primitive module that configures SQLite connections with MySQL
    collation and function names. Implemented.
 2. Add native truncate support over SQLite tables, including `sqlite_sequence`
-   reset. Implemented.
+   reset. Implemented for the public helper and direct fork parser
+   `TRUNCATE [TABLE] name`.
 3. Add the MySQL-verified WordPress-like CRUD fixture and expected result rows.
    Implemented.
 4. Add a native SQLite-fork test that creates the physical form of the same
@@ -360,7 +361,8 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
    `ALTER TABLE ... ADD UNIQUE`. Implemented.
 8. Next, move from MyLite-lowered SQL to direct MySQL SQL by forking the
    SQLite grammar for `TRUNCATE TABLE`, MySQL table options, secondary-key
-   table elements, and `AUTO_INCREMENT`.
+   table elements, and `AUTO_INCREMENT`. Implemented for direct
+   `TRUNCATE [TABLE] name`.
 9. Then move type descriptors into SQLite column metadata and enforce MySQL
    conversion/range/length rules in SQLite's insert/update path. Implemented
    for the first signed integer, supported unsigned integer, `DOUBLE`,

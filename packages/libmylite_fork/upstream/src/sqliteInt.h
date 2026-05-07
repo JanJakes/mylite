@@ -5039,6 +5039,7 @@ const char *sqlite3ColumnColl(Column*);
 void sqlite3DeleteColumnNames(sqlite3*,Table*);
 #ifdef SQLITE_ENABLE_MYLITE
 void sqlite3MyliteClearColumnType(sqlite3*,Column*);
+void sqlite3MyliteTruncateTable(Parse*,SrcList*);
 #endif
 void sqlite3GenerateColumnNames(Parse *pParse, Select *pSelect);
 int sqlite3ColumnsFromExprList(Parse*,ExprList*,i16*,Column**);

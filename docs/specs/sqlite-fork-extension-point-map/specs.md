@@ -48,6 +48,9 @@ Implemented fork points:
   syntax instead of identifiers, beginning with `ISNULL(expr)`
 - tokenizer/parser admission for MySQL-only operators that SQLite rejects
   before expression lowering, beginning with scalar `<=>`
+- direct SQLite parser admission for MySQL `TRUNCATE [TABLE] name`, with
+  native row clearing plus `sqlite_sequence` reset for AUTOINCREMENT-backed
+  tables
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before

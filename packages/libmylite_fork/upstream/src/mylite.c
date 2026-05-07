@@ -150,6 +150,45 @@ int mylite_sqlite_fork_set_condition(
   return SQLITE_OK;
 }
 
+void sqlite3MyliteTruncateTable(Parse *pParse, SrcList *pName){
+  sqlite3 *db = pParse->db;
+  Table *pTab = 0;
+  int iDb = 0;
+  int bResetSequence = 0;
+
+  if( db->mallocFailed ){
+    goto truncate_table_exit;
+  }
+  assert( pParse->nErr==0 );
+  assert( pName->nSrc==1 );
+  assert( pName->a[0].fg.fixedSchema==0 );
+  assert( pName->a[0].fg.isSubquery==0 );
+  if( sqlite3ReadSchema(pParse) ) goto truncate_table_exit;
+
+  pTab = sqlite3LocateTableItem(pParse, 0, &pName->a[0]);
+  if( pTab==0 ) goto truncate_table_exit;
+  iDb = sqlite3SchemaToIndex(db, pTab->pSchema);
+#ifndef SQLITE_OMIT_AUTOINCREMENT
+  bResetSequence = (pTab->tabFlags & TF_Autoincrement)!=0;
+#endif
+
+  sqlite3DeleteFrom(pParse, pName, 0, 0, 0);
+  pName = 0;
+
+#ifndef SQLITE_OMIT_AUTOINCREMENT
+  if( bResetSequence && pParse->nErr==0 ){
+    sqlite3NestedParse(pParse,
+      "DELETE FROM %Q.sqlite_sequence WHERE name=%Q",
+      db->aDb[iDb].zDbSName, pTab->zName
+    );
+  }
+#endif
+  return;
+
+truncate_table_exit:
+  sqlite3SrcListDelete(db, pName);
+}
+
 void sqlite3MyliteSetCondition(
   sqlite3 *db,
   u8 eLevel,

@@ -503,6 +503,14 @@ cmd ::= DROP TABLE ifexists(E) fullname(X). {
 ifexists(A) ::= IF EXISTS.   {A = 1;}
 ifexists(A) ::= .            {A = 0;}
 
+////////////////////////// The TRUNCATE TABLE /////////////////////////////////
+//
+cmd ::= TRUNCATE truncate_table_opt fullname(X). {
+  sqlite3MyliteTruncateTable(pParse, X);
+}
+truncate_table_opt ::= TABLE.
+truncate_table_opt ::= .
+
 ///////////////////// The CREATE VIEW statement /////////////////////////////
 //
 %ifndef SQLITE_OMIT_VIEW

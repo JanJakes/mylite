@@ -3266,11 +3266,7 @@ static int test_wordpress_like_crud(void) {
         }
     );
 
-    failures += expect_sqlite_ok(
-        mylite_sqlite_fork_truncate_table(database, "wp_postmeta_like"),
-        database,
-        "truncate wp_postmeta_like"
-    );
+    failures += exec_sql(database, "TRUNCATE TABLE wp_postmeta_like", "truncate wp_postmeta_like");
     failures += expect_text(
         database,
         (struct expected_text_row){
@@ -3295,6 +3291,16 @@ static int test_wordpress_like_crud(void) {
                    "FROM wp_postmeta_like",
             .expected = "1:2:_restored:yes",
             .context = "truncate resets auto-increment sequence",
+        }
+    );
+    failures += exec_sql(database, "TRUNCATE wp_postmeta_like", "truncate without TABLE keyword");
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(COUNT(*), ':', COALESCE(MAX(meta_id), 0)) "
+                   "FROM wp_postmeta_like",
+            .expected = "0:0",
+            .context = "truncate without TABLE empties metadata table",
         }
     );
     failures += exec_sql(database, "DROP TABLE wp_postmeta_like", "drop metadata table");

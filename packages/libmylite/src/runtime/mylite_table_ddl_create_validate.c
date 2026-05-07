@@ -56,6 +56,12 @@ static bool create_table_foreign_key_name_exists(
     size_t before_index
 );
 
+static bool create_table_foreign_key_name_exists_except(
+    const struct mylite_create_table_plan *plan,
+    const char *name,
+    size_t except_index
+);
+
 static bool create_table_check_name_exists(
     const struct mylite_create_table_plan *plan,
     const char *name,
@@ -75,6 +81,21 @@ static int set_create_table_duplicate_check_error(mylite_db *database, const cha
 static int set_create_table_duplicate_foreign_key_error(
     mylite_db *database,
     const char *constraint_name
+);
+
+static int ensure_create_table_foreign_key_constraint_name(
+    mylite_db *database,
+    const char *schema_name,
+    struct mylite_create_table_plan *plan,
+    size_t foreign_key_index
+);
+
+static int generated_create_table_foreign_key_constraint_name(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan,
+    size_t foreign_key_index,
+    char **out_name
 );
 
 static bool create_table_foreign_key_columns_exist(
@@ -430,34 +451,10 @@ static bool validate_create_table_foreign_keys(
         return false;
     }
     for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
-        bool catalog_name_exists = false;
-        int status = MYLITE_OK;
+        int status =
+            ensure_create_table_foreign_key_constraint_name(database, schema_name, plan, index);
 
-        if (create_table_foreign_key_name_exists(
-                plan,
-                plan->foreign_keys[index].constraint_name,
-                index
-            )) {
-            (void)set_create_table_duplicate_foreign_key_error(
-                database,
-                plan->foreign_keys[index].constraint_name
-            );
-            return false;
-        }
-        status = mylite_foreign_key_catalog_child_constraint_exists(
-            database,
-            schema_name,
-            plan->foreign_keys[index].constraint_name,
-            &catalog_name_exists
-        );
         if (status != MYLITE_OK) {
-            return false;
-        }
-        if (catalog_name_exists) {
-            (void)set_create_table_duplicate_foreign_key_error(
-                database,
-                plan->foreign_keys[index].constraint_name
-            );
             return false;
         }
         if (!validate_create_table_foreign_key(
@@ -491,6 +488,100 @@ static int set_create_table_duplicate_foreign_key_error(
         );
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int ensure_create_table_foreign_key_constraint_name(
+    mylite_db *database,
+    const char *schema_name,
+    struct mylite_create_table_plan *plan,
+    size_t foreign_key_index
+) {
+    struct mylite_create_table_foreign_key *foreign_key = &plan->foreign_keys[foreign_key_index];
+    bool catalog_name_exists = false;
+    int status = MYLITE_OK;
+
+    if (foreign_key->generated_constraint_name) {
+        char *generated_name = NULL;
+
+        status = generated_create_table_foreign_key_constraint_name(
+            database,
+            schema_name,
+            plan,
+            foreign_key_index,
+            &generated_name
+        );
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        free(foreign_key->constraint_name);
+        foreign_key->constraint_name = generated_name;
+        return MYLITE_OK;
+    }
+
+    if (create_table_foreign_key_name_exists(
+            plan,
+            foreign_key->constraint_name,
+            foreign_key_index
+        )) {
+        return set_create_table_duplicate_foreign_key_error(database, foreign_key->constraint_name);
+    }
+    status = mylite_foreign_key_catalog_child_constraint_exists(
+        database,
+        schema_name,
+        foreign_key->constraint_name,
+        &catalog_name_exists
+    );
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (catalog_name_exists) {
+        return set_create_table_duplicate_foreign_key_error(database, foreign_key->constraint_name);
+    }
+    return MYLITE_OK;
+}
+
+static int generated_create_table_foreign_key_constraint_name(
+    mylite_db *database,
+    const char *schema_name,
+    const struct mylite_create_table_plan *plan,
+    size_t foreign_key_index,
+    char **out_name
+) {
+    *out_name = NULL;
+    for (unsigned int suffix = 1U;; ++suffix) {
+        bool catalog_name_exists = false;
+        char *candidate = sqlite3_mprintf("%s_ibfk_%u", plan->table_name, suffix);
+        int status = MYLITE_OK;
+
+        if (candidate == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        if (create_table_foreign_key_name_exists_except(plan, candidate, foreign_key_index)) {
+            sqlite3_free(candidate);
+            continue;
+        }
+        status = mylite_foreign_key_catalog_child_constraint_exists(
+            database,
+            schema_name,
+            candidate,
+            &catalog_name_exists
+        );
+        if (status != MYLITE_OK) {
+            sqlite3_free(candidate);
+            return status;
+        }
+        if (!catalog_name_exists) {
+            *out_name = mylite_copy_nonempty_cstring(candidate);
+            sqlite3_free(candidate);
+            if (*out_name == NULL) {
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            return MYLITE_OK;
+        }
+        sqlite3_free(candidate);
+    }
 }
 
 static bool validate_create_table_foreign_key(
@@ -592,6 +683,20 @@ static bool create_table_foreign_key_name_exists(
 ) {
     for (size_t index = 0U; index < before_index; ++index) {
         if (mylite_ascii_case_equal(plan->foreign_keys[index].constraint_name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool create_table_foreign_key_name_exists_except(
+    const struct mylite_create_table_plan *plan,
+    const char *name,
+    size_t except_index
+) {
+    for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
+        if (index != except_index &&
+            mylite_ascii_case_equal(plan->foreign_keys[index].constraint_name, name)) {
             return true;
         }
     }

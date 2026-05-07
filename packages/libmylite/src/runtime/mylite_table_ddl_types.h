@@ -85,6 +85,7 @@ struct mylite_create_table_foreign_key {
     char **referenced_column_names;
     size_t referenced_column_count;
     char *unique_constraint_name;
+    bool generated_constraint_name;
     enum mylite_sql_ast_reference_match match;
     enum mylite_sql_ast_reference_action on_update;
     enum mylite_sql_ast_reference_action on_delete;

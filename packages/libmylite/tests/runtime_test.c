@@ -37711,6 +37711,14 @@ static int test_create_table_base_execution(void) {
         "2",
         "id",
     };
+    static const char *const fk_generated_name_columns[] = {"CONSTRAINT_NAME"};
+    static const char *const fk_catalog_generated_name_values[] = {
+        "catalog_generated_ibfk_2",
+    };
+    static const char *const fk_statement_generated_name_values[] = {
+        "generated_fk_names_ibfk_1",
+        "generated_fk_names_ibfk_2",
+    };
     static const char *const default_now_columns[] = {
         "COLUMN_NAME",
         "COLUMN_DEFAULT",
@@ -37886,6 +37894,50 @@ static int test_create_table_base_execution(void) {
         "UNIQUE KEY uq_parent_pair (id, other_id), "
         "UNIQUE KEY uq_parent_pair_rev (other_id, id))",
         MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE catalog_generated_owner ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT catalog_generated_ibfk_1 FOREIGN KEY (parent_id) REFERENCES parent(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE catalog_generated ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES parent(id))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+        "WHERE TABLE_SCHEMA = 'mylite_ct11' AND TABLE_NAME = 'catalog_generated' "
+        "AND CONSTRAINT_TYPE = 'FOREIGN KEY'",
+        fk_generated_name_columns,
+        1,
+        fk_catalog_generated_name_values,
+        1,
+        "create table generated foreign key avoids catalog names"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE generated_fk_names ("
+        "id INT PRIMARY KEY, parent_id INT, other_id INT, "
+        "CONSTRAINT generated_fk_names_ibfk_2 FOREIGN KEY (parent_id) REFERENCES parent(id), "
+        "FOREIGN KEY (other_id) REFERENCES parent(id))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+        "WHERE TABLE_SCHEMA = 'mylite_ct11' AND TABLE_NAME = 'generated_fk_names' "
+        "AND CONSTRAINT_TYPE = 'FOREIGN KEY' ORDER BY CONSTRAINT_NAME",
+        fk_generated_name_columns,
+        1,
+        fk_statement_generated_name_values,
+        2,
+        "create table generated foreign key avoids statement names"
     );
     failures += execute_sql(database, "CREATE TABLE no_unique_parent (id INT)", MYLITE_DONE);
     failures += prepare_sql(

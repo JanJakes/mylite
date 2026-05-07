@@ -530,6 +530,7 @@ static int copy_create_table_foreign_key(
         foreign_key.constraint_name = mylite_copy_identifier_span(constraint_name);
     } else {
         foreign_key.constraint_name = copy_generated_foreign_key_constraint_name(plan);
+        foreign_key.generated_constraint_name = true;
     }
     if (foreign_key.constraint_name == NULL) {
         status = MYLITE_NOMEM;

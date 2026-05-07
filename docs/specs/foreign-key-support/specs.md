@@ -232,7 +232,9 @@ preserving child foreign-key metadata.
 Table-level `CREATE TABLE ... FOREIGN KEY` should:
 
 - copy the source-complete AST into the create-table plan
-- generate the MySQL-style constraint name when omitted
+- generate the MySQL-style constraint name when omitted, choosing the first free
+  `<table>_ibfk_N` suffix across the new table definition and existing schema
+  metadata
 - create or reuse the supporting child index; reuse an existing matching index
   first, otherwise use the explicit constraint name as the support index name
   when present, then the optional `FOREIGN KEY index_name`, then a generated

@@ -35,6 +35,10 @@ slices:
 - admit MySQL table-level `KEY`, `INDEX`, `UNIQUE KEY`, and `UNIQUE INDEX`
   declarations over simple column key parts in the direct fork parser and
   build native SQLite indexes while the table is created
+- admit MySQL column-level `AUTO_INCREMENT` in the direct fork parser and
+  promote matching integer-affinity single-column primary keys, including
+  `BIGINT UNSIGNED ... AUTO_INCREMENT, PRIMARY KEY(id)`, onto SQLite rowid
+  autoincrement storage
 - execute the MySQL-runtime-verified WordPress-like CRUD fixture through
   MyLite's public SQL API
 
@@ -437,6 +441,12 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
     AUTO_INCREMENT=N` table option. Implemented for direct parser
     rowid-backed `AUTO_INCREMENT` tables by writing `sqlite_sequence` during
     table creation, so the next generated id is `N`.
+14. Add MySQL column-level `AUTO_INCREMENT` as a schema-builder flag consumed
+    by table-level primary-key creation. Implemented for direct parser
+    integer-affinity single-column primary keys, allowing common WordPress-like
+    `BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, PRIMARY KEY(id)` declarations to
+    use native SQLite rowid autoincrement storage. Full unsigned overflow
+    behavior remains deferred.
 
 ## Lemon Grammar Direction
 

@@ -2355,6 +2355,7 @@ struct Column {
 #define COLFLAG_BUSY      0x0100   /* Blocks recursion on GENERATED columns */
 #define COLFLAG_HASCOLL   0x0200   /* Has collating sequence name in zCnName */
 #define COLFLAG_NOEXPAND  0x0400   /* Omit this column when expanding "*" */
+#define COLFLAG_MYLITE_AUTOINC 0x0800 /* MySQL AUTO_INCREMENT column */
 #define COLFLAG_GENERATED 0x0060   /* Combo: _STORED, _VIRTUAL */
 #define COLFLAG_NOINSERT  0x0062   /* Combo: _HIDDEN, _STORED, _VIRTUAL */
 
@@ -5070,6 +5071,7 @@ void sqlite3StartTable(Parse*,Token*,Token*,int,int,int,int);
 #endif
 void sqlite3AddColumn(Parse*,Token,Token);
 void sqlite3AddNotNull(Parse*, int);
+void sqlite3MyliteAddColumnAutoIncrement(Parse*);
 void sqlite3AddPrimaryKey(Parse*, ExprList*, int, int, int);
 void sqlite3AddCheckConstraint(Parse*, Expr*, const char*, const char*);
 void sqlite3AddDefaultValue(Parse*,Expr*,const char*,const char*);

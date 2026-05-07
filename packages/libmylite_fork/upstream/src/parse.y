@@ -325,6 +325,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
 %left CONCAT PTR.
 %left COLLATE.
 %right BITNOT.
+%right AUTOINCR.
 %nonassoc ON.
 
 // An IDENTIFIER can be a generic identifier, or one of several
@@ -438,6 +439,7 @@ ccons ::= DEFAULT scantok id(X).       {
 //
 ccons ::= NULL onconf.
 ccons ::= NOT NULL onconf(R).    {sqlite3AddNotNull(pParse, R);}
+ccons ::= AUTOINCR.              {sqlite3MyliteAddColumnAutoIncrement(pParse);}
 ccons ::= PRIMARY KEY sortorder(Z) onconf(R) autoinc(I).
                                  {sqlite3AddPrimaryKey(pParse,0,R,I,Z);}
 ccons ::= UNIQUE onconf(R).      {sqlite3CreateIndex(pParse,0,0,0,0,R,0,0,0,0,
@@ -454,7 +456,7 @@ generated ::= LP expr(E) RP ID(TYPE). {sqlite3AddGenerated(pParse,E,&TYPE);}
 
 // The optional AUTOINCREMENT keyword
 %type autoinc {int}
-autoinc(X) ::= .          {X = 0;}
+autoinc(X) ::= . [AUTOINCR] {X = 0;}
 autoinc(X) ::= AUTOINCR.  {X = 1;}
 
 // The next group of rules parses the arguments to a REFERENCES clause

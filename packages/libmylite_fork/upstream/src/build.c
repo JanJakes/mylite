@@ -1630,6 +1630,15 @@ void sqlite3AddNotNull(Parse *pParse, int onError){
   }
 }
 
+void sqlite3MyliteAddColumnAutoIncrement(Parse *pParse){
+  Table *p;
+  Column *pCol;
+  p = pParse->pNewTable;
+  if( p==0 || NEVER(p->nCol<1) ) return;
+  pCol = &p->aCol[p->nCol-1];
+  pCol->colFlags |= COLFLAG_MYLITE_AUTOINC;
+}
+
 /*
 ** Scan the column type name zType (length nType) and return the
 ** associated affinity type.
@@ -1872,6 +1881,17 @@ void sqlite3AddPrimaryKey(
       }
     }
   }
+#ifdef SQLITE_ENABLE_MYLITE
+  if( nTerm==1
+   && pCol
+   && (pCol->colFlags & COLFLAG_MYLITE_AUTOINC)!=0
+  ){
+    autoInc = 1;
+    if( pCol->affinity==SQLITE_AFF_INTEGER && sortOrder!=SQLITE_SO_DESC ){
+      pCol->eCType = COLTYPE_INTEGER;
+    }
+  }
+#endif
   if( nTerm==1
    && pCol
    && pCol->eCType==COLTYPE_INTEGER
@@ -2680,6 +2700,22 @@ void sqlite3EndTable(
     p->tnum = db->init.newTnum;
     if( p->tnum==1 ) p->tabFlags |= TF_Readonly;
   }
+
+#ifdef SQLITE_ENABLE_MYLITE
+  if( pSelect==0 ){
+    int ii;
+    for(ii=0; ii<p->nCol; ii++){
+      if( (p->aCol[ii].colFlags & COLFLAG_MYLITE_AUTOINC)!=0 ){
+        if( p->iPKey!=ii ){
+          sqlite3ErrorMsg(pParse, "AUTOINCREMENT is only allowed on an "
+             "INTEGER PRIMARY KEY");
+          return;
+        }
+        p->tabFlags |= TF_Autoincrement;
+      }
+    }
+  }
+#endif
 
   /* Special processing for tables that include the STRICT keyword:
   **

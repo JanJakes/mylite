@@ -3343,10 +3343,11 @@ static int test_wordpress_like_crud(void) {
     failures += exec_sql(
         database,
         "CREATE TABLE wp_options_like ("
-        "option_id INTEGER PRIMARY KEY AUTO_INCREMENT,"
+        "option_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
         "option_name VARCHAR(191) NOT NULL DEFAULT '' COLLATE utf8mb4_unicode_ci,"
         "option_value LONGTEXT NOT NULL,"
         "autoload VARCHAR(20) NOT NULL DEFAULT 'yes',"
+        "PRIMARY KEY (option_id),"
         "UNIQUE KEY option_name (option_name),"
         "KEY autoload (autoload)"
         ") ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 "
@@ -3427,19 +3428,29 @@ static int test_wordpress_like_crud(void) {
             .context = "MySQL inline UNIQUE INDEX enforces duplicate slugs",
         }
     );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "CREATE TABLE bad_auto_increment ("
+                   "name TEXT AUTO_INCREMENT,"
+                   "PRIMARY KEY (name)"
+                   ")",
+            .message_fragment = "AUTOINCREMENT is only allowed",
+            .context = "MySQL AUTO_INCREMENT rejects non-integer primary keys",
+        }
+    );
 
     failures += exec_sql(
         database,
         "CREATE TABLE wp_posts_like ("
-        "ID INTEGER PRIMARY KEY AUTO_INCREMENT,"
-        "post_author INTEGER NOT NULL DEFAULT 0 CHECK(post_author >= 0),"
-        "post_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+        "post_author BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+        "post_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
         "post_title TEXT NOT NULL COLLATE utf8mb4_unicode_ci,"
-        "post_name TEXT NOT NULL DEFAULT '' COLLATE utf8mb4_unicode_ci "
-        "CHECK(CHAR_LENGTH(post_name) <= 200),"
-        "post_status TEXT NOT NULL DEFAULT 'publish' COLLATE utf8mb4_unicode_ci "
-        "CHECK(CHAR_LENGTH(post_status) <= 20),"
-        "comment_count INTEGER NOT NULL DEFAULT 0,"
+        "post_name VARCHAR(200) NOT NULL DEFAULT '' COLLATE utf8mb4_unicode_ci,"
+        "post_status VARCHAR(20) NOT NULL DEFAULT 'publish' COLLATE utf8mb4_unicode_ci,"
+        "comment_count BIGINT NOT NULL DEFAULT 0,"
+        "PRIMARY KEY (ID),"
         "KEY post_name (post_name),"
         "KEY post_status_date (post_status, post_date)"
         ")",
@@ -3448,11 +3459,11 @@ static int test_wordpress_like_crud(void) {
     failures += exec_sql(
         database,
         "CREATE TABLE wp_postmeta_like ("
-        "meta_id INTEGER PRIMARY KEY AUTO_INCREMENT,"
-        "post_id INTEGER NOT NULL DEFAULT 0 CHECK(post_id >= 0),"
-        "meta_key TEXT DEFAULT NULL COLLATE utf8mb4_unicode_ci "
-        "CHECK(meta_key IS NULL OR CHAR_LENGTH(meta_key) <= 255),"
-        "meta_value TEXT COLLATE utf8mb4_unicode_ci,"
+        "meta_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+        "post_id BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+        "meta_key VARCHAR(255) DEFAULT NULL COLLATE utf8mb4_unicode_ci,"
+        "meta_value LONGTEXT COLLATE utf8mb4_unicode_ci,"
+        "PRIMARY KEY (meta_id),"
         "KEY post_id (post_id),"
         "KEY meta_key (meta_key)"
         ")",

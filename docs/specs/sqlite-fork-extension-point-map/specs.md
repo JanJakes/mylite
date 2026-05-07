@@ -72,6 +72,9 @@ Implemented fork points:
 - direct SQLite parser and schema-builder admission for MySQL table-level
   `KEY`, `INDEX`, `UNIQUE KEY`, and `UNIQUE INDEX` declarations over simple
   column key parts, creating native SQLite indexes during `CREATE TABLE`
+- direct SQLite parser and schema-builder admission for MySQL column-level
+  `AUTO_INCREMENT`, including table-level primary-key promotion to native
+  rowid autoincrement storage for integer-affinity single-column keys
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before

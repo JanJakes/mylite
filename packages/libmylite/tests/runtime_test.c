@@ -60057,8 +60057,16 @@ static int test_string_dml_coercion_execution(void) {
         {"1", "16777215", "16777215", "u", "76"};
     static const char *const medium_lob_row1_update_values[] =
         {"1", "16777215", "16777215", "x", "79"};
+    static const char *const medium_lob_row1_replace_values[] =
+        {"1", "16777215", "16777215", "m", "6E"};
+    static const char *const medium_lob_row2_replace_values[] =
+        {"2", "16777215", "16777215", "o", "70"};
+    static const char *const medium_lob_row4_insert_set_values[] =
+        {"4", "16777215", "16777215", "e", "66"};
     static const char *const medium_text_utf8_columns[] = {"id", "t_len", "t_chars", "t_last_hex"};
     static const char *const medium_text_utf8_values[] = {"3", "16777214", "8388607", "C3A9"};
+    static const char *const medium_text_utf8_replace_values[] =
+        {"5", "16777214", "8388607", "C3A9"};
     static const char *const binary_columns[] = {"id", "fb_hex", "fb_len", "vb_hex", "vb_len"};
     static const char *const binary_insert_values[] = {"1", "610000", "3", "61", "1"};
     static const char *const binary_update_values[] = {"1", "787900", "3", "7879", "2"};
@@ -61034,6 +61042,54 @@ static int test_string_dml_coercion_execution(void) {
         "medium lob insert ignore clipped values"
     );
 
+    failures += prepare_sql(
+        database,
+        "INSERT INTO medium_lobs SET id = 4, "
+        "t = REPEAT('s', 16777216), b = REPEAT('t', 16777216)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict medium text insert set length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict medium text insert set length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM medium_lobs WHERE id = 4",
+        0,
+        "strict medium lob insert set no row"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO medium_lobs SET id = 4, "
+        "t = REPEAT('e', 16777216), b = REPEAT('f', 16777216)",
+        1,
+        "non-strict medium lob insert set"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "medium lob insert set warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 4",
+        medium_lob_columns,
+        5,
+        medium_lob_row4_insert_set_values,
+        1,
+        "medium lob insert set clipped values"
+    );
+
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
     failures += execute_sql_expect_done_affected(
         database,
@@ -61076,6 +61132,79 @@ static int test_string_dml_coercion_execution(void) {
         "medium lob update ignore clipped values"
     );
 
+    failures += prepare_sql(
+        database,
+        "REPLACE INTO medium_lobs VALUES "
+        "(1, REPEAT('i', 16777216), REPEAT('j', 16777216))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict medium text replace length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict medium text replace length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 1",
+        medium_lob_columns,
+        5,
+        medium_lob_row1_update_values,
+        1,
+        "strict medium lob replace preserves row"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO medium_lobs VALUES "
+        "(1, REPEAT('m', 16777216), REPEAT('n', 16777216))",
+        2,
+        "non-strict medium lob replace values"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "medium lob replace warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 1",
+        medium_lob_columns,
+        5,
+        medium_lob_row1_replace_values,
+        1,
+        "medium lob replace clipped values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO medium_lobs SET id = 2, "
+        "t = REPEAT('o', 16777216), b = REPEAT('p', 16777216)",
+        2,
+        "non-strict medium lob replace set"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "medium lob replace set warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 2",
+        medium_lob_columns,
+        5,
+        medium_lob_row2_replace_values,
+        1,
+        "medium lob replace set clipped values"
+    );
+
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
     failures += execute_sql_expect_done_affected(
         database,
@@ -61099,6 +61228,24 @@ static int test_string_dml_coercion_execution(void) {
         medium_text_utf8_values,
         1,
         "mediumtext multibyte clipped values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO medium_lobs SET id = 5, "
+        "t = REPEAT('\xC3\xA9', 8388608), b = ''",
+        1,
+        "non-strict mediumtext multibyte replace set"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "mediumtext replace set warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, CHAR_LENGTH(t) AS t_chars, "
+        "HEX(RIGHT(t, 1)) AS t_last_hex FROM medium_lobs WHERE id = 5",
+        medium_text_utf8_columns,
+        4,
+        medium_text_utf8_replace_values,
+        1,
+        "mediumtext replace set clipped values"
     );
 
     mylite_close(database);

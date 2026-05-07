@@ -14,16 +14,16 @@ Implemented scope:
 - public fork APIs to read and clear the most recent fork condition
 - `OP_MyliteTypeCheck` publishes MySQL condition codes and SQLSTATE values for
   the first strict assignment failures
-- SQLite-native `NOT NULL`, `UNIQUE`, `PRIMARY KEY`, and `CHECK` constraint
-  halts publish MySQL condition codes and SQLSTATE values through the same
-  bridge
+- SQLite-native `NOT NULL`, `UNIQUE`, `PRIMARY KEY`, `CHECK`, and immediate
+  foreign-key constraint failures publish MySQL condition codes and SQLSTATE
+  values through the same bridge
 - MyLite's SQLite-error mapping consumes the fork condition and appends a MySQL
   error condition instead of falling back to generic error 1105
 - direct fork and public MyLite tests cover out-of-range integer, over-length
   `VARCHAR`, invalid `DOUBLE`, over-length binary string, invalid decimal,
   out-of-range decimal, invalid temporal, datetime overflow, invalid `YEAR`,
   out-of-range `YEAR` assignment conditions, and native `NOT NULL`, `UNIQUE`,
-  `PRIMARY KEY`, and `CHECK` constraint conditions
+  `PRIMARY KEY`, `CHECK`, and foreign-key constraint conditions
 
 Deferred scope:
 
@@ -33,8 +33,8 @@ Deferred scope:
 - multiple warning records from one SQLite statement
 - SQLSTATE exposure through the public MyLite API and wire protocol
 - exact MySQL message rendering for native SQLite constraints
-- structured conditions for foreign-key, generated-column, parser, trigger,
-  and future fork-opcode errors
+- structured conditions for deferred foreign-key, generated-column, parser,
+  trigger, and future fork-opcode errors
 
 ## Sources
 
@@ -111,6 +111,8 @@ multiple warnings without aborting execution.
 | native `NOT NULL` constraint failure | 1048 | `23000` |
 | native `UNIQUE` or `PRIMARY KEY` constraint failure | 1062 | `23000` |
 | native `CHECK` constraint failure | 3819 | `HY000` |
+| native child-side foreign-key insert/update failure | 1452 | `23000` |
+| native parent-side foreign-key delete/update failure | 1451 | `23000` |
 | invalid internal MyLite descriptor | 1105 | `HY000` |
 
 MyLite still uses SQLite's error message as the public text in this slice. The
@@ -126,7 +128,7 @@ The executable tests must cover:
 - public MyLite diagnostics receiving covered MySQL error codes from fork
   type-check failures
 - direct fork condition readback after native `NOT NULL`, `UNIQUE`,
-  `PRIMARY KEY`, and `CHECK` constraint failures
+  `PRIMARY KEY`, `CHECK`, and immediate foreign-key constraint failures
 - existing type-coercion success and failure behavior continuing to pass
 
 ## Compatibility Status

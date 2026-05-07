@@ -469,6 +469,9 @@ struct Vdbe {
   int iStatement;         /* Statement number (or 0 if has no opened stmt) */
   i64 iCurrentTime;       /* Value of julianday('now') for this statement */
   i64 nFkConstraint;      /* Number of imm. FK constraints this VM */
+#ifdef SQLITE_ENABLE_MYLITE
+  u8 eMyliteFkConstraint; /* Last MyLite FK constraint side */
+#endif
   i64 nStmtDefCons;       /* Number of def. constraints when stmt started */
   i64 nStmtDefImmCons;    /* Number of def. imm constraints when stmt started */
   Mem *aMem;              /* The memory locations */

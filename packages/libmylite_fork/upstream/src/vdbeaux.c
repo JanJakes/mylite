@@ -2618,6 +2618,9 @@ void sqlite3VdbeRewind(Vdbe *p){
   p->minWriteFileFormat = 255;
   p->iStatement = 0;
   p->nFkConstraint = 0;
+#ifdef SQLITE_ENABLE_MYLITE
+  p->eMyliteFkConstraint = 0;
+#endif
 #ifdef VDBE_PROFILE
   for(i=0; i<p->nOp; i++){
     p->aOp[i].nExec = 0;
@@ -3285,6 +3288,11 @@ static SQLITE_NOINLINE int vdbeFkError(Vdbe *p){
   p->rc = SQLITE_CONSTRAINT_FOREIGNKEY;
   p->errorAction = OE_Abort;
   sqlite3VdbeError(p, "FOREIGN KEY constraint failed");
+#ifdef SQLITE_ENABLE_MYLITE
+  sqlite3MyliteSetConstraintCondition(
+    p->db, SQLITE_CONSTRAINT_FOREIGNKEY, p->eMyliteFkConstraint
+  );
+#endif
   if( (p->prepFlags & SQLITE_PREPARE_SAVESQL)==0 ) return SQLITE_ERROR;
   return SQLITE_CONSTRAINT_FOREIGNKEY;
 }

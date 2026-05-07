@@ -146,11 +146,13 @@ typedef struct VdbeOpList VdbeOpList;
 #define P4_TABLEREF   (-17) /* Like P4_TABLE, but reference counted */
 #define P4_SUBRTNSIG  (-18) /* P4 is a SubrtnSig pointer */
 
-/* Error message codes for OP_Halt */
+/* Constraint message and diagnostics codes for OP_Halt and OP_FkCounter */
 #define P5_ConstraintNotNull 1
 #define P5_ConstraintUnique  2
 #define P5_ConstraintCheck   3
 #define P5_ConstraintFK      4
+#define P5_ConstraintFKChild  5
+#define P5_ConstraintFKParent 6
 
 /*
 ** The Vdbe.aColName array contains 5n Mem structures, where n is the 

@@ -5428,6 +5428,7 @@ void sqlite3TableAffinity(Vdbe*, Table*, int);
 #ifdef SQLITE_ENABLE_MYLITE
 void sqlite3MyliteUpdateAffinity(Vdbe*, Table*, int, int*);
 void sqlite3MyliteSetCondition(sqlite3*, u8, u32, const char*);
+void sqlite3MyliteSetConstraintCondition(sqlite3*, int, u8);
 void sqlite3MyliteClearCondition(sqlite3*);
 #endif
 char sqlite3CompareAffinity(const Expr *pExpr, char aff2);

@@ -428,7 +428,6 @@ static void applyAffinity(
 }
 
 #ifdef SQLITE_ENABLE_MYLITE
-static void myliteSetConstraintCondition(sqlite3 *db, int rc, u8 eConstraint);
 static int myliteApplyColumnType(
   Mem *pMem,
   const Column *pCol,
@@ -781,28 +780,6 @@ static int myliteBitValueFromBytes(
 );
 static int myliteBitValueFits(u64 value, u8 nBits);
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
-
-static void myliteSetConstraintCondition(sqlite3 *db, int rc, u8 eConstraint){
-  const char *zSqlState = "23000";
-  u32 iMyErrno = 0;
-
-  if( (rc & 0xff)!=SQLITE_CONSTRAINT ) return;
-  switch( eConstraint ){
-    case P5_ConstraintNotNull:
-      iMyErrno = 1048;
-      break;
-    case P5_ConstraintUnique:
-      iMyErrno = 1062;
-      break;
-    case P5_ConstraintCheck:
-      iMyErrno = 3819;
-      zSqlState = "HY000";
-      break;
-    default:
-      return;
-  }
-  sqlite3MyliteSetCondition(db, MYLITE_CONDITION_ERROR, iMyErrno, zSqlState);
-}
 
 static int myliteApplyColumnType(
   Mem *pMem,
@@ -3684,10 +3661,10 @@ case OP_Halt: {
   }
   p->rc = pOp->p1;
   p->errorAction = (u8)pOp->p2;
-  assert( pOp->p5<=4 );
+  assert( pOp->p5<=P5_ConstraintFKParent );
   if( p->rc ){
 #ifdef SQLITE_ENABLE_MYLITE
-    myliteSetConstraintCondition(db, p->rc, pOp->p5);
+    sqlite3MyliteSetConstraintCondition(db, p->rc, pOp->p5);
 #endif
     if( pOp->p3>0 && pOp->p4type==P4_NOTUSED ){
       const char *zErr;
@@ -3697,11 +3674,19 @@ case OP_Halt: {
     }else if( pOp->p5 ){
       static const char * const azType[] = { "NOT NULL", "UNIQUE", "CHECK",
                                              "FOREIGN KEY" };
+      u8 eConstraint = pOp->p5;
+      if( eConstraint==P5_ConstraintFKChild
+       || eConstraint==P5_ConstraintFKParent
+      ){
+        eConstraint = P5_ConstraintFK;
+      }
       testcase( pOp->p5==1 );
       testcase( pOp->p5==2 );
       testcase( pOp->p5==3 );
       testcase( pOp->p5==4 );
-      sqlite3VdbeError(p, "%s constraint failed", azType[pOp->p5-1]);
+      testcase( pOp->p5==5 );
+      testcase( pOp->p5==6 );
+      sqlite3VdbeError(p, "%s constraint failed", azType[eConstraint-1]);
       if( pOp->p4.z ){
         p->zErrMsg = sqlite3MPrintf(db, "%z: %s", p->zErrMsg, pOp->p4.z);
       }
@@ -10079,15 +10064,26 @@ case OP_Param: {           /* out2 */
 #endif /* #ifndef SQLITE_OMIT_TRIGGER */
 
 #ifndef SQLITE_OMIT_FOREIGN_KEY
-/* Opcode: FkCounter P1 P2 * * *
+/* Opcode: FkCounter P1 P2 * * P5
 ** Synopsis: fkctr[P1]+=P2
 **
 ** Increment a "constraint counter" by P2 (P2 may be negative or positive).
 ** If P1 is non-zero, the database constraint counter is incremented
 ** (deferred foreign key constraints). Otherwise, if P1 is zero, the
 ** statement counter is incremented (immediate foreign key constraints).
+**
+** P5 is ignored by SQLite. MyLite uses it to retain enough immediate
+** foreign-key context to publish child-side and parent-side MySQL conditions.
 */
 case OP_FkCounter: {
+#ifdef SQLITE_ENABLE_MYLITE
+  if( pOp->p2>0
+   && (pOp->p5==P5_ConstraintFKChild
+    || pOp->p5==P5_ConstraintFKParent)
+  ){
+    p->eMyliteFkConstraint = pOp->p5;
+  }
+#endif
   if( pOp->p1 ){
     db->nDeferredCons += pOp->p2;
   }else{

@@ -6,3 +6,7 @@ ERROR 1062 (23000) at line 29: Duplicate entry 'home' for key 'constraint_update
 ERROR 1062 (23000) at line 30: Duplicate entry '1' for key 'constraint_update_like.PRIMARY'
 ERROR 3819 (HY000) at line 41: Check constraint 'qty_positive' is violated.
 ERROR 3819 (HY000) at line 42: Check constraint 'qty_positive' is violated.
+ERROR 1452 (23000) at line 56: Cannot add or update a child row: a foreign key constraint fails (`mylite_constraint_diagnostics`.`fk_child_like`, CONSTRAINT `fk_parent` FOREIGN KEY (`parent_id`) REFERENCES `fk_parent_like` (`id`))
+ERROR 1452 (23000) at line 59: Cannot add or update a child row: a foreign key constraint fails (`mylite_constraint_diagnostics`.`fk_child_like`, CONSTRAINT `fk_parent` FOREIGN KEY (`parent_id`) REFERENCES `fk_parent_like` (`id`))
+ERROR 1451 (23000) at line 60: Cannot delete or update a parent row: a foreign key constraint fails (`mylite_constraint_diagnostics`.`fk_child_like`, CONSTRAINT `fk_parent` FOREIGN KEY (`parent_id`) REFERENCES `fk_parent_like` (`id`))
+ERROR 1451 (23000) at line 61: Cannot delete or update a parent row: a foreign key constraint fails (`mylite_constraint_diagnostics`.`fk_child_like`, CONSTRAINT `fk_parent` FOREIGN KEY (`parent_id`) REFERENCES `fk_parent_like` (`id`))

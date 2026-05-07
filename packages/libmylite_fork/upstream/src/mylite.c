@@ -154,6 +154,34 @@ void sqlite3MyliteSetCondition(
   db->myliteCondition.zSqlState[5] = 0;
 }
 
+void sqlite3MyliteSetConstraintCondition(sqlite3 *db, int rc, u8 eConstraint){
+  const char *zSqlState = "23000";
+  u32 iMyErrno = 0;
+
+  if( (rc & 0xff)!=SQLITE_CONSTRAINT ) return;
+  switch( eConstraint ){
+    case P5_ConstraintNotNull:
+      iMyErrno = 1048;
+      break;
+    case P5_ConstraintUnique:
+      iMyErrno = 1062;
+      break;
+    case P5_ConstraintCheck:
+      iMyErrno = 3819;
+      zSqlState = "HY000";
+      break;
+    case P5_ConstraintFKChild:
+      iMyErrno = 1452;
+      break;
+    case P5_ConstraintFKParent:
+      iMyErrno = 1451;
+      break;
+    default:
+      return;
+  }
+  sqlite3MyliteSetCondition(db, MYLITE_CONDITION_ERROR, iMyErrno, zSqlState);
+}
+
 void sqlite3MyliteClearCondition(sqlite3 *db){
   if( db==0 ) return;
   db->myliteCondition.eLevel = MYLITE_CONDITION_NONE;

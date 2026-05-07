@@ -356,6 +356,8 @@ static int test_native_constraint_diagnostics(void) {
     enum {
         not_null_error = 1048,
         duplicate_error = 1062,
+        fk_parent_error = 1451,
+        fk_child_error = 1452,
         check_error = 3819,
     };
 
@@ -567,6 +569,127 @@ static int test_native_constraint_diagnostics(void) {
         "SELECT COUNT(*) FROM check_diag WHERE qty = 1",
         1,
         "failed native CHECK writes preserve stored rows"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear CHECK condition before foreign key diagnostics"
+    );
+    failures += exec_sql(database, "PRAGMA foreign_keys = ON", "enable direct foreign keys");
+    failures += exec_sql(
+        database,
+        "CREATE TABLE fk_parent_diag(id INT PRIMARY KEY)",
+        "create direct foreign key parent fixture"
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE fk_child_diag("
+        "id INT PRIMARY KEY,"
+        "parent_id INT,"
+        "CONSTRAINT fk_parent FOREIGN KEY(parent_id) REFERENCES fk_parent_diag(id)"
+        ")",
+        "create direct foreign key child fixture"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO fk_child_diag VALUES (1, 9)",
+            .message_fragment = "FOREIGN KEY constraint failed",
+            .context = "direct child foreign key insert fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = fk_child_error,
+            .sqlstate = "23000",
+            .context = "direct child foreign key insert publishes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear child insert foreign key condition"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO fk_parent_diag VALUES (1), (2)",
+        "insert direct foreign key parent seed"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO fk_child_diag VALUES (2, 1)",
+        "insert direct foreign key child seed"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "UPDATE fk_child_diag SET parent_id = 8 WHERE id = 2",
+            .message_fragment = "FOREIGN KEY constraint failed",
+            .context = "direct child foreign key update fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = fk_child_error,
+            .sqlstate = "23000",
+            .context = "direct child foreign key update publishes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear child update foreign key condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "DELETE FROM fk_parent_diag WHERE id = 1",
+            .message_fragment = "FOREIGN KEY constraint failed",
+            .context = "direct parent foreign key delete fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = fk_parent_error,
+            .sqlstate = "23000",
+            .context = "direct parent foreign key delete publishes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear parent delete foreign key condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "UPDATE fk_parent_diag SET id = 3 WHERE id = 1",
+            .message_fragment = "FOREIGN KEY constraint failed",
+            .context = "direct parent foreign key update fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = fk_parent_error,
+            .sqlstate = "23000",
+            .context = "direct parent foreign key update publishes MySQL condition",
+        }
+    );
+    failures += expect_int64(
+        database,
+        "SELECT COUNT(*) FROM fk_child_diag WHERE parent_id = 1",
+        1,
+        "failed native foreign key writes preserve child rows"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT COUNT(*) FROM fk_parent_diag",
+        2,
+        "failed native foreign key writes preserve parent rows"
     );
 
     sqlite3_close(database);

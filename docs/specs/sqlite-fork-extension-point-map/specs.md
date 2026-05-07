@@ -38,7 +38,7 @@ Implemented fork points:
 - update-mask-aware descriptor checking for SQLite `UPDATE` record creation
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
 - structured fork diagnostics for native `NOT NULL`, `UNIQUE`, `PRIMARY KEY`,
-  and `CHECK` VDBE constraint halts
+  `CHECK`, and immediate foreign-key constraint failures
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before
@@ -220,6 +220,8 @@ Required fork direction:
 - native constraint halts report structured MySQL conditions where SQLite's
   constraint class maps cleanly to MySQL; implemented first for `NOT NULL`,
   `UNIQUE`, `PRIMARY KEY`, and `CHECK`
+- foreign-key counter bytecode carries child-side or parent-side context so the
+  statement-level immediate FK error can publish MySQL's `1452` or `1451`
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
 

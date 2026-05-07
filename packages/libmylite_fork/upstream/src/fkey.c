@@ -447,12 +447,13 @@ static void fkLookupParent(
     ** generated for will not open a statement transaction.  */
     assert( nIncr==1 );
     sqlite3HaltConstraint(pParse, SQLITE_CONSTRAINT_FOREIGNKEY,
-        OE_Abort, 0, P4_STATIC, P5_ConstraintFK);
+        OE_Abort, 0, P4_STATIC, P5_ConstraintFKChild);
   }else{
     if( nIncr>0 && pFKey->isDeferred==0 ){
       sqlite3MayAbort(pParse);
     }
     sqlite3VdbeAddOp2(v, OP_FkCounter, pFKey->isDeferred, nIncr);
+    if( nIncr>0 ) sqlite3VdbeChangeP5(v, P5_ConstraintFKChild);
   }
 
   sqlite3VdbeResolveLabel(v, iOk);
@@ -647,6 +648,7 @@ static void fkScanChildren(
   if( pParse->nErr==0 ){
     pWInfo = sqlite3WhereBegin(pParse, pSrc, pWhere, 0, 0, 0, 0, 0);
     sqlite3VdbeAddOp2(v, OP_FkCounter, pFKey->isDeferred, nIncr);
+    if( nIncr>0 ) sqlite3VdbeChangeP5(v, P5_ConstraintFKParent);
     if( pWInfo ){
       sqlite3WhereEnd(pWInfo);
     }

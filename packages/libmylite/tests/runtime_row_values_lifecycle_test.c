@@ -49,6 +49,7 @@ struct expected_sql_error {
 };
 
 static int test_insert_select_persistence_rename_and_drop(void);
+static int test_schema_qualified_row_access(void);
 static int test_failure_diagnostics_and_unwinding(void);
 static int test_integer_ranges_and_independent_handles(void);
 static int create_numbers_table(mylite_db *database);
@@ -94,6 +95,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_insert_select_persistence_rename_and_drop();
+    failures += test_schema_qualified_row_access();
     failures += test_failure_diagnostics_and_unwinding();
     failures += test_integer_ranges_and_independent_handles();
 
@@ -237,6 +239,21 @@ static int test_insert_select_persistence_rename_and_drop(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(database, "SELECT i, i FROM numbers", &result);
+    failures +=
+        expect_size(mylite_result_column_count(result), 2U, "duplicate projection column count");
+    failures +=
+        expect_text(mylite_result_column_name(result, 0U), "i", "duplicate projection column 1");
+    failures +=
+        expect_text(mylite_result_column_name(result, 1U), "i", "duplicate projection column 2");
+    failures += expect_size(mylite_result_row_count(result), 4U, "duplicate projection row count");
+    failures += expect_select_value(result, 0U, 0U, "1", "duplicate projection row 1 col 1");
+    failures += expect_select_value(result, 0U, 1U, "1", "duplicate projection row 1 col 2");
+    failures += expect_select_value(result, 3U, 0U, "10", "duplicate projection row 4 col 1");
+    failures += expect_select_value(result, 3U, 1U, "10", "duplicate projection row 4 col 2");
+    mylite_result_free(result);
+    result = NULL;
+
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += table_exists(sqlite, table.physical_name, &has_physical_table);
@@ -304,6 +321,58 @@ static int test_insert_select_persistence_rename_and_drop(void) {
         failures += table_exists(sqlite, table.physical_name, &has_physical_table);
     }
     failures += expect_int(has_physical_table, 0, "drop removes physical table");
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_schema_qualified_row_access(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "qualified") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open qualified file");
+    failures += seed_schema(database, "app");
+    failures += execute_ok(
+        database,
+        "CREATE TABLE app.qualified_numbers (id INT, nn INT NOT NULL)",
+        &result
+    );
+    failures += expect_dml_result(result, 0, "schema-qualified CREATE TABLE result");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "INSERT INTO app.qualified_numbers VALUES (1, 2)", &result);
+    failures += expect_dml_result(result, 1, "schema-qualified INSERT result");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT id, nn FROM app.qualified_numbers", &result);
+    failures +=
+        expect_size(mylite_result_column_count(result), 2U, "schema-qualified SELECT column count");
+    failures += expect_text(
+        mylite_result_column_name(result, 0U),
+        "id",
+        "schema-qualified SELECT column id"
+    );
+    failures += expect_text(
+        mylite_result_column_name(result, 1U),
+        "nn",
+        "schema-qualified SELECT column nn"
+    );
+    failures +=
+        expect_size(mylite_result_row_count(result), 1U, "schema-qualified SELECT row count");
+    failures += expect_select_value(result, 0U, 0U, "1", "schema-qualified SELECT id");
+    failures += expect_select_value(result, 0U, 1U, "2", "schema-qualified SELECT nn");
+    mylite_result_free(result);
 
     mylite_close(database);
     remove_related_files(path);
@@ -458,6 +527,15 @@ static int test_failure_diagnostics_and_unwinding(void) {
     failures += execute_error(
         database,
         "SELECT numbers.i FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only unqualified table columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT i + 1 FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

@@ -184,6 +184,20 @@ expect_output_with_headers \
     "SELECT i, nn FROM numbers;" \
     "$DATABASE"
 
+expected_duplicate_projection=$(cat <<'EOF'
+i	i
+1	1
+7	7
+8	8
+10	10
+EOF
+)
+expect_output_with_headers \
+    "duplicate select projection labels and rows" \
+    "$expected_duplicate_projection" \
+    "SELECT i, i FROM numbers;" \
+    "$DATABASE"
+
 expect_output \
     "range boundaries insert status" \
     "4	0" \

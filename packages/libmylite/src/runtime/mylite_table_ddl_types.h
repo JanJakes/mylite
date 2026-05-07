@@ -88,6 +88,9 @@ struct mylite_create_table_plan {
     char *table_name;
     char *source_schema_name;
     char *source_table_name;
+    char *select_sql_text;
+    struct mylite_sql_ast select_ast;
+    const struct mylite_sql_ast_node *select_statement;
     struct mylite_create_table_options options;
     struct mylite_create_table_column *columns;
     size_t column_count;
@@ -98,7 +101,9 @@ struct mylite_create_table_plan {
     struct mylite_create_table_foreign_key *foreign_keys;
     size_t foreign_key_count;
     bool like;
+    bool select;
     bool temporary;
+    int64_t selected_row_count;
 };
 
 struct mylite_create_table_column_index_status {

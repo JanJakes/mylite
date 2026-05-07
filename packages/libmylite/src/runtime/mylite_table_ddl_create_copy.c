@@ -1,6 +1,7 @@
 #include "mylite_table_ddl.h"
 
 #include "mylite_span.h"
+#include "mylite_statement_ast.h"
 #include "mylite_table_ddl_create_column_copy.h"
 
 #include <stdio.h>
@@ -15,6 +16,11 @@ static int copy_create_table_elements(
 static int copy_create_table_options(
     const struct mylite_sql_ast_node *statement,
     struct mylite_create_table_options *options
+);
+
+static int copy_create_table_select(
+    const struct mylite_sql_ast_node *select_statement,
+    struct mylite_create_table_plan *plan
 );
 
 static int add_create_table_index(
@@ -103,11 +109,68 @@ int mylite_table_ddl_copy_create_table_statement(
             &plan->source_table_name
         );
     }
+    if (statement->create_table_select) {
+        const struct mylite_sql_ast_node *select_statement = NULL;
+        const struct mylite_sql_ast_node *options = NULL;
+
+        plan->select = true;
+        if (elements != NULL && elements->kind == MYLITE_SQL_AST_COLUMN_DEFINITION_LIST) {
+            select_statement = elements->next_sibling;
+        } else {
+            select_statement = elements;
+            elements = NULL;
+        }
+        if (select_statement != NULL && select_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+            return MYLITE_UNSUPPORTED;
+        }
+        options = select_statement == NULL ? NULL : select_statement->next_sibling;
+        status = copy_create_table_select(select_statement, plan);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (elements != NULL) {
+            status = copy_create_table_elements(elements, plan);
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return copy_create_table_options(options, &plan->options);
+    }
     status = copy_create_table_elements(elements, plan);
     if (status != MYLITE_OK) {
         return status;
     }
     return copy_create_table_options(statement, &plan->options);
+}
+
+static int copy_create_table_select(
+    const struct mylite_sql_ast_node *select_statement,
+    struct mylite_create_table_plan *plan
+) {
+    struct mylite_sql_ast_node *select_copy = NULL;
+
+    if (select_statement == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    plan->select_sql_text =
+        mylite_copy_span_text(select_statement->span.text, select_statement->span.length);
+    if (plan->select_sql_text == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    if (mylite_statement_ast_clone_subtree(
+            &plan->select_ast,
+            select_statement,
+            select_statement->span.text,
+            plan->select_sql_text,
+            select_statement->span.length,
+            &select_copy
+        ) != MYLITE_OK) {
+        return MYLITE_NOMEM;
+    }
+    plan->select_statement = select_copy;
+    return MYLITE_OK;
 }
 
 int mylite_table_ddl_copy_create_table_name(

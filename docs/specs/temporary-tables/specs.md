@@ -21,7 +21,8 @@ In scope:
 
 Out of scope:
 
-- CTAS forms
+- broad CTAS forms beyond the first no-definition
+  `CREATE TEMPORARY TABLE ... SELECT` slice
 - temporary views
 - temporary table privilege checks
 - implicit-commit differences between temporary and persistent DDL

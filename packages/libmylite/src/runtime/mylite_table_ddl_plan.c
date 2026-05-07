@@ -13,6 +13,8 @@ void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *
     free(plan->table_name);
     free(plan->source_schema_name);
     free(plan->source_table_name);
+    free(plan->select_sql_text);
+    mylite_sql_ast_deinit(&plan->select_ast);
     create_table_options_deinit(&plan->options);
     for (size_t index = 0U; index < plan->column_count; ++index) {
         mylite_table_ddl_create_table_column_deinit(&plan->columns[index]);

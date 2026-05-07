@@ -34,7 +34,9 @@ Out of scope:
 - row insertion, default expression evaluation, auto-increment allocation, and
   write-time constraint enforcement
 - standalone `CREATE INDEX`
-- `CREATE TABLE ... SELECT`
+- broad `CREATE TABLE ... SELECT` definition merging; the first no-definition
+  CTAS slice is specified separately in
+  [CREATE TABLE ... SELECT](../create-table-select/specs.md)
 - temporary-table transaction exceptions
 - full engine-specific validation, prefix-length suitability, functional key
   parts, generated-column runtime evaluation, executable references,

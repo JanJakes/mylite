@@ -68,6 +68,14 @@ int mylite_table_ddl_execute_create_table_statement(
             if_not_exists
         );
     }
+    if (plan->select) {
+        return mylite_table_ddl_execute_create_table_select_statement(
+            database,
+            selected_schema,
+            plan,
+            if_not_exists
+        );
+    }
 
     if (schema_name == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "No database selected");

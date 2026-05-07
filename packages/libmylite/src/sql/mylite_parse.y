@@ -2754,6 +2754,15 @@ create_table_statement(A) ::= CREATE(T) opt_temporary(U) TABLE opt_if_not_exists
 create_table_statement(A) ::= CREATE(T) opt_temporary(U) TABLE opt_if_not_exists(B) table_name(C) LIKE table_name(D). {
     A = mylite_sql_parser_make_create_table_like_statement(state, T, U, B, C, D);
 }
+create_table_statement(A) ::= CREATE(T) opt_temporary(U) TABLE opt_if_not_exists(B) table_name(C) table_option_list(E) opt_as select_statement(S). {
+    A = mylite_sql_parser_make_create_table_select_statement(state, T, U, B, C, NULL, E, S);
+}
+create_table_statement(A) ::= CREATE(T) opt_temporary(U) TABLE opt_if_not_exists(B) table_name(C) LPAREN table_element_list(D) RPAREN table_option_list(E) opt_as select_statement(S). {
+    A = mylite_sql_parser_make_create_table_select_statement(state, T, U, B, C, D, E, S);
+}
+
+opt_as ::= .
+opt_as ::= AS.
 
 create_index_statement(A) ::= CREATE(T) index_class(C) INDEX identifier(B) opt_index_type(P)
         ON table_name(D) LPAREN key_part_list(E) RPAREN index_option_list(F)

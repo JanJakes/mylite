@@ -354,7 +354,12 @@ level application surfaces.
 43. [x] `CREATE TABLE ... LIKE`: metadata cloning, indexes, defaults, generated
        columns, temporary tables, and atomicity.
 44. [ ] `CREATE TABLE ... SELECT` and `INSERT ... SELECT`: type inference,
-       metadata, defaults, locking, warnings, and atomicity.
+       metadata, defaults, locking, warnings, and atomicity. The first
+       [CREATE TABLE ... SELECT](../create-table-select/specs.md) slice
+       implements CTAS without predeclared definitions, including row
+       materialization, source-column metadata, duplicate-column diagnostics,
+       temporary destinations, affected rows, and implicit commits; explicit
+       definition merging and broader `INSERT ... SELECT` remain unfinished.
 45. [ ] `CREATE TEMPORARY TABLE`: session lifecycle, name shadowing, metadata,
        and cleanup.
 46. [ ] Views: `CREATE VIEW`, `ALTER VIEW`, `DROP VIEW`, `SHOW CREATE VIEW`,

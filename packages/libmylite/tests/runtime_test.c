@@ -112,6 +112,7 @@ enum {
     mysql_warning_table_exists = 1050,
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
+    mysql_warning_duplicate_field = 1060,
     mysql_warning_duplicate_entry = 1062,
     mysql_warning_multiple_primary = 1068,
     mysql_warning_key_column_missing = 1072,
@@ -464,6 +465,8 @@ static int test_window_function_placeholder_execution(void);
 static int test_create_table_base_execution(void);
 
 static int test_create_table_like_execution(void);
+
+static int test_create_table_select_execution(void);
 
 static int test_create_table_prepare_has_no_side_effects(void);
 
@@ -984,6 +987,7 @@ int main(void) {
     failures += test_window_function_placeholder_execution();
     failures += test_create_table_base_execution();
     failures += test_create_table_like_execution();
+    failures += test_create_table_select_execution();
     failures += test_create_table_prepare_has_no_side_effects();
     failures += test_drop_table_base_execution();
     failures += test_temporary_table_execution();
@@ -35209,6 +35213,297 @@ static int test_create_table_like_execution(void) {
         one_count,
         1,
         "create table like leaves later autocommit work"
+    );
+
+    mylite_close(database);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_create_table_select_execution(void) {
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const count_columns[] = {"c"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const one_count[] = {"1"};
+    static const char *const two_count[] = {"2"};
+    static const char *const source_columns[] = {"id", "n", "v"};
+    static const char *const source_values[] = {
+        "2",
+        "1",
+        "b",
+        "3",
+        "5",
+        "c",
+    };
+    static const char *const column_columns[] = {
+        "COLUMN_NAME",
+        "COLUMN_DEFAULT",
+        "IS_NULLABLE",
+        "DATA_TYPE",
+        "COLUMN_TYPE",
+        "COLUMN_KEY",
+        "EXTRA",
+        "COLUMN_COMMENT",
+    };
+    static const char *const source_column_values[] = {
+        "id",  "0", "NO", "int", "int", "",  "",    "",        "n",           "7", "NO", "int",
+        "int", "",  "",   "",    "v",   "x", "YES", "varchar", "varchar(20)", "",  "",   "v col",
+    };
+    static const char *const expr_columns[] = {"a", "b"};
+    static const char *const expr_values[] = {"1", "x"};
+    static const char *const expr_column_values[] = {
+        "a",
+        "0",
+        "NO",
+        "int",
+        "int",
+        "b",
+        "",
+        "NO",
+        "varchar",
+        "varchar(1)",
+    };
+    static const char *const temp_column_values[] = {"id", "int", "NO", "", "0", ""};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open create table select db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_create_select", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_create_select", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE src ("
+        "id INT NOT NULL AUTO_INCREMENT, "
+        "n INT NOT NULL DEFAULT 7, "
+        "v VARCHAR(20) COLLATE utf8mb4_bin DEFAULT 'x' COMMENT 'v col', "
+        "d DECIMAL(8,2) DEFAULT 1.25, "
+        "PRIMARY KEY (id), "
+        "KEY n_idx (n)) AUTO_INCREMENT=100",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO src (id, n, v, d) VALUES "
+        "(1, 0, 'a', 1.25), (2, 1, 'b', 2.50), (3, 5, 'c', 3.75)",
+        MYLITE_DONE
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE TABLE ctas_from_source AS "
+        "SELECT id, n, v FROM src WHERE n > 0 ORDER BY n",
+        2,
+        "create table select affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, n, v FROM ctas_from_source ORDER BY n",
+        source_columns,
+        3,
+        source_values,
+        2,
+        "create table select copied rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, COLUMN_TYPE, "
+        "COLUMN_KEY, EXTRA, COLUMN_COMMENT FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_create_select' AND TABLE_NAME = 'ctas_from_source' "
+        "ORDER BY ORDINAL_POSITION",
+        column_columns,
+        8,
+        source_column_values,
+        3,
+        "create table select source column metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = 'mylite_create_select' AND TABLE_NAME = 'ctas_from_source'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "create table select does not copy indexes"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE TABLE ctas_expr AS SELECT 1 AS a, 'x' AS b FROM DUAL",
+        1,
+        "create table select expression affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT a, b FROM ctas_expr",
+        expr_columns,
+        2,
+        expr_values,
+        1,
+        "create table select expression rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, COLUMN_TYPE "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_create_select' AND TABLE_NAME = 'ctas_expr' "
+        "ORDER BY ORDINAL_POSITION",
+        (
+            const char *const[]
+        ){"COLUMN_NAME", "COLUMN_DEFAULT", "IS_NULLABLE", "DATA_TYPE", "COLUMN_TYPE"},
+        5,
+        expr_column_values,
+        2,
+        "create table select expression metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TEMPORARY TABLE temp_ctas AS SELECT id, v FROM src WHERE id = 2",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = 'mylite_create_select' AND TABLE_NAME = 'temp_ctas'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "create temporary table select hidden from information schema tables"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW COLUMNS FROM temp_ctas WHERE Field = 'id'",
+        (const char *const[]){"Field", "Type", "Null", "Key", "Default", "Extra"},
+        6,
+        temp_column_values,
+        1,
+        "create temporary table select exposes temporary columns"
+    );
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE IF NOT EXISTS ctas_from_source AS SELECT 99 AS z FROM DUAL",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_DONE,
+        "create table select if not exists skips existing target"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "create table select if not exists warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_table_exists,
+        "create table select if not exists warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_column_row(database, "ctas_from_source", "z");
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE IF NOT EXISTS ctas_from_source AS SELECT * FROM missing_ctas_source",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create table select validates source before if not exists"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "missing_ctas_source",
+        "create table select validates source before if not exists"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE duplicate_ctas AS SELECT id, id FROM src",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create table select rejects duplicate columns"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Duplicate column name 'id'",
+        "create table select duplicate column error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_field,
+        "create table select duplicate column code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "duplicate_ctas");
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE explicit_ctas (id INT) AS SELECT id FROM src",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create table select explicit definitions unsupported"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "explicit definitions",
+        "create table select explicit definitions error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "explicit_ctas");
+
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO src (id, n, v, d) VALUES (9, 9, 'tx', 9.00)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE TABLE tx_ctas AS SELECT id FROM src WHERE id = 9",
+        1,
+        "create table select commits transaction before create"
+    );
+    failures += execute_sql(database, "INSERT INTO tx_ctas VALUES (10)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM src WHERE id = 9",
+        count_columns,
+        1,
+        one_count,
+        1,
+        "create table select commits earlier transaction work"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM tx_ctas",
+        count_columns,
+        1,
+        two_count,
+        1,
+        "create table select leaves later autocommit work"
     );
 
     mylite_close(database);

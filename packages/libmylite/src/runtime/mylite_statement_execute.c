@@ -123,6 +123,9 @@ int mylite_statement_execute_custom_with_callbacks(
             &stmt->create_table,
             stmt->if_not_exists
         );
+        if (status == MYLITE_OK && stmt->create_table.select) {
+            stmt->affected_rows = stmt->create_table.selected_row_count;
+        }
         break;
     case MYLITE_STMT_DROP_TABLE:
         status = mylite_table_ddl_execute_drop_table_statement(

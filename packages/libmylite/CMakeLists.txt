@@ -283,6 +283,7 @@ add_library(mylite STATIC
   src/runtime/mylite_table_ddl_index_validate.c
   src/runtime/mylite_table_ddl_index_warnings.c
   src/runtime/mylite_table_ddl_like.c
+  src/runtime/mylite_table_ddl_select.c
   src/runtime/mylite_table_ddl_plan.c
   src/runtime/mylite_table_ddl_plan_lookup.c
   src/runtime/mylite_table_ddl_rename.c

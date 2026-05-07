@@ -34,6 +34,8 @@ static int test_create_table_base_execution_syntax(void);
 
 static int test_create_table_like_syntax(void);
 
+static int test_create_table_select_syntax(void);
+
 static int test_create_drop_index_syntax(void);
 
 static int test_alter_table_column_operations_syntax(void);
@@ -401,6 +403,7 @@ int main(void) {
     failures += test_create_table_foreign_key_syntax();
     failures += test_create_table_base_execution_syntax();
     failures += test_create_table_like_syntax();
+    failures += test_create_table_select_syntax();
     failures += test_create_drop_index_syntax();
     failures += test_alter_table_column_operations_syntax();
     failures += test_alter_table_key_constraint_operations_syntax();
@@ -3773,6 +3776,86 @@ static int test_create_table_like_syntax(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_select_syntax(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE IF NOT EXISTS app.clone AS SELECT id, name FROM src WHERE id > 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "create table select statement"
+    );
+    if (!statement->create_table_select) {
+        fprintf(stderr, "CREATE TABLE ... SELECT did not record select mode\n");
+        failures = 1;
+    }
+    failures += expect_node(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "create table select target"
+    );
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "create table select query"
+    );
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "create table select option list"
+    );
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_IF_NOT_EXISTS,
+        "create table select if not exists"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TEMPORARY TABLE tmp_ctas DEFAULT CHARSET utf8mb4 "
+        "SELECT 1 AS id FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    if (!statement->create_table_select || !statement->create_table_temporary) {
+        fprintf(stderr, "CREATE TEMPORARY TABLE ... SELECT did not record flags\n");
+        failures = 1;
+    }
+    failures += expect_span_text(child_at(statement, 0U), "tmp_ctas", "temporary ctas target");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "temporary ctas query"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE typed_ctas (id INT) AS SELECT 1 AS id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_statement = child_at(statement, 2U);
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_COLUMN_DEFINITION_LIST,
+        "typed ctas element list"
+    );
+    failures += expect_node(select_statement, MYLITE_SQL_AST_SELECT_STATEMENT, "typed ctas query");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

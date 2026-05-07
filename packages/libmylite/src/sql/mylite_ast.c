@@ -460,6 +460,14 @@ void mylite_sql_ast_node_set_create_table_like(struct mylite_sql_ast_node *node)
     node->create_table_like = true;
 }
 
+void mylite_sql_ast_node_set_create_table_select(struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->create_table_select = true;
+}
+
 void mylite_sql_ast_node_set_create_table_temporary(struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return;

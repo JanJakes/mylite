@@ -8,6 +8,7 @@
 #include "sqlite3.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -30,6 +31,11 @@ enum mylite_dml_numeric_problem {
     MYLITE_DML_NUMERIC_PROBLEM_OUT_OF_RANGE,
 };
 
+enum {
+    mylite_dml_mediumint_signed_bits = 23,
+    mylite_dml_mediumint_unsigned_bits = 24,
+};
+
 struct mylite_dml_numeric_text_parse {
     double value;
     bool saw_number;
@@ -44,6 +50,13 @@ struct mylite_dml_numeric_output {
     char *text_value;
     size_t text_length;
     bool replace;
+};
+
+struct mylite_dml_integer_range {
+    int64_t minimum;
+    int64_t maximum;
+    bool has_maximum;
+    bool available;
 };
 
 static int coerce_insert_numeric_value(
@@ -71,6 +84,28 @@ static enum mylite_dml_numeric_kind numeric_kind_for_column(
 static bool column_type_is_unsigned(const struct mylite_insert_table_column *column);
 
 static bool column_data_type_is_signed_integer(const char *data_type);
+
+static struct mylite_dml_integer_range integer_range_for_column(
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_kind kind
+);
+
+static enum mylite_dml_numeric_problem integer_problem_for_range(
+    bool out_of_range,
+    enum mylite_dml_numeric_problem problem
+);
+
+static struct mylite_dml_integer_range signed_integer_range_for_type(const char *data_type);
+
+static struct mylite_dml_integer_range unsigned_integer_range_for_type(const char *data_type);
+
+static struct mylite_dml_integer_range integer_range_with_bounds(int64_t minimum, int64_t maximum);
+
+static struct mylite_dml_integer_range integer_range_with_minimum(int64_t minimum);
+
+static bool integer_range_exceeded(struct mylite_dml_integer_range range, int64_t value);
+
+static int64_t clamp_integer_to_range(struct mylite_dml_integer_range range, int64_t value);
 
 static int coerce_numeric_double(
     mylite_db *database,
@@ -495,25 +530,25 @@ static int coerce_integer_double(
     bool ignore,
     struct mylite_dml_numeric_output *out_output
 ) {
-    int status = handle_numeric_problem(database, column, problem, row_number, ignore);
+    struct mylite_dml_integer_range range = integer_range_for_column(column, kind);
     int64_t rounded = 0;
+    bool out_of_range = false;
+    int status = MYLITE_OK;
 
+    rounded = round_half_away_to_int64(value);
+    out_of_range = integer_range_exceeded(range, rounded);
+    status = handle_numeric_problem(
+        database,
+        column,
+        integer_problem_for_range(out_of_range, problem),
+        row_number,
+        ignore
+    );
     if (status != MYLITE_OK) {
         return status;
     }
-    rounded = round_half_away_to_int64(value);
-    if (kind == MYLITE_DML_NUMERIC_UNSIGNED_INTEGER && rounded < 0) {
-        status = handle_numeric_problem(
-            database,
-            column,
-            MYLITE_DML_NUMERIC_PROBLEM_OUT_OF_RANGE,
-            row_number,
-            ignore
-        );
-        if (status != MYLITE_OK) {
-            return status;
-        }
-        rounded = 0;
+    if (out_of_range) {
+        rounded = clamp_integer_to_range(range, rounded);
     }
     *out_output = (struct mylite_dml_numeric_output){
         .insert_kind = MYLITE_INSERT_BOUND_INTEGER,
@@ -522,6 +557,120 @@ static int coerce_integer_double(
         .replace = true,
     };
     return MYLITE_OK;
+}
+
+static struct mylite_dml_integer_range integer_range_for_column(
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_kind kind
+) {
+    if (column == NULL || column->data_type == NULL) {
+        return (struct mylite_dml_integer_range){0};
+    }
+    if (kind == MYLITE_DML_NUMERIC_UNSIGNED_INTEGER) {
+        return unsigned_integer_range_for_type(column->data_type);
+    }
+    return signed_integer_range_for_type(column->data_type);
+}
+
+static enum mylite_dml_numeric_problem integer_problem_for_range(
+    bool out_of_range,
+    enum mylite_dml_numeric_problem problem
+) {
+    if (out_of_range) {
+        return MYLITE_DML_NUMERIC_PROBLEM_OUT_OF_RANGE;
+    }
+    return problem;
+}
+
+static struct mylite_dml_integer_range signed_integer_range_for_type(const char *data_type) {
+    if (mylite_ascii_case_equal(data_type, "tinyint") ||
+        mylite_ascii_case_equal(data_type, "bool") ||
+        mylite_ascii_case_equal(data_type, "boolean")) {
+        return integer_range_with_bounds(SCHAR_MIN, SCHAR_MAX);
+    }
+    if (mylite_ascii_case_equal(data_type, "smallint")) {
+        return integer_range_with_bounds(SHRT_MIN, SHRT_MAX);
+    }
+    if (mylite_ascii_case_equal(data_type, "mediumint")) {
+        return integer_range_with_bounds(
+            -(INT64_C(1) << mylite_dml_mediumint_signed_bits),
+            (INT64_C(1) << mylite_dml_mediumint_signed_bits) - 1
+        );
+    }
+    if (mylite_ascii_case_equal(data_type, "int")) {
+        return integer_range_with_bounds(INT_MIN, INT_MAX);
+    }
+    if (mylite_ascii_case_equal(data_type, "bigint")) {
+        return integer_range_with_bounds(INT64_MIN, INT64_MAX);
+    }
+    return (struct mylite_dml_integer_range){0};
+}
+
+static struct mylite_dml_integer_range unsigned_integer_range_for_type(const char *data_type) {
+    if (mylite_ascii_case_equal(data_type, "tinyint") ||
+        mylite_ascii_case_equal(data_type, "bool") ||
+        mylite_ascii_case_equal(data_type, "boolean")) {
+        return integer_range_with_bounds(0, UCHAR_MAX);
+    }
+    if (mylite_ascii_case_equal(data_type, "smallint")) {
+        return integer_range_with_bounds(0, USHRT_MAX);
+    }
+    if (mylite_ascii_case_equal(data_type, "mediumint")) {
+        return integer_range_with_bounds(0, (INT64_C(1) << mylite_dml_mediumint_unsigned_bits) - 1);
+    }
+    if (mylite_ascii_case_equal(data_type, "int")) {
+        return integer_range_with_bounds(0, (int64_t)UINT_MAX);
+    }
+    if (mylite_ascii_case_equal(data_type, "bigint")) {
+        return integer_range_with_minimum(0);
+    }
+    return (struct mylite_dml_integer_range){0};
+}
+
+static struct mylite_dml_integer_range integer_range_with_bounds(int64_t minimum, int64_t maximum) {
+    return (struct mylite_dml_integer_range){
+        .minimum = minimum,
+        .maximum = maximum,
+        .has_maximum = true,
+        .available = true,
+    };
+}
+
+static struct mylite_dml_integer_range integer_range_with_minimum(int64_t minimum) {
+    return (struct mylite_dml_integer_range){
+        .minimum = minimum,
+        .maximum = 0,
+        .has_maximum = false,
+        .available = true,
+    };
+}
+
+static bool integer_range_exceeded(struct mylite_dml_integer_range range, int64_t value) {
+    if (!range.available) {
+        return false;
+    }
+    if (value < range.minimum) {
+        return true;
+    }
+    if (!range.has_maximum) {
+        return false;
+    }
+    return value > range.maximum;
+}
+
+static int64_t clamp_integer_to_range(struct mylite_dml_integer_range range, int64_t value) {
+    if (!range.available) {
+        return value;
+    }
+    if (value < range.minimum) {
+        return range.minimum;
+    }
+    if (range.has_maximum) {
+        if (value > range.maximum) {
+            return range.maximum;
+        }
+    }
+    return value;
 }
 
 static int coerce_decimal_double(

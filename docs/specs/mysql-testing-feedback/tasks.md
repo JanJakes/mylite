@@ -170,13 +170,16 @@ MySQL 8.4.9 runtime before each item is marked complete.
       covered forms.
 - [ ] Align remaining numeric/string casts and coercions in strict and
       non-strict modes, including TEXT/BLOB limits, binary-string byte edge
-      cases, charset-specific string validation, unsigned and width-specific
-      numeric range clipping, floating-point column edge cases, scalar
-      `CAST`/`CONVERT` value semantics, and conversion/truncation `IGNORE`
-      demotion beyond the currently covered `INSERT IGNORE` invalid integer,
-      invalid date, and `VARCHAR` truncation slice plus single-table
-      `UPDATE IGNORE` numeric, temporal, string-length, `NULL` not-null,
-      duplicate-key, and foreign-key slices.
+      cases, charset-specific string validation, `BIGINT UNSIGNED` values
+      above signed 64-bit physical integer storage, floating-point column edge
+      cases, scalar `CAST`/`CONVERT` value semantics, and conversion/truncation
+      `IGNORE` demotion beyond the currently covered `INSERT IGNORE` invalid
+      integer, integer range, invalid date, and `VARCHAR` truncation slice plus
+      single-table `UPDATE IGNORE` numeric, temporal, string-length, `NULL`
+      not-null, duplicate-key, and foreign-key slices. Signed and unsigned
+      `TINYINT`, `SMALLINT`, `MEDIUMINT`, and `INT` range clipping is covered
+      for strict, non-strict, `INSERT IGNORE`, and single-table `UPDATE IGNORE`
+      paths.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719.

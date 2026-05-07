@@ -554,6 +554,8 @@ static int test_temporal_dml_coercion_execution(void);
 
 static int test_numeric_dml_coercion_execution(void);
 
+static int test_integer_range_dml_coercion_execution(void);
+
 static int test_string_dml_coercion_execution(void);
 
 static int test_insert_on_duplicate_key_update_execution(void);
@@ -1047,6 +1049,7 @@ int main(void) {
     failures += test_non_strict_not_null_coercion_execution();
     failures += test_temporal_dml_coercion_execution();
     failures += test_numeric_dml_coercion_execution();
+    failures += test_integer_range_dml_coercion_execution();
     failures += test_string_dml_coercion_execution();
     failures += test_insert_on_duplicate_key_update_execution();
     failures += test_foreign_key_insert_execution();
@@ -53556,6 +53559,297 @@ static int test_numeric_dml_coercion_execution(void) {
         "numeric final coerced values"
     );
 
+    mylite_close(database);
+    return failures;
+}
+
+static int test_integer_range_dml_coercion_execution(void) {
+    enum {
+        range_column_count = 9,
+        range_insert_warning_count = 8,
+        range_update_warning_count = 4,
+    };
+
+    static const char *const range_columns[] = {
+        "id",
+        "st",
+        "ut",
+        "ss",
+        "us",
+        "sm",
+        "um",
+        "si",
+        "ui",
+    };
+    static const char *const clipped_insert_values[] = {
+        "1",
+        "127",
+        "0",
+        "32767",
+        "0",
+        "8388607",
+        "0",
+        "2147483647",
+        "4294967295",
+    };
+    static const char *const clipped_update_values[] = {
+        "1",
+        "-128",
+        "255",
+        "32767",
+        "0",
+        "8388607",
+        "0",
+        "-2147483648",
+        "0",
+    };
+    static const char *const clipped_ignore_values[] = {
+        "1",
+        "-128",
+        "255",
+        "32767",
+        "0",
+        "8388607",
+        "0",
+        "-2147483648",
+        "0",
+        "2",
+        "127",
+        "0",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "2147483647",
+        "4294967295",
+    };
+    static const char *const clipped_update_ignore_values[] = {
+        "2",
+        "-128",
+        "255",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "-2147483648",
+        "0",
+    };
+    static const char *const clipped_insert_set_values[] = {
+        "3",
+        "127",
+        "0",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "2147483647",
+        "4294967295",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open integer range db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_integer_range", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_integer_range", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE integer_ranges ("
+        "id INT PRIMARY KEY, "
+        "st TINYINT, ut TINYINT UNSIGNED, "
+        "ss SMALLINT, us SMALLINT UNSIGNED, "
+        "sm MEDIUMINT, um MEDIUMINT UNSIGNED, "
+        "si INT, ui INT UNSIGNED)",
+        MYLITE_DONE
+    );
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO integer_ranges(id, st) VALUES (1, 128)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 'st' at row 1",
+        "strict signed tinyint range error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict signed tinyint range code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO integer_ranges(id, ut) VALUES (1, -1)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 'ut' at row 1",
+        "strict unsigned tinyint range error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict unsigned tinyint range code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO integer_ranges VALUES "
+        "(1,128,-1,32768,-1,8388608,-1,2147483648,4294967296)",
+        1,
+        "non-strict integer range insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        range_insert_warning_count,
+        "non-strict integer range warning count"
+    );
+    for (int warning = 0; warning < range_insert_warning_count; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "non-strict integer range warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,st,ut,ss,us,sm,um,si,ui FROM integer_ranges ORDER BY id",
+        range_columns,
+        range_column_count,
+        clipped_insert_values,
+        1,
+        "non-strict integer range clipped values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE integer_ranges SET st=-129, ut=256, si=-2147483649, ui=-1 WHERE id = 1",
+        1,
+        "non-strict integer range update"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        range_update_warning_count,
+        "non-strict integer update warning count"
+    );
+    for (int warning = 0; warning < range_update_warning_count; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "non-strict integer update warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,st,ut,ss,us,sm,um,si,ui FROM integer_ranges ORDER BY id",
+        range_columns,
+        range_column_count,
+        clipped_update_values,
+        1,
+        "non-strict integer range updated values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO integer_ranges(id, st, ut, si, ui) "
+        "VALUES (2,128,-1,2147483648,4294967296)",
+        1,
+        "strict insert ignore integer range"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        range_update_warning_count,
+        "insert ignore integer range warning count"
+    );
+    for (int warning = 0; warning < range_update_warning_count; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "insert ignore integer range warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,st,ut,ss,us,sm,um,si,ui FROM integer_ranges ORDER BY id",
+        range_columns,
+        range_column_count,
+        clipped_ignore_values,
+        2,
+        "insert ignore integer range clipped values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE integer_ranges "
+        "SET st=-129, ut=256, si=-2147483649, ui=-1 WHERE id = 2",
+        1,
+        "strict update ignore integer range"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        range_update_warning_count,
+        "update ignore integer range warning count"
+    );
+    for (int warning = 0; warning < range_update_warning_count; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "update ignore integer range warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,st,ut,ss,us,sm,um,si,ui FROM integer_ranges WHERE id = 2",
+        range_columns,
+        range_column_count,
+        clipped_update_ignore_values,
+        1,
+        "update ignore integer range clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO integer_ranges SET id=3, st=128, ut=-1, si=2147483648, ui=4294967296",
+        1,
+        "non-strict insert set integer range"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        range_update_warning_count,
+        "insert set integer range warning count"
+    );
+    for (int warning = 0; warning < range_update_warning_count; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "insert set integer range warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,st,ut,ss,us,sm,um,si,ui FROM integer_ranges WHERE id = 3",
+        range_columns,
+        range_column_count,
+        clipped_insert_set_values,
+        1,
+        "insert set integer range clipped values"
+    );
+
+    mylite_finalize(stmt);
     mylite_close(database);
     return failures;
 }

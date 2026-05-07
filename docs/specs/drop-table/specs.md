@@ -25,7 +25,7 @@ Out of scope:
 - warning/note records for missing `IF EXISTS` targets
 - trigger, privilege, foreign-key, view, routine, and prepared-statement
   interactions
-- MySQL implicit commit behavior, until transaction statements exist
+- `DROP TEMPORARY TABLE` transaction-warning and rollback exception fidelity
 - crash recovery beyond SQLite transaction atomicity
 
 ## Sources
@@ -107,8 +107,13 @@ Metadata and side effects:
   preserves the surviving child table's foreign-key metadata; future checked
   child writes still fail until a matching parent is restored or the foreign
   key is dropped.
-- MySQL performs implicit commits around non-temporary `DROP TABLE`. MyLite
-  documents this as deferred because transaction statements do not exist yet.
+- MySQL performs an implicit commit before ordinary `DROP TABLE`, including
+  failed statements such as missing-table errors. Later `ROLLBACK` does not
+  undo work that preceded the drop attempt or later autocommit work.
+- `DROP TEMPORARY TABLE` does not implicitly commit the active transaction.
+  MySQL still does not roll back temporary-table drops and can emit warning
+  1752 when rollback cannot undo them; exact warning fidelity remains deferred
+  in MyLite.
 
 ## MyLite behavior
 
@@ -147,6 +152,9 @@ Normal base-table drops:
 - Preparing a parsed `DROP TABLE` creates a custom statement handle.
 - The first `mylite_step()` resolves and validates every listed target before
   mutating storage.
+- Ordinary non-`TEMPORARY` `DROP TABLE` commits any active explicit
+  transaction before target validation. This follows the MySQL boundary even
+  when validation later fails.
 - Unqualified targets use the selected default schema. If none is selected,
   execution fails with `MYLITE_EXEC_ERROR` and diagnostic `No database
   selected`.
@@ -236,6 +244,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `DROP TABLE parent` when surviving child table references it | Error 3730; parent and child remain. |
 | `DROP TABLE parent, child` for a referenced parent and its child | Succeeds; both table rows and the child FK metadata are removed. |
 | `SET foreign_key_checks=0; DROP TABLE parent` for a referenced parent | Succeeds; child table and FK metadata remain. |
+| `START TRANSACTION; INSERT; DROP TABLE existing; INSERT; ROLLBACK` | Both inserts and the drop survive because ordinary `DROP TABLE` commits before execution. |
+| `START TRANSACTION; INSERT; DROP TABLE missing; INSERT; ROLLBACK` | Both inserts survive because ordinary `DROP TABLE` commits before validation and leaves the session outside the explicit transaction after the error. |
 | `DROP TEMPORARY TABLE base_table` | Does not drop base table; deterministic execution error. |
 | `DROP TEMPORARY TABLE IF EXISTS base_table` | Succeeds without dropping base table. |
 | `DROP TABLE IF EXISTS x, y RESTRICT` | Accepts modifier, drops existing targets. |

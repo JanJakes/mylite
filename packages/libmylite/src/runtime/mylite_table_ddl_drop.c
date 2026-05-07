@@ -57,6 +57,11 @@ static bool drop_table_plan_drops_persistent_table(
 
 static int drop_table_transaction(mylite_db *database, const struct mylite_drop_table_plan *plan);
 
+static int commit_drop_table_implicit_transaction(
+    mylite_db *database,
+    const struct mylite_drop_table_plan *plan
+);
+
 static int drop_physical_table(mylite_db *database, const struct mylite_drop_table_target *target);
 
 static int set_unknown_table_error(
@@ -84,13 +89,27 @@ int mylite_table_ddl_execute_drop_table_statement(
     struct mylite_drop_table_plan *plan,
     bool if_exists
 ) {
-    int status = validate_drop_table_plan(database, selected_schema, plan, if_exists);
+    int status = commit_drop_table_implicit_transaction(database, plan);
 
+    if (status == MYLITE_OK) {
+        status = validate_drop_table_plan(database, selected_schema, plan, if_exists);
+    }
     if (status != MYLITE_OK) {
         return status;
     }
 
     return drop_table_transaction(database, plan);
+}
+
+static int commit_drop_table_implicit_transaction(
+    mylite_db *database,
+    const struct mylite_drop_table_plan *plan
+) {
+    if (plan->temporary || !database->transaction_active) {
+        return MYLITE_OK;
+    }
+
+    return mylite_transaction_commit_explicit(database);
 }
 
 static int validate_drop_table_plan(

@@ -276,12 +276,13 @@ ROLLBACK;
 
 The inserted row and the created table both survived the later rollback.
 
-MyLite now applies this behavior to non-temporary `CREATE TABLE`: an active
-explicit transaction is committed before validation and execution, the DDL runs
-in its own statement transaction, and no explicit transaction remains active
-afterward. Remaining DDL statements still need the same retrofit, so the
-compatibility matrix continues to mark implicit commit boundaries as
-incomplete.
+MyLite now applies this behavior to non-temporary `CREATE TABLE` and ordinary
+non-`TEMPORARY` `DROP TABLE`: an active explicit transaction is committed
+before validation and execution, the DDL runs in its own statement transaction
+when it reaches mutation, and no explicit transaction remains active afterward.
+Temporary table DDL remains a transaction exception. Remaining DDL statements
+still need the same retrofit, so the compatibility matrix continues to mark
+implicit commit boundaries as incomplete.
 
 ### Diagnostics, Affected Rows, And Metadata
 
@@ -633,6 +634,8 @@ Required Task 21 runtime cases:
 | `SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED; START TRANSACTION WITH CONSISTENT SNAPSHOT` | warning 138 once isolation state exists |
 | `START TRANSACTION; INSERT; CREATE TABLE; ROLLBACK` | inserted row and created table survive due implicit commit |
 | `START TRANSACTION READ ONLY; CREATE TABLE; ROLLBACK` | created table survives due implicit commit |
+| `START TRANSACTION; INSERT; DROP TABLE existing; INSERT; ROLLBACK` | both inserts and the drop survive due implicit commit |
+| `START TRANSACTION; INSERT; DROP TABLE missing; INSERT; ROLLBACK` | both inserts survive because the failed drop still commits before validation |
 | `BEGIN IMMEDIATE` on a file-backed handle while another handle reads | pre-opened reader can still run `SELECT`, `SHOW TABLES`, and `DESCRIBE` |
 | `COMMIT RELEASE` followed by another statement in protocol tests | connection is released after OK response |
 | `ROLLBACK RELEASE` followed by another statement in protocol tests | connection is released after OK response |

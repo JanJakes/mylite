@@ -37877,6 +37877,9 @@ static int test_create_table_prepare_has_no_side_effects(void) {
 }
 
 static int test_drop_table_base_execution(void) {
+    static const char *const id_columns[] = {"id"};
+    static const char *const successful_drop_implicit_values[] = {"1", "2"};
+    static const char *const failed_drop_implicit_values[] = {"1", "2", "3", "4"};
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -37998,6 +38001,50 @@ static int test_drop_table_base_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "DROP TABLE IF EXISTS missing", MYLITE_DONE);
+
+    failures += execute_sql(database, "CREATE TABLE tx_keep (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE tx_drop (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_keep VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "DROP TABLE tx_drop", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_keep VALUES (2)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM tx_keep ORDER BY id",
+        id_columns,
+        1,
+        successful_drop_implicit_values,
+        2,
+        "drop table commits active transaction"
+    );
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_keep VALUES (3)", MYLITE_DONE);
+    failures += prepare_sql(database, "DROP TABLE tx_missing", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "failed drop table commits active transaction"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Unknown table 'mylite_dt12.tx_missing'",
+        "failed drop table implicit commit error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO tx_keep VALUES (4)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM tx_keep ORDER BY id",
+        id_columns,
+        1,
+        failed_drop_implicit_values,
+        4,
+        "failed drop table leaves later work autocommitted"
+    );
+    failures += execute_sql(database, "DROP TABLE tx_keep", MYLITE_DONE);
 
     failures += execute_sql(database, "CREATE TABLE if_existing1 (id INT)", MYLITE_DONE);
     failures += execute_sql(database, "CREATE TABLE if_existing2 (id INT)", MYLITE_DONE);

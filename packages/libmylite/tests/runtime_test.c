@@ -70022,6 +70022,45 @@ static int test_result_metadata_expression_labels_execution(void) {
          0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
          1},
+        {"lpad_s",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         28U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         1},
+        {"rpad_s",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         28U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         1},
+        {"repeat_s",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         144U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         1},
     };
     static const struct expected_result_metadata conditional_function_metadata[] = {
         {"if_int",
@@ -70494,7 +70533,9 @@ static int test_result_metadata_expression_labels_execution(void) {
         "BINARY c AS binary_c, BINARY b AS binary_b, "
         "DATE_FORMAT(dt, '%Y-%m-%d') AS date_format_dt, "
         "TIME_FORMAT(dt, '%H:%i') AS time_format_dt, "
-        "DATE_FORMAT(dt, s) AS date_format_dynamic "
+        "DATE_FORMAT(dt, s) AS date_format_dynamic, "
+        "LPAD(s, 7, '.') AS lpad_s, RPAD(s, 7, '.') AS rpad_s, "
+        "REPEAT(s, 3) AS repeat_s "
         "FROM t LIMIT 0",
         MYLITE_OK,
         &stmt

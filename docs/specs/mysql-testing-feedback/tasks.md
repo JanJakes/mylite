@@ -267,6 +267,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `TIME_FORMAT()` now infer nullable connection-character-set string
       descriptors for scalar and table-backed expressions, including
       literal-format token expansion and dynamic-format width estimates.
+      Table-backed `LPAD()` / `RPAD()` expressions with nonnegative literal
+      target lengths and `REPEAT()` expressions with nonnegative literal counts
+      now infer MySQL-shaped connection-character-set string widths.
       Remaining expression and other SQLite-backed result metadata gaps are
       still tracked here.
 

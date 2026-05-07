@@ -86,7 +86,30 @@ static uint64_t slice_string_function_result_length(
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
+static uint64_t repeat_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static uint64_t padding_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static uint64_t add_text_display_lengths(uint64_t left, uint64_t right);
+
+static uint64_t multiply_text_display_length(uint64_t length, uint64_t factor);
+
+static bool function_name_is_padding(const struct mylite_sql_ast_node *name);
+
+static bool nonnegative_integer_constant(
+    const struct mylite_sql_ast_node *expression,
+    uint64_t *out_value
+);
 
 static int infer_function_arguments_nullable(
     mylite_db *database,
@@ -498,6 +521,12 @@ static uint64_t slice_string_function_result_length(
     if (mylite_function_name_is_insert(name)) {
         return insert_function_result_length(database, plan, expression, callbacks);
     }
+    if (name != NULL && mylite_span_equal_ci(name->span, "REPEAT")) {
+        return repeat_function_result_length(database, plan, arguments, callbacks);
+    }
+    if (function_name_is_padding(name)) {
+        return padding_function_result_length(database, plan, arguments, callbacks);
+    }
     if (!mylite_function_name_uses_source_length(name) && value != NULL &&
         value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return mylite_expression_descriptor_string_length(database, value, NULL);
@@ -513,11 +542,87 @@ static uint64_t slice_string_function_result_length(
     return mylite_mysql_text_length;
 }
 
+static uint64_t repeat_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *count = mylite_ast_child_at(arguments, 1U);
+    uint64_t repeat_count = 0U;
+    uint64_t source_length = expression_text_display_length(database, plan, source, callbacks);
+
+    if (!nonnegative_integer_constant(count, &repeat_count)) {
+        return source_length;
+    }
+    return multiply_text_display_length(source_length, repeat_count);
+}
+
+static uint64_t padding_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *target = mylite_ast_child_at(arguments, 1U);
+    uint64_t target_characters = 0U;
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (!nonnegative_integer_constant(target, &target_characters)) {
+        return expression_text_display_length(database, plan, source, callbacks);
+    }
+    return multiply_text_display_length(target_characters, max_bytes_per_character);
+}
+
 static uint64_t add_text_display_lengths(uint64_t left, uint64_t right) {
     if (left > UINT64_MAX - right) {
         return mylite_mysql_long_text_length;
     }
     return left + right;
+}
+
+static uint64_t multiply_text_display_length(uint64_t length, uint64_t factor) {
+    if (factor != 0U && length > UINT64_MAX / factor) {
+        return mylite_mysql_long_text_length;
+    }
+    return length * factor;
+}
+
+static bool function_name_is_padding(const struct mylite_sql_ast_node *name) {
+    return name != NULL &&
+           (mylite_span_equal_ci(name->span, "LPAD") || mylite_span_equal_ci(name->span, "RPAD"));
+}
+
+static bool nonnegative_integer_constant(
+    const struct mylite_sql_ast_node *expression,
+    uint64_t *out_value
+) {
+    struct mylite_expression_warnings warnings = {0};
+    struct mylite_expression_value value = {0};
+    bool matched = false;
+
+    if (expression == NULL || out_value == NULL ||
+        !mylite_expression_is_cacheable_no_table(expression)) {
+        return false;
+    }
+    if (mylite_expression_eval(expression, &warnings, &value) != 0) {
+        mylite_expression_value_deinit(&value);
+        mylite_expression_warnings_deinit(&warnings);
+        return false;
+    }
+    if (value.kind == MYLITE_EXPRESSION_VALUE_INT64 && value.int64_value >= 0) {
+        *out_value = (uint64_t)value.int64_value;
+        matched = true;
+    } else if (value.kind == MYLITE_EXPRESSION_VALUE_UINT64) {
+        *out_value = value.uint64_value;
+        matched = true;
+    }
+    mylite_expression_value_deinit(&value);
+    mylite_expression_warnings_deinit(&warnings);
+    return matched;
 }
 
 static int infer_function_arguments_nullable(

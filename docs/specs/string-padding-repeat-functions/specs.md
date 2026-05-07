@@ -178,12 +178,21 @@ Constant result metadata was verified:
 | `LPAD('hi',5,'.')` | `latin1` | `VAR_STRING` | `8` | `5` | `31` | none |
 | `RPAD('hi',5,'.')` | `latin1` | `VAR_STRING` | `8` | `5` | `31` | none |
 
+Table-backed constant-width metadata was also verified for `utf8mb4`:
+
+| Expression over `s VARCHAR(12)` | Type | Collation id | Length | Decimals | Flags |
+| --- | --- | ---: | ---: | ---: | --- |
+| `LPAD(s,7,'.')` | `VAR_STRING` | `255` | `28` | `31` | none |
+| `RPAD(s,7,'.')` | `VAR_STRING` | `255` | `28` | `31` | none |
+| `REPEAT(s,3)` | `VAR_STRING` | `255` | `144` | `31` | none |
+
 MySQL returns a `LONG_BLOB`-sized descriptor for variable or `NULL` target
 length `LPAD()` / `RPAD()` expressions such as `LPAD('hi', NULL, '.')` and
-`LPAD(s, n, '.')`. MyLite's first slice keeps the existing scalar metadata
-architecture and exposes a reduced-fidelity `VAR_STRING` descriptor using the
-current connection collation and a conservative length when the exact result is
-not available at prepare time.
+`LPAD(s, n, '.')`, and for negative literal target/count metadata. MyLite's
+first slice keeps the existing scalar metadata architecture and exposes a
+reduced-fidelity `VAR_STRING` descriptor using the current connection collation
+and a conservative length when the exact result is not available at prepare
+time.
 
 ## Parser and AST design
 

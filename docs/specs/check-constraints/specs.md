@@ -2,11 +2,13 @@
 
 ## Scope
 
-This feature covers the first enforcement slice for CHECK constraints recorded
-by `CREATE TABLE`:
+This feature covers the implemented CHECK constraint slice for supported
+`CREATE TABLE` and CHECK-only `ALTER TABLE` statements:
 
 - inline and table-level `CHECK` clauses already recorded in
   `__mylite_check_constraint_catalog`
+- `ALTER TABLE ... ADD CHECK`, `DROP CHECK` / `DROP CONSTRAINT`, and
+  `ALTER CHECK` / `ALTER CONSTRAINT` for CHECK-only statements
 - `ENFORCED` and default-enforced constraints on supported persistent and
   temporary base tables
 - supported `INSERT`, `INSERT ... SET`, `INSERT ... ON DUPLICATE KEY UPDATE`,
@@ -14,9 +16,10 @@ by `CREATE TABLE`:
   joined `UPDATE`
 - warning/error code 3819 behavior for covered DML paths
 
-`ALTER TABLE ... ADD/DROP/ALTER CHECK`, full MySQL deterministic expression
-validation, schema-level duplicate CHECK-name validation, generated-column
-dependencies, and `SHOW CREATE TABLE` CHECK formatting remain deferred.
+Mixed CHECK plus table-rebuild ALTER statements, full MySQL deterministic
+expression validation, `CREATE TABLE` schema-level duplicate CHECK-name
+validation, generated-column dependencies, and `SHOW CREATE TABLE` CHECK
+formatting remain deferred.
 
 ## Sources
 
@@ -60,6 +63,16 @@ Observed behavior:
 - for the duplicate-key update arm, the updated row is checked before it is
   written
 - `REPLACE` validates the candidate row before deleting conflicting rows
+- `ALTER TABLE ... ADD CHECK` validates existing rows before recording enforced
+  metadata; failures use error 3819 and do not leave catalog rows behind
+- `ALTER TABLE ... ADD CHECK ... NOT ENFORCED` records metadata without
+  validating existing rows
+- `ALTER TABLE ... ALTER CHECK ... ENFORCED` validates existing rows and reports
+  the table row count when enabling enforcement; `NOT ENFORCED` reports 0
+- `ALTER TABLE ... DROP CHECK missing_name` fails with error 3821
+- duplicate explicit CHECK names in a schema fail with error 3822
+- generated ALTER CHECK names advance from the table's recorded ordinal
+  sequence, so dropping an earlier generated check does not reuse its suffix
 
 ## MyLite Behavior
 
@@ -86,6 +99,16 @@ For `IGNORE` statements, CHECK failures append warning 3819, mark the row as
 ignored, and continue the statement. Non-`IGNORE` failures set error 3819 and
 abort the statement atomically.
 
+CHECK-only `ALTER TABLE` statements use statement atomicity around catalog
+updates and existing-row validation. `ADD CHECK` generates `<table>_chk_<n>`
+from the table's maximum CHECK ordinal plus one, validates explicit names
+against existing CHECK names in the target schema for the chosen persistent or
+temporary catalog, writes `CHECK_CONSTRAINTS` and `TABLE_CONSTRAINTS` metadata,
+and leaves `affected_rows` as 0. `ALTER CHECK ... ENFORCED` validates existing
+rows before flipping metadata to `YES`; when enforcement changes from `NO` to
+`YES`, MyLite reports the table row count as observed in MySQL 8.4.9. `DROP
+CHECK` removes the table's CHECK row and reports 0.
+
 ## Tests
 
 Runtime coverage:
@@ -99,12 +122,23 @@ Runtime coverage:
 - invalid `UPDATE` fails and invalid `UPDATE IGNORE` skips with warning 3819
 - invalid `REPLACE` fails before deleting the conflicting row
 - temporary-table CHECK constraints are enforced through the temporary catalog
+- `ALTER TABLE ... ADD CHECK` records metadata and enforces later DML
+- enforced `ADD CHECK` rejects invalid existing rows without catalog side
+  effects
+- `ADD CHECK ... NOT ENFORCED`, `ALTER CHECK ... ENFORCED`, and `ALTER CHECK
+  ... NOT ENFORCED` toggle metadata and DML behavior
+- `DROP CHECK` removes metadata and missing names use MySQL error 3821
+- duplicate explicit ALTER CHECK names use MySQL error 3822
+- generated ALTER CHECK names advance after dropping an earlier generated name
+- temporary-table ALTER CHECK rows enforce through the temporary catalog
 
 ## Known Gaps
 
 - CHECK expressions are evaluated through SQLite for this first slice; broader
   MySQL expression semantics, deterministic-function validation, character-set
   behavior, SQL-mode interactions, and exact coercion warnings remain deferred.
-- `ALTER TABLE ... ADD/DROP/ALTER CHECK` remains unsupported.
+- Mixed CHECK plus column/index/table-option ALTER statements remain
+  unsupported.
 - `SHOW CREATE TABLE` does not yet render CHECK clauses.
-- Schema-level duplicate CHECK-name validation is still incomplete.
+- Schema-level duplicate CHECK-name validation is still incomplete for
+  `CREATE TABLE`.

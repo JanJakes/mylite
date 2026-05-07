@@ -12,16 +12,18 @@
       `INSERT IGNORE` and `UPDATE IGNORE` paths.
 - [x] Enforce CHECK constraints for temporary tables through the temporary
       CHECK catalog.
-- [ ] Implement `ALTER TABLE ... ADD CHECK`, including generated names,
-      existing-row validation, `NOT ENFORCED`, mixed ALTER atomicity, and
+- [x] Implement `ALTER TABLE ... ADD CHECK`, including generated names,
+      existing-row validation, `NOT ENFORCED`, statement atomicity, and
       MySQL-compatible duplicate-name diagnostics.
-- [ ] Implement `ALTER TABLE ... DROP CHECK` and `DROP CONSTRAINT` metadata
+- [x] Implement `ALTER TABLE ... DROP CHECK` and `DROP CONSTRAINT` metadata
       cleanup with MySQL-compatible missing-name diagnostics.
-- [ ] Implement `ALTER TABLE ... ALTER CHECK ... ENFORCED/NOT ENFORCED`,
+- [x] Implement `ALTER TABLE ... ALTER CHECK ... ENFORCED/NOT ENFORCED`,
       including existing-row validation when enabling enforcement.
+- [ ] Support CHECK actions mixed with column/index/table-option ALTER
+      statements.
 - [ ] Validate CHECK expressions at DDL time for deterministic, row-local
       MySQL rules and reject subqueries, variables, unsupported functions,
       references to other tables, and invalid `AUTO_INCREMENT` references.
 - [ ] Render CHECK clauses in `SHOW CREATE TABLE` with MySQL-compatible
       formatting and `/*!80016 NOT ENFORCED */`.
-- [ ] Enforce schema-level CHECK constraint name uniqueness.
+- [ ] Enforce schema-level CHECK constraint name uniqueness for `CREATE TABLE`.

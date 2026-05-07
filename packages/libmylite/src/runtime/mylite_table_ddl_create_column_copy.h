@@ -14,5 +14,6 @@ int mylite_table_ddl_add_create_table_check(
     const struct mylite_sql_ast_node *expression,
     enum mylite_sql_ast_constraint_enforcement enforcement
 );
+char *mylite_table_ddl_copy_check_clause_text(const struct mylite_sql_ast_node *expression);
 
 #endif

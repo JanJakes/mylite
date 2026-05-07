@@ -28,7 +28,6 @@ static char *copy_check_constraint_name(
     const struct mylite_sql_ast_node *constraint_name
 );
 static char *copy_generated_check_constraint_name(const struct mylite_create_table_plan *plan);
-static char *copy_check_clause_text(const struct mylite_sql_ast_node *expression);
 static char *copy_check_binary_expression_text(const struct mylite_sql_ast_node *expression);
 static char *copy_check_operand_text(const struct mylite_sql_ast_node *expression);
 static char *copy_check_identifier_text(const struct mylite_sql_ast_node *expression);
@@ -90,7 +89,7 @@ int mylite_table_ddl_add_create_table_check(
     if (check.name == NULL) {
         return MYLITE_NOMEM;
     }
-    check.clause = copy_check_clause_text(expression);
+    check.clause = mylite_table_ddl_copy_check_clause_text(expression);
     if (check.clause == NULL) {
         free(check.name);
         return MYLITE_NOMEM;
@@ -288,7 +287,7 @@ static char *copy_generated_check_constraint_name(const struct mylite_create_tab
     return name;
 }
 
-static char *copy_check_clause_text(const struct mylite_sql_ast_node *expression) {
+char *mylite_table_ddl_copy_check_clause_text(const struct mylite_sql_ast_node *expression) {
     if (expression == NULL) {
         return NULL;
     }

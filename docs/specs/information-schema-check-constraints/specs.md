@@ -6,12 +6,12 @@ This feature adds the first executable MyLite slice for:
 
 - `SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS`
 
-MyLite records CHECK constraints accepted by `CREATE TABLE` in a CHECK catalog,
-exposes them through the MySQL-compatible
+MyLite records CHECK constraints accepted by supported `CREATE TABLE` and
+CHECK-only `ALTER TABLE` statements in a CHECK catalog, exposes them through the
+MySQL-compatible
 `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` read-only system view, and enforces the
 cataloged expression subset covered by the dedicated
-[CHECK constraints spec](../check-constraints/specs.md). `ALTER TABLE ...
-ADD/DROP/ALTER CHECK` remains deferred.
+[CHECK constraints spec](../check-constraints/specs.md).
 
 Wildcard selection remains the baseline row-shape requirement for
 `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`. Broader projections, filters, aliases,
@@ -69,9 +69,6 @@ Runtime probes:
   `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` rows used `CONSTRAINT_TYPE='CHECK'`
   and `ENFORCED='YES'` or `ENFORCED='NO'`.
 
-The CHECK rows described above are future MyLite behavior, not part of this
-first slice.
-
 ## MyLite Behavior
 
 Supported executable query:
@@ -94,11 +91,12 @@ The result columns are exactly:
 3. `CONSTRAINT_NAME`
 4. `CHECK_CLAUSE`
 
-The query returns rows for CHECK constraints recorded by `CREATE TABLE`.
-`CONSTRAINT_CATALOG` is `def`, `CONSTRAINT_SCHEMA` is the table schema,
-`CONSTRAINT_NAME` is the explicit constraint name or the generated
-`<table>_chk_<n>` name, and `CHECK_CLAUSE` is MySQL-shaped expression text for
-the supported simple expression forms.
+The query returns rows for CHECK constraints recorded by supported
+`CREATE TABLE` and CHECK-only `ALTER TABLE` statements. `CONSTRAINT_CATALOG` is
+`def`, `CONSTRAINT_SCHEMA` is the table schema, `CONSTRAINT_NAME` is the
+explicit constraint name or the generated `<table>_chk_<n>` name, and
+`CHECK_CLAUSE` is MySQL-shaped expression text for the supported simple
+expression forms.
 
 `INFORMATION_SCHEMA.TABLES` exposes `CHECK_CONSTRAINTS` with
 `TABLE_SCHEMA='information_schema'`, `TABLE_NAME='CHECK_CONSTRAINTS'`, and
@@ -146,8 +144,10 @@ explicit duplicate modifier, no alias, and no additional SELECT clauses.
 ## Storage And Runtime
 
 This feature adds `__mylite_check_constraint_catalog` and the temporary-table
-counterpart used by table-drop cleanup. Runtime lowering reads the persistent
-catalog for `INFORMATION_SCHEMA.CHECK_CONSTRAINTS`.
+counterpart used by temporary CHECK metadata, enforcement, and table-drop
+cleanup. Runtime lowering reads the persistent catalog for
+`INFORMATION_SCHEMA.CHECK_CONSTRAINTS`; temporary CHECK rows are used by the
+temporary-table DML enforcement path.
 
 The CHECK catalog is the shared source for
 `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` and CHECK rows in
@@ -169,6 +169,9 @@ Runtime coverage:
 - `CREATE TABLE` with inline and table-level CHECK constraints creates
   `CHECK_CONSTRAINTS` rows with MySQL 8.4.9-verified generated names,
   check-clause text, and enforcement flags
+- `ALTER TABLE ... ADD CHECK` creates `CHECK_CONSTRAINTS` rows with generated
+  names and check-clause text
+- `ALTER TABLE ... DROP CHECK` removes CHECK metadata
 - lower-case, mixed-case, and quoted table references execute
 - `INFORMATION_SCHEMA.TABLES` exposes the `CHECK_CONSTRAINTS` system-view row
 - `SHOW TABLES FROM information_schema LIKE 'check_constraints'` exposes the

@@ -179,6 +179,8 @@ enum {
     mysql_warning_foreign_key_drop_parent = 3730,
     mysql_warning_foreign_key_incompatible_columns = 3780,
     mysql_warning_check_constraint = 3819,
+    mysql_warning_check_constraint_not_found = 3821,
+    mysql_warning_check_constraint_duplicate_name = 3822,
     mysql_warning_default_value_generated = 3773,
     mysql_warning_user_lock_name_too_long = 4163,
     mysql_warning_illegal_regexp_argument = 3685,
@@ -438,6 +440,8 @@ static int test_information_schema_keywords_execution(void);
 static int test_information_schema_check_constraints_execution(void);
 
 static int test_check_constraint_enforcement_execution(void);
+
+static int test_alter_table_check_constraint_execution(void);
 
 static int test_information_schema_referential_constraints_execution(void);
 
@@ -978,6 +982,7 @@ int main(void) {
     failures += test_information_schema_keywords_execution();
     failures += test_information_schema_check_constraints_execution();
     failures += test_check_constraint_enforcement_execution();
+    failures += test_alter_table_check_constraint_execution();
     failures += test_information_schema_referential_constraints_execution();
     failures += test_information_schema_table_constraints_execution();
     failures += test_information_schema_key_column_usage_execution();
@@ -3047,6 +3052,12 @@ static int test_information_schema_check_constraints_execution(void) {
         "chk_score",
         "(`score` < 10)",
     };
+    static const char *const alter_check_values[] = {
+        "def",
+        "mylite_check_constraints",
+        "check_constraints_fixture_chk_1",
+        "(`id` > 0)",
+    };
     static const char *const table_constraint_values[] = {
         "def",
         "mylite_check_constraints",
@@ -3194,24 +3205,20 @@ static int test_information_schema_check_constraints_execution(void) {
         "show full tables information schema check constraints"
     );
 
-    failures += prepare_sql(
+    failures += execute_sql_expect_done_affected(
         database,
         "ALTER TABLE check_constraints_fixture ADD CHECK (id > 0)",
-        MYLITE_OK,
-        &stmt
+        0,
+        "alter check creates check constraints row"
     );
-    failures += expect_status(
-        mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "alter check does not create check constraints rows"
-    );
-    mylite_finalize(stmt);
-    stmt = NULL;
-    failures += expect_empty_information_schema_table(
+    failures += expect_select_rows(
         database,
         "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
         columns,
-        check_constraints_column_count
+        check_constraints_column_count,
+        alter_check_values,
+        1,
+        "alter check constraints rows"
     );
 
     mylite_close(database);
@@ -3421,6 +3428,325 @@ static int test_check_constraint_enforcement_execution(void) {
     );
     mylite_finalize(stmt);
     stmt = NULL;
+
+    mylite_close(database);
+    mylite_finalize(stmt);
+    // NOLINTEND(readability-function-size,readability-magic-numbers)
+    return failures;
+}
+
+static int test_alter_table_check_constraint_execution(void) {
+    // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const count_columns[] = {"c"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const one_count[] = {"1"};
+    static const char *const check_columns[] = {"CONSTRAINT_NAME", "CHECK_CLAUSE"};
+    static const char *const add_check_values[] = {"alter_checks_chk_1", "(`score` > 0)"};
+    static const char *const enforcement_columns[] = {"CONSTRAINT_NAME", "ENFORCED"};
+    static const char *const not_enforced_values[] = {"invalid_checks_chk_1", "NO"};
+    static const char *const enforced_values[] = {"invalid_checks_chk_1", "YES"};
+    static const char *const generated_values[] = {
+        "generated_checks_chk_2",
+        "generated_checks_chk_3",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open alter check database");
+    failures += execute_sql(database, "CREATE DATABASE mylite_alter_check", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_alter_check", MYLITE_DONE);
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE alter_checks (id INT PRIMARY KEY, score INT)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO alter_checks VALUES (1, 1), (2, NULL)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_checks ADD CHECK (score > 0)",
+        0,
+        "alter add check affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, CHECK_CLAUSE FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME = 'alter_checks_chk_1'",
+        check_columns,
+        2,
+        add_check_values,
+        1,
+        "alter add check metadata"
+    );
+    failures += prepare_sql(database, "INSERT INTO alter_checks VALUES (3, -1)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "alter_checks_chk_1",
+        "alter added check rejects invalid insert"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint,
+        "alter added check warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE invalid_checks (id INT PRIMARY KEY, score INT)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO invalid_checks VALUES (1, -1), (2, 2)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "ALTER TABLE invalid_checks ADD CHECK (score > 0)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "invalid_checks_chk_1",
+        "alter add enforced check validates existing rows"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint,
+        "alter add enforced check warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME = 'invalid_checks_chk_1'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "failed alter add check leaves no metadata"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE invalid_checks ADD CHECK (score > 0) NOT ENFORCED",
+        0,
+        "alter add not enforced check affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, `ENFORCED` FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+        "WHERE TABLE_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME = 'invalid_checks_chk_1'",
+        enforcement_columns,
+        2,
+        not_enforced_values,
+        1,
+        "alter add not enforced metadata"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO invalid_checks VALUES (3, -3)",
+        1,
+        "not enforced check allows invalid insert"
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE invalid_checks ALTER CHECK invalid_checks_chk_1 ENFORCED",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "invalid_checks_chk_1",
+        "alter check enforced validates existing rows"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE invalid_checks SET score = 5 WHERE score < 0",
+        2,
+        "fix invalid check rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE invalid_checks ALTER CHECK invalid_checks_chk_1 ENFORCED",
+        3,
+        "alter check enforced affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, `ENFORCED` FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+        "WHERE TABLE_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME = 'invalid_checks_chk_1'",
+        enforcement_columns,
+        2,
+        enforced_values,
+        1,
+        "alter check enforced metadata"
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE invalid_checks SET score = -4 WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "invalid_checks_chk_1",
+        "alter enforced check rejects invalid update"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE invalid_checks ALTER CHECK invalid_checks_chk_1 NOT ENFORCED",
+        0,
+        "alter check not enforced affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE invalid_checks SET score = -4 WHERE id = 1",
+        1,
+        "alter check not enforced allows invalid update"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE invalid_checks DROP CHECK invalid_checks_chk_1",
+        0,
+        "alter drop check affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME = 'invalid_checks_chk_1'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "alter drop check removes metadata"
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE invalid_checks DROP CHECK missing_check",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(stmt, database, "missing_check", "alter drop missing check");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_not_found,
+        "alter drop missing check warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE duplicate_check_a (id INT, CONSTRAINT chk_dup CHECK (id > 0))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "CREATE TABLE duplicate_check_b (id INT)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE duplicate_check_b ADD CONSTRAINT chk_dup CHECK (id > 0)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(stmt, database, "Duplicate check", "alter duplicate check name");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_duplicate_name,
+        "alter duplicate check warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE generated_checks (id INT, CHECK (id > 0))",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE generated_checks ADD CHECK (id < 10)",
+        0,
+        "alter generated check second name"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE generated_checks DROP CHECK generated_checks_chk_1",
+        0,
+        "alter generated check drop first"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE generated_checks ADD CHECK (id <> 5)",
+        0,
+        "alter generated check after drop"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME IN ('generated_checks_chk_2', 'generated_checks_chk_3') "
+        "ORDER BY CONSTRAINT_NAME",
+        (const char *[]){"CONSTRAINT_NAME"},
+        1,
+        generated_values,
+        2,
+        "alter generated check names advance after drop"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TEMPORARY TABLE temp_alter_checks (id INT)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE temp_alter_checks ADD CHECK (id > 0)",
+        0,
+        "alter temporary add check affected rows"
+    );
+    failures +=
+        prepare_sql(database, "INSERT INTO temp_alter_checks VALUES (-1)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "temp_alter_checks_chk_1",
+        "alter temporary check rejects invalid insert"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM temp_alter_checks",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "alter temporary check preserves rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO temp_alter_checks VALUES (1)",
+        1,
+        "alter temporary check accepts valid insert"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM temp_alter_checks",
+        count_columns,
+        1,
+        one_count,
+        1,
+        "alter temporary check valid row count"
+    );
 
     mylite_close(database);
     mylite_finalize(stmt);
@@ -39347,14 +39673,12 @@ static int test_alter_table_key_operations_execution(void) {
     failures +=
         expect_no_information_schema_statistics_index_row(database, "alter_key_base", "sp_body");
 
-    failures +=
-        prepare_sql(database, "ALTER TABLE alter_key_base ADD CHECK (d > 0)", MYLITE_OK, &stmt);
-    failures +=
-        expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED, "alter check placeholder rejected");
-    failures +=
-        expect_contains(mylite_error_message(database), "CHECK", "alter check unsupported error");
-    mylite_finalize(stmt);
-    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_key_base ADD CHECK (d > 0)",
+        0,
+        "alter check accepted in key operation coverage"
+    );
 
     failures += prepare_sql(
         database,

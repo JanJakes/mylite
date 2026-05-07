@@ -1,4 +1,5 @@
 #include "mylite_table_ddl.h"
+#include "mylite_table_ddl_create_column_copy.h"
 
 #include "mylite_span.h"
 
@@ -55,6 +56,16 @@ static int copy_alter_table_alter_index_visibility_action(
 static int copy_alter_table_index_action(
     const struct mylite_sql_ast_node *action_node,
     enum mylite_alter_table_action_kind kind,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_add_check_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+);
+
+static int copy_alter_table_alter_check_action(
+    const struct mylite_sql_ast_node *action_node,
     struct mylite_alter_table_action *action
 );
 
@@ -261,9 +272,17 @@ static int copy_alter_table_action(
         status = copy_alter_table_alter_index_visibility_action(action_node, &action);
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_CHECK:
+        status = copy_alter_table_add_check_action(action_node, &action);
+        break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_DROP_CHECK_OR_CONSTRAINT:
+        status = copy_alter_table_named_action(
+            action_node,
+            MYLITE_ALTER_TABLE_ACTION_DROP_CHECK,
+            &action
+        );
+        break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ALTER_CHECK_OR_CONSTRAINT:
-        action.kind = MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_CHECK;
+        status = copy_alter_table_alter_check_action(action_node, &action);
         break;
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY:
         status = copy_alter_table_add_foreign_key_action(action_node, &action);
@@ -416,6 +435,47 @@ static int copy_alter_table_index_action(
     }
     plan.indexes[0] = (struct mylite_create_table_index){0};
     mylite_table_ddl_create_table_plan_deinit(&plan);
+    return MYLITE_OK;
+}
+
+static int copy_alter_table_add_check_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
+    const struct mylite_sql_ast_node *first_child = mylite_ast_child_at(action_node, 0U);
+    const struct mylite_sql_ast_node *constraint_name =
+        first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER ? first_child : NULL;
+    const struct mylite_sql_ast_node *expression =
+        constraint_name == NULL ? first_child : mylite_ast_child_at(action_node, 1U);
+
+    action->kind = MYLITE_ALTER_TABLE_ACTION_ADD_CHECK;
+    action->check.enforced =
+        action_node->constraint_enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED;
+    if (constraint_name != NULL) {
+        action->check.name = mylite_copy_identifier_span(constraint_name);
+        if (action->check.name == NULL) {
+            return MYLITE_NOMEM;
+        }
+    }
+    action->check.clause = mylite_table_ddl_copy_check_clause_text(expression);
+    if (action->check.clause == NULL) {
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
+static int copy_alter_table_alter_check_action(
+    const struct mylite_sql_ast_node *action_node,
+    struct mylite_alter_table_action *action
+) {
+    int status =
+        copy_alter_table_named_action(action_node, MYLITE_ALTER_TABLE_ACTION_ALTER_CHECK, action);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    action->check.enforced =
+        action_node->constraint_enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED;
     return MYLITE_OK;
 }
 

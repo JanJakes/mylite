@@ -37,13 +37,22 @@ struct alter_table_foreign_key_existing_rows_sql_input {
     const struct mylite_create_table_foreign_key *foreign_key;
 };
 
+struct alter_table_check_existing_rows_input {
+    const char *constraint_name;
+    const char *check_clause;
+};
+
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
+
+static bool alter_table_has_only_check_actions(const mylite_stmt *stmt);
 
 static bool alter_table_has_only_foreign_key_actions(const mylite_stmt *stmt);
 
 static bool alter_table_has_foreign_key_action(const mylite_stmt *stmt);
 
 static int execute_alter_table_rename_statement(mylite_stmt *stmt);
+
+static int execute_alter_table_check_statement(mylite_stmt *stmt);
 
 static int execute_alter_table_foreign_key_statement(mylite_stmt *stmt);
 
@@ -65,6 +74,38 @@ static int apply_alter_table_actions(
     mylite_stmt *stmt,
     struct mylite_alter_table_model *model,
     bool defer_foreign_key_actions
+);
+
+static int apply_alter_table_check_actions(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    int64_t *out_affected_rows
+);
+
+static int apply_alter_table_check_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    struct mylite_alter_table_action *action,
+    int64_t *out_affected_rows
+);
+
+static int apply_alter_table_add_check_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    struct mylite_create_table_check *check
+);
+
+static int apply_alter_table_drop_check_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_action *action,
+    bool temporary
+);
+
+static int apply_alter_table_alter_check_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_action *action,
+    int64_t *out_affected_rows
 );
 
 static int apply_alter_table_foreign_key_actions(
@@ -115,6 +156,73 @@ static bool alter_table_model_has_auto_increment_column(
 );
 
 static int set_alter_table_unsupported_action_error(mylite_db *database, const char *feature);
+
+static int ensure_alter_table_check_constraint_name(
+    mylite_stmt *stmt,
+    bool temporary,
+    struct mylite_create_table_check *check
+);
+
+static int generated_alter_table_check_constraint_name(
+    mylite_stmt *stmt,
+    bool temporary,
+    char **out_name
+);
+
+static int max_alter_table_check_ordinal(mylite_stmt *stmt, bool temporary, int64_t *out_ordinal);
+
+static int alter_table_check_constraint_name_exists(
+    mylite_db *database,
+    const char *schema_name,
+    bool temporary,
+    const char *constraint_name,
+    bool *out_exists
+);
+
+static int load_alter_table_check_constraint(
+    mylite_stmt *stmt,
+    bool temporary,
+    const char *constraint_name,
+    struct mylite_create_table_check *out_check,
+    bool *out_exists
+);
+
+static int insert_alter_table_check_constraint(
+    mylite_stmt *stmt,
+    bool temporary,
+    const struct mylite_create_table_check *check,
+    int64_t ordinal_position
+);
+
+static int delete_alter_table_check_constraint(
+    mylite_stmt *stmt,
+    bool temporary,
+    const char *constraint_name
+);
+
+static int update_alter_table_check_constraint_enforcement(
+    mylite_stmt *stmt,
+    bool temporary,
+    const char *constraint_name,
+    bool enforced
+);
+
+static int validate_alter_table_check_existing_rows(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    const struct alter_table_check_existing_rows_input *input
+);
+
+static char *build_alter_table_check_existing_rows_sql(
+    const char *physical_name,
+    const char *check_clause
+);
+
+static int set_alter_table_duplicate_check_error(mylite_db *database, const char *constraint_name);
+
+static int set_alter_table_missing_check_error(mylite_db *database, const char *constraint_name);
+
+static int set_alter_table_check_violation_error(mylite_db *database, const char *constraint_name);
 
 static int ensure_alter_table_foreign_key_constraint_name(
     mylite_stmt *stmt,
@@ -256,6 +364,9 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
     if (alter_table_has_table_rename_action(stmt)) {
         return execute_alter_table_rename_statement(stmt);
     }
+    if (alter_table_has_only_check_actions(stmt)) {
+        return execute_alter_table_check_statement(stmt);
+    }
     if (alter_table_has_only_foreign_key_actions(stmt)) {
         return execute_alter_table_foreign_key_statement(stmt);
     }
@@ -303,6 +414,22 @@ static bool alter_table_has_table_rename_action(const mylite_stmt *stmt) {
         }
     }
     return false;
+}
+
+static bool alter_table_has_only_check_actions(const mylite_stmt *stmt) {
+    if (stmt->alter_table.action_count == 0U) {
+        return false;
+    }
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        enum mylite_alter_table_action_kind kind = stmt->alter_table.actions[index].kind;
+
+        if (kind != MYLITE_ALTER_TABLE_ACTION_ADD_CHECK &&
+            kind != MYLITE_ALTER_TABLE_ACTION_DROP_CHECK &&
+            kind != MYLITE_ALTER_TABLE_ACTION_ALTER_CHECK) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool alter_table_has_only_foreign_key_actions(const mylite_stmt *stmt) {
@@ -368,6 +495,57 @@ static int execute_alter_table_rename_statement(mylite_stmt *stmt) {
         return status;
     }
     return mylite_table_ddl_execute_rename_table_prepared_statement(stmt);
+}
+
+static int execute_alter_table_check_statement(mylite_stmt *stmt) {
+    const char *schema_name = NULL;
+    struct mylite_alter_table_model model = {0};
+    struct mylite_statement_atomicity atomicity = {0};
+    bool atomicity_started = false;
+    bool temporary = false;
+    int64_t affected_rows = 0;
+    int status = MYLITE_OK;
+
+    if (stmt->alter_table.has_auto_increment) {
+        stmt->affected_rows = -1;
+        return set_alter_table_unsupported_action_error(
+            stmt->database,
+            "CHECK ALTER TABLE constraints with other actions"
+        );
+    }
+
+    status = validate_alter_table_plan(stmt, &schema_name, &temporary);
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_load_alter_table_model(
+            stmt->database,
+            schema_name,
+            stmt->alter_table.table_name,
+            temporary,
+            &model
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
+        atomicity_started = status == MYLITE_OK;
+    }
+    if (status == MYLITE_OK) {
+        status = apply_alter_table_check_actions(stmt, &model, &affected_rows);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
+        if (status == MYLITE_OK) {
+            stmt->affected_rows = affected_rows;
+            mylite_table_ddl_alter_table_model_deinit(&model);
+            return MYLITE_OK;
+        }
+    }
+
+    if (atomicity_started) {
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
+    }
+    mylite_table_ddl_alter_table_model_deinit(&model);
+    stmt->affected_rows = -1;
+    return status;
 }
 
 static int execute_alter_table_foreign_key_statement(mylite_stmt *stmt) {
@@ -736,6 +914,14 @@ static int apply_alter_table_actions(
                 &alter_callbacks
             );
             break;
+        case MYLITE_ALTER_TABLE_ACTION_ADD_CHECK:
+        case MYLITE_ALTER_TABLE_ACTION_DROP_CHECK:
+        case MYLITE_ALTER_TABLE_ACTION_ALTER_CHECK:
+            status = set_alter_table_unsupported_action_error(
+                stmt->database,
+                "CHECK ALTER TABLE constraints with other actions"
+            );
+            break;
         case MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_CHECK:
             status = set_alter_table_unsupported_action_error(
                 stmt->database,
@@ -765,6 +951,175 @@ static int apply_alter_table_actions(
     }
 
     return mylite_table_ddl_refresh_alter_table_index_metadata(stmt->database, model);
+}
+
+static int apply_alter_table_check_actions(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    int64_t *out_affected_rows
+) {
+    *out_affected_rows = 0;
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        struct mylite_alter_table_action *action = &stmt->alter_table.actions[index];
+        int status = apply_alter_table_check_action(stmt, model, action, out_affected_rows);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int apply_alter_table_check_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    struct mylite_alter_table_action *action,
+    int64_t *out_affected_rows
+) {
+    switch (action->kind) {
+    case MYLITE_ALTER_TABLE_ACTION_ADD_CHECK:
+        return apply_alter_table_add_check_action(stmt, model, &action->check);
+    case MYLITE_ALTER_TABLE_ACTION_DROP_CHECK:
+        return apply_alter_table_drop_check_action(stmt, action, model->temporary);
+    case MYLITE_ALTER_TABLE_ACTION_ALTER_CHECK:
+        return apply_alter_table_alter_check_action(stmt, model, action, out_affected_rows);
+    case MYLITE_ALTER_TABLE_ACTION_ADD_COLUMN:
+    case MYLITE_ALTER_TABLE_ACTION_DROP_COLUMN:
+    case MYLITE_ALTER_TABLE_ACTION_RENAME_COLUMN:
+    case MYLITE_ALTER_TABLE_ACTION_CHANGE_COLUMN:
+    case MYLITE_ALTER_TABLE_ACTION_MODIFY_COLUMN:
+    case MYLITE_ALTER_TABLE_ACTION_ADD_PRIMARY_KEY:
+    case MYLITE_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY:
+    case MYLITE_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX:
+    case MYLITE_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX:
+    case MYLITE_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX:
+    case MYLITE_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX:
+    case MYLITE_ALTER_TABLE_ACTION_DROP_INDEX:
+    case MYLITE_ALTER_TABLE_ACTION_RENAME_INDEX:
+    case MYLITE_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY:
+    case MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_CHECK:
+    case MYLITE_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY:
+    case MYLITE_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY:
+    case MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_FOREIGN_KEY:
+    case MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE:
+        return MYLITE_MISUSE;
+    }
+    return MYLITE_MISUSE;
+}
+
+static int apply_alter_table_add_check_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    struct mylite_create_table_check *check
+) {
+    bool duplicate_name = false;
+    int64_t ordinal_position = 0;
+    int status = ensure_alter_table_check_constraint_name(stmt, model->temporary, check);
+
+    if (status == MYLITE_OK) {
+        status = alter_table_check_constraint_name_exists(
+            stmt->database,
+            stmt->alter_table.schema_name,
+            model->temporary,
+            check->name,
+            &duplicate_name
+        );
+    }
+    if (status == MYLITE_OK && duplicate_name) {
+        status = set_alter_table_duplicate_check_error(stmt->database, check->name);
+    }
+    if (status == MYLITE_OK && check->enforced) {
+        const struct alter_table_check_existing_rows_input input = {
+            .constraint_name = check->name,
+            .check_clause = check->clause,
+        };
+
+        status = validate_alter_table_check_existing_rows(stmt, model, &input);
+    }
+    if (status == MYLITE_OK) {
+        status = max_alter_table_check_ordinal(stmt, model->temporary, &ordinal_position);
+    }
+    if (status == MYLITE_OK) {
+        status = insert_alter_table_check_constraint(
+            stmt,
+            model->temporary,
+            check,
+            ordinal_position + 1
+        );
+    }
+    return status;
+}
+
+static int apply_alter_table_drop_check_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_action *action,
+    bool temporary
+) {
+    struct mylite_create_table_check check = {0};
+    bool exists = false;
+    int status =
+        load_alter_table_check_constraint(stmt, temporary, action->old_name, &check, &exists);
+
+    mylite_table_ddl_create_table_check_deinit(&check);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!exists) {
+        return set_alter_table_missing_check_error(stmt->database, action->old_name);
+    }
+    return delete_alter_table_check_constraint(stmt, temporary, action->old_name);
+}
+
+static int apply_alter_table_alter_check_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_alter_table_action *action,
+    int64_t *out_affected_rows
+) {
+    struct mylite_create_table_check check = {0};
+    bool exists = false;
+    int status = load_alter_table_check_constraint(
+        stmt,
+        model->temporary,
+        action->old_name,
+        &check,
+        &exists
+    );
+
+    if (status != MYLITE_OK) {
+        mylite_table_ddl_create_table_check_deinit(&check);
+        return status;
+    }
+    if (!exists) {
+        mylite_table_ddl_create_table_check_deinit(&check);
+        return set_alter_table_missing_check_error(stmt->database, action->old_name);
+    }
+    if (action->check.enforced) {
+        const struct alter_table_check_existing_rows_input input = {
+            .constraint_name = action->old_name,
+            .check_clause = check.clause,
+        };
+
+        status = validate_alter_table_check_existing_rows(stmt, model, &input);
+    }
+    if (status == MYLITE_OK) {
+        status = update_alter_table_check_constraint_enforcement(
+            stmt,
+            model->temporary,
+            action->old_name,
+            action->check.enforced
+        );
+    }
+    if (status == MYLITE_OK && action->check.enforced && !check.enforced) {
+        status = count_alter_table_physical_rows(
+            stmt->database,
+            model->physical_name,
+            out_affected_rows
+        );
+    }
+
+    mylite_table_ddl_create_table_check_deinit(&check);
+    return status;
 }
 
 static int apply_alter_table_foreign_key_actions(
@@ -861,6 +1216,9 @@ static int apply_alter_table_foreign_key_action(
     case MYLITE_ALTER_TABLE_ACTION_DROP_INDEX:
     case MYLITE_ALTER_TABLE_ACTION_RENAME_INDEX:
     case MYLITE_ALTER_TABLE_ACTION_ALTER_INDEX_VISIBILITY:
+    case MYLITE_ALTER_TABLE_ACTION_ADD_CHECK:
+    case MYLITE_ALTER_TABLE_ACTION_DROP_CHECK:
+    case MYLITE_ALTER_TABLE_ACTION_ALTER_CHECK:
     case MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_CHECK:
     case MYLITE_ALTER_TABLE_ACTION_UNSUPPORTED_FOREIGN_KEY:
     case MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE:
@@ -1022,6 +1380,490 @@ static int set_alter_table_unsupported_action_error(mylite_db *database, const c
     int status = mylite_diagnostics_set_error_message_parts(database, "Unsupported ", feature, "");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
+}
+
+static int ensure_alter_table_check_constraint_name(
+    mylite_stmt *stmt,
+    bool temporary,
+    struct mylite_create_table_check *check
+) {
+    if (check->name != NULL) {
+        return MYLITE_OK;
+    }
+    return generated_alter_table_check_constraint_name(stmt, temporary, &check->name);
+}
+
+static int generated_alter_table_check_constraint_name(
+    mylite_stmt *stmt,
+    bool temporary,
+    char **out_name
+) {
+    int64_t ordinal_position = 0;
+    int status = max_alter_table_check_ordinal(stmt, temporary, &ordinal_position);
+
+    *out_name = NULL;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    for (int64_t suffix = ordinal_position + 1; suffix > 0; ++suffix) {
+        bool exists = false;
+        char *candidate =
+            sqlite3_mprintf("%s_chk_%lld", stmt->alter_table.table_name, (long long)suffix);
+
+        if (candidate == NULL) {
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        status = alter_table_check_constraint_name_exists(
+            stmt->database,
+            stmt->alter_table.schema_name,
+            temporary,
+            candidate,
+            &exists
+        );
+        if (status != MYLITE_OK) {
+            sqlite3_free(candidate);
+            return status;
+        }
+        if (!exists) {
+            *out_name = mylite_copy_nonempty_cstring(candidate);
+            sqlite3_free(candidate);
+            if (*out_name == NULL) {
+                (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            return MYLITE_OK;
+        }
+        sqlite3_free(candidate);
+    }
+
+    (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+    return MYLITE_NOMEM;
+}
+
+static int max_alter_table_check_ordinal(mylite_stmt *stmt, bool temporary, int64_t *out_ordinal) {
+    sqlite3_stmt *select = NULL;
+    char *sql = sqlite3_mprintf(
+        "SELECT COALESCE(MAX(ordinal_position), 0) FROM %s "
+        "WHERE table_schema = ? AND table_name = ?",
+        mylite_catalog_check_constraint_catalog_name(temporary)
+    );
+    int rc = SQLITE_OK;
+
+    *out_ordinal = 0;
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &select,
+        NULL
+    );
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    sqlite3_bind_text(select, 1, stmt->alter_table.schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, stmt->alter_table.table_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(select);
+    if (rc == SQLITE_ROW) {
+        *out_ordinal = sqlite3_column_int64(select, 0);
+    } else if (rc != SQLITE_DONE) {
+        sqlite3_finalize(select);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    sqlite3_finalize(select);
+    return MYLITE_OK;
+}
+
+static int alter_table_check_constraint_name_exists(
+    mylite_db *database,
+    const char *schema_name,
+    bool temporary,
+    const char *constraint_name,
+    bool *out_exists
+) {
+    sqlite3_stmt *select = NULL;
+    char *sql = sqlite3_mprintf(
+        "SELECT 1 FROM %s WHERE constraint_schema = ? AND constraint_name = ? LIMIT 1",
+        mylite_catalog_check_constraint_catalog_name(temporary)
+    );
+    int rc = SQLITE_OK;
+
+    *out_exists = false;
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, constraint_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(select);
+    if (rc == SQLITE_ROW) {
+        *out_exists = true;
+    } else if (rc != SQLITE_DONE) {
+        sqlite3_finalize(select);
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
+    sqlite3_finalize(select);
+    return MYLITE_OK;
+}
+
+static int load_alter_table_check_constraint(
+    mylite_stmt *stmt,
+    bool temporary,
+    const char *constraint_name,
+    struct mylite_create_table_check *out_check,
+    bool *out_exists
+) {
+    sqlite3_stmt *select = NULL;
+    char *sql = sqlite3_mprintf(
+        "SELECT constraint_name, check_clause, enforced FROM %s "
+        "WHERE table_schema = ? AND table_name = ? AND constraint_name = ?",
+        mylite_catalog_check_constraint_catalog_name(temporary)
+    );
+    int rc = SQLITE_OK;
+
+    *out_check = (struct mylite_create_table_check){0};
+    *out_exists = false;
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &select,
+        NULL
+    );
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    sqlite3_bind_text(select, 1, stmt->alter_table.schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, stmt->alter_table.table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 3, constraint_name, -1, sqlite_transient_destructor());
+
+    rc = sqlite3_step(select);
+    if (rc == SQLITE_ROW) {
+        const char *name = (const char *)sqlite3_column_text(select, 0);
+        const char *clause = (const char *)sqlite3_column_text(select, 1);
+        const char *enforced = (const char *)sqlite3_column_text(select, 2);
+
+        out_check->name = mylite_copy_nonempty_cstring(name);
+        out_check->clause = mylite_copy_nonempty_cstring(clause);
+        out_check->enforced = false;
+        if (enforced != NULL && strcmp(enforced, "YES") == 0) {
+            out_check->enforced = true;
+        }
+        if (out_check->name == NULL || out_check->clause == NULL) {
+            sqlite3_finalize(select);
+            mylite_table_ddl_create_table_check_deinit(out_check);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        *out_exists = true;
+    } else if (rc != SQLITE_DONE) {
+        sqlite3_finalize(select);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    sqlite3_finalize(select);
+    return MYLITE_OK;
+}
+
+static int insert_alter_table_check_constraint(
+    mylite_stmt *stmt,
+    bool temporary,
+    const struct mylite_create_table_check *check,
+    int64_t ordinal_position
+) {
+    enum {
+        bind_constraint_schema = 1,
+        bind_constraint_name = 2,
+        bind_table_schema = 3,
+        bind_table_name = 4,
+        bind_check_clause = 5,
+        bind_enforced = 6,
+        bind_ordinal_position = 7,
+    };
+
+    sqlite3_stmt *insert = NULL;
+    char *sql = sqlite3_mprintf(
+        "INSERT INTO %s("
+        "constraint_catalog, constraint_schema, constraint_name, table_schema, table_name, "
+        "check_clause, enforced, ordinal_position) VALUES('def', ?, ?, ?, ?, ?, ?, ?)",
+        mylite_catalog_check_constraint_catalog_name(temporary)
+    );
+    const char *enforced = "NO";
+    int rc = SQLITE_OK;
+
+    if (check->enforced) {
+        enforced = "YES";
+    }
+
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &insert,
+        NULL
+    );
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    sqlite3_bind_text(
+        insert,
+        bind_constraint_schema,
+        stmt->alter_table.schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(insert, bind_constraint_name, check->name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(
+        insert,
+        bind_table_schema,
+        stmt->alter_table.schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        insert,
+        bind_table_name,
+        stmt->alter_table.table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(insert, bind_check_clause, check->clause, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(insert, bind_enforced, enforced, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(insert, bind_ordinal_position, ordinal_position);
+
+    rc = sqlite3_step(insert);
+    sqlite3_finalize(insert);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
+}
+
+static int delete_alter_table_check_constraint(
+    mylite_stmt *stmt,
+    bool temporary,
+    const char *constraint_name
+) {
+    sqlite3_stmt *delete_stmt = NULL;
+    char *sql = sqlite3_mprintf(
+        "DELETE FROM %s WHERE table_schema = ? AND table_name = ? AND constraint_name = ?",
+        mylite_catalog_check_constraint_catalog_name(temporary)
+    );
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &delete_stmt,
+        NULL
+    );
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    sqlite3_bind_text(
+        delete_stmt,
+        1,
+        stmt->alter_table.schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        delete_stmt,
+        2,
+        stmt->alter_table.table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(delete_stmt, 3, constraint_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(delete_stmt);
+    sqlite3_finalize(delete_stmt);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
+}
+
+static int update_alter_table_check_constraint_enforcement(
+    mylite_stmt *stmt,
+    bool temporary,
+    const char *constraint_name,
+    bool enforced
+) {
+    sqlite3_stmt *update = NULL;
+    char *sql = sqlite3_mprintf(
+        "UPDATE %s SET enforced = ? "
+        "WHERE table_schema = ? AND table_name = ? AND constraint_name = ?",
+        mylite_catalog_check_constraint_catalog_name(temporary)
+    );
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &update,
+        NULL
+    );
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    if (enforced) {
+        sqlite3_bind_text(update, 1, "YES", -1, SQLITE_STATIC);
+    } else {
+        sqlite3_bind_text(update, 1, "NO", -1, SQLITE_STATIC);
+    }
+    sqlite3_bind_text(update, 2, stmt->alter_table.schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 3, stmt->alter_table.table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(update, 4, constraint_name, -1, sqlite_transient_destructor());
+    rc = sqlite3_step(update);
+    sqlite3_finalize(update);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
+}
+
+static int validate_alter_table_check_existing_rows(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    const struct alter_table_check_existing_rows_input *input
+) {
+    sqlite3_stmt *select = NULL;
+    char *sql =
+        build_alter_table_check_existing_rows_sql(model->physical_name, input->check_clause);
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &select,
+        NULL
+    );
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    rc = sqlite3_step(select);
+    sqlite3_finalize(select);
+    if (rc == SQLITE_ROW) {
+        return set_alter_table_check_violation_error(stmt->database, input->constraint_name);
+    }
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
+}
+
+static char *build_alter_table_check_existing_rows_sql(
+    const char *physical_name,
+    const char *check_clause
+) {
+    sqlite3_str *sql = sqlite3_str_new(NULL);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+    sqlite3_str_appendf(
+        sql,
+        "SELECT 1 FROM \"%w\" WHERE NOT ((%s) OR (%s) IS NULL) LIMIT 1",
+        physical_name,
+        check_clause,
+        check_clause
+    );
+    return sqlite3_str_finish(sql);
+}
+
+static int set_alter_table_duplicate_check_error(mylite_db *database, const char *constraint_name) {
+    char *message = sqlite3_mprintf("Duplicate check constraint name '%q'.", constraint_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_CHECK_CONSTRAINT_DUP_NAME,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_missing_check_error(mylite_db *database, const char *constraint_name) {
+    char *message =
+        sqlite3_mprintf("Check constraint '%q' is not found in the table.", constraint_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_CHECK_CONSTRAINT_NOT_FOUND,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_check_violation_error(mylite_db *database, const char *constraint_name) {
+    char *message = sqlite3_mprintf(
+        "Check constraint '%q' is violated.",
+        constraint_name == NULL ? "" : constraint_name
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_CHECK_CONSTRAINT_VIOLATED,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int ensure_alter_table_foreign_key_constraint_name(

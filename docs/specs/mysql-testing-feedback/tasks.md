@@ -72,7 +72,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       affected counts, and strict rejection without mutation for invalid
       integer conversion, existing `NULL` values becoming `NOT NULL`, and
       overlong `VARCHAR` narrowing.
-- [x] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP CHECK`.
+- [x] Support `ALTER TABLE ... ADD/DROP/ALTER CHECK` for CHECK-only
+      statements, including generated names, existing-row validation,
+      `NOT ENFORCED`, enforcement toggling, temporary tables, and
+      MySQL-compatible 3819/3821/3822 diagnostics.
 - [x] Complete `CREATE TABLE ... CHECK (...)` syntax forms. Inline and
       table-level CHECK clauses parse and record catalog-backed metadata for
       `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` and CHECK rows in

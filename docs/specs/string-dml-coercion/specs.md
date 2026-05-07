@@ -12,9 +12,14 @@ This slice aligns write-time length coercion for currently supported `CHAR`,
 - single-table `UPDATE`
 - joined `UPDATE`
 
-TEXT/BLOB family maximum sizes, charset-specific byte validation, strict
-SQLSTATE details, `IGNORE` demotion, `LOAD DATA`, and full numeric-to-string
-format fidelity remain separate tasks.
+It also covers the first TEXT/BLOB-family runtime edge: `TINYTEXT` and
+`TINYBLOB` 255-byte write limits for `INSERT ... VALUES`, `INSERT IGNORE`,
+single-table `UPDATE`, and single-table `UPDATE IGNORE`.
+
+Larger TEXT/BLOB family maximum sizes, exhaustive TEXT/BLOB coverage across
+all write forms, charset-specific byte validation beyond the verified UTF-8
+boundary behavior, strict SQLSTATE details, `LOAD DATA`, and full
+numeric-to-string format fidelity remain separate tasks.
 
 ## Sources
 
@@ -42,6 +47,14 @@ two columns records two warnings in column/assignment order. `INSERT ... SET`,
 `REPLACE`, ODKU update assignments, single-table `UPDATE`, and joined `UPDATE`
 share this strict versus non-strict behavior for the covered forms.
 
+For `TINYTEXT` and `TINYBLOB`, MySQL enforces a 255-byte maximum. In strict
+mode, assigning 256 ASCII bytes to `TINYTEXT` and `TINYBLOB` rejects the
+statement at the first overflowing column with error 1406 and leaves rows
+unchanged. In non-strict mode and the covered `IGNORE` forms, MySQL stores 255
+bytes and emits warning 1265 per truncated column. For multibyte `TINYTEXT`,
+non-strict truncation does not store a partial UTF-8 character; 128 two-byte
+characters become 127 characters / 254 bytes with one warning.
+
 ## MyLite Design
 
 MyLite carries `CHARACTER_MAXIMUM_LENGTH` from the catalog into DML write-table
@@ -54,6 +67,10 @@ UTF-8 text handling for covered tests; complete charset-specific character and
 byte accounting remains deferred.
 
 For binary string columns, MyLite applies the catalog length as bytes.
+
+For the covered `TINYTEXT` slice, MyLite applies the catalog length as a byte
+limit and truncates to a complete UTF-8 prefix. For the covered `TINYBLOB`
+slice, MyLite applies the catalog length as raw bytes.
 
 When a value exceeds the target length, MyLite:
 
@@ -69,3 +86,6 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - non-strict warning 1265 and stored truncation for both `VARCHAR` and `CHAR`
 - `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`, ODKU update assignments,
   single-table `UPDATE`, and joined `UPDATE`
+- strict rejection, non-strict truncation, `INSERT IGNORE`, and
+  single-table `UPDATE IGNORE` for `TINYTEXT` and `TINYBLOB`
+- `TINYTEXT` byte-limit truncation at a complete UTF-8 character boundary

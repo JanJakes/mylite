@@ -55571,6 +55571,23 @@ static int test_string_dml_coercion_execution(void) {
         "1234",
         "abcd",
     };
+    static const char *const tiny_lob_columns[] = {"id", "t_len", "b_len", "t_last", "b_last"};
+    static const char *const tiny_lob_row1_insert_values[] = {"1", "255", "255", "a", "62"};
+    static const char *const tiny_lob_insert_ignore_values[] = {
+        "1",
+        "255",
+        "255",
+        "a",
+        "62",
+        "2",
+        "255",
+        "255",
+        "c",
+        "64",
+    };
+    static const char *const tiny_lob_row1_update_values[] = {"1", "255", "255", "g", "68"};
+    static const char *const tiny_text_utf8_columns[] = {"id", "t_len", "t_chars"};
+    static const char *const tiny_text_utf8_values[] = {"3", "254", "127"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -55707,6 +55724,159 @@ static int test_string_dml_coercion_execution(void) {
         string_values,
         3,
         "string final coerced values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE tiny_lobs (id INT PRIMARY KEY, t TINYTEXT, b TINYBLOB)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO tiny_lobs VALUES (1, REPEAT('a', 256), REPEAT('b', 256))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict tiny text insert length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict tiny text insert length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_select_row_count(database, "SELECT id FROM tiny_lobs", 0, "strict tiny lob no row");
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO tiny_lobs VALUES (1, REPEAT('a', 256), REPEAT('b', 256))",
+        1,
+        "non-strict tiny lob insert"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "tiny lob insert warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "tiny text insert warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "tiny blob insert warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM tiny_lobs ORDER BY id",
+        tiny_lob_columns,
+        5,
+        tiny_lob_row1_insert_values,
+        1,
+        "tiny lob non-strict clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO tiny_lobs VALUES (2, REPEAT('c', 256), REPEAT('d', 256))",
+        1,
+        "insert ignore tiny lob truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "tiny lob insert ignore warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM tiny_lobs ORDER BY id",
+        tiny_lob_columns,
+        5,
+        tiny_lob_insert_ignore_values,
+        2,
+        "tiny lob insert ignore clipped values"
+    );
+
+    failures += prepare_sql(
+        database,
+        "UPDATE tiny_lobs SET t = REPEAT('e', 256), b = REPEAT('f', 256) WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict tiny text update length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict tiny text update length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM tiny_lobs WHERE id = 1",
+        tiny_lob_columns,
+        5,
+        tiny_lob_row1_insert_values,
+        1,
+        "strict tiny lob update rollback"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE tiny_lobs SET t = REPEAT('g', 256), b = REPEAT('h', 256) "
+        "WHERE id = 1",
+        1,
+        "update ignore tiny lob truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "tiny lob update ignore warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM tiny_lobs WHERE id = 1",
+        tiny_lob_columns,
+        5,
+        tiny_lob_row1_update_values,
+        1,
+        "tiny lob update ignore clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO tiny_lobs VALUES (3, REPEAT('\xC3\xA9', 128), REPEAT('z', 255))",
+        1,
+        "non-strict tinytext multibyte insert"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "tinytext multibyte warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "tinytext multibyte warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, CHAR_LENGTH(t) AS t_chars "
+        "FROM tiny_lobs WHERE id = 3",
+        tiny_text_utf8_columns,
+        3,
+        tiny_text_utf8_values,
+        1,
+        "tinytext multibyte clipped values"
     );
 
     mylite_close(database);

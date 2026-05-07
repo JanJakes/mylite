@@ -15,6 +15,7 @@
 enum mylite_dml_string_kind {
     MYLITE_DML_STRING_NONE = 0,
     MYLITE_DML_STRING_CHARACTER,
+    MYLITE_DML_STRING_TEXT_BYTES,
     MYLITE_DML_STRING_BINARY,
 };
 
@@ -54,7 +55,11 @@ static enum mylite_dml_string_kind string_kind_for_column(
 
 static bool column_data_type_is_character_string(const char *data_type);
 
+static bool column_data_type_is_tinytext(const char *data_type);
+
 static bool column_data_type_is_binary_string(const char *data_type);
+
+static bool column_data_type_is_tinyblob(const char *data_type);
 
 static int insert_value_to_string_text(
     const struct mylite_insert_bound_value *value,
@@ -87,6 +92,8 @@ static size_t string_text_truncated_byte_length(
     const struct mylite_dml_string_text *text,
     uint64_t maximum_length
 );
+
+static size_t utf8_prefix_for_byte_limit(const char *text, size_t length, uint64_t byte_limit);
 
 static size_t utf8_prefix_byte_length(const char *text, size_t length, uint64_t character_limit);
 
@@ -220,7 +227,13 @@ static enum mylite_dml_string_kind string_kind_for_column(
     if (column_data_type_is_character_string(column->data_type)) {
         return MYLITE_DML_STRING_CHARACTER;
     }
+    if (column_data_type_is_tinytext(column->data_type)) {
+        return MYLITE_DML_STRING_TEXT_BYTES;
+    }
     if (column_data_type_is_binary_string(column->data_type)) {
+        return MYLITE_DML_STRING_BINARY;
+    }
+    if (column_data_type_is_tinyblob(column->data_type)) {
         return MYLITE_DML_STRING_BINARY;
     }
     return MYLITE_DML_STRING_NONE;
@@ -231,9 +244,17 @@ static bool column_data_type_is_character_string(const char *data_type) {
            mylite_ascii_case_equal(data_type, "varchar");
 }
 
+static bool column_data_type_is_tinytext(const char *data_type) {
+    return mylite_ascii_case_equal(data_type, "tinytext");
+}
+
 static bool column_data_type_is_binary_string(const char *data_type) {
     return mylite_ascii_case_equal(data_type, "binary") ||
            mylite_ascii_case_equal(data_type, "varbinary");
+}
+
+static bool column_data_type_is_tinyblob(const char *data_type) {
+    return mylite_ascii_case_equal(data_type, "tinyblob");
 }
 
 static int insert_value_to_string_text(
@@ -330,7 +351,7 @@ static bool string_text_exceeds_column_length(
     if (text == NULL) {
         return false;
     }
-    if (kind == MYLITE_DML_STRING_BINARY) {
+    if (kind == MYLITE_DML_STRING_BINARY || kind == MYLITE_DML_STRING_TEXT_BYTES) {
         return (uint64_t)text->length > maximum_length;
     }
     return utf8_prefix_byte_length(text->text, text->length, maximum_length) < text->length;
@@ -347,7 +368,26 @@ static size_t string_text_truncated_byte_length(
     if (kind == MYLITE_DML_STRING_BINARY) {
         return maximum_length > (uint64_t)SIZE_MAX ? text->length : (size_t)maximum_length;
     }
+    if (kind == MYLITE_DML_STRING_TEXT_BYTES) {
+        return utf8_prefix_for_byte_limit(text->text, text->length, maximum_length);
+    }
     return utf8_prefix_byte_length(text->text, text->length, maximum_length);
+}
+
+static size_t utf8_prefix_for_byte_limit(const char *text, size_t length, uint64_t byte_limit) {
+    size_t index = 0U;
+
+    if (text == NULL) {
+        return 0U;
+    }
+    if (byte_limit >= (uint64_t)length) {
+        return length;
+    }
+    index = byte_limit > (uint64_t)SIZE_MAX ? length : (size_t)byte_limit;
+    while (index > 0U && ((unsigned char)text[index] & 0xC0U) == 0x80U) {
+        --index;
+    }
+    return index;
 }
 
 static size_t utf8_prefix_byte_length(const char *text, size_t length, uint64_t character_limit) {

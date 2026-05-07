@@ -19,8 +19,14 @@ expression contexts.
 - Two separate `RAND(seed)` expressions in the same select list produce the same
   first value when their seeds are equal.
 - `RAND(NULL)` behaves like `RAND(0)`.
-- Numeric seed conversion follows MySQL integer conversion closely enough for
-  signed integer, unsigned integer, approximate, and text inputs.
+- Approximate numeric seeds round to the nearest integer with half values away
+  from zero.
+- Seed initialization uses MySQL's signed 32-bit seed normalization after SQL
+  value coercion, so values such as `4294967295`, `4294967296`, and
+  `4294967297` behave like `-1`, `0`, and `1`.
+- Text seeds parse an integer prefix after optional whitespace and sign.
+  Fractional, nonnumeric, trailing-garbage, and overflow text seeds emit warning
+  1292 and use the parsed or clamped seed value.
 
 ## Verified Expectations
 
@@ -33,6 +39,12 @@ Verified against MySQL 8.4.9:
 | `RAND(7)` | `0.9065021936842261` |
 | `RAND(8)` | `0.15668530311126755` |
 | `RAND(NULL)` | same first value as `RAND(0)` |
+| `RAND(4294967295)` | same first value as `RAND(-1)` |
+| `RAND(4294967296)` | same first value as `RAND(0)` |
+| `RAND(1.5)` | same first value as `RAND(2)` |
+| `RAND(-1.5)` | same first value as `RAND(-2)` |
+| `RAND('7.9')` | same first value as `RAND(7)`, warning 1292 |
+| `RAND('bad')` | same first value as `RAND(0)`, warning 1292 |
 
 For a three-row table, `SELECT id, RAND(7) FROM t ORDER BY id` returns the first
 three values from the seeded sequence:

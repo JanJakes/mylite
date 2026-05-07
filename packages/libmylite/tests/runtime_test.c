@@ -21018,6 +21018,24 @@ static int test_rand_function_execution(void) {
         "0.15522042769493574",
         "1",
     };
+    static const char *const seed_conversion_columns[] = {
+        "u32_max",
+        "u32_wrap",
+        "u32_wrap_one",
+        "real_half_up",
+        "real_half_down",
+        "text_fraction",
+        "text_bad",
+    };
+    static const char *const seed_conversion_values[] = {
+        "0.9050373219931845",
+        "0.15522042769493574",
+        "0.40540353712197724",
+        "0.6555866465490187",
+        "0.6548542125661431",
+        "0.9065021936842261",
+        "0.15522042769493574",
+    };
     static const char *const projection_columns[] = {"id", "r"};
     static const char *const projection_values[] = {
         "1",
@@ -21061,6 +21079,42 @@ static int test_rand_function_execution(void) {
         repeat_values,
         1,
         "RAND repeatable scalar values"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT RAND(4294967295) AS u32_max, "
+        "RAND(4294967296) AS u32_wrap, "
+        "RAND(4294967297) AS u32_wrap_one, "
+        "RAND(1.5) AS real_half_up, "
+        "RAND(-1.5) AS real_half_down, "
+        "RAND('7.9') AS text_fraction, "
+        "RAND('bad') AS text_bad",
+        seed_conversion_columns,
+        (int)(sizeof(seed_conversion_columns) / sizeof(seed_conversion_columns[0])),
+        seed_conversion_values,
+        1,
+        "RAND seed conversion values"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "RAND seed warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "RAND fractional text seed warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "RAND bad text seed warning code"
+    );
+    failures += expect_string(
+        mylite_warning_message(database, 0),
+        "Truncated incorrect INTEGER value: '7.9'",
+        "RAND fractional text seed warning"
+    );
+    failures += expect_string(
+        mylite_warning_message(database, 1),
+        "Truncated incorrect INTEGER value: 'bad'",
+        "RAND bad text seed warning"
     );
 
     failures += execute_sql(database, "CREATE DATABASE rand_functions", MYLITE_DONE);

@@ -9,8 +9,10 @@
 #include "mylite_span.h"
 #include "mylite_temporal_functions.h"
 
+#include <ctype.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -48,6 +50,8 @@ enum mylite_uuid_constants {
     MYLITE_UUID_SHORT_RANDOM_BYTES = 4,
     MYLITE_UUID_SHORT_SERVER_ID_MASK = 0x7fU,
     MYLITE_UUID_SHORT_SERVER_ID_FALLBACK = 1,
+    MYLITE_RAND_SEED_WARNING_MESSAGE_SIZE = 256,
+    MYLITE_RAND_SEED_WARNING_TEXT_PREVIEW = 160,
 };
 
 static int evaluate_last_insert_id_function(
@@ -113,6 +117,27 @@ static int evaluate_rand_dynamic_seed(
     const struct mylite_expression_eval_context *expression_context,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
+);
+
+static int rand_seed_value_to_uint64(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_seed
+);
+
+static int rand_seed_text_to_uint64(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_seed
+);
+
+static uint64_t rand_seed_real_to_uint64(double value);
+
+static int append_rand_seed_integer_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
 );
 
 static void set_rand_output_value(
@@ -539,6 +564,7 @@ static int evaluate_rand_dynamic_seed(
 ) {
     struct mylite_expression_value seed_value = {0};
     struct mylite_rand_state state = {0};
+    uint64_t seed = 0U;
     int status =
         mylite_expression_eval_with_context(argument, expression_context, warnings, &seed_value);
 
@@ -546,10 +572,154 @@ static int evaluate_rand_dynamic_seed(
         mylite_expression_value_deinit(&seed_value);
         return status;
     }
-    initialize_rand_seed(&state, session_function_value_to_uint64(&seed_value));
+    status = rand_seed_value_to_uint64(&seed_value, warnings, &seed);
     mylite_expression_value_deinit(&seed_value);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    initialize_rand_seed(&state, seed);
     set_rand_output_value(&state, out_value);
     return MYLITE_OK;
+}
+
+static int rand_seed_value_to_uint64(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_seed
+) {
+    if (out_seed == NULL) {
+        return -1;
+    }
+    if (value == NULL) {
+        *out_seed = 0U;
+        return MYLITE_OK;
+    }
+
+    switch (value->kind) {
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        *out_seed = 0U;
+        return MYLITE_OK;
+    case MYLITE_EXPRESSION_VALUE_INT64:
+        *out_seed = (uint64_t)value->int64_value;
+        return MYLITE_OK;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        *out_seed = value->uint64_value;
+        return MYLITE_OK;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        *out_seed = rand_seed_real_to_uint64(value->real_value);
+        return MYLITE_OK;
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        return rand_seed_text_to_uint64(value->text_value, value->text_length, warnings, out_seed);
+    }
+    *out_seed = 0U;
+    return MYLITE_OK;
+}
+
+static int rand_seed_text_to_uint64(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_warnings *warnings,
+    uint64_t *out_seed
+) {
+    static const uint64_t int64_min_magnitude = (uint64_t)INT64_MAX + UINT64_C(1);
+    size_t offset = 0U;
+    uint64_t magnitude = 0U;
+    bool negative = false;
+    bool saw_digit = false;
+    bool overflow = false;
+    bool truncated = false;
+
+    if (out_seed == NULL) {
+        return -1;
+    }
+    *out_seed = 0U;
+    if (text == NULL) {
+        return append_rand_seed_integer_warning(warnings, "", 0U);
+    }
+
+    while (offset < text_length && isspace((unsigned char)text[offset])) {
+        ++offset;
+    }
+    if (offset < text_length && (text[offset] == '+' || text[offset] == '-')) {
+        negative = text[offset] == '-';
+        ++offset;
+    }
+    while (offset < text_length && isdigit((unsigned char)text[offset])) {
+        uint64_t digit = (uint64_t)(text[offset] - '0');
+
+        saw_digit = true;
+        if (magnitude > (UINT64_MAX - digit) / (uint64_t)mylite_session_decimal_conversion_base) {
+            magnitude = UINT64_MAX;
+            overflow = true;
+        } else if (!overflow) {
+            magnitude = (magnitude * (uint64_t)mylite_session_decimal_conversion_base) + digit;
+        }
+        ++offset;
+    }
+    while (offset < text_length && isspace((unsigned char)text[offset])) {
+        ++offset;
+    }
+
+    truncated = !saw_digit || offset != text_length || overflow;
+    if (negative) {
+        if (magnitude > int64_min_magnitude) {
+            magnitude = 0U;
+            truncated = true;
+        }
+        *out_seed = magnitude == 0U ? 0U : (UINT64_MAX - magnitude) + 1U;
+    } else {
+        *out_seed = magnitude;
+    }
+    if (truncated) {
+        return append_rand_seed_integer_warning(warnings, text, text_length);
+    }
+    return MYLITE_OK;
+}
+
+static uint64_t rand_seed_real_to_uint64(double value) {
+    double rounded = 0.0;
+
+    if (value != value) {
+        return 0U;
+    }
+    rounded = value < 0.0 ? value - 0.5 : value + 0.5;
+    if (rounded <= (double)INT64_MIN) {
+        return (uint64_t)INT64_MIN;
+    }
+    if (rounded < 0.0) {
+        return (uint64_t)(int64_t)rounded;
+    }
+    if (rounded >= (double)UINT64_MAX) {
+        return UINT64_MAX;
+    }
+    return (uint64_t)rounded;
+}
+
+static int append_rand_seed_integer_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+) {
+    char message[MYLITE_RAND_SEED_WARNING_MESSAGE_SIZE];
+    int preview = text_length > MYLITE_RAND_SEED_WARNING_TEXT_PREVIEW
+                      ? MYLITE_RAND_SEED_WARNING_TEXT_PREVIEW
+                      : (int)text_length;
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect INTEGER value: '%.*s'",
+        preview,
+        text == NULL ? "" : text
+    );
+
+    if (length < 0) {
+        return -1;
+    }
+    return mylite_expression_warnings_append(
+        warnings,
+        MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE,
+        message
+    );
 }
 
 static void set_rand_output_value(
@@ -624,8 +794,11 @@ static int initialize_rand_state(
         mylite_expression_value_deinit(&seed_value);
         return status;
     }
-    seed = session_function_value_to_uint64(&seed_value);
+    status = rand_seed_value_to_uint64(&seed_value, warnings, &seed);
     mylite_expression_value_deinit(&seed_value);
+    if (status != MYLITE_OK) {
+        return status;
+    }
     initialize_rand_seed(state, seed);
     return MYLITE_OK;
 }
@@ -648,11 +821,12 @@ static uint64_t unseeded_rand_seed(
 }
 
 static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed) {
-    uint64_t reduced = seed % (uint64_t)mylite_rand_max_value;
+    uint32_t normalized_seed = (uint32_t)seed;
+    uint32_t seed1 = (normalized_seed * UINT32_C(0x10001)) + (uint32_t)UINT32_C(55555555);
+    uint32_t seed2 = normalized_seed * UINT32_C(0x10000001);
 
-    state->seed1 = (uint32_t)(((reduced * UINT64_C(0x10001)) + UINT64_C(55555555)) %
-                              (uint64_t)mylite_rand_max_value);
-    state->seed2 = (uint32_t)((reduced * UINT64_C(0x10000001)) % (uint64_t)mylite_rand_max_value);
+    state->seed1 = seed1 % mylite_rand_max_value;
+    state->seed2 = seed2 % mylite_rand_max_value;
     state->initialized = true;
 }
 

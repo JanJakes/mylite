@@ -32,6 +32,7 @@ static const char zHdr[] =
 ** table composed of instances of the following structure.
 */
 typedef struct Keyword Keyword;
+#define KEYWORD_ORIG_NAME_BUFSZ 32
 struct Keyword {
   char *zName;         /* The keyword name */
   char *zTokenType;    /* Token value for this keyword */
@@ -46,7 +47,7 @@ struct Keyword {
   int iNext;           /* Index in aKeywordTable[] of next with same hash */
   int substrId;        /* Id to another keyword this keyword is embedded in */
   int substrOffset;    /* Offset into substrId for start of this keyword */
-  char zOrigName[20];  /* Original keyword name before processing */
+  char zOrigName[KEYWORD_ORIG_NAME_BUFSZ];  /* Original keyword name */
 };
 
 /*
@@ -225,6 +226,7 @@ static Keyword aKeywordTable[] = {
   { "EACH",             "TK_EACH",         TRIGGER,          1      },
   { "ELSE",             "TK_ELSE",         ALWAYS,           2      },
   { "ENGINE",           "TK_ENGINE",       ALWAYS,           1      },
+  { "ENGINE_ATTRIBUTE", "TK_ENGINE_ATTRIBUTE", ALWAYS,       1      },
   { "ESCAPE",           "TK_ESCAPE",       ALWAYS,           4      },
   { "EXCEPT",           "TK_EXCEPT",       COMPOUND,         4      },
   { "EXCLUSIVE",        "TK_EXCLUSIVE",    ALWAYS,           1      },
@@ -256,10 +258,12 @@ static Keyword aKeywordTable[] = {
   { "INSTEAD",          "TK_INSTEAD",      TRIGGER,          1      },
   { "INTERSECT",        "TK_INTERSECT",    COMPOUND,         5      },
   { "INTO",             "TK_INTO",         ALWAYS,           10     },
+  { "INVISIBLE",        "TK_INVISIBLE",    ALWAYS,           1      },
   { "IS",               "TK_IS",           ALWAYS,           5      },
   { "ISNULL",           "TK_ISNULL",       ALWAYS,           5      },
   { "JOIN",             "TK_JOIN",         ALWAYS,           5      },
   { "KEY",              "TK_KEY",          ALWAYS,           1      },
+  { "KEY_BLOCK_SIZE",   "TK_KEY_BLOCK_SIZE", ALWAYS,         1      },
   { "LAST",             "TK_LAST",         ALWAYS,           4      },
   { "LEFT",             "TK_JOIN_KW",      ALWAYS,           5      },
   { "LIKE",             "TK_LIKE_KW",      ALWAYS,           5      },
@@ -304,6 +308,7 @@ static Keyword aKeywordTable[] = {
   { "ROWS",             "TK_ROWS",         ALWAYS,           1      },
   { "SAVEPOINT",        "TK_SAVEPOINT",    ALWAYS,           1      },
   { "SELECT",           "TK_SELECT",       ALWAYS,           10     },
+  { "SECONDARY_ENGINE_ATTRIBUTE", "TK_SECONDARY_ENGINE_ATTRIBUTE", ALWAYS, 1 },
   { "SET",              "TK_SET",          ALWAYS,           10     },
   { "TABLE",            "TK_TABLE",        ALWAYS,           1      },
   { "TEMP",             "TK_TEMP",         ALWAYS,           1      },
@@ -322,6 +327,7 @@ static Keyword aKeywordTable[] = {
   { "VACUUM",           "TK_VACUUM",       VACUUM,           1      },
   { "VALUES",           "TK_VALUES",       ALWAYS,           10     },
   { "VIEW",             "TK_VIEW",         VIEW,             1      },
+  { "VISIBLE",          "TK_VISIBLE",      ALWAYS,           1      },
   { "VIRTUAL",          "TK_VIRTUAL",      VTAB,             1      },
   { "WHEN",             "TK_WHEN",         ALWAYS,           1      },
   { "WHERE",            "TK_WHERE",        ALWAYS,           10     },

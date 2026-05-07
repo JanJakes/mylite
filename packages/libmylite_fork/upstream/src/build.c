@@ -4057,8 +4057,9 @@ void sqlite3CreateIndex(
     }
     if( !HasRowid(pTab) ) pPk = sqlite3PrimaryKeyIndex(pTab);
   }else{
-    assert( pName==0 );
     assert( pStart==0 );
+    assert( pName2==0 || pName2->n==0 );
+    pName = pName1;
     pTab = pParse->pNewTable;
     if( !pTab ) goto exit_create_index;
     iDb = sqlite3SchemaToIndex(db, pTab->pSchema);
@@ -4103,7 +4104,9 @@ void sqlite3CreateIndex(
     zName = sqlite3NameFromToken(db, pName);
     if( zName==0 ) goto exit_create_index;
     assert( pName->z!=0 );
-    if( SQLITE_OK!=sqlite3CheckObjectName(pParse, zName,"index",pTab->zName) ){
+    if( !(db->init.busy && pTblName==0)
+     && SQLITE_OK!=sqlite3CheckObjectName(pParse, zName,"index",pTab->zName)
+    ){
       goto exit_create_index;
     }
     if( !IN_RENAME_OBJECT ){
@@ -4122,6 +4125,15 @@ void sqlite3CreateIndex(
           sqlite3ForceNotReadOnly(pParse);
         }
         goto exit_create_index;
+      }
+      if( pTab==pParse->pNewTable ){
+        Index *pLoop;
+        for(pLoop=pTab->pIndex; pLoop; pLoop=pLoop->pNext){
+          if( sqlite3StrICmp(zName, pLoop->zName)==0 ){
+            sqlite3ErrorMsg(pParse, "index %s already exists", zName);
+            goto exit_create_index;
+          }
+        }
       }
     }
   }else{
@@ -4342,7 +4354,7 @@ void sqlite3CreateIndex(
     }
   }
 
-  if( pTab==pParse->pNewTable ){
+  if( pTab==pParse->pNewTable && idxType!=SQLITE_IDXTYPE_APPDEF ){
     /* This routine has been called to create an automatic index as a
     ** result of a PRIMARY KEY or UNIQUE clause on a column definition, or
     ** a PRIMARY KEY or UNIQUE clause following the column definitions.
@@ -4473,7 +4485,7 @@ void sqlite3CreateIndex(
       ** the zStmt variable
       */
       assert( pName!=0 || pStart==0 );
-      if( pStart ){
+      if( pStart && pName ){
         int n = (int)(pParse->sLastToken.z - pName->z) + pParse->sLastToken.n;
         if( pName->z[n-1]==';' ) n--;
         /* A named index with an explicit CREATE INDEX statement */

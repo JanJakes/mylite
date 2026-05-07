@@ -3346,10 +3346,24 @@ static int test_wordpress_like_crud(void) {
         "option_id INTEGER PRIMARY KEY AUTO_INCREMENT,"
         "option_name VARCHAR(191) NOT NULL DEFAULT '' COLLATE utf8mb4_unicode_ci,"
         "option_value LONGTEXT NOT NULL,"
-        "autoload VARCHAR(20) NOT NULL DEFAULT 'yes'"
+        "autoload VARCHAR(20) NOT NULL DEFAULT 'yes',"
+        "UNIQUE KEY option_name (option_name),"
+        "KEY autoload (autoload)"
         ") ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 "
         "COLLATE=utf8mb4_unicode_ci COMMENT='options fixture' AUTO_INCREMENT=10",
-        "create wp_options_like physical table with MySQL options"
+        "create wp_options_like physical table with MySQL options and keys"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(name, '|') FROM ("
+                   "SELECT name FROM sqlite_schema WHERE type = 'index' "
+                   "AND tbl_name = 'wp_options_like' "
+                   "AND name IN ('autoload', 'option_name') ORDER BY name"
+                   ")",
+            .expected = "autoload|option_name",
+            .context = "MySQL inline keys create native SQLite indexes",
+        }
     );
     failures += exec_sql(
         database,
@@ -3366,6 +3380,53 @@ static int test_wordpress_like_crud(void) {
             .context = "MySQL table AUTO_INCREMENT option seeds native sequence",
         }
     );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO wp_options_like (option_name, option_value) "
+                   "VALUES ('siteurl', 'duplicate')",
+            .message_fragment = "UNIQUE constraint failed",
+            .context = "MySQL inline UNIQUE KEY enforces duplicate option names",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE inline_index_forms ("
+        "id INTEGER PRIMARY KEY,"
+        "name TEXT,"
+        "slug TEXT,"
+        "INDEX idx_name USING BTREE (name) COMMENT 'lookup' VISIBLE KEY_BLOCK_SIZE = 8,"
+        "UNIQUE INDEX ux_slug (slug) USING HASH INVISIBLE"
+        ")",
+        "create direct MySQL INDEX and UNIQUE INDEX forms"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(name, '|') FROM ("
+                   "SELECT name FROM sqlite_schema WHERE type = 'index' "
+                   "AND tbl_name = 'inline_index_forms' "
+                   "AND name IN ('idx_name', 'ux_slug') ORDER BY name"
+                   ")",
+            .expected = "idx_name|ux_slug",
+            .context = "MySQL INDEX and UNIQUE INDEX forms create native indexes",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO inline_index_forms (id, name, slug) VALUES "
+        "(1, 'Alpha', 'alpha'), (2, 'Alpha Again', 'alpha-again')",
+        "insert direct inline index form rows"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO inline_index_forms (id, name, slug) "
+                   "VALUES (3, 'Duplicate', 'alpha')",
+            .message_fragment = "UNIQUE constraint failed",
+            .context = "MySQL inline UNIQUE INDEX enforces duplicate slugs",
+        }
+    );
 
     failures += exec_sql(
         database,
@@ -3378,19 +3439,11 @@ static int test_wordpress_like_crud(void) {
         "CHECK(CHAR_LENGTH(post_name) <= 200),"
         "post_status TEXT NOT NULL DEFAULT 'publish' COLLATE utf8mb4_unicode_ci "
         "CHECK(CHAR_LENGTH(post_status) <= 20),"
-        "comment_count INTEGER NOT NULL DEFAULT 0"
+        "comment_count INTEGER NOT NULL DEFAULT 0,"
+        "KEY post_name (post_name),"
+        "KEY post_status_date (post_status, post_date)"
         ")",
-        "create wp_posts_like physical table"
-    );
-    failures += exec_sql(
-        database,
-        "CREATE INDEX post_name ON wp_posts_like(post_name)",
-        "create post_name index"
-    );
-    failures += exec_sql(
-        database,
-        "CREATE INDEX post_status_date ON wp_posts_like(post_status, post_date)",
-        "create post_status_date index"
+        "create wp_posts_like physical table with inline MySQL keys"
     );
     failures += exec_sql(
         database,
@@ -3399,19 +3452,11 @@ static int test_wordpress_like_crud(void) {
         "post_id INTEGER NOT NULL DEFAULT 0 CHECK(post_id >= 0),"
         "meta_key TEXT DEFAULT NULL COLLATE utf8mb4_unicode_ci "
         "CHECK(meta_key IS NULL OR CHAR_LENGTH(meta_key) <= 255),"
-        "meta_value TEXT COLLATE utf8mb4_unicode_ci"
+        "meta_value TEXT COLLATE utf8mb4_unicode_ci,"
+        "KEY post_id (post_id),"
+        "KEY meta_key (meta_key)"
         ")",
-        "create wp_postmeta_like physical table"
-    );
-    failures += exec_sql(
-        database,
-        "CREATE INDEX post_id ON wp_postmeta_like(post_id)",
-        "create post_id index"
-    );
-    failures += exec_sql(
-        database,
-        "CREATE INDEX meta_key ON wp_postmeta_like(meta_key)",
-        "create meta_key index"
+        "create wp_postmeta_like physical table with inline MySQL keys"
     );
 
     failures += exec_sql(

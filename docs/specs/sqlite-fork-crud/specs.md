@@ -32,6 +32,9 @@ slices:
   stable within one statement
 - admit MySQL's parenthesized `CURRENT_DATE()`, `CURRENT_TIME([fsp])`, and
   `CURRENT_TIMESTAMP([fsp])` forms for the direct fork parser
+- admit MySQL table-level `KEY`, `INDEX`, `UNIQUE KEY`, and `UNIQUE INDEX`
+  declarations over simple column key parts in the direct fork parser and
+  build native SQLite indexes while the table is created
 - execute the MySQL-runtime-verified WordPress-like CRUD fixture through
   MyLite's public SQL API
 
@@ -406,7 +409,11 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
    SQLite-compatible integer primary-key declarations. The direct parser now
    also admits the first common `CREATE TABLE` table options: `ENGINE`,
    `DEFAULT CHARSET`, `DEFAULT CHARACTER SET`, `COLLATE`, `DEFAULT COLLATE`,
-   `COMMENT`, and `AUTO_INCREMENT`.
+   `COMMENT`, and `AUTO_INCREMENT`. Direct `CREATE TABLE` also admits
+   table-level `KEY`, `INDEX`, `UNIQUE KEY`, and `UNIQUE INDEX` declarations
+   over simple column key parts, with named native SQLite indexes created
+   during table construction. Prefix, functional, fulltext, spatial, and
+   MySQL metadata-only index attributes remain separate work.
 9. Then move type descriptors into SQLite column metadata and enforce MySQL
    conversion/range/length rules in SQLite's insert/update path. Implemented
    for the first signed integer, supported unsigned integer, `DOUBLE`,
@@ -455,7 +462,9 @@ table_option ::= COMMENT eq_opt string_literal.
 table_option ::= AUTO_INCREMENT eq_opt integer_literal.
 
 table_constraint ::= KEY nm_opt LP indexed_column_list RP index_options.
+table_constraint ::= INDEX nm_opt LP indexed_column_list RP index_options.
 table_constraint ::= UNIQUE KEY nm_opt LP indexed_column_list RP index_options.
+table_constraint ::= UNIQUE INDEX nm_opt LP indexed_column_list RP index_options.
 ```
 
 ## Known Risks

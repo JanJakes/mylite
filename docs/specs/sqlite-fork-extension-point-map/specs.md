@@ -69,6 +69,9 @@ Implemented fork points:
   `COLLATE`, `DEFAULT COLLATE`, `COMMENT`, and `AUTO_INCREMENT`
 - native `sqlite_sequence` seeding from direct `CREATE TABLE ...
   AUTO_INCREMENT=N` for rowid-backed autoincrement tables
+- direct SQLite parser and schema-builder admission for MySQL table-level
+  `KEY`, `INDEX`, `UNIQUE KEY`, and `UNIQUE INDEX` declarations over simple
+  column key parts, creating native SQLite indexes during `CREATE TABLE`
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before
@@ -205,6 +208,9 @@ Required for:
 - MySQL type syntax and attributes
 - `AUTO_INCREMENT`, column comments, generated/invisible columns, and table
   options
+- table-level MySQL index declarations, because public extension callbacks
+  cannot admit inline `KEY` syntax or create schema objects while SQLite is
+  building a table
 - `INSERT ... SET`, `ON DUPLICATE KEY UPDATE`, `REPLACE`, `TRUNCATE`,
   `UPDATE ... JOIN`, and multi-table `DELETE`
 - versioned comments and SQL-mode-sensitive parse decisions

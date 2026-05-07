@@ -277,10 +277,12 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
 %fallback ID
   ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST COLUMNKW
   CHARACTER CHARSET COMMENTKW CONFLICT DATABASE DEFERRED DESC DETACH DO
-  EACH END ENGINE EXCLUSIVE EXPLAIN FAIL FOR
-  IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
+  EACH END ENGINE ENGINE_ATTRIBUTE EXCLUSIVE EXPLAIN FAIL FOR
+  IGNORE IMMEDIATE INITIALLY INSTEAD INVISIBLE KEY_BLOCK_SIZE LIKE_KW MATCH
+  NO PLAN
   QUERY KEY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW ROWS
-  ROLLBACK SAVEPOINT TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
+  ROLLBACK SAVEPOINT SECONDARY_ENGINE_ATTRIBUTE TEMP TRIGGER VACUUM VIEW
+  VIRTUAL VISIBLE WITH WITHOUT
   NULLS FIRST LAST
 %ifdef SQLITE_OMIT_COMPOUND_SELECT
   EXCEPT INTERSECT UNION
@@ -494,6 +496,26 @@ tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
 tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
                                  {sqlite3CreateIndex(pParse,0,0,0,X,R,0,0,0,0,
                                        SQLITE_IDXTYPE_UNIQUE);}
+tcons ::= KEY mysql_index_name_opt(N) mysql_index_type_opt LP sortlist(X) RP
+          mysql_index_options.
+                                 {sqlite3CreateIndex(pParse,N.n ? &N : 0,0,0,
+                                      X,OE_None,0,0,SQLITE_SO_ASC,0,
+                                      SQLITE_IDXTYPE_APPDEF);}
+tcons ::= INDEX mysql_index_name_opt(N) mysql_index_type_opt LP sortlist(X) RP
+          mysql_index_options.
+                                 {sqlite3CreateIndex(pParse,N.n ? &N : 0,0,0,
+                                      X,OE_None,0,0,SQLITE_SO_ASC,0,
+                                      SQLITE_IDXTYPE_APPDEF);}
+tcons ::= UNIQUE KEY mysql_index_name_opt(N) mysql_index_type_opt
+          LP sortlist(X) RP mysql_index_options.
+                                 {sqlite3CreateIndex(pParse,N.n ? &N : 0,0,0,
+                                      X,OE_Abort,0,0,SQLITE_SO_ASC,0,
+                                      SQLITE_IDXTYPE_UNIQUE);}
+tcons ::= UNIQUE INDEX mysql_index_name_opt(N) mysql_index_type_opt
+          LP sortlist(X) RP mysql_index_options.
+                                 {sqlite3CreateIndex(pParse,N.n ? &N : 0,0,0,
+                                      X,OE_Abort,0,0,SQLITE_SO_ASC,0,
+                                      SQLITE_IDXTYPE_UNIQUE);}
 tcons ::= CHECK LP(A) expr(E) RP(B) onconf.
                                  {sqlite3AddCheckConstraint(pParse,E,A.z,B.z);}
 tcons ::= FOREIGN KEY LP eidlist(FA) RP
@@ -504,6 +526,26 @@ tcons ::= FOREIGN KEY LP eidlist(FA) RP
 %type defer_subclause_opt {int}
 defer_subclause_opt(A) ::= .                    {A = 0;}
 defer_subclause_opt(A) ::= defer_subclause(A).
+
+%type mysql_index_name_opt {Token}
+mysql_index_name_opt(A) ::= .                   {A.z = 0; A.n = 0;}
+mysql_index_name_opt(A) ::= nm(A).
+
+mysql_index_type_opt ::= .
+mysql_index_type_opt ::= USING nm.
+
+mysql_index_options ::= .
+mysql_index_options ::= mysql_index_options mysql_index_option.
+mysql_index_option ::= USING nm.
+mysql_index_option ::= COMMENTKW STRING.
+mysql_index_option ::= KEY_BLOCK_SIZE INTEGER.
+mysql_index_option ::= KEY_BLOCK_SIZE EQ INTEGER.
+mysql_index_option ::= VISIBLE.
+mysql_index_option ::= INVISIBLE.
+mysql_index_option ::= ENGINE_ATTRIBUTE STRING.
+mysql_index_option ::= ENGINE_ATTRIBUTE EQ STRING.
+mysql_index_option ::= SECONDARY_ENGINE_ATTRIBUTE STRING.
+mysql_index_option ::= SECONDARY_ENGINE_ATTRIBUTE EQ STRING.
 
 // The following is a non-standard extension that allows us to declare the
 // default behavior when there is a constraint conflict.

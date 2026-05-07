@@ -215,6 +215,11 @@ grows.
   relevant.
 - MySQL-runtime compatibility tests should be labeled separately from fast unit
   tests.
+- Direct SQLite-storage probes such as `sqlite_schema` / `sqlite_master`
+  queries, PRAGMA statements, physical table-name checks, VFS checks, and
+  SQLite-helper-method assumptions are storage-invariant tests, not MySQL API
+  compatibility tests. Classify them as `sqlite-internal-assumption` when they
+  come from external test feedback.
 
 ## Compatibility Work
 

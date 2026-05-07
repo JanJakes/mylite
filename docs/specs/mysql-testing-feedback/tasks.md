@@ -201,6 +201,29 @@ MySQL 8.4.9 runtime before each item is marked complete.
 
 ## Test harness classification
 
-- [ ] Classify SQLite-driver-internal probes that depend on `sqlite_master`,
+- [x] Classify SQLite-driver-internal probes that depend on `sqlite_master`,
       PRAGMA-like assumptions, or SQLite helper methods as internal-assumption
-      tests rather than direct MySQL API gaps.
+      tests rather than direct MySQL API gaps. MySQL 8.4.9 treats
+      `sqlite_master` / `sqlite_schema` as ordinary missing user tables and
+      rejects `PRAGMA` syntax; therefore MyLite must not implement SQLite
+      catalog or PRAGMA compatibility as a MySQL-facing feature. Direct
+      `sqlite3_*` storage probes remain valid only as MyLite internal storage
+      invariant tests, not MySQL runtime comparison failures.
+
+## Test harness classification policy
+
+Compatibility failures must be sorted by the API surface they exercise before
+they become product tasks:
+
+- MySQL API probes are SQL statements or client metadata calls issued through
+  MyLite's MySQL-facing public API. They must be compared against MySQL 8.4.9
+  and tracked as compatibility work when behavior differs.
+- MyLite storage-invariant probes are direct SQLite-handle checks, physical
+  table-name checks, `.mylite` file-format checks, VFS offset checks,
+  `sqlite_schema` / `sqlite_master` reads, PRAGMA statements, or helper methods
+  that exist only in a SQLite-backed test adapter. These are classified as
+  `sqlite-internal-assumption` and must not be counted as MySQL API gaps.
+- If an application sends SQLite introspection SQL through the MySQL-facing
+  API, MyLite should follow MySQL behavior instead of SQLite behavior:
+  `sqlite_master` / `sqlite_schema` are ordinary missing tables in a user
+  schema, and `PRAGMA ...` is a syntax error.

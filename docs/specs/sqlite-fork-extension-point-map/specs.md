@@ -47,6 +47,11 @@ Implemented fork points:
 - connection-local VDBE completion state for native `ROW_COUNT()` and
   `LAST_INSERT_ID()`, including generated `AUTO_INCREMENT` rowid capture and
   MySQL's zero row count for direct `TRUNCATE`
+- VDBE statement-time access for native MySQL current temporal functions,
+  beginning with `NOW()`, `CURDATE()`, `CURTIME()`, and UTC/local synonyms
+- parser admission for MySQL parenthesized current-time keyword forms,
+  beginning with `CURRENT_DATE()`, `CURRENT_TIME([fsp])`, and
+  `CURRENT_TIMESTAMP([fsp])`
 - narrow parser admission for MySQL function names that SQLite tokenizes as
   syntax instead of identifiers, beginning with `ISNULL(expr)`
 - tokenizer/parser admission for MySQL-only operators that SQLite rejects
@@ -266,9 +271,8 @@ Required fork direction:
   the fork condition slot; a statement-owned multi-warning collector is still
   needed for complete MySQL diagnostics
 - statement-stable functions such as `NOW()` need a VDBE statement timestamp
-  or equivalent statement context. A plain public scalar callback can compute a
-  time value, but it cannot by itself guarantee all invocations in one
-  statement share the same MySQL-visible timestamp.
+  or equivalent statement context. Implemented first by exposing SQLite's
+  statement clock to MyLite callbacks for native current temporal functions.
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
 
@@ -293,6 +297,23 @@ loads do not alter MySQL-visible session state. The public MyLite runtime keeps
 its existing `last_insert_id` and `previous_row_count` fields synchronized with
 the fork state while broader MySQL auto-increment allocation remains in the
 current public layer.
+
+The same boundary applies to current temporal functions. The callback
+registration surface is sufficient for names and formatting, but the callback
+needs a fork API to read SQLite's VDBE statement clock. The implemented slice
+exposes that clock as Unix milliseconds and uses it for native `NOW()`,
+`CURRENT_TIMESTAMP()`, `LOCALTIME()`, `LOCALTIMESTAMP()`, `UTC_TIMESTAMP()`,
+`CURDATE()`, `CURRENT_DATE()`, `UTC_DATE()`, `CURTIME()`, `CURRENT_TIME()`, and
+`UTC_TIME()`. This keeps all invocations in one statement stable while leaving
+session time-zone conversion and microsecond-resolution clock capture for later
+temporal work.
+
+This also requires a grammar hook for current-time keyword names. SQLite can
+parse bare `CURRENT_TIMESTAMP`, but a public extension cannot make
+`CURRENT_TIMESTAMP(6)` legal once the tokenizer has emitted `CTIME_KW` instead
+of a normal identifier token. The fork now admits the MySQL parenthesized forms
+for `CURRENT_DATE`, `CURRENT_TIME`, and `CURRENT_TIMESTAMP` and lowers them to
+ordinary function expressions.
 
 ### File format and pager
 

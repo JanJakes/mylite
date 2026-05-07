@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 enum mylite_sqlite_collation_flags {
     mylite_sqlite_collation_case_insensitive = 1U << 0U,
@@ -36,6 +37,16 @@ enum mylite_sqlite_numeric_units {
     mylite_sqlite_decimal_base = 10,
 };
 
+enum mylite_sqlite_temporal_units {
+    mylite_sqlite_milliseconds_per_second = 1000,
+    mylite_sqlite_microseconds_per_millisecond = 1000,
+    mylite_sqlite_temporal_max_fsp = 6,
+    mylite_sqlite_datetime_base_length = 19,
+    mylite_sqlite_date_base_length = 10,
+    mylite_sqlite_time_base_length = 8,
+    mylite_sqlite_microsecond_text_length = 6,
+};
+
 enum mylite_sqlite_mysql_conditions {
     mylite_sqlite_mysql_truncated_wrong_value = 1292,
 };
@@ -55,8 +66,28 @@ struct mylite_sqlite_int64_range {
     sqlite3_int64 maximum;
 };
 
+enum mylite_sqlite_current_temporal_kind {
+    mylite_sqlite_current_temporal_datetime,
+    mylite_sqlite_current_temporal_date,
+    mylite_sqlite_current_temporal_time,
+};
+
+struct mylite_sqlite_current_temporal_function {
+    enum mylite_sqlite_current_temporal_kind kind;
+};
+
 static const double mylite_sqlite_integer_round_half = 0.5;
 static const char mylite_sqlite_fork_session_key[] = "mylite.sqlite_fork.session";
+
+static const struct mylite_sqlite_current_temporal_function mylite_sqlite_current_datetime = {
+    .kind = mylite_sqlite_current_temporal_datetime,
+};
+static const struct mylite_sqlite_current_temporal_function mylite_sqlite_current_date = {
+    .kind = mylite_sqlite_current_temporal_date,
+};
+static const struct mylite_sqlite_current_temporal_function mylite_sqlite_current_time = {
+    .kind = mylite_sqlite_current_temporal_time,
+};
 
 static const unsigned int mylite_sqlite_collation_flag_contexts[] = {
     0U,
@@ -68,6 +99,15 @@ static const unsigned int mylite_sqlite_collation_flag_contexts[] = {
 static int register_mysql_collations(sqlite3 *database);
 
 static int register_mysql_functions(sqlite3 *database);
+
+static int register_current_temporal_functions(sqlite3 *database);
+
+static int register_current_temporal_function(
+    sqlite3 *database,
+    const char *name,
+    bool accepts_fsp,
+    const struct mylite_sqlite_current_temporal_function *function
+);
 
 static int register_scalar_function(
     sqlite3 *database,
@@ -122,6 +162,12 @@ static void mysql_last_insert_id(
 );
 
 static void mysql_row_count(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
+
+static void mysql_current_temporal(
     sqlite3_context *context,
     int argument_count,
     sqlite3_value **arguments
@@ -223,6 +269,30 @@ static bool value_is_sql_numeric(sqlite3_value *value);
 static sqlite3_uint64 value_to_uint64(sqlite3_value *value);
 
 static void result_uint64(sqlite3_context *context, sqlite3_uint64 value);
+
+static bool temporal_fsp_from_value(sqlite3_value *value, unsigned int *out_fsp);
+
+static void result_current_temporal(
+    sqlite3_context *context,
+    const struct mylite_sqlite_current_temporal_function *function,
+    unsigned int fsp
+);
+
+static bool current_temporal_format(
+    sqlite3_context *context,
+    char *text,
+    size_t text_size,
+    const struct mylite_sqlite_current_temporal_function *function,
+    unsigned int fsp
+);
+
+static size_t current_temporal_base_length(
+    const struct mylite_sqlite_current_temporal_function *function
+);
+
+static const char *current_temporal_format_string(
+    const struct mylite_sqlite_current_temporal_function *function
+);
 
 static bool compare_values_as_mysql_text(
     sqlite3_value *left,
@@ -431,6 +501,9 @@ static int register_mysql_functions(sqlite3 *database) {
         rc = register_session_function(database, "ROW_COUNT", 0, mysql_row_count);
     }
     if (rc == SQLITE_OK) {
+        rc = register_current_temporal_functions(database);
+    }
+    if (rc == SQLITE_OK) {
         rc = register_session_function_with_user_data(
             database,
             "DATABASE",
@@ -490,6 +563,119 @@ static int register_mysql_functions(sqlite3 *database) {
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "_mylite_coerce_varchar", 2, mysql_coerce_varchar);
+    }
+    return rc;
+}
+
+static int register_current_temporal_functions(sqlite3 *database) {
+    int rc =
+        register_current_temporal_function(database, "NOW", true, &mylite_sqlite_current_datetime);
+
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "CURRENT_TIMESTAMP",
+            true,
+            &mylite_sqlite_current_datetime
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "LOCALTIME",
+            true,
+            &mylite_sqlite_current_datetime
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "LOCALTIMESTAMP",
+            true,
+            &mylite_sqlite_current_datetime
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "UTC_TIMESTAMP",
+            true,
+            &mylite_sqlite_current_datetime
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "CURDATE",
+            false,
+            &mylite_sqlite_current_date
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "CURRENT_DATE",
+            false,
+            &mylite_sqlite_current_date
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "UTC_DATE",
+            false,
+            &mylite_sqlite_current_date
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "CURTIME",
+            true,
+            &mylite_sqlite_current_time
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "CURRENT_TIME",
+            true,
+            &mylite_sqlite_current_time
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_current_temporal_function(
+            database,
+            "UTC_TIME",
+            true,
+            &mylite_sqlite_current_time
+        );
+    }
+    return rc;
+}
+
+static int register_current_temporal_function(
+    sqlite3 *database,
+    const char *name,
+    bool accepts_fsp,
+    const struct mylite_sqlite_current_temporal_function *function
+) {
+    int rc = register_session_function_with_user_data(
+        database,
+        name,
+        0,
+        mysql_current_temporal,
+        (void *)function
+    );
+
+    if (rc == SQLITE_OK && accepts_fsp) {
+        rc = register_session_function_with_user_data(
+            database,
+            name,
+            1,
+            mysql_current_temporal,
+            (void *)function
+        );
     }
     return rc;
 }
@@ -766,6 +952,25 @@ static void mysql_row_count(
     );
 }
 
+static void mysql_current_temporal(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    const struct mylite_sqlite_current_temporal_function *function = sqlite3_user_data(context);
+    unsigned int fsp = 0U;
+
+    if (function == NULL) {
+        sqlite3_result_error_code(context, SQLITE_MISUSE);
+        return;
+    }
+    if (argument_count != 0 && !temporal_fsp_from_value(arguments[0], &fsp)) {
+        sqlite3_result_error(context, "invalid temporal fractional seconds precision", -1);
+        return;
+    }
+    result_current_temporal(context, function, fsp);
+}
+
 static sqlite3_uint64 value_to_uint64(sqlite3_value *value) {
     const unsigned char *text = NULL;
 
@@ -805,6 +1010,111 @@ static void result_uint64(sqlite3_context *context, sqlite3_uint64 value) {
         return;
     }
     sqlite3_result_text(context, buffer, length, sqlite_transient_destructor());
+}
+
+static bool temporal_fsp_from_value(sqlite3_value *value, unsigned int *out_fsp) {
+    sqlite3_int64 fsp = sqlite3_value_int64(value);
+
+    if (out_fsp == NULL || sqlite3_value_type(value) == SQLITE_NULL || fsp < 0 ||
+        fsp > mylite_sqlite_temporal_max_fsp) {
+        return false;
+    }
+    *out_fsp = (unsigned int)fsp;
+    return true;
+}
+
+static void result_current_temporal(
+    sqlite3_context *context,
+    const struct mylite_sqlite_current_temporal_function *function,
+    unsigned int fsp
+) {
+    enum {
+        temporal_text_size =
+            mylite_sqlite_datetime_base_length + 1 + mylite_sqlite_microsecond_text_length + 1,
+    };
+
+    char text[temporal_text_size] = {0};
+
+    if (!current_temporal_format(context, text, sizeof(text), function, fsp)) {
+        sqlite3_result_error(context, "failed to format current temporal value", -1);
+        return;
+    }
+    sqlite3_result_text(context, text, -1, sqlite_transient_destructor());
+}
+
+static bool current_temporal_format(
+    sqlite3_context *context,
+    char *text,
+    size_t text_size,
+    const struct mylite_sqlite_current_temporal_function *function,
+    unsigned int fsp
+) {
+    char microsecond_text[mylite_sqlite_microsecond_text_length + 1U] = {0};
+    sqlite3_int64 unix_millis = mylite_sqlite_fork_statement_unix_millis(context);
+    time_t seconds = (time_t)(unix_millis / mylite_sqlite_milliseconds_per_second);
+    long microseconds = (long)(unix_millis % mylite_sqlite_milliseconds_per_second) *
+                        mylite_sqlite_microseconds_per_millisecond;
+    size_t base_length = current_temporal_base_length(function);
+    struct tm tm_value;
+
+    if (unix_millis <= 0 || fsp > mylite_sqlite_temporal_max_fsp) {
+        return false;
+    }
+    if (microseconds < 0L) {
+        microseconds = 0L;
+    }
+#ifdef _WIN32
+    if (gmtime_s(&tm_value, &seconds) != 0) {
+        return false;
+    }
+#else
+    if (gmtime_r(&seconds, &tm_value) == NULL) {
+        return false;
+    }
+#endif
+    if (strftime(text, text_size, current_temporal_format_string(function), &tm_value) !=
+        base_length) {
+        return false;
+    }
+    if (fsp == 0U || function->kind == mylite_sqlite_current_temporal_date) {
+        return true;
+    }
+    if (snprintf(microsecond_text, sizeof(microsecond_text), "%06ld", microseconds) !=
+        mylite_sqlite_microsecond_text_length) {
+        return false;
+    }
+    text[base_length] = '.';
+    memcpy(text + base_length + 1U, microsecond_text, fsp);
+    text[base_length + 1U + fsp] = '\0';
+    return true;
+}
+
+static size_t current_temporal_base_length(
+    const struct mylite_sqlite_current_temporal_function *function
+) {
+    switch (function->kind) {
+    case mylite_sqlite_current_temporal_date:
+        return mylite_sqlite_date_base_length;
+    case mylite_sqlite_current_temporal_time:
+        return mylite_sqlite_time_base_length;
+    case mylite_sqlite_current_temporal_datetime:
+    default:
+        return mylite_sqlite_datetime_base_length;
+    }
+}
+
+static const char *current_temporal_format_string(
+    const struct mylite_sqlite_current_temporal_function *function
+) {
+    switch (function->kind) {
+    case mylite_sqlite_current_temporal_date:
+        return "%Y-%m-%d";
+    case mylite_sqlite_current_temporal_time:
+        return "%H:%M:%S";
+    case mylite_sqlite_current_temporal_datetime:
+    default:
+        return "%Y-%m-%d %H:%M:%S";
+    }
 }
 
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {

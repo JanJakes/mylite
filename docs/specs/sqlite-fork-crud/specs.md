@@ -27,6 +27,11 @@ slices:
 - track native MySQL statement/session state for the direct fork subset,
   including `ROW_COUNT()`, `LAST_INSERT_ID()`, generated rowids, result-set
   completion, and `TRUNCATE` affected-row semantics
+- expose SQLite's VDBE statement clock to native MySQL current temporal
+  functions so direct fork `NOW()`, `CURDATE()`, and `CURTIME()` calls are
+  stable within one statement
+- admit MySQL's parenthesized `CURRENT_DATE()`, `CURRENT_TIME([fsp])`, and
+  `CURRENT_TIMESTAMP([fsp])` forms for the direct fork parser
 - execute the MySQL-runtime-verified WordPress-like CRUD fixture through
   MyLite's public SQL API
 
@@ -151,6 +156,8 @@ The behavior that matters for the first CRUD foundation is:
   result-producing `SELECT`, and reports `0` after `TRUNCATE`.
 - `LAST_INSERT_ID()` reports the first generated `AUTO_INCREMENT` value for
   successful inserts and can be explicitly set with `LAST_INSERT_ID(expr)`.
+- `NOW()`, `CURRENT_TIMESTAMP()`, `CURDATE()`, and `CURTIME()` use one
+  statement timestamp for all invocations in the same statement.
 - `DROP TABLE` removes the table and its metadata.
 
 Configured MyLite fork connections enable SQLite's native foreign-key
@@ -283,8 +290,10 @@ specs should guide implementation. Function descriptors need:
 
 The current executable slice registers compact callbacks for `CONCAT`,
 `CONCAT_WS`, `IF`, `BIT_LENGTH`, `BIT_COUNT`, `DATABASE`, `SCHEMA`,
-`LAST_INSERT_ID`, `ROW_COUNT`, `ISNULL`, `STRCMP`, `LENGTH`, `OCTET_LENGTH`,
-`CHAR_LENGTH`, and `CHARACTER_LENGTH`. `IF()` also proves the first
+`LAST_INSERT_ID`, `ROW_COUNT`, `NOW`, `CURRENT_TIMESTAMP`, `LOCALTIME`,
+`LOCALTIMESTAMP`, `UTC_TIMESTAMP`, `CURDATE`, `CURRENT_DATE`, `UTC_DATE`,
+`CURTIME`, `CURRENT_TIME`, `UTC_TIME`, `ISNULL`, `STRCMP`, `LENGTH`,
+`OCTET_LENGTH`, `CHAR_LENGTH`, and `CHARACTER_LENGTH`. `IF()` also proves the first
 successful-statement scalar warning path by publishing MySQL warning 1292 for
 truncated numeric condition conversion. `DATABASE()` and `SCHEMA()` prove a
 connection-local session-state path using SQLite client data.
@@ -294,6 +303,13 @@ previous row counts and generated auto-increment identity only after statement
 success, rollback, read completion, or direct `TRUNCATE` lowering is known.
 `ISNULL()` proves the first narrow parser admission hook for a MySQL function
 name that SQLite otherwise tokenizes as syntax before function lookup.
+`NOW()`, `CURDATE()`, `CURTIME()`, and synonyms prove the first VDBE statement
+clock path for scalar functions whose value must be stable across all
+invocations in one statement. `CURRENT_DATE`, `CURRENT_TIME`, and
+`CURRENT_TIMESTAMP` also prove why the public scalar-function extension surface
+is not enough: SQLite tokenizes those names as current-time keywords, so the
+fork grammar admits the MySQL parenthesized forms explicitly before routing
+them through the same native callbacks.
 `STRCMP()` proves a native comparison callback where the first slice can reuse
 MyLite's current ASCII case-insensitive PAD SPACE text comparison and bytewise
 binary-string comparison. Broader function families stay in public SQLite
@@ -399,6 +415,14 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
     Implemented for native `ROW_COUNT()` and `LAST_INSERT_ID()` over the
     current direct CRUD subset, including generated `AUTO_INCREMENT` ids,
     result-producing `SELECT`, and direct `TRUNCATE` row-count behavior.
+11. Add VDBE statement-time access for native current temporal functions.
+    Implemented for direct `NOW()`, `CURRENT_TIMESTAMP()`, `LOCALTIME()`,
+    `LOCALTIMESTAMP()`, `UTC_TIMESTAMP()`, `CURDATE()`, `CURRENT_DATE()`,
+    `UTC_DATE()`, `CURTIME()`, `CURRENT_TIME()`, and `UTC_TIME()` with
+    same-statement stability and first fractional-second precision validation.
+12. Admit parenthesized SQLite current-time keyword forms in the direct parser.
+    Implemented for `CURRENT_DATE()`, `CURRENT_TIME()`, `CURRENT_TIME(fsp)`,
+    `CURRENT_TIMESTAMP()`, and `CURRENT_TIMESTAMP(fsp)`.
 
 ## Lemon Grammar Direction
 

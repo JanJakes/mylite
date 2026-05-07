@@ -85,6 +85,7 @@ sqlite3_uint64 mylite_sqlite_fork_last_insert_id(sqlite3 *database);
 int mylite_sqlite_fork_set_last_insert_id(sqlite3 *database, sqlite3_uint64 value);
 sqlite3_int64 mylite_sqlite_fork_previous_row_count(sqlite3 *database);
 int mylite_sqlite_fork_set_previous_row_count(sqlite3 *database, sqlite3_int64 value);
+sqlite3_int64 mylite_sqlite_fork_statement_unix_millis(sqlite3_context *context);
 int mylite_sqlite_fork_last_condition(
     sqlite3 *database,
     struct mylite_sqlite_fork_condition *out_condition

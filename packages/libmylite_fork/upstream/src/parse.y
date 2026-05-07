@@ -1341,6 +1341,13 @@ expr(A) ::= idj(X) LP distinct(D) exprlist(Y) RP WITHIN GROUP LP ORDER BY expr(E
 term(A) ::= CTIME_KW(OP). {
   A = sqlite3ExprFunction(pParse, 0, &OP, 0);
 }
+expr(A) ::= CTIME_KW(OP) LP RP. {
+  A = sqlite3ExprFunction(pParse, 0, &OP, 0);
+}
+expr(A) ::= CTIME_KW(OP) LP expr(Y) RP. {
+  ExprList *pList = sqlite3ExprListAppend(pParse, 0, Y);
+  A = sqlite3ExprFunction(pParse, pList, &OP, 0);
+}
 
 expr(A) ::= LP nexprlist(X) COMMA expr(Y) RP. {
   ExprList *pList = sqlite3ExprListAppend(pParse, X, Y);

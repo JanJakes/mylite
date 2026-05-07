@@ -314,6 +314,37 @@ static int test_registered_functions(void) {
             .context = "LAST_INSERT_ID returns unsigned 64-bit values as decimal text",
         }
     );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(LENGTH(NOW()), ':', LENGTH(NOW(6)), ':', "
+                   "LENGTH(CURRENT_TIMESTAMP()), ':', LENGTH(CURRENT_TIMESTAMP(6)), ':', "
+                   "LENGTH(CURRENT_DATE()), ':', LENGTH(CURRENT_TIME(6)), ':', "
+                   "LENGTH(UTC_TIMESTAMP()))",
+            .expected = "19:26:19:26:10:15:19",
+            .context = "current temporal functions expose MySQL text shapes",
+        }
+    );
+    failures += expect_int64(
+        database,
+        "SELECT NOW(6) = NOW(6)",
+        1,
+        "current temporal functions are stable within a statement"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT NOW() = CURRENT_TIMESTAMP",
+        1,
+        "NOW matches SQLite statement CURRENT_TIMESTAMP in UTC-compatible mode"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "SELECT CURRENT_TIMESTAMP(7)",
+            .message_fragment = "invalid temporal fractional seconds precision",
+            .context = "current temporal functions reject unsupported precision",
+        }
+    );
     failures += expect_int64(
         database,
         "SELECT SCHEMA() IS NULL",

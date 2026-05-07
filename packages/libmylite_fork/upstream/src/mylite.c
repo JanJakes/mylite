@@ -144,6 +144,17 @@ int mylite_sqlite_fork_set_previous_row_count(sqlite3 *db, sqlite3_int64 v){
   return SQLITE_OK;
 }
 
+sqlite3_int64 mylite_sqlite_fork_statement_unix_millis(sqlite3_context *pCtx){
+  sqlite3_int64 iTime;
+  sqlite3_int64 iUnixEpoch;
+
+  if( pCtx==0 ) return 0;
+  iTime = sqlite3StmtCurrentTime(pCtx);
+  if( iTime<=0 ) return 0;
+  iUnixEpoch = (sqlite3_int64)21086676 * 10000 * 1000;
+  return iTime - iUnixEpoch;
+}
+
 int mylite_sqlite_fork_last_condition(
   sqlite3 *db,
   struct mylite_sqlite_fork_condition *pOut

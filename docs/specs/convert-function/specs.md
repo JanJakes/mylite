@@ -167,12 +167,11 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CONVERT('2024-01-02 03:04:05', DATETIME(6))` | `DATETIME` | `26` | `6` | `binary` | `BINARY` |
 | `CONVERT('03:04:05', TIME(2))` | `TIME` | `13` | `2` | `binary` | `BINARY` |
 
-MySQL column metadata for non-binary explicit charset conversions can remain
+MySQL column metadata for explicit charset conversions remains
 connection-collation based even though `CHARSET()`, `COLLATION()`, and
-`COERCIBILITY()` expose the requested charset/collation. MyLite currently
-derives CAST column descriptors from the cast target for explicit charsets.
-This task preserves that existing CAST architecture and documents the
-non-binary column-metadata mismatch as a deferred CAST-family compatibility gap.
+`COERCIBILITY()` expose the requested charset/collation. Binary conversions use
+binary result metadata but, for no-length literal casts, keep MySQL's
+connection-width display length.
 
 ## Syntax
 
@@ -256,12 +255,10 @@ For `CONVERT(expr USING binary)`, the descriptor matches the current
 
 For `CONVERT(expr USING nonbinary_charset)`, MySQL column metadata is
 connection-collation based in the verified literal cases, while introspection
-functions report the requested charset and default collation. MyLite will
-initially reuse the CAST target descriptor path, so explicit non-binary charset
-column descriptors can reflect the target charset rather than the connection
-charset. Runtime introspection is the compatibility surface covered in this
-task; exact non-binary column metadata is deferred with the broader CAST
-metadata gaps.
+functions report the requested charset and default collation. MyLite follows
+that split: result-column descriptors expose the connection collation and
+connection-width display length, while runtime introspection reports the
+requested charset/collation.
 
 Origin schema/table/column metadata is empty for all CONVERT results.
 
@@ -336,9 +333,6 @@ transcoding project. Known differences after this implementation:
 
 - `CONVERT(... USING nonbinary_charset)` preserves text bytes rather than
   transcoding between character sets
-- non-binary explicit charset result column metadata can follow existing MyLite
-  CAST target descriptors instead of MySQL's verified connection-collation
-  descriptor behavior
 - binary strings cannot yet preserve embedded NUL bytes through every public
   text-value path
 - fixed-length binary padding remains deferred

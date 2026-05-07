@@ -69,15 +69,7 @@ static uint64_t cast_character_length(
     const struct mylite_field_descriptor *source
 );
 
-static unsigned int cast_target_charset_id(
-    mylite_db *database,
-    const struct mylite_sql_ast_node *target
-);
-
-static int cast_target_charset_max_length(
-    mylite_db *database,
-    const struct mylite_sql_ast_node *target
-);
+static bool cast_target_uses_binary_charset(const struct mylite_sql_ast_node *target);
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_descriptor_infer_cast_expression(
@@ -236,20 +228,21 @@ static struct mylite_field_descriptor cast_character_descriptor(
     const struct mylite_expression_value *value,
     const struct mylite_field_descriptor *source
 ) {
-    unsigned int charset_id = cast_target_charset_id(database, target);
+    bool binary_charset = cast_target_uses_binary_charset(target);
     struct mylite_field_descriptor descriptor = {
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
         .flags = 0U,
         .length = cast_character_length(database, target, value, source),
         .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = charset_id,
-        .nullable = mylite_expression_descriptor_is_nullable(source),
+        .charset_id = binary_charset ? mylite_mysql_binary_charset_id
+                                     : mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
     };
 
-    if (charset_id == mylite_mysql_binary_charset_id) {
+    if (binary_charset) {
         descriptor.flags |= MYLITE_FIELD_FLAG_BINARY;
     }
-    mylite_field_descriptor_set_nullable(&descriptor, descriptor.nullable);
+    mylite_field_descriptor_set_nullable(&descriptor, true);
     return descriptor;
 }
 
@@ -350,14 +343,16 @@ static uint64_t cast_character_length(
     const struct mylite_expression_value *value,
     const struct mylite_field_descriptor *source
 ) {
-    int max_length = cast_target_charset_max_length(database, target);
+    uint64_t max_length = mylite_expression_descriptor_connection_character_max_length(database);
 
     if (target != NULL && target->has_column_length) {
-        return target->column_length * (uint64_t)max_length;
+        if (cast_target_uses_binary_charset(target)) {
+            max_length = 1U;
+        }
+        return target->column_length * max_length;
     }
     if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        return (uint64_t)(value->text_value == NULL ? 0U : value->text_length) *
-               (uint64_t)max_length;
+        return (uint64_t)(value->text_value == NULL ? 0U : value->text_length) * max_length;
     }
     if (source != NULL && source->length != 0U) {
         return source->length;
@@ -365,54 +360,26 @@ static uint64_t cast_character_length(
     return 0U;
 }
 
-static unsigned int cast_target_charset_id(
-    mylite_db *database,
-    const struct mylite_sql_ast_node *target
-) {
+static bool cast_target_uses_binary_charset(const struct mylite_sql_ast_node *target) {
     char *name = NULL;
     const struct mylite_charset *charset = NULL;
-    const struct mylite_collation *collation = NULL;
 
-    if (target == NULL || !target->has_column_character_set) {
-        if (target != NULL && target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_BINARY) {
-            return mylite_mysql_binary_charset_id;
-        }
-        return mylite_expression_descriptor_connection_charset_id(database);
+    if (target == NULL) {
+        return false;
+    }
+    if (target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_BINARY) {
+        return true;
+    }
+    if (!target->has_column_character_set) {
+        return false;
     }
 
     name = mylite_copy_unquoted_span_text(target->column_character_set);
     if (name == NULL) {
-        return mylite_expression_descriptor_connection_charset_id(database);
-    }
-    charset = mylite_charset_lookup(name);
-    if (charset != NULL) {
-        collation = mylite_collation_lookup(charset->default_collation);
-    }
-    free(name);
-    return collation == NULL ? mylite_expression_descriptor_connection_charset_id(database)
-                             : (unsigned int)collation->id;
-}
-
-static int cast_target_charset_max_length(
-    mylite_db *database,
-    const struct mylite_sql_ast_node *target
-) {
-    char *name = NULL;
-    const struct mylite_charset *charset = NULL;
-
-    if (target == NULL || !target->has_column_character_set) {
-        charset =
-            target != NULL && target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_BINARY
-                ? mylite_charset_lookup("binary")
-                : mylite_charset_lookup(database == NULL ? NULL : database->character_set_results);
-        return charset == NULL ? 1 : charset->max_length;
-    }
-
-    name = mylite_copy_unquoted_span_text(target->column_character_set);
-    if (name == NULL) {
-        return 1;
+        return false;
     }
     charset = mylite_charset_lookup(name);
     free(name);
-    return charset == NULL ? 1 : charset->max_length;
+    return charset != NULL &&
+           mylite_ascii_case_equal(charset->name, mylite_mysql_binary_charset_name);
 }

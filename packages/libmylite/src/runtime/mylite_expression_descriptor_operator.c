@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int validate_operator_descriptor_callbacks(
     const struct mylite_expression_descriptor_operator_callbacks *callbacks
@@ -24,6 +25,20 @@ static int infer_collate_expression_descriptor(
     const struct mylite_field_descriptor *left,
     struct mylite_field_descriptor *out_descriptor
 );
+
+static struct mylite_charset_collation_info collate_source_collation_info(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_field_descriptor *left
+);
+
+static bool cast_target_collation_info(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    struct mylite_charset_collation_info *out_info
+);
+
+static bool collation_sets_binary_flag(const struct mylite_collation *collation);
 
 static struct mylite_field_descriptor negative_expression_descriptor(
     const struct mylite_field_descriptor *operand
@@ -548,7 +563,7 @@ static int infer_collate_expression_descriptor(
     char *collation_name = mylite_copy_schema_text_span(collation_node);
     const struct mylite_collation *collation = NULL;
     const struct mylite_charset_collation_info source =
-        mylite_expression_descriptor_collation_info(left, mylite_mysql_coercibility_implicit);
+        collate_source_collation_info(database, expression, left);
     int status = MYLITE_OK;
 
     if (collation_name == NULL) {
@@ -569,11 +584,7 @@ static int infer_collate_expression_descriptor(
     } else {
         *out_descriptor = *left;
         if (mylite_expression_descriptor_has_text_result(out_descriptor)) {
-            out_descriptor->charset_id = (unsigned int)collation->id;
-            if (mylite_ascii_case_equal(
-                    collation->character_set,
-                    mylite_mysql_binary_charset_name
-                )) {
+            if (collation_sets_binary_flag(collation)) {
                 out_descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
             } else {
                 out_descriptor->flags &= ~(unsigned int)MYLITE_FIELD_FLAG_BINARY;
@@ -582,6 +593,64 @@ static int infer_collate_expression_descriptor(
     }
     free(collation_name);
     return status;
+}
+
+static struct mylite_charset_collation_info collate_source_collation_info(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_field_descriptor *left
+) {
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *target = mylite_ast_child_at(source, 1U);
+    struct mylite_charset_collation_info info = {0};
+
+    if (source != NULL && source->kind == MYLITE_SQL_AST_CAST_EXPRESSION &&
+        cast_target_collation_info(database, target, &info)) {
+        return info;
+    }
+    return mylite_expression_descriptor_collation_info(left, mylite_mysql_coercibility_implicit);
+}
+
+static bool cast_target_collation_info(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *target,
+    struct mylite_charset_collation_info *out_info
+) {
+    char *charset_name = NULL;
+
+    if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE) {
+        return false;
+    }
+    if (target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_BINARY) {
+        *out_info = mylite_expression_binary_collation_info(mylite_mysql_coercibility_implicit);
+        return true;
+    }
+    if (target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR) {
+        return false;
+    }
+    if (!target->has_column_character_set) {
+        *out_info = mylite_expression_connection_collation_info(
+            database,
+            mylite_mysql_coercibility_implicit
+        );
+        return true;
+    }
+    charset_name = mylite_copy_unquoted_span_text(target->column_character_set);
+    if (charset_name == NULL) {
+        return false;
+    }
+    *out_info = mylite_expression_charset_collation_info(charset_name);
+    out_info->coercibility = mylite_mysql_coercibility_implicit;
+    free(charset_name);
+    return true;
+}
+
+static bool collation_sets_binary_flag(const struct mylite_collation *collation) {
+    const char *name = collation == NULL ? NULL : collation->name;
+    size_t length = name == NULL ? 0U : strlen(name);
+
+    return mylite_ascii_case_equal(name, mylite_mysql_binary_charset_name) ||
+           (length > 4U && mylite_ascii_case_equal(name + length - 4U, "_bin"));
 }
 
 static int validate_operator_descriptor_callbacks(

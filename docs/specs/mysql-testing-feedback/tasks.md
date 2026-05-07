@@ -216,8 +216,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       non-finite decimal strings returning formatted zero with warning 1292.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
-      with warning 3719, FLOAT/DOUBLE target casts, and DATE/TIME/DATETIME
-      temporal target casts.
+      with warning 3719, FLOAT/DOUBLE target casts, DATE/TIME/DATETIME
+      temporal target casts, and MySQL-observed character/binary
+      result-column metadata for nullable literal character casts, no-length
+      binary display lengths, and explicit nonbinary charset conversions.
 - [x] Complete `SELECT DATE(...)`, date-function predicates, and typed
       DATE/DATETIME/TIMESTAMP comparisons against ISO date/datetime strings.
 - [x] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.

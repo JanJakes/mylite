@@ -206,7 +206,7 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CAST('12.34' AS DECIMAL(6,2))` | `NEWDECIMAL` | `8` | `2` | `binary` | `NOT_NULL BINARY NUM` |
 | `CAST('abc' AS CHAR)` | `VAR_STRING` | source length times charset maxlen | `31` | connection dependent | none |
 | `CAST('abc' AS CHAR(3))` | `VAR_STRING` | `3` times charset maxlen | `31` | connection dependent | none |
-| `CAST('abc' AS BINARY)` | `VAR_STRING` | source length | `31` | `binary` | `BINARY` |
+| `CAST('abc' AS BINARY)` | `VAR_STRING` | source length times connection charset maxlen | `31` | `binary` | `BINARY` |
 | `CAST(NULL AS CHAR)` | `VAR_STRING` | `0` | `31` | connection dependent | nullable |
 | `CAST('1.25' AS FLOAT)` | `FLOAT` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
 | `CAST('1.25' AS FLOAT(25))` | `DOUBLE` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |
@@ -380,11 +380,14 @@ MyLite descriptors:
 - `FLOAT(p)` / `FLOAT4(p)` with precision `25` through `53`, `DOUBLE`,
   `DOUBLE PRECISION`, default-mode `REAL`, and `FLOAT8`: `DOUBLE`, length
   `23`, decimals `31`, binary charset, `BINARY NUM`
-- `CHAR`: `VAR_STRING`, decimals `31`, connection charset, nullable if source
-  can be null
-- `CHAR(N)`: same as `CHAR`, length `N * maxlen_for_charset`
+- `CHAR`: `VAR_STRING`, decimals `31`, connection charset, nullable expression
+  metadata
+- `CHAR(N)`: same as `CHAR`, length `N` times the connection charset max byte
+  width
 - `CHAR CHARACTER SET binary` and `BINARY`: `VAR_STRING`, decimals `31`,
-  binary charset, `BINARY`
+  binary charset, `BINARY`; no-length literal binary casts keep MySQL's
+  connection-width display length while length-qualified binary casts use the
+  requested binary length
 - `DATE`: `DATE`, length `10`, decimals `0`, binary charset, `BINARY`
 - `TIME(fsp)`: `TIME`, length `10` without fractions or `11 + fsp` with
   fractions, decimals from target, binary charset, `BINARY`

@@ -283,6 +283,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       User-variable reads now report MySQL-shaped nullable descriptors for
       assigned signed integer and default `utf8mb4` text values, including
       `LONG_BLOB` text metadata with length `268435440` and no flags.
+      `REGEXP_SUBSTR()` now reports source-shaped nullable string descriptors
+      for literal and table-column source expressions instead of defaulting to
+      the generic text length.
       Table-backed `LPAD()` / `RPAD()` expressions with nonnegative literal
       target lengths and `REPEAT()` expressions with nonnegative literal counts
       now infer MySQL-shaped connection-character-set string widths.

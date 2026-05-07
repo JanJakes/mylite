@@ -59,6 +59,18 @@ static int infer_json_function_descriptor(
     const struct mylite_expression_descriptor_function_callbacks *callbacks
 );
 
+static int infer_regexp_substr_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks
+);
+
+static struct mylite_field_descriptor regexp_substr_result_descriptor(
+    const struct mylite_field_descriptor *argument
+);
+
 static bool function_name_is_if(const struct mylite_sql_ast_node *name);
 
 static bool function_name_is_ifnull(const struct mylite_sql_ast_node *name);
@@ -295,6 +307,16 @@ int mylite_expression_descriptor_infer_function_expression(
         return status;
     }
     status = infer_json_function_descriptor(database, plan, expression, out_descriptor, callbacks);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
+    status = infer_regexp_substr_function_descriptor(
+        database,
+        plan,
+        expression,
+        out_descriptor,
+        callbacks
+    );
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
@@ -611,6 +633,51 @@ static int set_default_function_unknown_column_error(
         );
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_regexp_substr_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *argument =
+        arguments == NULL ? NULL : mylite_ast_child_at(arguments, 0U);
+    struct mylite_field_descriptor argument_descriptor = mylite_expression_descriptor_defaults();
+    int status = MYLITE_OK;
+
+    if (!mylite_function_name_is_regexp_substr(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (argument == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status =
+        callbacks
+            ->infer_expression_descriptor(database, plan, argument, NULL, &argument_descriptor);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    *out_descriptor = regexp_substr_result_descriptor(&argument_descriptor);
+    return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor regexp_substr_result_descriptor(
+    const struct mylite_field_descriptor *argument
+) {
+    struct mylite_field_descriptor descriptor =
+        argument == NULL ? mylite_expression_descriptor_defaults() : *argument;
+
+    descriptor.type = MYLITE_FIELD_TYPE_VAR_STRING;
+    descriptor.decimals = mylite_mysql_not_fixed_decimals;
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

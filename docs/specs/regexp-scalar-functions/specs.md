@@ -82,7 +82,10 @@ Additional runtime observations:
 - Metadata for `REGEXP_INSTR()` is nullable `LONGLONG`, binary collation,
   display length `21`, decimals `0`, and numeric/binary flags.
 - Metadata for `REGEXP_SUBSTR()` is a nullable character string using the input
-  expression's character semantics and source length where known.
+  expression's character semantics and source length where known. Under the
+  default `utf8mb4` result character set, `REGEXP_SUBSTR('abc','a')` reports
+  length `12`, and `REGEXP_SUBSTR(varchar_32_column,'[a-z]+')` reports length
+  `128`.
 - Under the default `utf8mb4` result character set, `REGEXP_REPLACE()` reports
   `LONG_BLOB`, collation `utf8mb4_0900_ai_ci` (`255`), length `67108864`,
   decimals `31`, no flags, and nullable metadata. Replacements can grow the
@@ -170,7 +173,9 @@ implemented surface unless a broader MySQL replacement-token rule is added.
 - field type: character string
 - charset/collation: connection or source-compatible charset used by current
   expression descriptor rules
-- length: source expression length when known, otherwise MyLite's text length
+- length: source expression length when known, such as `12` for an `utf8mb4`
+  three-character literal and `128` for an `utf8mb4 VARCHAR(32)` column
+- decimals: `31`
 - nullable: always, because no match returns `NULL`
 
 `REGEXP_REPLACE()`:

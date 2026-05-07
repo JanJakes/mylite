@@ -6490,6 +6490,7 @@ static int test_regexp_scalar_functions_execution(void) {
     };
     static const char *const metadata_columns[] = {"ri", "rs", "rr"};
     static const char *const metadata_values[] = {"1", "a", "xbc"};
+    static const char *const table_metadata_columns[] = {"txt_match"};
     static const struct expected_result_metadata metadata[] = {
         {"ri",
          NULL,
@@ -6510,7 +6511,7 @@ static int test_regexp_scalar_functions_execution(void) {
          NULL,
          NULL,
          NULL,
-         65535U,
+         12U,
          MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
          255U,
@@ -6525,6 +6526,21 @@ static int test_regexp_scalar_functions_execution(void) {
          NULL,
          67108864U,
          MYLITE_FIELD_TYPE_LONG_BLOB,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
+    static const struct expected_result_metadata table_metadata[] = {
+        {"txt_match",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         128U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
          255U,
          0U,
@@ -6653,6 +6669,24 @@ static int test_regexp_scalar_functions_execution(void) {
         "(3,'plain',NULL), (4,NULL,NULL)",
         MYLITE_DONE
     );
+    failures += prepare_sql(
+        database,
+        "SELECT REGEXP_SUBSTR(txt,'[a-z]+') AS txt_match "
+        "FROM regexp_scalar_items LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(stmt, table_metadata, 1, "regexp substr table metadata");
+    failures += expect_column_names(
+        stmt,
+        table_metadata_columns,
+        1,
+        "regexp substr table metadata columns"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "regexp substr table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += expect_select_rows(
         database,
         "SELECT id FROM regexp_scalar_items "

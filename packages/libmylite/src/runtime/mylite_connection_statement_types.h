@@ -38,6 +38,7 @@ struct mylite_connection_system_variable_plan {
     bool replace_current_value;
     bool emit_truncation_warning;
     bool use_null_value;
+    bool global_scope;
 };
 
 #endif

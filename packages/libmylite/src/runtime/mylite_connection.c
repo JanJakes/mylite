@@ -14,6 +14,7 @@
 #include "mylite_vfs.h"
 #include "sqlite3.h"
 
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -21,6 +22,7 @@
 static const uint64_t mylite_embedded_connection_id = 1U;
 static const uint64_t mylite_min_group_concat_max_len = 4U;
 static const uint64_t mylite_default_group_concat_max_len = 1024U;
+static _Atomic uint64_t mylite_global_group_concat_max_len = 1024U;
 static const uint64_t mylite_default_max_allowed_packet = 67108864U;
 static const uint64_t mylite_default_max_connections = 151U;
 static const uint64_t mylite_default_wait_timeout = 28800U;
@@ -382,7 +384,7 @@ int mylite_connection_set_time_zone(mylite_db *database, const char *time_zone) 
 int mylite_connection_set_default_group_concat_max_len(mylite_db *database) {
     return mylite_connection_set_group_concat_max_len(
         database,
-        mylite_default_group_concat_max_len
+        mylite_connection_default_group_concat_max_len()
     );
 }
 
@@ -393,6 +395,18 @@ int mylite_connection_set_group_concat_max_len(mylite_db *database, uint64_t val
 
     database->group_concat_max_len =
         value < mylite_min_group_concat_max_len ? mylite_min_group_concat_max_len : value;
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_default_global_group_concat_max_len(void) {
+    return mylite_connection_set_global_group_concat_max_len(mylite_default_group_concat_max_len);
+}
+
+int mylite_connection_set_global_group_concat_max_len(uint64_t value) {
+    uint64_t clamped_value =
+        value < mylite_min_group_concat_max_len ? mylite_min_group_concat_max_len : value;
+
+    atomic_store_explicit(&mylite_global_group_concat_max_len, clamped_value, memory_order_relaxed);
     return MYLITE_OK;
 }
 
@@ -559,7 +573,7 @@ const char *mylite_connection_time_zone(const mylite_db *database) {
 }
 
 uint64_t mylite_connection_default_group_concat_max_len(void) {
-    return mylite_default_group_concat_max_len;
+    return atomic_load_explicit(&mylite_global_group_concat_max_len, memory_order_relaxed);
 }
 
 uint64_t mylite_connection_group_concat_max_len(const mylite_db *database) {

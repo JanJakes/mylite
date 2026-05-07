@@ -13,15 +13,17 @@ This feature implements a focused executable slice of the MySQL
 - `SET @@group_concat_max_len = unsigned_integer`
 - `SET @@SESSION.group_concat_max_len = unsigned_integer`
 - `SET @@LOCAL.group_concat_max_len = unsigned_integer`
+- `SET GLOBAL group_concat_max_len = unsigned_integer`
+- `SET @@GLOBAL.group_concat_max_len = unsigned_integer`
 - `SET ... group_concat_max_len = DEFAULT`
+- `SELECT @@group_concat_max_len`, `@@SESSION.group_concat_max_len`,
+  `@@LOCAL.group_concat_max_len`, and `@@GLOBAL.group_concat_max_len`
 - `GROUP_CONCAT()` truncation and metadata derived from the current session
   value
 
 Deferred surfaces:
 
-- mutable process-global `group_concat_max_len`
 - persisted variables and startup options
-- `SELECT @@group_concat_max_len` and related system-variable expressions
 - arbitrary assignment expressions beyond signed integer literals and `DEFAULT`
 - `SET_VAR(group_concat_max_len=...)` optimizer hints
 - `max_allowed_packet` interaction
@@ -48,7 +50,7 @@ implementation sources.
 | `SET SESSION group_concat_max_len = 4` | Succeeds and changes the current session value to `4`. |
 | `SET @@SESSION.group_concat_max_len = 5` | Succeeds and changes the current session value to `5`. |
 | `SET @@LOCAL.group_concat_max_len = 6` | Succeeds and changes the current session value to `6`. |
-| `SET group_concat_max_len = DEFAULT` | Restores the current session value to `1024`. |
+| `SET group_concat_max_len = DEFAULT` | Restores the current session value to the current global value, `1024` by default. |
 | `SET group_concat_max_len = 0` | Succeeds, stores `4`, and emits warning 1292: `Truncated incorrect group_concat_max_len value: '0'`. |
 | `SET group_concat_max_len = 3` | Succeeds, stores `4`, and emits warning 1292: `Truncated incorrect group_concat_max_len value: '3'`. |
 | `SET group_concat_max_len = -1` | Succeeds, stores `4`, and emits warning 1292: `Truncated incorrect group_concat_max_len value: '-1'`. |
@@ -98,7 +100,7 @@ Add a `set_system_variable_statement` AST node with:
 
 - a scope marker:
   - omitted, `SESSION`, and `LOCAL` normalize to session scope
-  - `GLOBAL` is preserved so execution can reject unsupported global mutation
+  - `GLOBAL` targets the process-global value
 - a variable-name child preserving bare identifier, quoted identifier, or
   system-variable token text
 - a value child preserving a literal, unary signed numeric literal, `DEFAULT`,
@@ -112,21 +114,23 @@ current execution behavior.
 Session state:
 
 - Each `mylite_db` handle stores a session `group_concat_max_len`.
-- The default value is `1024`.
-- `SET ... = DEFAULT` restores the session value to `1024`.
+- The default value is copied from the process-global value, initially `1024`.
+- `SET ... = DEFAULT` restores the session value to the current process-global
+  value.
 - The minimum value is `4`.
 - Values below `4`, including negative signed literals, store `4` and append
   warning 1292 with the assigned text in the message.
 - Non-integer values fail with error 1232 and leave the prior value unchanged.
 - Omitted scope, `SESSION`, `LOCAL`, `@@var`, `@@SESSION.var`, and
   `@@LOCAL.var` all target the session value.
-- `GLOBAL` and `@@GLOBAL.var` parse but return an unsupported diagnostic in
-  this slice because MyLite has no process-global mutable variable state yet.
+- `GLOBAL` and `@@GLOBAL.var` target a process-global value. Existing sessions
+  keep their current session value until they assign `DEFAULT`; new handles
+  initialize from the then-current global value.
 
 `SHOW VARIABLES`:
 
 - Session and local `SHOW VARIABLES` expose the current session value.
-- Global `SHOW VARIABLES` exposes MyLite's fixed global default, `1024`.
+- Global `SHOW VARIABLES` exposes MyLite's current process-global value.
 - Rows retain the existing `Variable_name` / `Value` metadata and ordering.
 
 `GROUP_CONCAT()`:
@@ -141,11 +145,11 @@ Session state:
 
 ## Storage And Performance
 
-The value is handle-owned session state and requires no file-format change.
-`GROUP_CONCAT()` already accumulates result text in memory; this feature only
-replaces the fixed cap with a session cap. Very large values may still exhaust
-memory before reaching the configured limit; spilling large aggregates to
-storage remains deferred.
+The session value is handle-owned state, and the global value is process-local
+runtime state. Neither requires a file-format change. `GROUP_CONCAT()` already
+accumulates result text in memory; this feature only replaces the fixed cap with
+a session cap. Very large values may still exhaust memory before reaching the
+configured limit; spilling large aggregates to storage remains deferred.
 
 ## Tests
 
@@ -156,16 +160,17 @@ Parser coverage:
 - `SET SESSION group_concat_max_len = DEFAULT`
 - `SET LOCAL @@session.group_concat_max_len = -1`
 - `SET @@LOCAL.group_concat_max_len = 5`
+- `SET GLOBAL group_concat_max_len = 8`
 - existing `SET sql_mode` forms through the generalized AST node
-- unsupported global forms parse for deterministic execution diagnostics
 
 Runtime coverage:
 
 - default `SHOW VARIABLES LIKE 'group_concat_max_len'`
 - default `SHOW GLOBAL VARIABLES LIKE 'group_concat_max_len'`
 - session assignment updates `SHOW VARIABLES`
-- global/default values remain independent
-- `DEFAULT` restores `1024`
+- global assignment updates only `SHOW GLOBAL VARIABLES` and `@@GLOBAL`
+- session and global values remain independent until session `DEFAULT`
+- `DEFAULT` restores the current global value
 - values below `4` clamp to `4` with warning 1292
 - string, decimal, and `NULL` values fail with error 1232 and preserve the
   prior value
@@ -176,9 +181,6 @@ Runtime coverage:
 
 ## Deferred Work
 
-- Mutable process-global state and new-handle inheritance.
-- `SET GLOBAL group_concat_max_len` execution.
-- `SELECT @@group_concat_max_len` expression forms.
 - Arbitrary assignment expressions and system-variable references in assignment
   values.
 - `SET PERSIST`, persisted configuration, and startup-option integration.

@@ -38,6 +38,8 @@ int mylite_connection_set_default_time_zone(mylite_db *database);
 int mylite_connection_set_time_zone(mylite_db *database, const char *time_zone);
 int mylite_connection_set_default_group_concat_max_len(mylite_db *database);
 int mylite_connection_set_group_concat_max_len(mylite_db *database, uint64_t value);
+int mylite_connection_set_default_global_group_concat_max_len(void);
+int mylite_connection_set_global_group_concat_max_len(uint64_t value);
 int mylite_connection_set_default_wait_timeout(mylite_db *database);
 int mylite_connection_set_wait_timeout(mylite_db *database, uint64_t value);
 int mylite_connection_set_default_foreign_key_checks(mylite_db *database);

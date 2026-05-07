@@ -406,9 +406,13 @@ static int execute_set_group_concat_max_len_statement(
     int status = MYLITE_OK;
 
     if (plan->use_default) {
-        return mylite_connection_set_default_group_concat_max_len(stmt->database);
+        return plan->global_scope
+                   ? mylite_connection_set_default_global_group_concat_max_len()
+                   : mylite_connection_set_default_group_concat_max_len(stmt->database);
     }
-    status = mylite_connection_set_group_concat_max_len(stmt->database, plan->unsigned_value);
+    status = plan->global_scope
+                 ? mylite_connection_set_global_group_concat_max_len(plan->unsigned_value)
+                 : mylite_connection_set_group_concat_max_len(stmt->database, plan->unsigned_value);
     if (status == MYLITE_OK && plan->emit_truncation_warning) {
         status = append_group_concat_max_len_truncation_warning(stmt->database, plan->value);
     }
@@ -596,7 +600,8 @@ int mylite_connection_copy_system_variable_statement(
         (void)mylite_diagnostics_set_error_message(database, "unsupported SET variable");
         return MYLITE_UNSUPPORTED;
     }
-    if (global_scope) {
+    plan->global_scope = global_scope;
+    if (global_scope && plan->variable != MYLITE_CONNECTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN) {
         return set_system_variable_global_error(database, plan->variable);
     }
     if (mylite_user_variable_identifier_is_user_variable(value)) {
@@ -896,6 +901,7 @@ int mylite_connection_resolve_system_variable_plan(
         out_plan->replace_current_value = plan->replace_current_value;
         out_plan->emit_truncation_warning = plan->emit_truncation_warning;
         out_plan->use_null_value = plan->use_null_value;
+        out_plan->global_scope = plan->global_scope;
         if ((plan->value != NULL && out_plan->value == NULL) ||
             (plan->replace_search != NULL && out_plan->replace_search == NULL) ||
             (plan->replace_replacement != NULL && out_plan->replace_replacement == NULL)) {
@@ -919,6 +925,7 @@ static int resolve_user_variable_system_value(
     if (status != 0) {
         return status;
     }
+    out_plan->global_scope = plan->global_scope;
 
     switch (plan->variable) {
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:

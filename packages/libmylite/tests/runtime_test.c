@@ -48357,7 +48357,11 @@ static int test_show_variables_execution(void) {
     static const char *const short_wait_timeout_values[] = {"wait_timeout", "123"};
     static const char *const minimum_wait_timeout_values[] = {"wait_timeout", "1"};
     static const char *const short_group_concat_max_len_values[] = {"group_concat_max_len", "4"};
+    static const char *const global_group_concat_max_len_values[] = {"group_concat_max_len", "8"};
     static const char *const six_group_concat_max_len_values[] = {"group_concat_max_len", "6"};
+    static const char *const group_concat_scope_columns[] = {"session_value", "global_value"};
+    static const char *const group_concat_global_scope_values[] = {"1024", "8"};
+    static const char *const group_concat_default_to_global_values[] = {"8", "8"};
     static const char *const selected_database_collation_values[] = {
         "collation_database",
         "latin1_bin"
@@ -48537,6 +48541,7 @@ static int test_show_variables_execution(void) {
     static const char *const table_expr_columns[] = {"id"};
     static const char *const table_expr_values[] = {"1", "2"};
     mylite_db *database = NULL;
+    mylite_db *global_default_database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
 
@@ -49076,12 +49081,72 @@ static int test_show_variables_execution(void) {
         1,
         "show variables group concat max len default restored"
     );
-    failures += expect_prepare_error(
+    failures += execute_sql(database, "SET GLOBAL group_concat_max_len = 8", MYLITE_DONE);
+    failures += expect_select_rows(
         database,
-        "SET GLOBAL group_concat_max_len = 8",
-        MYLITE_UNSUPPORTED,
-        "SET GLOBAL group_concat_max_len is not supported",
-        "set global group concat max len unsupported"
+        "SHOW GLOBAL VARIABLES LIKE 'group_concat_max_len'",
+        columns,
+        2,
+        global_group_concat_max_len_values,
+        1,
+        "show global variables group concat max len changed"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'group_concat_max_len'",
+        columns,
+        2,
+        default_group_concat_max_len_values,
+        1,
+        "show variables group concat max len unchanged after global set"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT @@SESSION.group_concat_max_len AS session_value, "
+        "@@GLOBAL.group_concat_max_len AS global_value",
+        group_concat_scope_columns,
+        2,
+        group_concat_global_scope_values,
+        1,
+        "system variable group concat max len global scope"
+    );
+    failures += expect_status(
+        mylite_open_memory(&global_default_database),
+        MYLITE_OK,
+        "open group concat global default database"
+    );
+    failures += expect_select_rows(
+        global_default_database,
+        "SHOW VARIABLES LIKE 'group_concat_max_len'",
+        columns,
+        2,
+        global_group_concat_max_len_values,
+        1,
+        "new database inherits global group concat max len"
+    );
+    mylite_close(global_default_database);
+    global_default_database = NULL;
+    failures += execute_sql(database, "SET group_concat_max_len = DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT @@SESSION.group_concat_max_len AS session_value, "
+        "@@GLOBAL.group_concat_max_len AS global_value",
+        group_concat_scope_columns,
+        2,
+        group_concat_default_to_global_values,
+        1,
+        "set group concat max len default uses global value"
+    );
+    failures += execute_sql(database, "SET GLOBAL group_concat_max_len = DEFAULT", MYLITE_DONE);
+    failures += execute_sql(database, "SET group_concat_max_len = DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'group_concat_max_len'",
+        columns,
+        2,
+        default_group_concat_max_len_values,
+        1,
+        "show global variables group concat max len default restored"
     );
     failures += execute_sql(database, "SET default_storage_engine = 'MEMORY'", MYLITE_DONE);
     failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);

@@ -166,6 +166,9 @@ Runtime coverage:
 
 - empty database returns zero rows with the exact four uppercase column names
 - creating a normal table without CHECK constraints still returns zero rows
+- empty result metadata matches the MySQL 8.4.9 descriptors for all four
+  columns, including latin1 identifier metadata and the long `BLOB`
+  `CHECK_CLAUSE` descriptor
 - `CREATE TABLE` with inline and table-level CHECK constraints creates
   `CHECK_CONSTRAINTS` rows with MySQL 8.4.9-verified generated names,
   check-clause text, and enforcement flags
@@ -188,10 +191,8 @@ Runtime coverage:
 
 ## Known Gaps
 
-- `ALTER TABLE ... ADD/DROP/ALTER CHECK` remains unsupported and does not
-  mutate CHECK metadata.
 - Full MySQL CHECK expression semantics and DDL-time expression validation are
   tracked by the dedicated [CHECK constraints spec](../check-constraints/specs.md).
-- Privilege filtering and exact MySQL field metadata remain deferred. General
-  projection, filtering, ordering, limiting, alias, and aggregate behavior is
-  covered by the composable information-schema SELECT path.
+- Privilege filtering remains deferred. General projection, filtering,
+  ordering, limiting, alias, and aggregate behavior is covered by the
+  composable information-schema SELECT path.

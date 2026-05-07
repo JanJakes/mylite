@@ -3763,6 +3763,54 @@ static int test_information_schema_check_constraints_execution(void) {
         "check_constraints_fixture_chk_1",
         "(`id` > 0)",
     };
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "CONSTRAINT_CATALOG",
+         .schema_name = "information_schema",
+         .table_name = "CHECK_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "CHECK_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_CATALOG",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                      MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "CONSTRAINT_SCHEMA",
+         .schema_name = "information_schema",
+         .table_name = "CHECK_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "CHECK_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_SCHEMA",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "CONSTRAINT_NAME",
+         .schema_name = "information_schema",
+         .table_name = "CHECK_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "CHECK_CONSTRAINTS",
+         .origin_column_name = "CONSTRAINT_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                      MYLITE_FIELD_FLAG_PART_KEY,
+         .flags_clear = MYLITE_FIELD_FLAG_BINARY},
+        {.name = "CHECK_CLAUSE",
+         .schema_name = "information_schema",
+         .table_name = "CHECK_CONSTRAINTS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "CHECK_CONSTRAINTS",
+         .origin_column_name = "CHECK_CLAUSE",
+         .declared_length = 4294967295U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+    };
     static const char *const table_constraint_values[] = {
         "def",
         "mylite_check_constraints",
@@ -3802,6 +3850,20 @@ static int test_information_schema_check_constraints_execution(void) {
         columns,
         check_constraints_column_count
     );
+    failures += prepare_sql(
+        database,
+        "SELECT * FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        check_constraints_column_count,
+        "check constraints direct metadata"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += execute_sql(database, "CREATE DATABASE mylite_check_constraints", MYLITE_DONE);
     failures += execute_sql(database, "USE mylite_check_constraints", MYLITE_DONE);

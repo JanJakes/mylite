@@ -53,6 +53,10 @@ static struct mylite_field_descriptor information_schema_key_column_usage_column
     const char *name
 );
 
+static struct mylite_field_descriptor information_schema_check_constraints_column_descriptor(
+    const char *name
+);
+
 static struct mylite_field_descriptor information_schema_referential_constraints_column_descriptor(
     const char *name
 );
@@ -251,6 +255,8 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
         return information_schema_table_constraints_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE:
         return information_schema_key_column_usage_column_descriptor(name);
+    case MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS:
+        return information_schema_check_constraints_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_REFERENTIAL_CONSTRAINTS:
         return information_schema_referential_constraints_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_ENGINES:
@@ -265,7 +271,6 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
     case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
-    case MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         break;
     }
@@ -514,6 +519,56 @@ static struct mylite_field_descriptor information_schema_key_column_usage_column
             0U,
             true
         );
+    }
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_INVALID,
+    };
+}
+
+static struct mylite_field_descriptor information_schema_check_constraints_column_descriptor(
+    const char *name
+) {
+    const unsigned int not_null_key_flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                                            MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                                            MYLITE_FIELD_FLAG_PART_KEY;
+
+    if (mylite_ascii_case_equal(name, "CONSTRAINT_CATALOG")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            not_null_key_flags | MYLITE_FIELD_FLAG_UNIQUE_KEY,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "CONSTRAINT_SCHEMA")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            not_null_key_flags,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "CONSTRAINT_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                MYLITE_FIELD_FLAG_PART_KEY,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "CHECK_CLAUSE")) {
+        struct mylite_field_descriptor descriptor = {
+            .type = MYLITE_FIELD_TYPE_BLOB,
+            .flags = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY |
+                     MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+            .length = mylite_mysql_long_text_length,
+            .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
+            .nullable = false,
+        };
+
+        mylite_field_descriptor_set_nullable(&descriptor, false);
+        return descriptor;
     }
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_INVALID,

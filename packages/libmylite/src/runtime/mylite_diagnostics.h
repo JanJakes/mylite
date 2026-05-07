@@ -26,6 +26,11 @@ int mylite_diagnostics_set_table_doesnt_exist_error(
     const char *table_name
 );
 int mylite_diagnostics_set_schema_access_denied_error(mylite_db *database, const char *schema_name);
+int mylite_diagnostics_set_foreign_key_missing_unique_parent_error(
+    mylite_db *database,
+    const char *constraint_name,
+    const char *referenced_table_name
+);
 int mylite_diagnostics_set_collation_charset_error(
     mylite_db *database,
     const char *collation,

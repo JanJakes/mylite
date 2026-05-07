@@ -409,8 +409,6 @@ static int set_alter_table_duplicate_foreign_key_error(
     const char *constraint_name
 );
 
-static int set_alter_table_cannot_add_foreign_key_error(mylite_db *database);
-
 static int set_alter_table_missing_referenced_table_error(
     mylite_db *database,
     const char *table_name
@@ -2478,7 +2476,11 @@ static int resolve_alter_table_foreign_key_parent(
     }
     if (!found_unique_constraint) {
         free(unique_constraint_name);
-        return set_alter_table_cannot_add_foreign_key_error(stmt->database);
+        return mylite_diagnostics_set_foreign_key_missing_unique_parent_error(
+            stmt->database,
+            foreign_key->constraint_name,
+            foreign_key->referenced_table_name
+        );
     }
     foreign_key->unique_constraint_name = unique_constraint_name;
     return MYLITE_OK;
@@ -2984,13 +2986,6 @@ static int set_alter_table_duplicate_foreign_key_error(
         constraint_name,
         "'"
     );
-
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
-static int set_alter_table_cannot_add_foreign_key_error(mylite_db *database) {
-    int status =
-        mylite_diagnostics_set_error_message(database, "Cannot add foreign key constraint");
 
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }

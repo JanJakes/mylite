@@ -353,6 +353,7 @@ Required diagnostics include:
 | dropping a referenced parent column | 1829 / `HY000` |
 | truncating a parent table referenced by a non-self foreign key | 1701 / `42000` |
 | dropping a parent table referenced by a surviving child | 3730 / `HY000` |
+| referenced parent columns lack a unique or primary key | 6125 / `HY000` |
 | incompatible child/parent foreign-key column definitions | 3780 / `HY000` |
 | malformed or invalid FK definition | MySQL-compatible validation error where verified |
 

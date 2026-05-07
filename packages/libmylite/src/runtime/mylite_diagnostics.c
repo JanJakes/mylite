@@ -197,6 +197,36 @@ int mylite_diagnostics_set_schema_access_denied_error(
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
+int mylite_diagnostics_set_foreign_key_missing_unique_parent_error(
+    mylite_db *database,
+    const char *constraint_name,
+    const char *referenced_table_name
+) {
+    char *message = sqlite3_mprintf(
+        "Failed to add the foreign key constraint. Missing unique key for constraint '%q' in the "
+        "referenced table '%q'",
+        constraint_name == NULL ? "" : constraint_name,
+        referenced_table_name == NULL ? "" : referenced_table_name
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_FK_NO_UNIQUE_INDEX_PARENT,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 int mylite_diagnostics_set_collation_charset_error(
     mylite_db *database,
     const char *collation,

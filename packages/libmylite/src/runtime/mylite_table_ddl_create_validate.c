@@ -486,8 +486,11 @@ static bool validate_create_table_foreign_key(
             return false;
         }
         if (!found_unique_constraint) {
-            (void)
-                mylite_diagnostics_set_error_message(database, "Cannot add foreign key constraint");
+            (void)mylite_diagnostics_set_foreign_key_missing_unique_parent_error(
+                database,
+                foreign_key->constraint_name,
+                foreign_key->referenced_table_name
+            );
             return false;
         }
         foreign_key->unique_constraint_name = unique_constraint_name;
@@ -526,7 +529,11 @@ static bool validate_create_table_foreign_key(
         return false;
     }
     if (!found_unique_constraint) {
-        (void)mylite_diagnostics_set_error_message(database, "Cannot add foreign key constraint");
+        (void)mylite_diagnostics_set_foreign_key_missing_unique_parent_error(
+            database,
+            foreign_key->constraint_name,
+            foreign_key->referenced_table_name
+        );
         free(unique_constraint_name);
         return false;
     }

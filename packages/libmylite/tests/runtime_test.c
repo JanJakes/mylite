@@ -200,6 +200,7 @@ enum {
     mysql_warning_illegal_regexp_argument = 3685,
     mysql_warning_regexp_index_out_of_bounds = 3686,
     mysql_warning_regexp_error = 3691,
+    mysql_warning_foreign_key_no_unique_parent = 6125,
 };
 
 struct expected_schemata_row {
@@ -37553,6 +37554,34 @@ static int test_create_table_base_execution(void) {
         "UNIQUE KEY uq_parent_pair_rev (other_id, id))",
         MYLITE_DONE
     );
+    failures += execute_sql(database, "CREATE TABLE no_unique_parent (id INT)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE no_unique_child ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "FOREIGN KEY (parent_id) REFERENCES no_unique_parent(id))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create table foreign key parent missing unique key"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Missing unique key for constraint 'no_unique_child_ibfk_1' in the referenced table "
+        "'no_unique_parent'",
+        "create table foreign key parent missing unique key error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_foreign_key_no_unique_parent,
+        "create table foreign key parent missing unique key code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "no_unique_child");
     failures += prepare_sql(
         database,
         "CREATE TEMPORARY TABLE temp_foreign_key ("
@@ -60022,6 +60051,48 @@ static int test_alter_table_foreign_key_execution(void) {
         zero_count_values,
         1,
         "alter foreign key failed add leaves no metadata"
+    );
+
+    failures += execute_sql(database, "CREATE TABLE no_unique_parent_fk (id INT)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE no_unique_child_fk (id INT PRIMARY KEY, parent_id INT)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE no_unique_child_fk ADD CONSTRAINT fk_missing_unique "
+        "FOREIGN KEY (parent_id) REFERENCES no_unique_parent_fk(id)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "alter foreign key parent missing unique key"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Missing unique key for constraint 'fk_missing_unique' in the referenced table "
+        "'no_unique_parent_fk'",
+        "alter foreign key parent missing unique key error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_foreign_key_no_unique_parent,
+        "alter foreign key parent missing unique key code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'no_unique_child_fk'",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "alter foreign key missing unique leaves no metadata"
     );
 
     failures += execute_sql(

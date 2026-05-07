@@ -3681,10 +3681,49 @@ static char *copy_prefixed_text(
 
 static int eval_arithmetic(
     enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_value *left,
     const struct mylite_expression_value *right,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
+);
+
+static int eval_unsigned_integer_arithmetic(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *expression,
+    const struct numeric_value *left,
+    const struct numeric_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static bool unsigned_integer_arithmetic_applies(
+    const struct numeric_value *left,
+    const struct numeric_value *right
+);
+
+static bool integer_number_is_negative(const struct numeric_value *number);
+
+static uint64_t integer_number_magnitude(const struct numeric_value *number);
+
+static int set_unsigned_arithmetic_result(
+    uint64_t value,
+    struct mylite_expression_value *out_value
+);
+
+static int set_signed_modulo_result(uint64_t value, struct mylite_expression_value *out_value);
+
+static int set_unsigned_arithmetic_division_result(
+    const struct numeric_value *left,
+    const struct numeric_value *right,
+    struct mylite_expression_value *out_value
+);
+
+static uint64_t rounded_unsigned_fraction_4(uint64_t remainder, uint64_t divisor);
+
+static int append_unsigned_arithmetic_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *expression
 );
 
 static int eval_bitwise(
@@ -4792,7 +4831,7 @@ static int eval_binary(
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_MODULO:
-        status = eval_arithmetic(node->operator_kind, &left, &right, warnings, out_value);
+        status = eval_arithmetic(node->operator_kind, node, &left, &right, warnings, out_value);
         break;
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
@@ -17805,8 +17844,14 @@ static int eval_mod_function(
         status = eval_node(child_at(arguments, 1U), context, warnings, &right);
     }
     if (status == 0) {
-        status =
-            eval_arithmetic(MYLITE_SQL_AST_OPERATOR_MODULO, &left, &right, warnings, out_value);
+        status = eval_arithmetic(
+            MYLITE_SQL_AST_OPERATOR_MODULO,
+            arguments,
+            &left,
+            &right,
+            warnings,
+            out_value
+        );
     }
     mylite_expression_value_deinit(&left);
     mylite_expression_value_deinit(&right);
@@ -22738,6 +22783,7 @@ static char *copy_prefixed_text(
 
 static int eval_arithmetic(
     enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_value *left,
     const struct mylite_expression_value *right,
     struct mylite_expression_warnings *warnings,
@@ -22765,6 +22811,16 @@ static int eval_arithmetic(
         status = append_warning(warnings, MYLITE_WARNING_DIVISION_BY_ZERO, "Division by 0");
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         return status;
+    }
+    if (unsigned_integer_arithmetic_applies(&left_number, &right_number)) {
+        return eval_unsigned_integer_arithmetic(
+            operator_kind,
+            expression,
+            &left_number,
+            &right_number,
+            warnings,
+            out_value
+        );
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_DIVIDE) {
         *out_value = (struct mylite_expression_value){
@@ -22826,6 +22882,235 @@ static int eval_arithmetic(
         break;
     }
     return -1;
+}
+
+static int eval_unsigned_integer_arithmetic(
+    enum mylite_sql_ast_operator operator_kind,
+    const struct mylite_sql_ast_node *expression,
+    const struct numeric_value *left,
+    const struct numeric_value *right,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    bool left_negative = integer_number_is_negative(left);
+    bool right_negative = integer_number_is_negative(right);
+    uint64_t left_magnitude = integer_number_magnitude(left);
+    uint64_t right_magnitude = integer_number_magnitude(right);
+    uint64_t result = 0U;
+
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+        return set_unsigned_arithmetic_division_result(left, right, out_value);
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        if (left_negative) {
+            if (left_magnitude > right_magnitude) {
+                return append_unsigned_arithmetic_out_of_range_error(warnings, expression);
+            }
+            return set_unsigned_arithmetic_result(right_magnitude - left_magnitude, out_value);
+        }
+        if (right_negative) {
+            if (right_magnitude > left_magnitude) {
+                return append_unsigned_arithmetic_out_of_range_error(warnings, expression);
+            }
+            return set_unsigned_arithmetic_result(left_magnitude - right_magnitude, out_value);
+        }
+        if (UINT64_MAX - left_magnitude < right_magnitude) {
+            return append_unsigned_arithmetic_out_of_range_error(warnings, expression);
+        }
+        return set_unsigned_arithmetic_result(left_magnitude + right_magnitude, out_value);
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        if (left_negative) {
+            return append_unsigned_arithmetic_out_of_range_error(warnings, expression);
+        }
+        if (right_negative) {
+            if (UINT64_MAX - left_magnitude < right_magnitude) {
+                return append_unsigned_arithmetic_out_of_range_error(warnings, expression);
+            }
+            return set_unsigned_arithmetic_result(left_magnitude + right_magnitude, out_value);
+        }
+        if (left_magnitude < right_magnitude) {
+            return append_unsigned_arithmetic_out_of_range_error(warnings, expression);
+        }
+        return set_unsigned_arithmetic_result(left_magnitude - right_magnitude, out_value);
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        if (left_negative || right_negative) {
+            if (left_magnitude == 0U || right_magnitude == 0U) {
+                return set_unsigned_arithmetic_result(0U, out_value);
+            }
+            return append_unsigned_arithmetic_out_of_range_error(warnings, expression);
+        }
+        if (right_magnitude != 0U && left_magnitude > UINT64_MAX / right_magnitude) {
+            return append_unsigned_arithmetic_out_of_range_error(warnings, expression);
+        }
+        return set_unsigned_arithmetic_result(left_magnitude * right_magnitude, out_value);
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+        if (left_negative || right_negative) {
+            if (left_magnitude == 0U) {
+                return set_unsigned_arithmetic_result(0U, out_value);
+            }
+            return append_unsigned_arithmetic_out_of_range_error(warnings, expression);
+        }
+        return set_unsigned_arithmetic_result(left_magnitude / right_magnitude, out_value);
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        result = left_magnitude % right_magnitude;
+        if (left_negative) {
+            return set_signed_modulo_result(result, out_value);
+        }
+        return set_unsigned_arithmetic_result(result, out_value);
+    default:
+        break;
+    }
+    return -1;
+}
+
+static bool unsigned_integer_arithmetic_applies(
+    const struct numeric_value *left,
+    const struct numeric_value *right
+) {
+    return left != NULL && right != NULL && left->is_integer && right->is_integer &&
+           (left->is_unsigned || right->is_unsigned);
+}
+
+static bool integer_number_is_negative(const struct numeric_value *number) {
+    return number != NULL && number->is_integer && !number->is_unsigned && number->int64_value < 0;
+}
+
+static uint64_t integer_number_magnitude(const struct numeric_value *number) {
+    if (number == NULL) {
+        return 0U;
+    }
+    if (number->is_unsigned) {
+        return number->uint64_value;
+    }
+    if (number->int64_value == INT64_MIN) {
+        return mylite_expression_int64_min_magnitude;
+    }
+    if (number->int64_value < 0) {
+        return (uint64_t)-number->int64_value;
+    }
+    return (uint64_t)number->int64_value;
+}
+
+static int set_unsigned_arithmetic_result(
+    uint64_t value,
+    struct mylite_expression_value *out_value
+) {
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+        .uint64_value = value,
+    };
+    return 0;
+}
+
+static int set_signed_modulo_result(uint64_t value, struct mylite_expression_value *out_value) {
+    if (value == mylite_expression_int64_min_magnitude) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = INT64_MIN,
+        };
+        return 0;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_INT64,
+        .int64_value = -(int64_t)value,
+    };
+    return 0;
+}
+
+static int set_unsigned_arithmetic_division_result(
+    const struct numeric_value *left,
+    const struct numeric_value *right,
+    struct mylite_expression_value *out_value
+) {
+    char buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    uint64_t left_magnitude = integer_number_magnitude(left);
+    uint64_t right_magnitude = integer_number_magnitude(right);
+    uint64_t quotient = left_magnitude / right_magnitude;
+    uint64_t remainder = left_magnitude % right_magnitude;
+    uint64_t fraction = rounded_unsigned_fraction_4(remainder, right_magnitude);
+    bool negative = left_magnitude != 0U &&
+                    integer_number_is_negative(left) != integer_number_is_negative(right);
+    double result = (double)left_magnitude / (double)right_magnitude;
+    int length = 0;
+
+    if (fraction >= 10000U) {
+        if (quotient == UINT64_MAX) {
+            return -1;
+        }
+        ++quotient;
+        fraction = 0U;
+    }
+    if (negative) {
+        result = -result;
+    }
+    length = snprintf(
+        buffer,
+        sizeof(buffer),
+        "%s%llu.%04llu",
+        negative ? "-" : "",
+        (unsigned long long)quotient,
+        (unsigned long long)fraction
+    );
+    if (length <= 0 || (size_t)length >= sizeof(buffer)) {
+        return -1;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = (double)result,
+        .preserve_real_text = true,
+        .text_value = copy_span_text(buffer, (size_t)length),
+        .text_length = (size_t)length,
+    };
+    return out_value->text_value == NULL ? -1 : 0;
+}
+
+static uint64_t rounded_unsigned_fraction_4(uint64_t remainder, uint64_t divisor) {
+#if defined(__SIZEOF_INT128__)
+    unsigned __int128 numerator = (unsigned __int128)remainder * 10000U * 2U;
+    unsigned __int128 denominator = (unsigned __int128)divisor * 2U;
+
+    return (uint64_t)((numerator + divisor) / denominator);
+#else
+    long double fraction = ((long double)remainder / (long double)divisor) * 10000.0L;
+
+    return (uint64_t)(fraction + 0.5L);
+#endif
+}
+
+static int append_unsigned_arithmetic_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *expression
+) {
+    static const char prefix[] = "BIGINT UNSIGNED value is out of range in '";
+    static const char fallback[] = "arithmetic operation";
+    size_t prefix_length = sizeof(prefix) - 1U;
+    const char *text =
+        expression == NULL || expression->span.text == NULL ? fallback : expression->span.text;
+    size_t text_length = expression == NULL || expression->span.text == NULL
+                             ? sizeof(fallback) - 1U
+                             : expression->span.length;
+    char *message = NULL;
+    int status = 0;
+
+    if (text_length > SIZE_MAX - prefix_length - 2U) {
+        return -1;
+    }
+    message = malloc(prefix_length + text_length + 2U);
+    if (message == NULL) {
+        return -1;
+    }
+    memcpy(message, prefix, prefix_length);
+    memcpy(message + prefix_length, text, text_length);
+    message[prefix_length + text_length] = '\'';
+    message[prefix_length + text_length + 1U] = '\0';
+    status = mylite_expression_warnings_append_condition(
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_OUT_OF_RANGE,
+        message
+    );
+    free(message);
+    return status == 0 ? MYLITE_EXEC_ERROR : status;
 }
 
 static int eval_bitwise(

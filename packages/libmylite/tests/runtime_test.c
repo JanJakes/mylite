@@ -5830,6 +5830,26 @@ static int test_expression_operator_foundation(void) {
     static const char *values[] = {"7", "9", "1", "1", "0", "6", "0", "1"};
     static const char *const dual_columns[] = {"1"};
     static const char *const dual_values[] = {"1"};
+    static const char *const unsigned_arithmetic_columns[] = {
+        "sub_one",
+        "div_two",
+        "slash_two",
+        "mod_two",
+        "add_negative",
+        "zero_mul_negative",
+        "mod_negative",
+        "negative_mod_unsigned",
+    };
+    static const char *const unsigned_arithmetic_values[] = {
+        "18446744073709551614",
+        "9223372036854775807",
+        "9223372036854775807.5000",
+        "1",
+        "1",
+        "0",
+        "1",
+        "-1",
+    };
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
@@ -5928,6 +5948,86 @@ static int test_expression_operator_foundation(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "arithmetic done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT CAST(18446744073709551615 AS UNSIGNED) - 1 AS sub_one, "
+        "CAST(18446744073709551615 AS UNSIGNED) DIV 2 AS div_two, "
+        "CAST(18446744073709551615 AS UNSIGNED) / 2 AS slash_two, "
+        "CAST(18446744073709551615 AS UNSIGNED) % 2 AS mod_two, "
+        "CAST(2 AS UNSIGNED) + -1 AS add_negative, "
+        "CAST(0 AS UNSIGNED) * -2 AS zero_mul_negative, "
+        "CAST(5 AS UNSIGNED) % -2 AS mod_negative, "
+        "-5 % CAST(2 AS UNSIGNED) AS negative_mod_unsigned",
+        unsigned_arithmetic_columns,
+        (int)(sizeof(unsigned_arithmetic_columns) / sizeof(unsigned_arithmetic_columns[0])),
+        unsigned_arithmetic_values,
+        1,
+        "unsigned arithmetic"
+    );
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT CAST(18446744073709551615 AS UNSIGNED) + 1",
+        MYLITE_EXEC_ERROR,
+        "BIGINT UNSIGNED value is out of range",
+        "unsigned add overflow"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "unsigned add overflow warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_out_of_range,
+        "unsigned add overflow warning code"
+    );
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT CAST(0 AS UNSIGNED) - 1",
+        MYLITE_EXEC_ERROR,
+        "BIGINT UNSIGNED value is out of range",
+        "unsigned subtract underflow"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "unsigned subtract underflow warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_out_of_range,
+        "unsigned subtract underflow warning code"
+    );
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT CAST(9223372036854775808 AS UNSIGNED) * 2",
+        MYLITE_EXEC_ERROR,
+        "BIGINT UNSIGNED value is out of range",
+        "unsigned multiply overflow"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "unsigned multiply overflow warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_out_of_range,
+        "unsigned multiply overflow warning code"
+    );
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT CAST(5 AS UNSIGNED) DIV -2",
+        MYLITE_EXEC_ERROR,
+        "BIGINT UNSIGNED value is out of range",
+        "unsigned integer divide negative"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "unsigned integer divide negative warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_out_of_range,
+        "unsigned integer divide negative warning code"
+    );
 
     failures += prepare_sql(
         database,

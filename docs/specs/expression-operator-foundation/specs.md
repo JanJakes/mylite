@@ -275,10 +275,19 @@ Representative runtime results:
 | `SELECT 5 / 2` | `2.5000` |
 | `SELECT 5 % 2` | `1` |
 | `SELECT 5 MOD 2` | `1` |
+| `SELECT CAST(18446744073709551615 AS UNSIGNED) - 1` | `18446744073709551614` |
+| `SELECT CAST(18446744073709551615 AS UNSIGNED) DIV 2` | `9223372036854775807` |
+| `SELECT CAST(18446744073709551615 AS UNSIGNED) / 2` | `9223372036854775807.5000` |
+| `SELECT CAST(18446744073709551615 AS UNSIGNED) % 2` | `1` |
 | `SELECT -9223372036854775808` | `-9223372036854775808` |
 | `SELECT ~0` | `18446744073709551615` |
 | `SELECT 1 << 63` | `9223372036854775808` |
 | `SELECT 1 >> 1` | `0` |
+
+Unsigned integer arithmetic uses MySQL's unsigned `BIGINT` range for exact
+integer operands. Addition, subtraction, multiplication, and integer division
+that overflow or underflow that range fail with error/warning 1690. `/` keeps
+the MySQL four-decimal exact-division display for covered unsigned values.
 
 Division by zero returns `NULL` and records warning 1365 for `/`, `DIV`, and
 `MOD`/`%` under the verified SQL mode:
@@ -314,7 +323,7 @@ Task 16 must introduce a reusable value model that can represent at least:
 - signed 64-bit integer
 - unsigned 64-bit integer
 - exact decimal sufficient for MySQL-style `/` display scale in the supported
-  numeric cases
+  numeric cases, including unsigned integer division above signed 64-bit range
 - approximate double for numeric conversion and warnings
 - byte strings with charset/collation metadata placeholders
 - boolean result values as integer `0` or `1`
@@ -604,6 +613,12 @@ these cases.
 | `SELECT 5 / 2` | `2.5000` | none |
 | `SELECT 5 % 2` | `1` | none |
 | `SELECT 5 MOD 2` | `1` | none |
+| `SELECT CAST(18446744073709551615 AS UNSIGNED) - 1` | `18446744073709551614` | none |
+| `SELECT CAST(18446744073709551615 AS UNSIGNED) DIV 2` | `9223372036854775807` | none |
+| `SELECT CAST(18446744073709551615 AS UNSIGNED) / 2` | `9223372036854775807.5000` | none |
+| `SELECT CAST(18446744073709551615 AS UNSIGNED) + 1` | error | 1690 |
+| `SELECT CAST(0 AS UNSIGNED) - 1` | error | 1690 |
+| `SELECT CAST(9223372036854775808 AS UNSIGNED) * 2` | error | 1690 |
 | `SELECT ~0` | `18446744073709551615` | none |
 | `SELECT 1 << 63` | `9223372036854775808` | none |
 | `SELECT 1/0, 1 DIV 0, 1 % 0` | `NULL`, `NULL`, `NULL` | three 1365 warnings |

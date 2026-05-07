@@ -201,8 +201,7 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [ ] Align remaining numeric/string casts and coercions in strict and
       non-strict modes, including TEXT/BLOB limits, binary-string byte edge
       cases, charset-specific string validation, remaining floating-point
-      display and warning-order edge cases, broad unsigned arithmetic beyond
-      signed 64-bit range, scalar
+      display and warning-order edge cases, scalar
       `CAST`/`CONVERT` value semantics beyond the covered floating-point target
       slice, and conversion/truncation
       `IGNORE` demotion beyond the currently covered `INSERT IGNORE` invalid
@@ -228,6 +227,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       target-scale rounding, out-of-range endpoint clipping with warning 1264,
       truncated decimal strings with warning 1292 before range warning 1264,
       and non-finite decimal strings returning formatted zero with warning 1292.
+      Scalar unsigned integer arithmetic now covers exact `BIGINT UNSIGNED`
+      addition, subtraction, multiplication, `/`, `DIV`, and modulo above
+      signed 64-bit range, including MySQL-style 1690 overflow/underflow
+      diagnostics.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719, FLOAT/DOUBLE target casts, DATE/TIME/DATETIME

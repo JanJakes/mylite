@@ -34873,6 +34873,45 @@ static int test_cast_expression_execution(void) {
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
          1},
+        {"char_binary_pad",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"char_binary_trunc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"convert_char_binary_trunc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
     };
     static const struct expected_result_metadata real_as_float_metadata[] = {
         {"real_cast",
@@ -35003,6 +35042,7 @@ static int test_cast_expression_execution(void) {
     static const char *const cast_connection_charset_column[] = {"value"};
     static const unsigned char binary_padded[] = {'a', '\0', '\0'};
     static const unsigned char binary_truncated[] = {'a', 'b', 'c'};
+    static const unsigned char binary_euro_truncated[] = {0xE2, 0x82, 0xAC};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -35127,7 +35167,11 @@ static int test_cast_expression_execution(void) {
         "CAST('abcdef' AS BINARY(3)) AS btrunc, "
         "CONVERT('a', BINARY(3)) AS cpad, "
         "CAST(NULL AS BINARY(3)) AS nb, "
-        "CAST('x' AS BINARY(0)) AS b0",
+        "CAST('x' AS BINARY(0)) AS b0, "
+        "CAST('a' AS CHAR(3) CHARACTER SET binary) AS char_binary_pad, "
+        "CAST(UNHEX('E282AC62') AS CHAR(3) CHARACTER SET binary) AS char_binary_trunc, "
+        "CONVERT(UNHEX('E282AC62'), CHAR(3) CHARACTER SET binary) "
+        "AS convert_char_binary_trunc",
         MYLITE_OK,
         &stmt
     );
@@ -35163,7 +35207,40 @@ static int test_cast_expression_execution(void) {
     failures += expect_null_text(mylite_column_text(stmt, 3), "CAST null BINARY length value");
     failures +=
         expect_int64((int64_t)mylite_column_bytes(stmt, 4), 0, "CAST BINARY zero byte count");
-    failures += expect_int(mylite_warning_count(database), 2, "CAST BINARY length warning count");
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 5),
+        3,
+        "CAST CHAR binary padded byte count"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 5),
+        binary_padded,
+        sizeof(binary_padded),
+        "CAST CHAR binary padded bytes"
+    );
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 6),
+        3,
+        "CAST CHAR binary truncated byte count"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 6),
+        binary_euro_truncated,
+        sizeof(binary_euro_truncated),
+        "CAST CHAR binary truncated bytes"
+    );
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 7),
+        3,
+        "CONVERT CHAR binary truncated byte count"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 7),
+        binary_euro_truncated,
+        sizeof(binary_euro_truncated),
+        "CONVERT CHAR binary truncated bytes"
+    );
+    failures += expect_int(mylite_warning_count(database), 4, "CAST BINARY length warning count");
     failures += expect_int(
         (int)mylite_warning_code(database, 0),
         mysql_warning_truncated_wrong_value,
@@ -35178,6 +35255,26 @@ static int test_cast_expression_execution(void) {
         mylite_warning_message(database, 1),
         "BINARY(0)",
         "CAST BINARY zero warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_truncated_wrong_value,
+        "CAST CHAR binary truncate warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 2),
+        "BINARY(3)",
+        "CAST CHAR binary truncate warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT CHAR binary truncate warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 3),
+        "BINARY(3)",
+        "CONVERT CHAR binary truncate warning message"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST BINARY length done");
     mylite_finalize(stmt);

@@ -97,6 +97,7 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT('abc', BINARY)` | `abc` | none |
 | `HEX(CONVERT('a', BINARY(3)))` | `610000` | none |
 | `HEX(CONVERT('abcdef', BINARY(3)))` | `616263` | 1292 truncated binary |
+| `HEX(CONVERT(UNHEX('E282AC62'), CHAR(3) CHARACTER SET binary))` | `E282AC` | 1292 truncated binary |
 | `CONVERT('1.23456789', FLOAT)` | `1.23457` | none |
 | `CONVERT('1.23456789', FLOAT(25))` | `1.23456789` | none |
 | `CONVERT('1.23456789', DOUBLE)` | `1.23456789` | none |
@@ -218,10 +219,11 @@ The node has two children:
 
 `CONVERT(expr, type)` stores the parsed `cast_target_type` as the target.
 `CONVERT(expr USING charset_name)` stores a `MYLITE_SQL_AST_COLUMN_TYPE_CHAR`
-target with `has_column_character_set`. `USING binary` therefore follows the
-same binary-string path as `CAST(expr AS CHAR CHARACTER SET binary)`, which is
-compatible with MyLite's current `CAST(expr AS BINARY)` subset for the covered
-runtime value and introspection behavior.
+target with `has_column_character_set`. `USING binary` and length-qualified
+`CHAR(N) CHARACTER SET binary` targets therefore follow the same binary-string
+path as `CAST(expr AS CHAR CHARACTER SET binary)`, including fixed-length byte
+truncation and padding for the covered runtime value and introspection
+behavior.
 
 The syntax span remains the original `CONVERT(...)` expression so diagnostics
 and debug output identify the source SQL accurately.

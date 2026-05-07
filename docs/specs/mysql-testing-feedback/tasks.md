@@ -257,7 +257,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       binary targets preserve raw bytes. Default scalar `CHAR` casts and
       `CONVERT(..., CHAR)` now use the connection character set for the same
       invalid-byte validation, while `latin1` connection casts preserve raw
-      bytes.
+      bytes. Length-qualified `CAST`/`CONVERT` to `CHAR(N) CHARACTER SET
+      binary` now share `BINARY(N)` byte truncation, right-padding, warning
+      text, and binary metadata.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719, FLOAT/DOUBLE target casts, DATE/TIME/DATETIME

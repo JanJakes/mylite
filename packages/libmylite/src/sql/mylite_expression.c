@@ -906,6 +906,8 @@ static int validate_char_cast_text(
     bool *out_null_result
 );
 
+static bool cast_target_uses_binary_charset(const struct mylite_sql_ast_node *target);
+
 static char *copy_cast_target_charset_name(const struct mylite_sql_ast_node *target);
 
 static char *copy_cast_target_charset_span(struct mylite_sql_source_span span);
@@ -5352,7 +5354,11 @@ static int eval_cast_expression(
         );
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
-        status = eval_char_cast(target, &value, context, warnings, out_value);
+        if (cast_target_uses_binary_charset(target)) {
+            status = eval_binary_cast(target, &value, warnings, out_value);
+        } else {
+            status = eval_char_cast(target, &value, context, warnings, out_value);
+        }
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
         status = eval_binary_cast(target, &value, warnings, out_value);
@@ -5658,6 +5664,23 @@ static int eval_char_cast(
     }
     free(text);
     return status;
+}
+
+static bool cast_target_uses_binary_charset(const struct mylite_sql_ast_node *target) {
+    char *charset_name = NULL;
+    bool uses_binary = false;
+
+    if (target == NULL || target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR ||
+        !target->has_column_character_set) {
+        return false;
+    }
+    charset_name = copy_cast_target_charset_name(target);
+    if (charset_name == NULL) {
+        return false;
+    }
+    uses_binary = char_function_charset_from_name(charset_name) == CHAR_FUNCTION_CHARSET_BINARY;
+    free(charset_name);
+    return uses_binary;
 }
 
 static int validate_char_cast_text(

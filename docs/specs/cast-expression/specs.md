@@ -140,8 +140,10 @@ range validation.
 Character casts produce variable-length character-string metadata. `CHAR(N)`
 limits the result to at most `N` characters and emits warning 1292 when
 truncation occurs. It does not pad shorter values. `CHAR(0)` returns an empty
-string and warns when the source is nonempty. `CHARACTER SET binary` produces
-binary-string metadata.
+string and warns when the source is nonempty. Length-qualified
+`CHAR(N) CHARACTER SET binary` follows fixed-length binary-string semantics:
+truncate by byte count, right-pad shorter values with `0x00`, and use
+`BINARY(N)` truncation warning text.
 
 | SQL | Result | Warnings |
 | --- | --- | --- |
@@ -149,6 +151,8 @@ binary-string metadata.
 | `CAST('abcdef' AS CHAR(3))` | `abc` | 1292 truncated char |
 | `CAST('abc' AS CHAR(5))` | `abc` | none |
 | `CAST('abc' AS CHAR CHARACTER SET binary)` | `abc` | none |
+| `HEX(CAST('a' AS CHAR(3) CHARACTER SET binary))` | `610000` | none |
+| `HEX(CAST(UNHEX('E282AC62') AS CHAR(3) CHARACTER SET binary))` | `E282AC` | 1292 truncated binary |
 | `HEX(CAST(UNHEX('61FF62') AS CHAR CHARACTER SET utf8mb4))` | `NULL` | 1300 invalid character string |
 | `HEX(CAST(UNHEX('61E282AC62') AS CHAR CHARACTER SET utf8mb4))` | `61E282AC62` | none |
 | `SET NAMES utf8mb4; HEX(CAST(UNHEX('61FF62') AS CHAR))` | `NULL` | 1300 invalid character string |
@@ -375,7 +379,8 @@ deferred to the broader decimal type task.
   the current connection charset descriptor until the national charset task
   expands the registry
 - `CHAR CHARACTER SET binary` returns the same bytes as text with binary
-  metadata; fixed-length binary padding remains deferred
+  metadata; length-qualified `CHAR(N) CHARACTER SET binary` uses the same
+  byte truncation and right-padding path as `BINARY(N)`
 
 ### Temporal
 

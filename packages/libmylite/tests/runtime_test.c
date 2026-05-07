@@ -36680,6 +36680,11 @@ static int test_convert_expression_execution(void) {
         "binary_passthrough",
         "ascii_passthrough",
     };
+    static const char *const convert_transcode_columns[] = {
+        "latin1_to_utf8mb4",
+        "utf8mb4_to_latin1"
+    };
+    static const char *const convert_transcode_values[] = {"C3A9", "E9"};
     static const char *const convert_connection_charset_column[] = {"value"};
     static const struct expected_result_metadata metadata[] = {
         {"signed_value",
@@ -37052,6 +37057,20 @@ static int test_convert_expression_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT charset validation done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(CONVERT(CAST(UNHEX('E9') AS CHAR CHARACTER SET latin1) USING utf8mb4)) "
+        "AS latin1_to_utf8mb4, "
+        "HEX(CONVERT(CAST(UNHEX('C3A9') AS CHAR CHARACTER SET utf8mb4) USING latin1)) "
+        "AS utf8mb4_to_latin1",
+        convert_transcode_columns,
+        2,
+        convert_transcode_values,
+        1,
+        "CONVERT known charset transcoding"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "CONVERT transcode warning count");
 
     failures += prepare_sql(
         database,

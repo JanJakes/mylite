@@ -41,7 +41,8 @@ The following behavior is deferred with the same compatibility boundaries as
 - `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
   `YEAR`, JSON, spatial, and timezone-aware casts remain deferred
 - multi-valued-index `ARRAY` casts
-- full byte transcoding between character sets
+- full byte transcoding between character sets beyond the covered scalar
+  `latin1` to UTF-8 and UTF-8 to `latin1` slice
 - exhaustive overflow/range diagnostics and every SQL-mode variant
 - `COLLATE` inside `CONVERT` target syntax, which MySQL rejects; applying
   expression-level `COLLATE` to the result is supported for registered
@@ -111,12 +112,14 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 
 The `CONVERT(expr USING charset_name)` form returns `NULL` when `expr` is
 `NULL`. Otherwise, MySQL returns string bytes exposed with the requested
-charset and that charset's default collation. In MyLite's current slice, the
-runtime value preserves the source text bytes and updates charset/collation
-introspection metadata for supported charsets. Explicit `utf8mb4` and
-`utf8mb3` targets validate the resulting byte sequence; invalid input returns
-`NULL` with warning 1300. `CONVERT(expr, CHAR)` uses the connection character
-set for the same validation decision.
+charset and that charset's default collation. In MyLite's current slice, known
+`latin1` character values transcode to `utf8mb4`/`utf8mb3`, known
+`utf8mb4`/`utf8mb3` character values transcode to `latin1` when every codepoint
+is representable, and other nonbinary conversions preserve the source text
+bytes while updating charset/collation introspection metadata for supported
+charsets. Explicit `utf8mb4` and `utf8mb3` targets validate the resulting byte
+sequence; invalid input returns `NULL` with warning 1300. `CONVERT(expr, CHAR)`
+uses the connection character set for the same validation decision.
 
 | SQL | Result |
 | --- | --- |
@@ -128,6 +131,8 @@ set for the same validation decision.
 | `CONVERT(NULL USING utf8mb4)` | `NULL` |
 | `HEX(CONVERT(UNHEX('61FF62') USING utf8mb4))` | `NULL`, warning 1300 |
 | `HEX(CONVERT(UNHEX('61E282AC62') USING utf8mb4))` | `61E282AC62` |
+| `HEX(CONVERT(CAST(UNHEX('E9') AS CHAR CHARACTER SET latin1) USING utf8mb4))` | `C3A9` |
+| `HEX(CONVERT(CAST(UNHEX('C3A9') AS CHAR CHARACTER SET utf8mb4) USING latin1))` | `E9` |
 | `HEX(CONVERT(UNHEX('61FF62') USING binary))` | `61FF62` |
 | `HEX(CONVERT(UNHEX('61FF62') USING ascii))` | `61FF62` |
 | `COLLATION(CONVERT('abc' USING ascii))` | `ascii_general_ci` |
@@ -256,7 +261,8 @@ the result is `NULL` without conversion warnings.
 - returns `NULL` for `NULL` input
 - converts non-`NULL` input to MyLite text bytes using the same string
   conversion path as character casts
-- does not perform cross-charset byte transcoding in this slice
+- transcodes known scalar `latin1` character values to UTF-8 and known scalar
+  UTF-8 character values to `latin1` when representable
 - exposes the requested charset and default collation to
   `CHARSET()`, `COLLATION()`, and `COERCIBILITY()`
 - treats `binary` as the existing binary-string cast target
@@ -311,6 +317,8 @@ Parser tests:
   `DOUBLE PRECISION`, `REAL`, and `FLOAT8`
 - `CONVERT('abc' USING latin1)`, `utf8mb4`, quoted `utf8mb3`, `utf8`, and
   `binary`
+- scalar `CONVERT(... USING ...)` transcoding between known `latin1` and
+  `utf8mb4` values
 - invalid `utf8mb4` byte validation for `CONVERT(... USING utf8mb4)` and
   `CONVERT(..., CHAR CHARACTER SET utf8mb4)`, plus connection-character-set
   validation for `CONVERT(..., CHAR)`
@@ -356,7 +364,8 @@ This task is intentionally a CAST-family extension, not a full charset
 transcoding project. Known differences after this implementation:
 
 - `CONVERT(... USING nonbinary_charset)` preserves text bytes rather than
-  transcoding between character sets
+  transcoding between character sets except for known scalar `latin1` to UTF-8
+  and UTF-8 to `latin1` values
 - binary strings cannot yet preserve embedded NUL bytes through every public
   text-value path
 - `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; `YEAR`,

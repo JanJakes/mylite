@@ -29,6 +29,15 @@ enum mylite_expression_temporal_type {
     MYLITE_EXPRESSION_TEMPORAL_TIMESTAMP = 4,
 };
 
+enum mylite_expression_text_charset {
+    MYLITE_EXPRESSION_TEXT_CHARSET_UNKNOWN = 0,
+    MYLITE_EXPRESSION_TEXT_CHARSET_BINARY = 1,
+    MYLITE_EXPRESSION_TEXT_CHARSET_LATIN1 = 2,
+    MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB4 = 3,
+    MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB3 = 4,
+    MYLITE_EXPRESSION_TEXT_CHARSET_ASCII = 5,
+};
+
 struct mylite_expression_warning {
     unsigned int code;
     char *message;
@@ -50,6 +59,7 @@ struct mylite_expression_value {
     bool suppress_text_numeric_warnings;
     bool preserve_temporal_fraction_digits;
     enum mylite_expression_temporal_type temporal_type;
+    enum mylite_expression_text_charset text_charset;
     char *text_value;
     size_t text_length;
 };

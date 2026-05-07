@@ -283,6 +283,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       resolve with target-aware MySQL semantics: numeric columns receive the
       literal numeric value and text/binary columns receive decoded bytes before
       normal column coercion.
+      Scalar `CONVERT(... USING ...)` now transcodes between known `latin1` and
+      `utf8mb4` character values for the covered representable-value slice
+      while preserving invalid unknown byte-string validation behavior.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719, FLOAT/DOUBLE target casts, DATE/TIME/DATETIME

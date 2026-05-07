@@ -897,6 +897,57 @@ static int eval_char_cast(
     struct mylite_expression_value *out_value
 );
 
+static int transcode_char_cast_text(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_eval_context *context,
+    char **text,
+    size_t *text_length
+);
+
+static int transcode_known_charset_text(
+    enum char_function_charset source_charset,
+    enum char_function_charset target_charset,
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+);
+
+static int transcode_latin1_to_utf8(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+);
+
+static int transcode_utf8_to_latin1(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+);
+
+static bool utf8_codepoint_at(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    uint32_t *out_codepoint
+);
+
+static enum char_function_charset char_cast_target_charset(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_eval_context *context
+);
+
+static enum char_function_charset expression_text_charset(
+    enum mylite_expression_text_charset charset
+);
+
+static enum mylite_expression_text_charset expression_text_charset_from_char_function(
+    enum char_function_charset charset
+);
+
 static int truncate_char_cast_text(
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_eval_context *context,
@@ -5640,6 +5691,11 @@ static int eval_char_cast(
     if (status != 0) {
         return status;
     }
+    status = transcode_char_cast_text(target, value, context, &text, &text_length);
+    if (status != 0) {
+        free(text);
+        return status;
+    }
     status = validate_char_cast_text(target, context, text, text_length, warnings, &null_result);
     if (status == 0 && null_result) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
@@ -5652,8 +5708,261 @@ static int eval_char_cast(
     if (status == 0) {
         status = set_text_value(text, text_length, out_value);
     }
+    if (status == 0) {
+        out_value->text_charset =
+            expression_text_charset_from_char_function(char_cast_target_charset(target, context));
+    }
     free(text);
     return status;
+}
+
+static int transcode_char_cast_text(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_value *value,
+    const struct mylite_expression_eval_context *context,
+    char **text,
+    size_t *text_length
+) {
+    enum char_function_charset source_charset = CHAR_FUNCTION_CHARSET_UNKNOWN;
+    enum char_function_charset target_charset = CHAR_FUNCTION_CHARSET_UNKNOWN;
+    char *converted = NULL;
+    size_t converted_length = 0U;
+    int status = 0;
+
+    if (value == NULL || text == NULL || text_length == NULL) {
+        return -1;
+    }
+    source_charset = expression_text_charset(value->text_charset);
+    target_charset = char_cast_target_charset(target, context);
+    status = transcode_known_charset_text(
+        source_charset,
+        target_charset,
+        *text,
+        *text_length,
+        &converted,
+        &converted_length
+    );
+    if (status != 0) {
+        return status;
+    }
+    if (converted != NULL) {
+        free(*text);
+        *text = converted;
+        *text_length = converted_length;
+    }
+    return 0;
+}
+
+static int transcode_known_charset_text(
+    enum char_function_charset source_charset,
+    enum char_function_charset target_charset,
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+) {
+    if (out_text == NULL || out_length == NULL) {
+        return -1;
+    }
+    *out_text = NULL;
+    *out_length = 0U;
+    if (source_charset == CHAR_FUNCTION_CHARSET_LATIN1 &&
+        (target_charset == CHAR_FUNCTION_CHARSET_UTF8MB4 ||
+         target_charset == CHAR_FUNCTION_CHARSET_UTF8MB3)) {
+        return transcode_latin1_to_utf8(text, text_length, out_text, out_length);
+    }
+    if ((source_charset == CHAR_FUNCTION_CHARSET_UTF8MB4 ||
+         source_charset == CHAR_FUNCTION_CHARSET_UTF8MB3) &&
+        target_charset == CHAR_FUNCTION_CHARSET_LATIN1) {
+        return transcode_utf8_to_latin1(text, text_length, out_text, out_length);
+    }
+    return 0;
+}
+
+static int transcode_latin1_to_utf8(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+) {
+    const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
+    char *result = NULL;
+    size_t result_length = 0U;
+
+    if (text_length > SIZE_MAX / 2U - 1U) {
+        return -1;
+    }
+    result = malloc((text_length * 2U) + 1U);
+    if (result == NULL) {
+        return -1;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        unsigned char character = source[index];
+
+        if (character <= MYLITE_ASCII_MAX) {
+            result[result_length++] = (char)character;
+        } else {
+            result[result_length++] = (char)(0xC0U | (character >> 6U));
+            result[result_length++] = (char)(MYLITE_UTF8_CONTINUATION_MARKER | (character & 0x3FU));
+        }
+    }
+    result[result_length] = '\0';
+    *out_text = result;
+    *out_length = result_length;
+    return 0;
+}
+
+static int transcode_utf8_to_latin1(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+) {
+    char *result = malloc(text_length + 1U);
+    size_t input_offset = 0U;
+    size_t result_length = 0U;
+
+    if (result == NULL) {
+        return -1;
+    }
+    while (input_offset < text_length) {
+        uint32_t codepoint = 0U;
+
+        if (!utf8_codepoint_at(text, text_length, &input_offset, &codepoint) ||
+            codepoint > UINT8_MAX) {
+            free(result);
+            return 0;
+        }
+        result[result_length++] = (char)codepoint;
+    }
+    result[result_length] = '\0';
+    *out_text = result;
+    *out_length = result_length;
+    return 0;
+}
+
+static bool utf8_codepoint_at(
+    const char *text,
+    size_t text_length,
+    size_t *offset,
+    uint32_t *out_codepoint
+) {
+    const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
+    size_t index = offset == NULL ? 0U : *offset;
+    unsigned char first = index < text_length ? source[index] : 0U;
+    struct utf8_sequence sequence = {0};
+    uint32_t codepoint = 0U;
+
+    if (offset == NULL || out_codepoint == NULL || index >= text_length) {
+        return false;
+    }
+    if (first <= MYLITE_ASCII_MAX) {
+        *out_codepoint = first;
+        *offset = index + 1U;
+        return true;
+    }
+    if (!utf8_sequence_from_first(first, true, &sequence) ||
+        index + sequence.length > text_length ||
+        source[index + MYLITE_UTF8_SECOND_BYTE_OFFSET] < sequence.second_min ||
+        source[index + MYLITE_UTF8_SECOND_BYTE_OFFSET] > sequence.second_max) {
+        return false;
+    }
+    switch (sequence.length) {
+    case MYLITE_UTF8_TWO_BYTE_LENGTH:
+        if (!utf8_continuation_byte(source[index + 1U])) {
+            return false;
+        }
+        codepoint = ((uint32_t)(first & 0x1FU) << 6U) | (uint32_t)(source[index + 1U] & 0x3FU);
+        break;
+    case MYLITE_UTF8_THREE_BYTE_LENGTH:
+        if (!utf8_continuation_byte(source[index + 1U]) ||
+            !utf8_continuation_byte(source[index + 2U])) {
+            return false;
+        }
+        codepoint = ((uint32_t)(first & 0x0FU) << 12U) |
+                    ((uint32_t)(source[index + 1U] & 0x3FU) << 6U) |
+                    (uint32_t)(source[index + 2U] & 0x3FU);
+        break;
+    case MYLITE_UTF8_FOUR_BYTE_LENGTH:
+        if (!utf8_continuation_byte(source[index + 1U]) ||
+            !utf8_continuation_byte(source[index + 2U]) ||
+            !utf8_continuation_byte(source[index + 3U])) {
+            return false;
+        }
+        codepoint =
+            ((uint32_t)(first & 0x07U) << 18U) | ((uint32_t)(source[index + 1U] & 0x3FU) << 12U) |
+            ((uint32_t)(source[index + 2U] & 0x3FU) << 6U) | (uint32_t)(source[index + 3U] & 0x3FU);
+        break;
+    default:
+        return false;
+    }
+    *out_codepoint = codepoint;
+    *offset = index + sequence.length;
+    return true;
+}
+
+static enum char_function_charset char_cast_target_charset(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_eval_context *context
+) {
+    char *owned_charset_name = NULL;
+    const char *charset_name = NULL;
+    enum char_function_charset charset = CHAR_FUNCTION_CHARSET_UNKNOWN;
+
+    if (target != NULL && target->kind == MYLITE_SQL_AST_COLUMN_TYPE &&
+        target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_CHAR &&
+        target->has_column_character_set) {
+        owned_charset_name = copy_cast_target_charset_name(target);
+        if (owned_charset_name == NULL) {
+            return CHAR_FUNCTION_CHARSET_UNKNOWN;
+        }
+        charset_name = owned_charset_name;
+    } else {
+        charset_name = default_char_cast_charset_name(context);
+    }
+    charset = char_function_charset_from_name(charset_name);
+    free(owned_charset_name);
+    return charset;
+}
+
+static enum char_function_charset expression_text_charset(
+    enum mylite_expression_text_charset charset
+) {
+    switch (charset) {
+    case MYLITE_EXPRESSION_TEXT_CHARSET_BINARY:
+        return CHAR_FUNCTION_CHARSET_BINARY;
+    case MYLITE_EXPRESSION_TEXT_CHARSET_LATIN1:
+        return CHAR_FUNCTION_CHARSET_LATIN1;
+    case MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB4:
+        return CHAR_FUNCTION_CHARSET_UTF8MB4;
+    case MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB3:
+        return CHAR_FUNCTION_CHARSET_UTF8MB3;
+    case MYLITE_EXPRESSION_TEXT_CHARSET_ASCII:
+        return CHAR_FUNCTION_CHARSET_ASCII;
+    case MYLITE_EXPRESSION_TEXT_CHARSET_UNKNOWN:
+        break;
+    }
+    return CHAR_FUNCTION_CHARSET_UNKNOWN;
+}
+
+static enum mylite_expression_text_charset expression_text_charset_from_char_function(
+    enum char_function_charset charset
+) {
+    switch (charset) {
+    case CHAR_FUNCTION_CHARSET_BINARY:
+        return MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
+    case CHAR_FUNCTION_CHARSET_LATIN1:
+        return MYLITE_EXPRESSION_TEXT_CHARSET_LATIN1;
+    case CHAR_FUNCTION_CHARSET_UTF8MB4:
+        return MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB4;
+    case CHAR_FUNCTION_CHARSET_UTF8MB3:
+        return MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB3;
+    case CHAR_FUNCTION_CHARSET_ASCII:
+        return MYLITE_EXPRESSION_TEXT_CHARSET_ASCII;
+    case CHAR_FUNCTION_CHARSET_UNKNOWN:
+        break;
+    }
+    return MYLITE_EXPRESSION_TEXT_CHARSET_UNKNOWN;
 }
 
 static bool cast_target_uses_binary_charset(const struct mylite_sql_ast_node *target) {
@@ -15475,7 +15784,12 @@ static int set_char_result(
             return 0;
         }
     }
-    return set_text_value(text == NULL ? "" : text, text_length, out_value);
+    int status = set_text_value(text == NULL ? "" : text, text_length, out_value);
+
+    if (status == 0) {
+        out_value->text_charset = expression_text_charset_from_char_function(charset);
+    }
+    return status;
 }
 
 static bool char_text_is_valid_for_charset(
@@ -24790,6 +25104,7 @@ static int set_text_value(
         return -1;
     }
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_UNKNOWN;
     out_value->suppress_text_numeric_warnings = false;
     out_value->preserve_temporal_fraction_digits = false;
     out_value->temporal_type = MYLITE_EXPRESSION_TEMPORAL_NONE;

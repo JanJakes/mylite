@@ -64,6 +64,9 @@ commit.
       parent restrict checks without retroactive validation on re-enable.
 - [x] Apply `foreign_key_checks` to direct delete cascade and set-null
       referential actions.
+- [x] Implement recursive referential actions for supported acyclic
+      parent-update and parent-delete cascades, including downstream
+      `CASCADE`, `SET NULL`, and `RESTRICT` / `NO ACTION` effects.
 
 ## DDL Dependencies
 

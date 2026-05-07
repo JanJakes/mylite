@@ -169,8 +169,11 @@ referenced row. Direct parent
 updates apply `ON UPDATE CASCADE` and `ON UPDATE SET NULL` to matching child
 rows for supported single-table and joined `UPDATE` paths. Direct parent
 deletes and `REPLACE` conflict deletes apply `ON DELETE CASCADE` and
-`ON DELETE SET NULL` to matching child rows for supported paths. Covered
-parent update and delete actions are skipped while `foreign_key_checks=0`.
+`ON DELETE SET NULL` to matching child rows for supported paths. These
+referential actions recurse through supported acyclic chains, so downstream
+`CASCADE`, `SET NULL`, and `RESTRICT` / `NO ACTION` constraints are applied
+before the direct child mutation. Covered parent update and delete actions are
+skipped while `foreign_key_checks=0`.
 Temporary child foreign-key definitions are rejected with a deterministic
 `Cannot add foreign key constraint` diagnostic, and persistent child
 definitions do not resolve temporary parent tables.
@@ -185,9 +188,9 @@ child supporting indexes and parent primary/unique indexes required by foreign
 keys with error 1553, even while `foreign_key_checks=0`. `RENAME TABLE` and
 `ALTER TABLE ... RENAME` rewrite foreign-key catalog metadata for child and
 parent tables, including cross-schema moves and MySQL-style regenerated
-`old_table_ibfk_N` child constraint names. Recursive referential actions,
-executable mixed-action ALTER FK operations, and exact parent-update optimizer
-ordering remain follow-up slices. `DROP TABLE`
+`old_table_ibfk_N` child constraint names. Executable mixed-action ALTER FK
+operations and exact parent-update optimizer ordering remain follow-up slices.
+`DROP TABLE`
 rejects parent tables referenced by surviving child tables while
 `foreign_key_checks=1`, permits multi-table drops that remove the parent and
 all referencing children together, and allows checks-off parent drops while
@@ -266,6 +269,8 @@ When `foreign_key_checks` is enabled:
   rows exist
 - `CASCADE` updates or deletes matching child rows
 - `SET NULL` sets all child FK columns to `NULL`
+- supported acyclic recursive cascades apply downstream `CASCADE`, `SET NULL`,
+  and `RESTRICT` / `NO ACTION` rules before mutating the direct child rows
 - `SET DEFAULT` is metadata-preserved and rejects matching parent mutations
   with error 1451, matching MySQL 8.4.9 InnoDB behavior observed for covered
   parent update/delete paths

@@ -548,6 +548,8 @@ static int test_foreign_key_update_actions_execution(void);
 
 static int test_foreign_key_delete_actions_execution(void);
 
+static int test_foreign_key_recursive_actions_execution(void);
+
 static int test_alter_table_foreign_key_execution(void);
 
 static int test_foreign_key_index_dependency_execution(void);
@@ -1027,6 +1029,7 @@ int main(void) {
     failures += test_foreign_key_child_update_execution();
     failures += test_foreign_key_update_actions_execution();
     failures += test_foreign_key_delete_actions_execution();
+    failures += test_foreign_key_recursive_actions_execution();
     failures += test_alter_table_foreign_key_execution();
     failures += test_foreign_key_index_dependency_execution();
     failures += test_foreign_key_drop_table_dependency_execution();
@@ -51979,6 +51982,214 @@ static int test_foreign_key_delete_actions_execution(void) {
         replace_set_null_values,
         2,
         "foreign key replace set null child rows"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_foreign_key_recursive_actions_execution(void) {
+    static const char *const chain_columns[] = {"id", "p_id", "c_p"};
+    static const char *const chain_after_update_values[] = {"10", "2", "2"};
+    static const char *const count_columns[] = {"p_count", "c_count", "g_count"};
+    static const char *const one_count_values[] = {"1", "1", "1"};
+    static const char *const set_null_parent_columns[] = {"id", "p_id"};
+    static const char *const set_null_child_columns[] = {"id", "c_p"};
+    static const char *const set_null_parent_after_update_values[] = {"10", "11", "20", "2"};
+    static const char *const set_null_child_after_update_values[] = {"100", NULL, "200", "2"};
+    static const char *const set_null_parent_after_delete_values[] = {"10", "11"};
+    static const char *const set_null_child_after_delete_values[] = {"100", NULL, "200", NULL};
+    static const char *const restrict_columns[] = {"id", "p_id", "c_p"};
+    static const char *const restrict_values[] = {"10", "1", "1"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(
+        mylite_open_memory(&database),
+        MYLITE_OK,
+        "open recursive foreign key actions database"
+    );
+    failures += execute_sql(database, "CREATE DATABASE fk_recursive_actions_runtime", MYLITE_DONE);
+    failures += execute_sql(database, "USE fk_recursive_actions_runtime", MYLITE_DONE);
+
+    failures += execute_sql(database, "CREATE TABLE p_chain (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE c_chain ("
+        "id INT PRIMARY KEY, p_id INT UNIQUE, "
+        "FOREIGN KEY (p_id) REFERENCES p_chain(id) "
+        "ON UPDATE CASCADE ON DELETE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE g_chain ("
+        "id INT PRIMARY KEY, c_p INT, "
+        "FOREIGN KEY (c_p) REFERENCES c_chain(p_id) "
+        "ON UPDATE CASCADE ON DELETE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO p_chain VALUES (1),(9)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO c_chain VALUES (10,1),(90,9)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO g_chain VALUES (100,1),(900,9)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE p_chain SET id = 2 WHERE id = 1",
+        1,
+        "recursive foreign key update cascade affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT c_chain.id, c_chain.p_id, g_chain.c_p "
+        "FROM c_chain JOIN g_chain ON g_chain.id = 100 "
+        "WHERE c_chain.id = 10",
+        chain_columns,
+        3,
+        chain_after_update_values,
+        1,
+        "recursive foreign key update cascade rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DELETE FROM p_chain WHERE id = 9",
+        1,
+        "recursive foreign key delete cascade affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT (SELECT COUNT(*) FROM p_chain) AS p_count, "
+        "(SELECT COUNT(*) FROM c_chain) AS c_count, "
+        "(SELECT COUNT(*) FROM g_chain) AS g_count",
+        count_columns,
+        3,
+        one_count_values,
+        1,
+        "recursive foreign key delete cascade counts"
+    );
+
+    failures += execute_sql(database, "CREATE TABLE p_null (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE c_null ("
+        "id INT PRIMARY KEY, p_id INT UNIQUE, "
+        "FOREIGN KEY (p_id) REFERENCES p_null(id) "
+        "ON UPDATE CASCADE ON DELETE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE g_null ("
+        "id INT PRIMARY KEY, c_p INT, "
+        "FOREIGN KEY (c_p) REFERENCES c_null(p_id) "
+        "ON UPDATE SET NULL ON DELETE SET NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO p_null VALUES (1),(2)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO c_null VALUES (10,1),(20,2)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO g_null VALUES (100,1),(200,2)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE p_null SET id = 11 WHERE id = 1",
+        1,
+        "recursive foreign key update set null affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, p_id FROM c_null ORDER BY id",
+        set_null_parent_columns,
+        2,
+        set_null_parent_after_update_values,
+        2,
+        "recursive foreign key update set null parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, c_p FROM g_null ORDER BY id",
+        set_null_child_columns,
+        2,
+        set_null_child_after_update_values,
+        2,
+        "recursive foreign key update set null child rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DELETE FROM p_null WHERE id = 2",
+        1,
+        "recursive foreign key delete set null affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, p_id FROM c_null ORDER BY id",
+        set_null_parent_columns,
+        2,
+        set_null_parent_after_delete_values,
+        1,
+        "recursive foreign key delete set null parent rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, c_p FROM g_null ORDER BY id",
+        set_null_child_columns,
+        2,
+        set_null_child_after_delete_values,
+        2,
+        "recursive foreign key delete set null child rows"
+    );
+
+    failures += execute_sql(database, "CREATE TABLE p_restrict (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE c_restrict ("
+        "id INT PRIMARY KEY, p_id INT UNIQUE, "
+        "FOREIGN KEY (p_id) REFERENCES p_restrict(id) "
+        "ON UPDATE CASCADE ON DELETE CASCADE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE g_restrict ("
+        "id INT PRIMARY KEY, c_p INT, "
+        "FOREIGN KEY (c_p) REFERENCES c_restrict(p_id) "
+        "ON UPDATE RESTRICT ON DELETE RESTRICT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO p_restrict VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO c_restrict VALUES (10,1)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO g_restrict VALUES (100,1)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "UPDATE p_restrict SET id = 2 WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Cannot delete or update a parent row",
+        "recursive foreign key update restrict rejects"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_row_is_referenced,
+        "recursive foreign key update restrict error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "DELETE FROM p_restrict WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Cannot delete or update a parent row",
+        "recursive foreign key delete restrict rejects"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT c_restrict.id, c_restrict.p_id, g_restrict.c_p "
+        "FROM c_restrict JOIN g_restrict ON g_restrict.id = 100",
+        restrict_columns,
+        3,
+        restrict_values,
+        1,
+        "recursive foreign key restrict preserves rows"
     );
 
     mylite_close(database);

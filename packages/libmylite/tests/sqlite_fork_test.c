@@ -389,7 +389,6 @@ static int test_registered_functions(void) {
             .context = "<=> trailing text publishes truncation warning",
         }
     );
-
     sqlite3_close(database);
     return failures;
 }
@@ -473,7 +472,8 @@ static int test_mysql_collations(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT COUNT(*) || ':' || group_concat(value || ':' || length(value), '|') "
+            .sql = "SELECT CONCAT(COUNT(*), ':', group_concat(CONCAT(value, ':', length(value)), "
+                   "'|')) "
                    "FROM (SELECT value FROM collation_no_pad_unique ORDER BY rowid)",
             .expected = "2:trail:5|trail :6",
             .context = "SQLite collation API preserves NO PAD uniqueness",
@@ -934,7 +934,7 @@ static int test_native_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT _mylite_coerce_double('3.25') || ''",
+            .sql = "SELECT CONCAT(_mylite_coerce_double('3.25'), '')",
             .expected = "3.25",
             .context = "double coercion accepts numeric text",
         }
@@ -988,7 +988,7 @@ static int test_native_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT legacy || ':' || changed FROM legacy_update",
+            .sql = "SELECT CONCAT(legacy, ':', changed) FROM legacy_update",
             .expected = "bad:2",
             .context = "update preserves unchecked legacy value",
         }
@@ -1108,9 +1108,9 @@ static int test_native_binary_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || hex(fixed) || ':' || "
-                   "length(fixed) || ':' || hex(variable) || ':' || "
-                   "length(variable), '|') FROM ("
+            .sql = "SELECT group_concat(CONCAT(id, ':', hex(fixed), ':', "
+                   "length(fixed), ':', hex(variable), ':', "
+                   "length(variable)), '|') FROM ("
                    "SELECT id, fixed, variable FROM binary_direct ORDER BY id)",
             .expected = "1:610000:3:C3A9:2|2:363500:3:31323334:4",
             .context = "direct binary descriptors coerce and pad stored bytes",
@@ -1124,8 +1124,8 @@ static int test_native_binary_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT hex(fixed) || ':' || length(fixed) || ':' || "
-                   "hex(variable) || ':' || length(variable) "
+            .sql = "SELECT CONCAT(hex(fixed), ':', length(fixed), ':', "
+                   "hex(variable), ':', length(variable)) "
                    "FROM binary_direct WHERE id = 2",
             .expected = "787900:3:7A:1",
             .context = "direct binary update coerces assigned values",
@@ -1229,9 +1229,9 @@ static int test_native_text_blob_family_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || hex(CAST(short_text AS BLOB)) || ':' || "
-                   "length(CAST(short_text AS BLOB)) || ':' || char_length(short_text) || ':' || "
-                   "hex(short_blob) || ':' || length(short_blob), '|') FROM ("
+            .sql = "SELECT group_concat(CONCAT(id, ':', hex(CAST(short_text AS BLOB)), ':', "
+                   "length(CAST(short_text AS BLOB)), ':', char_length(short_text), ':', "
+                   "hex(short_blob), ':', length(short_blob)), '|') FROM ("
                    "SELECT id, short_text, short_blob FROM text_blob_direct ORDER BY id)",
             .expected = "1:C3A961:3:2:00FF:2|2:3635:2:2:31323334:4",
             .context = "direct text/blob descriptors coerce stored values",
@@ -1245,9 +1245,9 @@ static int test_native_text_blob_family_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT hex(CAST(short_text AS BLOB)) || ':' || "
-                   "length(CAST(short_text AS BLOB)) || ':' || char_length(short_text) || ':' || "
-                   "hex(short_blob) || ':' || length(short_blob) "
+            .sql = "SELECT CONCAT(hex(CAST(short_text AS BLOB)), ':', "
+                   "length(CAST(short_text AS BLOB)), ':', char_length(short_text), ':', "
+                   "hex(short_blob), ':', length(short_blob)) "
                    "FROM text_blob_direct WHERE id = 2",
             .expected = "C3A9C3A9:4:2:7879:2",
             .context = "direct text/blob update coerces assigned values",
@@ -1376,8 +1376,8 @@ static int test_native_decimal_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || amount || ':' || whole || ':' || "
-                   "unsigned_amount, '|') FROM ("
+            .sql = "SELECT group_concat(CONCAT(id, ':', amount, ':', whole, ':', "
+                   "unsigned_amount), '|') FROM ("
                    "SELECT id, amount, whole, unsigned_amount FROM decimal_direct ORDER BY id)",
             .expected = "1:1.23:13:0.00|2:-1.24:-13:10.00|3:1.20:10:100.00",
             .context = "direct decimal descriptors round and normalize stored text",
@@ -1392,7 +1392,7 @@ static int test_native_decimal_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT amount || ':' || whole || ':' || unsigned_amount "
+            .sql = "SELECT CONCAT(amount, ':', whole, ':', unsigned_amount) "
                    "FROM decimal_direct WHERE id = 1",
             .expected = "999.99:-1:0.00",
             .context = "direct decimal update coerces assigned values",
@@ -1551,8 +1551,8 @@ static int test_native_temporal_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || d || ':' || dt || ':' || dt3 || ':' || "
-                   "dt6, '|') FROM ("
+            .sql = "SELECT group_concat(CONCAT(id, ':', d, ':', dt, ':', dt3, ':', "
+                   "dt6), '|') FROM ("
                    "SELECT id, d, dt, dt3, dt6 FROM temporal_direct ORDER BY id)",
             .expected = "1:2024-02-29:2024-02-29 12:34:56:"
                         "2024-02-29 12:34:56.790:2024-02-29 12:34:56.123457|"
@@ -1573,7 +1573,7 @@ static int test_native_temporal_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT d || ':' || dt || ':' || dt3 || ':' || dt6 "
+            .sql = "SELECT CONCAT(d, ':', dt, ':', dt3, ':', dt6) "
                    "FROM temporal_direct WHERE id = 1",
             .expected = "2024-03-01:2024-03-01 00:00:00:"
                         "2024-03-01 01:02:04.000:2024-03-01 01:02:03.000002",
@@ -1707,7 +1707,7 @@ static int test_native_temporal_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT d || ':' || dt FROM temporal_zero_direct WHERE id = 1",
+            .sql = "SELECT CONCAT(d, ':', dt) FROM temporal_zero_direct WHERE id = 1",
             .expected = "0000-00-00:0000-00-00 00:00:00",
             .context = "direct temporal descriptors can allow zero sentinels",
         }
@@ -1792,8 +1792,8 @@ static int test_native_timestamp_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || ts || ':' || ts3 || ':' || "
-                   "COALESCE(ts6, 'NULL'), '|') FROM ("
+            .sql = "SELECT group_concat(CONCAT(id, ':', ts, ':', ts3, ':', "
+                   "COALESCE(ts6, 'NULL')), '|') FROM ("
                    "SELECT id, ts, ts3, ts6 FROM timestamp_direct ORDER BY id)",
             .expected = "1:1970-01-01 00:00:01:1970-01-01 00:00:01.123:"
                         "1970-01-01 00:00:01.123457|"
@@ -1813,7 +1813,7 @@ static int test_native_timestamp_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT ts || ':' || ts3 || ':' || ts6 FROM timestamp_direct WHERE id = 3",
+            .sql = "SELECT CONCAT(ts, ':', ts3, ':', ts6) FROM timestamp_direct WHERE id = 3",
             .expected = "2038-01-19 03:14:07:2038-01-19 03:14:07.999:"
                         "2038-01-19 03:14:07.999999",
             .context = "direct timestamp update coerces assigned values",
@@ -1989,7 +1989,7 @@ static int test_native_time_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || t || ':' || t3 || ':' || t6, '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', t, ':', t3, ':', t6), '|') "
                    "FROM (SELECT id, t, t3, t6 FROM time_direct ORDER BY id)",
             .expected = "1:12:34:56:12:34:56.790:12:34:56.123457|"
                         "2:-12:34:56:-12:34:56.790:-12:34:56.123457|"
@@ -2012,7 +2012,7 @@ static int test_native_time_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT t || ':' || t3 || ':' || t6 FROM time_direct WHERE id = 1",
+            .sql = "SELECT CONCAT(t, ':', t3, ':', t6) FROM time_direct WHERE id = 1",
             .expected = "24:00:00:-23:59:59.999:838:59:58.999999",
             .context = "direct time update coerces assigned values",
         }
@@ -2103,7 +2103,7 @@ static int test_native_year_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || y, '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', y), '|') "
                    "FROM (SELECT id, y FROM year_direct ORDER BY id)",
             .expected = "1:0000|2:2000|3:2000|4:0000|5:2001|6:2069|7:1970|8:1902|9:2155",
             .context = "direct year descriptor normalizes stored text",
@@ -2122,7 +2122,7 @@ static int test_native_year_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || y, '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', y), '|') "
                    "FROM (SELECT id, y FROM year_direct WHERE id IN (1, 2) ORDER BY id)",
             .expected = "1:2002|2:1998",
             .context = "direct year update coerces assigned values",
@@ -2260,10 +2260,10 @@ static int test_native_bit_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || hex(b1) || ':' || length(b1) || ':' || "
-                   "(b1 + 0) || ':' || hex(b4) || ':' || length(b4) || ':' || (b4 + 0) || ':' || "
-                   "hex(b9) || ':' || length(b9) || ':' || (b9 + 0) || ':' || "
-                   "hex(b64) || ':' || length(b64), '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', hex(b1), ':', length(b1), ':', "
+                   "(b1 + 0), ':', hex(b4), ':', length(b4), ':', (b4 + 0), ':', "
+                   "hex(b9), ':', length(b9), ':', (b9 + 0), ':', "
+                   "hex(b64), ':', length(b64)), '|') "
                    "FROM (SELECT id, b1, b4, b9, b64 FROM bit_direct ORDER BY id)",
             .expected = "1:01:1:1:05:1:5:0155:2:341:FFFFFFFFFFFFFFFF:8|"
                         "2:00:1:0:0F:1:15:0001:2:1:0000000000000001:8",
@@ -2273,8 +2273,8 @@ static int test_native_bit_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || BIT_LENGTH(b1) || ':' || "
-                   "BIT_LENGTH(b4) || ':' || BIT_LENGTH(b9) || ':' || BIT_LENGTH(b64), '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', BIT_LENGTH(b1), ':', "
+                   "BIT_LENGTH(b4), ':', BIT_LENGTH(b9), ':', BIT_LENGTH(b64)), '|') "
                    "FROM (SELECT id, b1, b4, b9, b64 FROM bit_direct ORDER BY id)",
             .expected = "1:8:8:16:64|2:8:8:16:64",
             .context = "BIT_LENGTH reads direct bit descriptor display bytes",
@@ -2288,7 +2288,7 @@ static int test_native_bit_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT hex(b4) || ':' || (b4 + 0) || ':' || hex(b9) || ':' || (b9 + 0) "
+            .sql = "SELECT CONCAT(hex(b4), ':', (b4 + 0), ':', hex(b9), ':', (b9 + 0)) "
                    "FROM bit_direct WHERE id = 2",
             .expected = "0C:12:0101:257",
             .context = "direct bit update coerces assigned values",
@@ -2377,9 +2377,9 @@ static int test_native_json_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT COUNT(*) || ':' || MIN(json_valid(doc)) || ':' || "
-                   "json_extract((SELECT doc FROM json_direct WHERE id = 1), '$.a') || ':' || "
-                   "json_array_length((SELECT doc FROM json_direct WHERE id = 2)) "
+            .sql = "SELECT CONCAT(COUNT(*), ':', MIN(json_valid(doc)), ':', "
+                   "json_extract((SELECT doc FROM json_direct WHERE id = 1), '$.a'), ':', "
+                   "json_array_length((SELECT doc FROM json_direct WHERE id = 2))) "
                    "FROM json_direct",
             .expected = "6:1:1:2",
             .context = "direct JSON descriptors accept canonical JSON text",
@@ -2484,8 +2484,8 @@ static int test_native_enum_type_coercion(void) {
         database,
         (struct expected_text_row){
             .sql = "SELECT group_concat("
-                   "id || ':' || COALESCE(status, 'NULL') || ':' || "
-                   "COALESCE(status + 0, 'NULL'), '|') "
+                   "CONCAT(id, ':', COALESCE(status, 'NULL'), ':', "
+                   "COALESCE(status + 0, 'NULL')), '|') "
                    "FROM (SELECT id, status FROM enum_direct ORDER BY id)",
             .expected = "1:draft:1|2:published:2|3:published:2|4:archived:3|5:NULL:NULL",
             .context = "direct enum descriptor returns labels with numeric indexes",
@@ -2509,7 +2509,7 @@ static int test_native_enum_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || status || ':' || (status + 0), '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', status, ':', (status + 0)), '|') "
                    "FROM (SELECT id, status FROM enum_direct WHERE id IN (1, 2, 3) "
                    "ORDER BY id)",
             .expected = "1:archived:3|2:published:2|3:published:2",
@@ -2545,7 +2545,7 @@ static int test_native_enum_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || value || ':' || (value + 0), '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', value, ':', (value + 0)), '|') "
                    "FROM (SELECT id, value FROM enum_numeric ORDER BY id)",
             .expected = "1:1:2|2:2:3|3:2:3|4:0:1|5:1:2|6:0:1",
             .context = "direct enum prefers exact labels before numeric indexes",
@@ -2579,7 +2579,7 @@ static int test_native_enum_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || value || ':' || (value + 0), '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', value, ':', (value + 0)), '|') "
                    "FROM (SELECT id, value FROM enum_empty ORDER BY id)",
             .expected = "1::1|2::1|3::1",
             .context = "direct enum preserves valid empty labels as index one",
@@ -2778,8 +2778,8 @@ static int test_native_set_type_coercion(void) {
         database,
         (struct expected_text_row){
             .sql = "SELECT group_concat("
-                   "id || ':' || COALESCE(flags, 'NULL') || ':' || "
-                   "COALESCE(flags + 0, 'NULL'), '|') "
+                   "CONCAT(id, ':', COALESCE(flags, 'NULL'), ':', "
+                   "COALESCE(flags + 0, 'NULL')), '|') "
                    "FROM (SELECT id, flags FROM set_direct ORDER BY id)",
             .expected = "1:a:1|2:a,b:3|3:a,b:3|4:a:1|5::0|6:a,d:9|"
                         "7:a,b:3|8:NULL:NULL|9:a,b:3|10:a,b:3|"
@@ -2800,7 +2800,7 @@ static int test_native_set_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || flags || ':' || (flags + 0), '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', flags, ':', (flags + 0)), '|') "
                    "FROM (SELECT id, flags FROM set_direct WHERE id IN (1, 2) "
                    "ORDER BY id)",
             .expected = "1:a,d:9|2:a,b,c,d:15",
@@ -2837,7 +2837,7 @@ static int test_native_set_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || flags || ':' || (flags + 0), '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', flags, ':', (flags + 0)), '|') "
                    "FROM (SELECT id, flags FROM set_numeric ORDER BY id)",
             .expected = "1:1:2|2:2:4|3:0,1:3|4:0:1|5:1:2|"
                         "6:0:1|7:0,2:5|8:0,2:5",
@@ -2873,7 +2873,7 @@ static int test_native_set_type_coercion(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(id || ':' || flags || ':' || (flags + 0), '|') "
+            .sql = "SELECT group_concat(CONCAT(id, ':', flags, ':', (flags + 0)), '|') "
                    "FROM (SELECT id, flags FROM set_empty ORDER BY id)",
             .expected = "1::0|2::1|3::1|4:a:2|5:a:2|6:a:3",
             .context = "direct set treats empty string assignment as empty mask",
@@ -3087,8 +3087,8 @@ static int test_wordpress_like_crud(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT COUNT(*) || ':' || MIN(ID) || ':' || "
-                   "MAX(ID) || ':' || SUM(comment_count) "
+            .sql = "SELECT CONCAT(COUNT(*), ':', MIN(ID), ':', "
+                   "MAX(ID), ':', SUM(comment_count)) "
                    "FROM wp_posts_like",
             .expected = "3:1:3:4",
             .context = "post summary matches MySQL fixture",
@@ -3097,9 +3097,9 @@ static int test_wordpress_like_crud(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT group_concat(ID || ':' || post_name || "
-                   "':' || post_status || ':' || "
-                   "comment_count, '|') FROM ("
+            .sql = "SELECT group_concat(CONCAT(ID, ':', post_name, "
+                   "':', post_status, ':', "
+                   "comment_count), '|') FROM ("
                    "SELECT ID, post_name, post_status, "
                    "comment_count FROM wp_posts_like "
                    "WHERE post_status = 'publish' ORDER BY ID"
@@ -3112,9 +3112,9 @@ static int test_wordpress_like_crud(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT COUNT(*) || ':' || group_concat(post_id "
-                   "|| ':' || meta_key || '=' || "
-                   "meta_value, '|') FROM ("
+            .sql = "SELECT CONCAT(COUNT(*), ':', group_concat(CONCAT(post_id, "
+                   "':', meta_key, '=', "
+                   "meta_value), '|')) FROM ("
                    "SELECT post_id, meta_key, meta_value FROM "
                    "wp_postmeta_like ORDER BY meta_id"
                    ")",
@@ -3132,8 +3132,8 @@ static int test_wordpress_like_crud(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT COUNT(*) || ':' || "
-                   "COALESCE(MAX(meta_id), 0) FROM "
+            .sql = "SELECT CONCAT(COUNT(*), ':', "
+                   "COALESCE(MAX(meta_id), 0)) FROM "
                    "wp_postmeta_like",
             .expected = "0:0",
             .context = "truncate empties metadata table",
@@ -3148,8 +3148,8 @@ static int test_wordpress_like_crud(void) {
     failures += expect_text(
         database,
         (struct expected_text_row){
-            .sql = "SELECT meta_id || ':' || post_id || ':' || "
-                   "meta_key || ':' || meta_value "
+            .sql = "SELECT CONCAT(meta_id, ':', post_id, ':', "
+                   "meta_key, ':', meta_value) "
                    "FROM wp_postmeta_like",
             .expected = "1:2:_restored:yes",
             .context = "truncate resets auto-increment sequence",

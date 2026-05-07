@@ -40,7 +40,7 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| Base tables | 🟡 | Persistent base-table descriptors and physical tables for the limited create/drop/rename lifecycle subsets only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Base tables | 🟡 | Persistent base-table descriptors and physical tables for the limited create/drop/rename and integer/null row lifecycle subsets only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Temporary tables | ❌ | Session-scoped tables and name shadowing. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md) |
 | Views | ❌ | View DDL, metadata, and query behavior. | [SQL views](docs/compatibility/sql-views.md) |
 
@@ -119,8 +119,8 @@ tests.
 | `TINYINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `SMALLINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `MEDIUMINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
-| `INT` / `INTEGER` | 🟡 | DDL descriptor capture only for table lifecycle; no value conversion, range checks, expression semantics, display width, or result metadata support. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
-| `BIGINT` | 🟡 | DDL descriptor capture only for table lifecycle; no value conversion, range checks, expression semantics, display width, or result metadata support. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `INT` / `INTEGER` | 🟡 | Limited DDL descriptors plus integer/`NULL` assignment and text readback for descriptor-driven row lifecycle; no expression semantics, display width, or protocol-grade result metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BIGINT` | 🟡 | Limited DDL descriptors plus integer/`NULL` assignment and text readback; `BIGINT UNSIGNED` is capped at the signed 64-bit SQLite integer range in this slice. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Integer type aliases | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `DECIMAL` / `NUMERIC` | ❌ | Exact math and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `FIXED` | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
@@ -156,11 +156,11 @@ tests.
 | `ENUM` | ❌ | Indexing, sorting, invalid values. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `SET` | ❌ | Bitmap membership metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `JSON` | ❌ | Validation and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
-| Numeric literals | ❌ | Formats, signedness, overflow. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES` inputs; no expression-level numeric semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | String literals | ❌ | Escapes, introducers, SQL modes. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP syntax. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | JSON path literals | ❌ | Path grammar and errors. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
-| Type conversion | ❌ | Expression and assignment conversion. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Type conversion | 🟡 | Limited strict assignment conversion for integer/`NULL` values inserted into supported integer columns only. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Collation coercibility | ❌ | Coercibility and diagnostics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [collations](docs/compatibility/collations.md) |
 
 ### Character Sets, Collations, and SET
@@ -246,6 +246,13 @@ tests.
 | `\|` | ❌ | Bitwise OR. | [operators](docs/compatibility/operators.md) |
 | `~` | ❌ | Bitwise inversion. | [operators](docs/compatibility/operators.md) |
 
+### Query Expressions
+
+| Feature | Status | Notes | Full table |
+| --- | :-: | --- | --- |
+| `SELECT` | 🟡 | Descriptor-driven single persistent base-table `SELECT *` or unqualified column-list reads only; no predicates, ordering, joins, grouping, aliases, expressions, or locking clauses. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
+| Projection list | 🟡 | Wildcard uses catalog ordinal order; explicit projections resolve unqualified descriptor column names only, with duplicate projected columns allowed and no aliases or table-qualified references. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
+
 ### Table DML
 
 | Feature | Status | Notes | Full table |
@@ -253,7 +260,7 @@ tests.
 | `DELETE` (single-table) | ❌ | Aliases, partitions, LIMIT, modifiers. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `DELETE` (multi-table) | ❌ | Multi-table forms. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `DELETE` with joins | ❌ | Joined delete target semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md), [SQL joins](docs/compatibility/sql-joins.md) |
-| `INSERT ... VALUES` | ❌ | Values, defaults, insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `INSERT ... VALUES` | 🟡 | Limited single- and multi-row inserts into persistent base tables with integer/`NULL` values, descriptor column resolution, strict range checks, affected rows, and statement atomicity; no defaults, keys, generated values, or insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `INSERT ... SET` | ❌ | SET-form insert. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `INSERT ... SELECT` | ❌ | Query insert and metadata inference. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | Duplicate-key update semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md) |

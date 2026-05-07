@@ -8,7 +8,7 @@ statements.
 | `DELETE` (single-table) | ❌ | Aliases, partitions, LIMIT, modifiers |
 | `DELETE` (multi-table) | ❌ | Multi-table forms and affected rows |
 | `HANDLER` | ❌ | HANDLER OPEN, READ, and CLOSE cursor-like table access |
-| `INSERT ... VALUES` | ❌ | Values, defaults, warnings, insert ids |
+| `INSERT ... VALUES` | 🟡 | Limited single- and multi-row inserts into persistent base tables with optional unqualified column lists, integer/`NULL` values, descriptor-driven assignment, strict range/nullability diagnostics, affected rows, and all-or-nothing statement behavior; no defaults, keys, warnings, insert ids, `IGNORE`, `ON DUPLICATE KEY UPDATE`, `SET`, or `SELECT` form |
 | `INSERT ... SET` | ❌ | MySQL SET-form insert semantics |
 | `INSERT ... SELECT` | ❌ | Query insert and metadata inference |
 | `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | Conflict handling and warnings |

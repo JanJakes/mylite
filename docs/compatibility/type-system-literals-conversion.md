@@ -7,8 +7,8 @@
 | `TINYINT` | ❌ | Ranges, display width, metadata |
 | `SMALLINT` | ❌ | Ranges, display width, metadata |
 | `MEDIUMINT` | ❌ | Ranges, display width, metadata |
-| `INT` / `INTEGER` | 🟡 | DDL descriptor capture only for the limited table lifecycle subset; no value conversion, range checks, expression semantics, display width, or result metadata |
-| `BIGINT` | 🟡 | DDL descriptor capture only for the limited table lifecycle subset; no value conversion, range checks, expression semantics, display width, or result metadata |
+| `INT` / `INTEGER` | 🟡 | Limited DDL descriptors plus integer/`NULL` assignment conversion and text readback for the descriptor-driven row lifecycle subset; no expression semantics, display width, or protocol-grade result metadata |
+| `BIGINT` | 🟡 | Limited DDL descriptors plus integer/`NULL` assignment conversion and text readback; `BIGINT UNSIGNED` is capped at the signed 64-bit SQLite integer range in this slice |
 | Integer type aliases | ❌ | Alias rewrites and metadata |
 | `DECIMAL` / `NUMERIC` | ❌ | Exact math and metadata |
 | `FIXED` | ❌ | Alias rewrites and metadata |
@@ -82,7 +82,7 @@
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Numeric literals | ❌ | Formats, signedness, overflow |
+| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES` inputs; no expression-level numeric semantics, non-decimal formats, decimals, floats, hex, or bit literals |
 | String literals | ❌ | Escapes, introducers, sql_mode |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP literal syntax and coercion |
 | JSON path literals | ❌ | Path grammar, quoting, wildcards, ranges, and errors |
@@ -93,7 +93,7 @@
 | --- | --- | --- |
 | User variables | ❌ | Retention, coercion, metadata |
 | Local variables | ❌ | Stored-program variable typing, scope, and diagnostics |
-| Type conversion | ❌ | Expression and assignment conversion |
+| Type conversion | 🟡 | Limited strict assignment conversion for integer/`NULL` values inserted into supported integer columns only |
 | Collation coercibility | ❌ | Coercibility and diagnostics |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

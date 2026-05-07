@@ -4,9 +4,9 @@ Core query expression, SELECT, set operation, ordering, limiting, locking, modif
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `SELECT` | ❌ | Full query expression surface |
+| `SELECT` | 🟡 | Descriptor-driven single persistent base-table `SELECT *` and `SELECT column[, column ...] FROM table` only, with unqualified or schema-qualified table names; no expressions, aliases, `WHERE`, ordering, limits, joins, grouping, locking, or arbitrary SQLite pass-through |
 | Query expression grammar | ❌ | Query terms and primaries |
-| Projection list | ❌ | Aliases, wildcards, duplicate names |
+| Projection list | 🟡 | Wildcard uses catalog ordinal order; explicit projections resolve unqualified descriptor column names only, with duplicate projected columns allowed and no aliases, expression metadata, or table-qualified references |
 | `SELECT ... FROM DUAL` | ❌ | `DUAL` one-row table semantics |
 | `WHERE` | ❌ | Predicate semantics and warnings |
 | `GROUP BY` | ❌ | Grouping and ONLY_FULL_GROUP_BY |

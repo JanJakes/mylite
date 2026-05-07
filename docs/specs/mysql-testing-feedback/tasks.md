@@ -238,8 +238,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `CAST` / `CONVERT` to signed and unsigned integer targets now use the
       literal's numeric value instead of the decoded binary string bytes.
       Scalar numeric conversion for embedded-NUL text values now keeps the
-      numeric prefix and still treats the NUL plus following bytes as trailing
-      garbage for warning emission.
+      numeric prefix for signed, unsigned, decimal, and approximate targets
+      while still treating the NUL plus following bytes as trailing garbage for
+      warning emission.
       Positive signed integer string casts above the unsigned 64-bit range now
       preserve MySQL's truncation warning and signed-complement warning pair.
       DML numeric coercion now applies the same embedded-NUL handling for

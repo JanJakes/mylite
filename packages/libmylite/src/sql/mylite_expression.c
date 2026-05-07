@@ -3927,6 +3927,7 @@ static int cast_value_to_decimal_double(
 
 static int cast_string_to_decimal_double(
     const char *text,
+    size_t text_length,
     struct mylite_expression_warnings *warnings,
     double *out_number
 );
@@ -24217,6 +24218,7 @@ static int cast_value_to_decimal_double(
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return cast_string_to_decimal_double(
             value->text_value == NULL ? "" : value->text_value,
+            value->text_value == NULL ? 0U : value->text_length,
             warnings,
             out_number
         );
@@ -24226,12 +24228,14 @@ static int cast_value_to_decimal_double(
 
 static int cast_string_to_decimal_double(
     const char *text,
+    size_t text_length,
     struct mylite_expression_warnings *warnings,
     double *out_number
 ) {
-    char *copy = copy_span_text(text == NULL ? "" : text, strlen(text == NULL ? "" : text));
+    char *copy = copy_span_text(text == NULL ? "" : text, text == NULL ? 0U : text_length);
     char *start = NULL;
     char *end = NULL;
+    char *copy_end = copy == NULL ? NULL : copy + (text == NULL ? 0U : text_length);
 
     if (copy == NULL) {
         return -1;
@@ -24242,10 +24246,10 @@ static int cast_string_to_decimal_double(
     }
     errno = 0;
     *out_number = strtod(start, &end);
-    while (end != NULL && isspace((unsigned char)*end)) {
+    while (end != NULL && end < copy_end && isspace((unsigned char)*end)) {
         ++end;
     }
-    if (end == start || (end != NULL && *end != '\0')) {
+    if (end == start || (end != NULL && end < copy_end)) {
         int status = append_cast_truncation_warning(warnings, "DECIMAL", text);
 
         if (end == start) {

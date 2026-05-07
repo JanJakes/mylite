@@ -34643,9 +34643,11 @@ static int test_cast_expression_execution(void) {
     static const char *const nul_numeric_columns[] = {
         "signed_value",
         "unsigned_value",
+        "decimal_value",
+        "convert_decimal_value",
         "plus_value",
     };
-    static const char *const nul_numeric_values[] = {"12", "12", "12.0000"};
+    static const char *const nul_numeric_values[] = {"12", "12", "12.00", "12.00", "12.0000"};
     static const struct expected_result_metadata metadata[] = {
         {"signed_value",
          NULL,
@@ -35073,6 +35075,8 @@ static int test_cast_expression_execution(void) {
         database,
         "SELECT CAST('12\\03' AS SIGNED) AS signed_value, "
         "CAST('12\\03' AS UNSIGNED) AS unsigned_value, "
+        "CAST('12\\03' AS DECIMAL(6,2)) AS decimal_value, "
+        "CONVERT('12\\03', DECIMAL(6,2)) AS convert_decimal_value, "
         "'12\\03' + 0 AS plus_value",
         nul_numeric_columns,
         (int)(sizeof(nul_numeric_columns) / sizeof(nul_numeric_columns[0])),
@@ -35080,8 +35084,8 @@ static int test_cast_expression_execution(void) {
         1,
         "CAST embedded NUL numeric values"
     );
-    failures += expect_int(mylite_warning_count(database), 3, "CAST embedded NUL warning count");
-    for (int index = 0; index < 3; ++index) {
+    failures += expect_int(mylite_warning_count(database), 5, "CAST embedded NUL warning count");
+    for (int index = 0; index < 5; ++index) {
         failures += expect_int(
             (int)mylite_warning_code(database, index),
             mysql_warning_truncated_wrong_value,

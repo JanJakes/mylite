@@ -131,6 +131,7 @@ range validation.
 | `CAST(12.345 AS DECIMAL(5))` | `12` | none |
 | `CAST(12.345 AS DECIMAL(5,2))` | `12.35` | none |
 | `CAST('x' AS DECIMAL(5,2))` | `0.00` | 1292 truncated decimal |
+| `CAST('12\\03' AS DECIMAL(6,2))` | `12.00` | 1292 truncated decimal |
 | `CAST(999999 AS DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CAST(999.995 AS DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CAST('999999x' AS DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |
@@ -347,6 +348,8 @@ deferred to the broader decimal type task.
   `Truncated incorrect DECIMAL value: '<value>'`
 - invalid and non-finite strings return zero formatted at the target scale;
   truncated strings keep their parsed numeric prefix before range validation
+- embedded NUL bytes are part of the input; bytes after the parsed decimal
+  prefix still trigger warning 1292
 
 ### Floating point
 

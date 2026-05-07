@@ -1843,6 +1843,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     struct mylite_sql_ast_node *arguments,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_now_column_default_function_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_call(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_group_concat_call_parts parts

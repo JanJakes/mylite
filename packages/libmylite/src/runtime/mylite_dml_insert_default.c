@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -60,7 +61,16 @@ static bool insert_column_uses_text_storage(const struct mylite_insert_table_col
 
 static bool insert_text_integer_prefix_exceeds_int64(const char *text, size_t text_length);
 
-static char *insert_current_timestamp_text(void);
+static char *insert_current_timestamp_text(unsigned int fsp);
+
+static unsigned int insert_column_current_timestamp_fsp(
+    const struct mylite_insert_table_column *column,
+    unsigned int default_fsp
+);
+
+static unsigned int insert_column_temporal_fsp(const struct mylite_insert_table_column *column);
+
+static bool parse_insert_column_type_fsp(const char *column_type, unsigned int *out_fsp);
 
 int mylite_dml_resolve_insert_default_bound_value(
     mylite_db *database,
@@ -98,19 +108,25 @@ int mylite_dml_resolve_insert_default_bound_value(
         }
         return mylite_dml_insert_set_no_default_error(database, column->name);
     }
-    if (mylite_column_default_is_current_timestamp(column->default_text)) {
-        char *timestamp = insert_current_timestamp_text();
+    {
+        unsigned int default_fsp = 0U;
 
-        if (timestamp == NULL) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-            return MYLITE_NOMEM;
+        if (mylite_column_default_current_timestamp_fsp(column->default_text, &default_fsp)) {
+            char *timestamp = insert_current_timestamp_text(
+                insert_column_current_timestamp_fsp(column, default_fsp)
+            );
+
+            if (timestamp == NULL) {
+                (void)mylite_diagnostics_set_error_message(database, "out of memory");
+                return MYLITE_NOMEM;
+            }
+            *out_value = (struct mylite_insert_bound_value){
+                .kind = MYLITE_INSERT_BOUND_TEXT,
+                .text_value = timestamp,
+                .text_length = timestamp == NULL ? 0U : strlen(timestamp),
+            };
+            return MYLITE_OK;
         }
-        *out_value = (struct mylite_insert_bound_value){
-            .kind = MYLITE_INSERT_BOUND_TEXT,
-            .text_value = timestamp,
-            .text_length = timestamp == NULL ? 0U : strlen(timestamp),
-        };
-        return MYLITE_OK;
     }
     if (column->generated_default) {
         return mylite_dml_insert_set_unsupported_generated_default_error(database, column->name);
@@ -190,7 +206,7 @@ int mylite_dml_resolve_insert_current_timestamp_bound_value(
         return MYLITE_MISUSE;
     }
 
-    timestamp = insert_current_timestamp_text();
+    timestamp = insert_current_timestamp_text(0U);
     if (timestamp == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -632,16 +648,31 @@ static bool insert_text_integer_prefix_exceeds_int64(const char *text, size_t te
     return (saw_digit && magnitude > limit) != 0;
 }
 
-static char *insert_current_timestamp_text(void) {
-    enum { timestamp_length = 19U };
+static char *insert_current_timestamp_text(unsigned int fsp) {
+    enum {
+        timestamp_length = 19U,
+        microsecond_length = 6U,
+    };
 
     time_t now = time(NULL);
+    long microseconds = 0;
     struct tm tm_value;
-    char *timestamp = malloc(timestamp_length + 1U);
+    size_t text_length = timestamp_length + (fsp == 0U ? 0U : 1U + fsp);
+    char *timestamp = malloc(text_length + 1U);
 
     if (timestamp == NULL) {
         return NULL;
     }
+#ifdef TIME_UTC
+    {
+        struct timespec timespec_now;
+
+        if (timespec_get(&timespec_now, TIME_UTC) == TIME_UTC) {
+            now = timespec_now.tv_sec;
+            microseconds = timespec_now.tv_nsec / 1000L;
+        }
+    }
+#endif
 #ifdef _WIN32
     if (gmtime_s(&tm_value, &now) != 0) {
         free(timestamp);
@@ -657,5 +688,59 @@ static char *insert_current_timestamp_text(void) {
         free(timestamp);
         return NULL;
     }
+    if (fsp > 0U) {
+        char microsecond_text[microsecond_length + 1U];
+
+        snprintf(microsecond_text, sizeof(microsecond_text), "%06ld", microseconds);
+        timestamp[timestamp_length] = '.';
+        memcpy(timestamp + timestamp_length + 1U, microsecond_text, fsp);
+        timestamp[text_length] = '\0';
+    }
     return timestamp;
+}
+
+static unsigned int insert_column_current_timestamp_fsp(
+    const struct mylite_insert_table_column *column,
+    unsigned int default_fsp
+) {
+    unsigned int column_fsp = insert_column_temporal_fsp(column);
+
+    return default_fsp < column_fsp ? default_fsp : column_fsp;
+}
+
+static unsigned int insert_column_temporal_fsp(const struct mylite_insert_table_column *column) {
+    unsigned int fsp = 0U;
+
+    if (column == NULL || (!mylite_ascii_case_equal(column->data_type, "datetime") &&
+                           !mylite_ascii_case_equal(column->data_type, "timestamp"))) {
+        return 0U;
+    }
+    (void)parse_insert_column_type_fsp(column->column_type, &fsp);
+    return fsp;
+}
+
+static bool parse_insert_column_type_fsp(const char *column_type, unsigned int *out_fsp) {
+    const char *open = column_type == NULL ? NULL : strchr(column_type, '(');
+    const char *close = open == NULL ? NULL : strchr(open, ')');
+    unsigned int fsp = 0U;
+
+    if (out_fsp != NULL) {
+        *out_fsp = 0U;
+    }
+    if (open == NULL || close == NULL || close <= open + 1) {
+        return false;
+    }
+    for (const char *cursor = open + 1; cursor < close; ++cursor) {
+        if (!isdigit((unsigned char)*cursor)) {
+            return false;
+        }
+        fsp = (fsp * 10U) + (unsigned int)(*cursor - '0');
+        if (fsp > 6U) {
+            return false;
+        }
+    }
+    if (out_fsp != NULL) {
+        *out_fsp = fsp;
+    }
+    return true;
 }

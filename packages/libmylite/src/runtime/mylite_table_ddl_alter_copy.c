@@ -109,8 +109,6 @@ static int copy_alter_table_column_position(
     struct mylite_alter_table_action *action
 );
 
-static char *copy_alter_table_default_expression_text(const struct mylite_sql_ast_node *node);
-
 static int add_alter_table_action(
     struct mylite_alter_table_plan *plan,
     struct mylite_alter_table_action action
@@ -423,13 +421,12 @@ static int copy_alter_table_column_set_default_action(
     if (action->old_name == NULL) {
         return MYLITE_NOMEM;
     }
-    action->column.default_text = copy_alter_table_default_expression_text(default_value);
+    action->column.default_text = mylite_copy_column_default_text(default_value);
     if (action->column.default_text == NULL && default_value != NULL &&
         default_value->literal_kind != MYLITE_SQL_AST_LITERAL_NULL) {
         return MYLITE_NOMEM;
     }
-    if (default_value != NULL && (default_value->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP ||
-                                  default_value->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION)) {
+    if (mylite_column_default_node_is_generated(default_value)) {
         action->column.has_generated_default = true;
     }
     return MYLITE_OK;
@@ -760,23 +757,6 @@ static int copy_alter_table_column_position(
         return action->after_column == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     return MYLITE_UNSUPPORTED;
-}
-
-static char *copy_alter_table_default_expression_text(const struct mylite_sql_ast_node *node) {
-    if (node == NULL) {
-        return NULL;
-    }
-    if (node->kind == MYLITE_SQL_AST_LITERAL &&
-        node->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
-        return mylite_copy_string_literal_span(node);
-    }
-    if (node->kind == MYLITE_SQL_AST_LITERAL && node->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
-        return NULL;
-    }
-    if (node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP) {
-        return mylite_copy_span_text("CURRENT_TIMESTAMP", strlen("CURRENT_TIMESTAMP"));
-    }
-    return mylite_copy_span_text(node->span.text, node->span.length);
 }
 
 static int add_alter_table_action(

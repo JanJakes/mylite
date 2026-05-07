@@ -36191,6 +36191,36 @@ static int test_create_table_base_execution(void) {
         "2",
         "id",
     };
+    static const char *const default_now_columns[] = {
+        "COLUMN_NAME",
+        "COLUMN_DEFAULT",
+        "EXTRA",
+    };
+    static const char *const default_now_values[] = {
+        "ts",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "dt",
+        "CURRENT_TIMESTAMP",
+        "DEFAULT_GENERATED",
+        "ts_p",
+        "CURRENT_TIMESTAMP(3)",
+        "DEFAULT_GENERATED",
+        "pts",
+        "now()",
+        "DEFAULT_GENERATED",
+        "pdt",
+        "now(2)",
+        "DEFAULT_GENERATED",
+    };
+    static const char *const default_now_presence_columns[] = {
+        "ts_ok",
+        "dt_ok",
+        "ts_p_ok",
+        "pts_ok",
+        "pdt_ok",
+    };
+    static const char *const default_now_presence_values[] = {"1", "1", "1", "1", "1"};
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -36275,6 +36305,41 @@ static int test_create_table_base_execution(void) {
     failures += expect_simple_create_table_row(database);
     failures += expect_simple_create_column_rows(database);
     failures += expect_simple_create_statistics_rows(database);
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE default_now ("
+        "ts TIMESTAMP DEFAULT NOW(), "
+        "dt DATETIME DEFAULT NOW(), "
+        "ts_p TIMESTAMP(3) DEFAULT NOW(3), "
+        "pts TIMESTAMP DEFAULT (NOW()), "
+        "pdt DATETIME(2) DEFAULT (NOW(2)))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, COLUMN_DEFAULT, EXTRA "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'default_now' "
+        "ORDER BY ORDINAL_POSITION",
+        default_now_columns,
+        3,
+        default_now_values,
+        5,
+        "DEFAULT NOW() column metadata"
+    );
+    failures += execute_sql(database, "INSERT INTO default_now () VALUES ()", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT ts IS NOT NULL AS ts_ok, dt IS NOT NULL AS dt_ok, "
+        "ts_p IS NOT NULL AS ts_p_ok, pts IS NOT NULL AS pts_ok, "
+        "pdt IS NOT NULL AS pdt_ok FROM default_now",
+        default_now_presence_columns,
+        5,
+        default_now_presence_values,
+        1,
+        "DEFAULT NOW() insert values"
+    );
 
     failures += execute_sql(
         database,
@@ -48927,6 +48992,15 @@ static int test_show_create_table_execution(void) {
                                         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
                                         "COLLATE=utf8mb4_0900_ai_ci";
     static const char *const simple_values[] = {"simple_table", simple_create};
+    static const char default_now_create[] =
+        "CREATE TABLE `default_now` (\n"
+        "  `ts` timestamp NULL DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `dt` datetime DEFAULT CURRENT_TIMESTAMP,\n"
+        "  `ts_p` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3),\n"
+        "  `pts` timestamp NULL DEFAULT (now()),\n"
+        "  `pdt` datetime(2) DEFAULT (now(2))\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const default_now_values[] = {"default_now", default_now_create};
     static const char show_create_fk_create[] =
         "CREATE TABLE `child_fk` (\n"
         "  `id` int NOT NULL,\n"
@@ -49113,6 +49187,25 @@ static int test_show_create_table_execution(void) {
         simple_values,
         1,
         "show create simple table"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE default_now ("
+        "ts TIMESTAMP DEFAULT NOW(), "
+        "dt DATETIME DEFAULT NOW(), "
+        "ts_p TIMESTAMP(3) DEFAULT NOW(3), "
+        "pts TIMESTAMP DEFAULT (NOW()), "
+        "pdt DATETIME(2) DEFAULT (NOW(2)))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE default_now",
+        columns,
+        2,
+        default_now_values,
+        1,
+        "show create DEFAULT NOW()"
     );
     failures += execute_sql(database, "CREATE TABLE parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
     failures += execute_sql(

@@ -2367,6 +2367,23 @@ static int test_create_table_column_attributes(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE default_now_function ("
+        "a TIMESTAMP DEFAULT NOW(), b DATETIME DEFAULT NOW(3), "
+        "c TIMESTAMP(3) DEFAULT NOW(3), d TIMESTAMP DEFAULT (NOW()), "
+        "e DATETIME(2) DEFAULT (NOW(2)));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    columns = child_at(child_at(result.root, 0U), 1U);
+    attributes = child_at(child_at(columns, 0U), 2U);
+    failures +=
+        expect_function_call(child_at(child_at(attributes, 0U), 0U), "NOW", 0U, "NOW default");
+    attributes = child_at(child_at(columns, 1U), 2U);
+    failures +=
+        expect_function_call(child_at(child_at(attributes, 0U), 0U), "NOW", 1U, "NOW fsp default");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE bad_default_identifier (default INT);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result

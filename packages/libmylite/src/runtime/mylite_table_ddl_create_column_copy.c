@@ -222,7 +222,7 @@ static int copy_create_table_column_attributes(
             column->nullable = false;
             break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_DEFAULT:
-            copy = copy_expression_text(mylite_ast_child_at(attribute, 0U));
+            copy = mylite_copy_column_default_text(mylite_ast_child_at(attribute, 0U));
             if (copy == NULL && mylite_ast_child_at(attribute, 0U) != NULL &&
                 mylite_ast_child_at(attribute, 0U)->literal_kind != MYLITE_SQL_AST_LITERAL_NULL) {
                 return MYLITE_NOMEM;
@@ -230,10 +230,7 @@ static int copy_create_table_column_attributes(
             free(column->default_text);
             column->default_text = copy;
             column->has_default = true;
-            if (mylite_ast_child_at(attribute, 0U) != NULL &&
-                (mylite_ast_child_at(attribute, 0U)->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP ||
-                 mylite_ast_child_at(attribute, 0U)->kind ==
-                     MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION)) {
+            if (mylite_column_default_node_is_generated(mylite_ast_child_at(attribute, 0U))) {
                 column->has_generated_default = true;
             }
             break;
@@ -303,6 +300,23 @@ static int copy_create_table_column_check_attribute(
     };
 
     return mylite_table_ddl_add_create_table_check(plan, &input);
+}
+
+static char *copy_expression_text(const struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return NULL;
+    }
+    if (node->kind == MYLITE_SQL_AST_LITERAL &&
+        node->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+        return mylite_copy_string_literal_span(node);
+    }
+    if (node->kind == MYLITE_SQL_AST_LITERAL && node->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        return NULL;
+    }
+    if (node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP) {
+        return mylite_copy_span_text("CURRENT_TIMESTAMP", strlen("CURRENT_TIMESTAMP"));
+    }
+    return mylite_copy_span_text(node->span.text, node->span.length);
 }
 
 static char *copy_check_constraint_name(
@@ -504,21 +518,4 @@ static const char *check_operator_symbol(enum mylite_sql_ast_operator operator_k
         return NULL;
     }
     return NULL;
-}
-
-static char *copy_expression_text(const struct mylite_sql_ast_node *node) {
-    if (node == NULL) {
-        return NULL;
-    }
-    if (node->kind == MYLITE_SQL_AST_LITERAL &&
-        node->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
-        return mylite_copy_string_literal_span(node);
-    }
-    if (node->kind == MYLITE_SQL_AST_LITERAL && node->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
-        return NULL;
-    }
-    if (node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP) {
-        return mylite_copy_span_text("CURRENT_TIMESTAMP", strlen("CURRENT_TIMESTAMP"));
-    }
-    return mylite_copy_span_text(node->span.text, node->span.length);
 }

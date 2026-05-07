@@ -312,9 +312,11 @@ Value resolution:
 - Omitted nullable columns store `NULL`.
 - Omitted or defaulted non-null columns without a default fail unless they are
   auto-increment columns.
-- `CURRENT_TIMESTAMP` defaults are evaluated at execution time as a non-null
-  timestamp string with second precision.
-- Parenthesized `CURRENT_TIMESTAMP` defaults are supported.
+- `CURRENT_TIMESTAMP` and bare `NOW()` defaults are evaluated at execution
+  time as non-null timestamp strings. Fractional precision is emitted up to the
+  target temporal column precision.
+- Parenthesized `CURRENT_TIMESTAMP` and `NOW()` defaults are supported and
+  stored as MySQL-style `now()` generated defaults.
 - Other generated default expressions fail with a deterministic unsupported
   generated-default diagnostic when they are needed for a row.
 

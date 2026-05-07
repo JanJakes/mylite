@@ -3798,6 +3798,13 @@ column_default_value(A) ::= MINUS(T) numeric_literal(B). [UMINUS] {
 column_default_value(A) ::= current_timestamp_value(B). {
     A = B;
 }
+column_default_value(A) ::= function_name(B) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_now_column_default_function_call(
+        state, B, L, mylite_sql_parser_make_empty_function_argument_list(state, L, R), R);
+}
+column_default_value(A) ::= function_name(B) LPAREN(L) function_argument_list(C) RPAREN(R). {
+    A = mylite_sql_parser_make_now_column_default_function_call(state, B, L, C, R);
+}
 column_default_value(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_column_default_expression(state, L, B, R);
 }

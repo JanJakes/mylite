@@ -6627,6 +6627,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_char_function_call(
     return call;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_now_column_default_function_call(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren
+) {
+    if (!function_name_matches(name, "NOW")) {
+        mylite_sql_parser_state_parse_failed(state);
+        return NULL;
+    }
+    return mylite_sql_parser_make_function_call(state, name, left_paren, arguments, right_paren);
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_call(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
@@ -7364,8 +7378,10 @@ static bool expression_contains_function_call(const struct mylite_sql_ast_node *
     if (expression == NULL) {
         return false;
     }
-    if (expression->kind == MYLITE_SQL_AST_FUNCTION_CALL ||
-        expression->kind == MYLITE_SQL_AST_AGGREGATE_CALL) {
+    if (expression->kind == MYLITE_SQL_AST_FUNCTION_CALL) {
+        return !function_name_matches(expression->first_child, "NOW");
+    }
+    if (expression->kind == MYLITE_SQL_AST_AGGREGATE_CALL) {
         return true;
     }
     for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;

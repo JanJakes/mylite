@@ -96,6 +96,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       table-level `FOREIGN KEY` clauses parse and return a deterministic
       unsupported diagnostic without catalog mutation.
 - [x] Support or intentionally diagnose `ALTER TABLE ... ADD/DROP FOREIGN KEY`.
+- [x] Support `DEFAULT NOW()` and parenthesized `DEFAULT (NOW())` in
+      `CREATE TABLE`, including MySQL-compatible `INFORMATION_SCHEMA.COLUMNS`
+      and `SHOW CREATE TABLE` normalization for fractional precision forms.
 
 ## DML
 

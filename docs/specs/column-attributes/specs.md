@@ -11,6 +11,8 @@ attributes:
 - parenthesized expression defaults over MyLite's current expression subset
 - bare `DEFAULT CURRENT_TIMESTAMP`, `DEFAULT CURRENT_TIMESTAMP()`, and
   `DEFAULT CURRENT_TIMESTAMP(fsp)`
+- bare `DEFAULT NOW()` / `DEFAULT NOW(fsp)` and parenthesized
+  `DEFAULT (NOW())` / `DEFAULT (NOW(fsp))`
 - `ON UPDATE CURRENT_TIMESTAMP`, `ON UPDATE CURRENT_TIMESTAMP()`, and
   `ON UPDATE CURRENT_TIMESTAMP(fsp)`
 - `COMMENT 'string'`
@@ -69,6 +71,8 @@ Runtime probes against MySQL 8.4.9 show these representative normalizations:
 | `TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)` | accepted; generated default plus on-update metadata |
 | `TIMESTAMP DEFAULT CURRENT_TIMESTAMP()` | accepted and normalized like bare `CURRENT_TIMESTAMP` |
 | `TIMESTAMP DEFAULT (CURRENT_TIMESTAMP)` | accepted and shown as a parenthesized `now()` expression |
+| `TIMESTAMP DEFAULT NOW()` | accepted and normalized like bare `CURRENT_TIMESTAMP` |
+| `TIMESTAMP DEFAULT (NOW(3))` | accepted and shown as a parenthesized `now(3)` expression |
 | `INT COMMENT 'hello'` | comment text appears in `COLUMN_COMMENT` |
 | `INT INVISIBLE` with another visible column | `SHOW CREATE TABLE` carries an invisible marker; `EXTRA=INVISIBLE` |
 | `INT VISIBLE` | normalizes as an ordinary visible column |
@@ -130,12 +134,14 @@ MySQL rejects the following as syntax:
 - malformed `CURRENT_TIMESTAMP` precision forms such as
   `CURRENT_TIMESTAMP(-1)`, `CURRENT_TIMESTAMP('1')`, and
   `CURRENT_TIMESTAMP(1,2)`
+- malformed `NOW` precision forms such as `NOW(-1)`, `NOW('1')`, and
+  `NOW(1,2)`
 - oversized `CURRENT_TIMESTAMP(18446744073709551616)` precision tokens
 
 MySQL accepts `VARCHAR(20) DEFAULT (UPPER('x'))`, but MyLite's current
 expression grammar has no general function-call expressions. This task
 therefore supports parenthesized defaults using the expression subset already
-implemented by MyLite plus targeted `CURRENT_TIMESTAMP` expressions; generic
+implemented by MyLite plus targeted `CURRENT_TIMESTAMP` and `NOW()` expressions; generic
 function-call defaults, `INTERVAL`, subqueries, variables, parameters, stored
 functions, loadable functions, and full default-expression semantic validation
 are deferred.
@@ -236,6 +242,8 @@ column_default_value ::= literal.
 column_default_value ::= PLUS numeric_literal.
 column_default_value ::= MINUS numeric_literal.
 column_default_value ::= current_timestamp_value.
+column_default_value ::= function_name LPAREN RPAREN.          -- only NOW accepted
+column_default_value ::= function_name LPAREN INTEGER RPAREN.  -- only NOW accepted
 column_default_value ::= LPAREN expression RPAREN.
 
 numeric_literal ::= INTEGER.
@@ -243,6 +251,8 @@ numeric_literal ::= DECIMAL.
 numeric_literal ::= FLOAT.
 
 expression ::= current_timestamp_value.
+expression ::= function_name LPAREN RPAREN.          -- only NOW accepted in defaults
+expression ::= function_name LPAREN INTEGER RPAREN.  -- only NOW accepted in defaults
 
 current_timestamp_value ::= CURRENT_TIMESTAMP.
 current_timestamp_value ::= CURRENT_TIMESTAMP LPAREN RPAREN.
@@ -252,7 +262,7 @@ current_timestamp_value ::= CURRENT_TIMESTAMP LPAREN INTEGER RPAREN.
 The `expression` production referenced here is MyLite's current expression
 subset: literals, qualified identifiers, parenthesized expressions, unary `+`
 and `-`, and binary `+`, `-`, `*`, and `/`, with the targeted
-`CURRENT_TIMESTAMP` expression added by this task.
+`CURRENT_TIMESTAMP` and `NOW()` expressions added by this task.
 
 ## MySQL-runtime-verified expectations
 
@@ -275,6 +285,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `a TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` | parse OK |
 | `a TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)` | parse OK |
 | `a TIMESTAMP DEFAULT (CURRENT_TIMESTAMP)` | parse OK |
+| `a TIMESTAMP DEFAULT NOW()`, `a DATETIME DEFAULT NOW(3)` | parse OK |
+| `a TIMESTAMP DEFAULT (NOW())`, `a DATETIME DEFAULT (NOW(2))` | parse OK |
 | `a INT DEFAULT 1 DEFAULT 2` | parse OK; semantic last-wins behavior deferred |
 | `a INT COMMENT 'hello'` | parse OK |
 | `a INT VISIBLE`, `a INT INVISIBLE` | parse OK; all-invisible table validation deferred |
@@ -294,6 +306,7 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `a TIMESTAMP DEFAULT CURRENT_TIMESTAMP(7)` | parse error for this task |
 | `a TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(7)` | parse error for this task |
 | malformed or overflow `CURRENT_TIMESTAMP(...)` | parse error |
+| malformed or overflow `NOW(...)` defaults | parse error |
 | signed nonnumeric literal defaults | parse error |
 | `a VARCHAR(20) DEFAULT UPPER('x')` | parse error |
 | `a VARCHAR(20) DEFAULT (UPPER('x'))` | parse error until function-call expressions land |

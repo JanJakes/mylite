@@ -121,6 +121,11 @@ the authored table comment.
   and comment `name col`
 - `TIMESTAMP DEFAULT CURRENT_TIMESTAMP` with default text `CURRENT_TIMESTAMP`,
   datetime precision `0`, and `EXTRA='DEFAULT_GENERATED'`
+- `TIMESTAMP DEFAULT NOW()` with default text `CURRENT_TIMESTAMP`, while
+  parenthesized `DEFAULT (NOW())` records default text `now()`, matching
+  MySQL's `SHOW CREATE TABLE` normalization
+- fractional `NOW(fsp)` defaults record `CURRENT_TIMESTAMP(fsp)` for bare
+  defaults and `now(fsp)` for parenthesized defaults
 - `DECIMAL(10,2)` with numeric precision `10` and scale `2`
 - `BOOL` as `tinyint(1)`
 

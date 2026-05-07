@@ -12,6 +12,7 @@
 #include "sqlite3.h"
 
 #include <stdbool.h>
+#include <string.h>
 
 struct mylite_show_create_column_collation {
     const char *character_set_name;
@@ -26,6 +27,15 @@ static int append_show_create_table_column(
 );
 
 static bool show_create_column_needs_implicit_default_null(const char *data_type);
+
+static bool show_create_column_needs_explicit_null_current_timestamp(
+    const char *data_type,
+    const char *column_default
+);
+
+static void append_show_create_column_default(sqlite3_str *create_sql, const char *column_default);
+
+static bool show_create_column_default_uses_now_function(const char *column_default);
 
 static void append_show_create_column_collation(
     sqlite3_str *create_sql,
@@ -123,14 +133,14 @@ static int append_show_create_table_column(
     if (!nullable) {
         sqlite3_str_appendall(create_sql, " NOT NULL");
     } else if (
-        column_default != NULL && mylite_column_default_is_current_timestamp(column_default)
+        show_create_column_needs_explicit_null_current_timestamp(data_type, column_default)
     ) {
         sqlite3_str_appendall(create_sql, " NULL");
     }
     if (column_default != NULL && !auto_increment) {
         sqlite3_str_appendall(create_sql, " DEFAULT ");
         if (mylite_column_default_is_current_timestamp(column_default)) {
-            sqlite3_str_appendall(create_sql, "CURRENT_TIMESTAMP");
+            append_show_create_column_default(create_sql, column_default);
         } else {
             mylite_show_create_append_string_literal(create_sql, column_default);
         }
@@ -154,6 +164,36 @@ static int append_show_create_table_column(
         mylite_show_create_append_string_literal(create_sql, comment);
     }
     return sqlite3_str_errcode(create_sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
+}
+
+static bool show_create_column_needs_explicit_null_current_timestamp(
+    const char *data_type,
+    const char *column_default
+) {
+    return mylite_ascii_case_equal(data_type, "timestamp") &&
+           mylite_column_default_is_current_timestamp(column_default);
+}
+
+static void append_show_create_column_default(sqlite3_str *create_sql, const char *column_default) {
+    if (show_create_column_default_uses_now_function(column_default)) {
+        sqlite3_str_appendchar(create_sql, 1, '(');
+        sqlite3_str_appendall(create_sql, column_default);
+        sqlite3_str_appendchar(create_sql, 1, ')');
+        return;
+    }
+    sqlite3_str_appendall(create_sql, column_default);
+}
+
+static bool show_create_column_default_uses_now_function(const char *column_default) {
+    while (column_default != NULL && *column_default != '\0' &&
+           (*column_default == ' ' || *column_default == '\t' || *column_default == '\n' ||
+            *column_default == '\r')) {
+        ++column_default;
+    }
+    return column_default != NULL && strlen(column_default) >= 4U &&
+           (column_default[0] == 'n' || column_default[0] == 'N') &&
+           (column_default[1] == 'o' || column_default[1] == 'O') &&
+           (column_default[2] == 'w' || column_default[2] == 'W') && column_default[3] == '(';
 }
 
 static bool show_create_column_needs_implicit_default_null(const char *data_type) {

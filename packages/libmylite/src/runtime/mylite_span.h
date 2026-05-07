@@ -30,6 +30,9 @@ char *mylite_copy_nonempty_cstring(const char *text);
 char *mylite_copy_span_text(const char *text, size_t length);
 bool mylite_span_contains_newline(const char *text, size_t length);
 bool mylite_text_contains_word(const char *text, const char *word);
+char *mylite_copy_column_default_text(const struct mylite_sql_ast_node *node);
+bool mylite_column_default_node_is_generated(const struct mylite_sql_ast_node *node);
+bool mylite_column_default_current_timestamp_fsp(const char *default_text, unsigned int *out_fsp);
 bool mylite_column_default_is_current_timestamp(const char *default_text);
 const struct mylite_sql_ast_node *mylite_ast_child_at(
     const struct mylite_sql_ast_node *node,

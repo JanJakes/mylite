@@ -40,7 +40,7 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| Base tables | 🟡 | Persistent base-table descriptors and physical tables for the limited `baseline-basic-table-lifecycle` subset only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Base tables | 🟡 | Persistent base-table descriptors and physical tables for the limited create/drop/rename lifecycle subsets only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Temporary tables | ❌ | Session-scoped tables and name shadowing. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md) |
 | Views | ❌ | View DDL, metadata, and query behavior. | [SQL views](docs/compatibility/sql-views.md) |
 
@@ -68,8 +68,8 @@ tests.
 | `DEFAULT CHARACTER SET` / `COLLATE` | ❌ | Table default charset and collation changes. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
 | `TRUNCATE TABLE` | ❌ | DDL truncate semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `DROP TABLE` | 🟡 | Limited single persistent base-table drop without `IF EXISTS`, `TEMPORARY`, multi-table drop, `RESTRICT`, or `CASCADE`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| `RENAME TABLE` | ❌ | Atomic multi-table rename. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| Atomic DDL | 🟡 | Catalog descriptors and generated physical SQLite table changes commit or roll back atomically for the limited create/drop subset only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `RENAME TABLE` | 🟡 | Limited single-pair persistent base-table rename with unqualified, schema-qualified, and cross-schema names; no multi-table rename, temporary tables, views, triggers, or privilege semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Atomic DDL | 🟡 | Catalog descriptors and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename subsets only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Implicit commit boundaries | ❌ | MySQL DDL commit behavior. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [SQL transactions](docs/compatibility/sql-transactions.md) |
 
 ### Auto Increment

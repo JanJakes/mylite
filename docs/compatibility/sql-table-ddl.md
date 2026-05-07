@@ -13,9 +13,9 @@ actions.
 | `CREATE TABLE ... LIKE` | ❌ | Exact metadata cloning rules |
 | `CREATE TABLE ... SELECT` | ❌ | CTAS inference and atomicity |
 | `DROP TABLE` | 🟡 | Limited single persistent base-table drop without `IF EXISTS`, `TEMPORARY`, multi-table drop, `RESTRICT`, or `CASCADE` |
-| `RENAME TABLE` | ❌ | Atomic multi-table rename semantics |
+| `RENAME TABLE` | 🟡 | Limited single-pair persistent base-table rename from `baseline-table-rename-lifecycle`, including unqualified, schema-qualified, and cross-schema names; no multi-table rename, temporary tables, views, triggers, or privilege semantics |
 | `TRUNCATE TABLE` | ❌ | DDL truncate semantics |
-| Atomic DDL | 🟡 | Catalog descriptor rows and generated physical SQLite table changes commit or roll back atomically for the limited create/drop subset only |
+| Atomic DDL | 🟡 | Catalog descriptor rows and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename subsets only |
 | Implicit commit boundaries | ❌ | Implicit commit boundaries |
 | `IMPORT TABLE` | ❌ | Transportable tablespace import syntax, diagnostics |
 

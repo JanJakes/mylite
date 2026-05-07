@@ -34,6 +34,7 @@ struct mylite_session_state {
     char collation_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
     bool character_set_state_is_placeholder;
     bool system_variables_are_placeholder;
+    int64_t previous_row_count;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
 };

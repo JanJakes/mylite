@@ -1457,6 +1457,7 @@ static bool map_keyword_token(
         {"DUAL", MYLITE_SQL_PARSE_DUAL},
         {"USER", MYLITE_SQL_PARSE_USER},
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
+        {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
     };
 
     if (previous_token_was_dot) {

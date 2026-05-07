@@ -303,6 +303,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "version_argument_count_error";
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
         return "function_argument_list";
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+        return "row_count_function";
     }
 
     return "unknown";

@@ -303,6 +303,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     );
     session->character_set_state_is_placeholder = true;
     session->system_variables_are_placeholder = true;
+    session->previous_row_count = -1;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
 }

@@ -197,6 +197,11 @@ struct collect_drop_schema_tables_context {
     struct planned_drop_schema *plan;
 };
 
+struct session_scalar_cell {
+    const char *value;
+    char integer_text[integer_text_capacity];
+};
+
 static int execute_parsed_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -267,6 +272,10 @@ static int execute_show_databases_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
+);
+static int64_t row_count_for_completed_statement(
+    const struct mylite_sql_ast_node *statement,
+    const mylite_result *result
 );
 static int finish_successful_result(
     struct mylite_db *database,
@@ -388,9 +397,10 @@ static int ast_scan_push_node(
     size_t *capacity,
     const struct mylite_sql_ast_node *node
 );
-static const char *session_scalar_value(
-    const struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
+static int session_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
 );
 static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(
     const struct mylite_sql_ast_node *expression
@@ -870,6 +880,7 @@ int mylite_execute(
     struct mylite_statement_context context;
     struct mylite_sql_parse_result parse_result;
     const struct mylite_sql_ast_node *statement = NULL;
+    int64_t completed_row_count = -1;
     size_t statement_count = 0U;
     int rc = MYLITE_OK;
 
@@ -903,6 +914,7 @@ int mylite_execute(
         mylite_statement_context_deinit(&context);
         return rc;
     }
+    mylite_statement_context_set_previous_row_count(&context, database->session.previous_row_count);
 
     rc = status_from_parse_status(mylite_sql_parse(
         (struct mylite_sql_parse_config){
@@ -918,6 +930,7 @@ int mylite_execute(
         } else {
             set_parse_error(database, &parse_result);
         }
+        database->session.previous_row_count = -1;
         mylite_sql_parse_result_deinit(&parse_result);
         (void)mylite_statement_context_end(&context, rc);
         mylite_statement_context_deinit(&context);
@@ -935,11 +948,17 @@ int mylite_execute(
         rc = MYLITE_ERROR;
     }
 
+    if (rc == MYLITE_OK) {
+        completed_row_count = row_count_for_completed_statement(statement, *out_result);
+    }
     mylite_sql_parse_result_deinit(&parse_result);
     if (rc != MYLITE_OK) {
+        database->session.previous_row_count = -1;
         set_internal_error_if_clear(database, rc, "statement execution failed");
         mylite_result_free(*out_result);
         *out_result = NULL;
+    } else {
+        database->session.previous_row_count = completed_row_count;
     }
     (void)mylite_statement_context_end(&context, rc);
     mylite_statement_context_deinit(&context);
@@ -1018,6 +1037,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VERSION_FUNCTION:
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
         break;
     }
 
@@ -1486,6 +1506,76 @@ static int execute_show_databases_statement(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int64_t row_count_for_completed_statement(
+    const struct mylite_sql_ast_node *statement,
+    const mylite_result *result
+) {
+    if (result != NULL && mylite_result_column_count(result) != 0U) {
+        return -1;
+    }
+    if (statement == NULL) {
+        return 0;
+    }
+
+    switch (statement->kind) {
+    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_STATEMENT:
+    case MYLITE_SQL_AST_DELETE_STATEMENT:
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+        return result == NULL ? 0 : mylite_result_affected_rows(result);
+    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
+        return -1;
+    case MYLITE_SQL_AST_USE_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+        return 0;
+    case MYLITE_SQL_AST_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
+        return -1;
+    case MYLITE_SQL_AST_SCRIPT:
+    case MYLITE_SQL_AST_SELECT_LIST:
+    case MYLITE_SQL_AST_SELECT_ITEM:
+    case MYLITE_SQL_AST_FROM_DUAL:
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+    case MYLITE_SQL_AST_WILDCARD:
+    case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
+    case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION_LIST:
+    case MYLITE_SQL_AST_COLUMN_DEFINITION:
+    case MYLITE_SQL_AST_INTEGER_TYPE:
+    case MYLITE_SQL_AST_NULLABILITY:
+    case MYLITE_SQL_AST_IDENTIFIER_LIST:
+    case MYLITE_SQL_AST_INSERT_ROW_LIST:
+    case MYLITE_SQL_AST_INSERT_ROW:
+    case MYLITE_SQL_AST_FROM_TABLE:
+    case MYLITE_SQL_AST_WHERE_CLAUSE:
+    case MYLITE_SQL_AST_COMPARISON_PREDICATE:
+    case MYLITE_SQL_AST_IS_NULL_PREDICATE:
+    case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
+    case MYLITE_SQL_AST_ORDER_DIRECTION:
+    case MYLITE_SQL_AST_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+        break;
+    }
+
+    return 0;
 }
 
 static int finish_successful_result(
@@ -2560,6 +2650,7 @@ static int execute_session_scalar_select_statement(
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
+    struct session_scalar_cell *cells = NULL;
     const char **values = NULL;
     mylite_result *result = NULL;
     size_t column_count = mylite_sql_ast_node_child_count(select_list);
@@ -2570,13 +2661,20 @@ static int execute_session_scalar_select_statement(
         set_nomem_error(database);
         return rc;
     }
-    if (column_count > SIZE_MAX / sizeof(*values)) {
+    if (column_count > SIZE_MAX / sizeof(*values) || column_count > SIZE_MAX / sizeof(*cells)) {
+        mylite_result_free(result);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    cells = (struct session_scalar_cell *)calloc(column_count, sizeof(*cells));
+    if (cells == NULL) {
         mylite_result_free(result);
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
     values = (const char **)calloc(column_count, sizeof(*values));
     if (values == NULL) {
+        free(cells);
         mylite_result_free(result);
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -2595,7 +2693,10 @@ static int execute_session_scalar_select_statement(
         }
         free(column_name);
         if (rc == MYLITE_OK) {
-            values[column_index] = session_scalar_value(database, expression);
+            rc = session_scalar_value(database, expression, &cells[column_index]);
+        }
+        if (rc == MYLITE_OK) {
+            values[column_index] = cells[column_index].value;
         }
         ++column_index;
         select_item = select_item->next_sibling;
@@ -2607,6 +2708,7 @@ static int execute_session_scalar_select_statement(
         }
     }
     free((void *)values);
+    free(cells);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -2719,30 +2821,52 @@ static int ast_scan_push_node(
     return MYLITE_OK;
 }
 
-static const char *session_scalar_value(
-    const struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression
+static int session_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
 ) {
     expression = unwrap_parenthesized_expression(expression);
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
     if (expression == NULL) {
-        return NULL;
+        return MYLITE_OK;
     }
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
         if (database->session.has_selected_schema) {
-            return database->session.selected_schema;
+            out_cell->value = database->session.selected_schema;
         }
-        return NULL;
+        return MYLITE_OK;
     case MYLITE_SQL_AST_USER_FUNCTION:
-        return database->session.client_user_identity;
+        out_cell->value = database->session.client_user_identity;
+        return MYLITE_OK;
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
-        return database->session.current_user_identity;
+        out_cell->value = database->session.current_user_identity;
+        return MYLITE_OK;
     case MYLITE_SQL_AST_VERSION_FUNCTION:
-        return mylite_version();
+        out_cell->value = mylite_version();
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
+        int written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRId64,
+            database->session.previous_row_count
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            set_runtime_error(database, "failed to format ROW_COUNT() value");
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    }
     default:
-        return NULL;
+        return MYLITE_OK;
     }
 }
 
@@ -2765,6 +2889,9 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_VERSION_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION) {
         return true;
     }
 

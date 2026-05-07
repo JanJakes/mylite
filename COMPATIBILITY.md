@@ -433,7 +433,7 @@ tests.
 | `FOUND_ROWS()` | ❌ | Rows before LIMIT. | [system functions](docs/compatibility/functions-system.md) |
 | `CURRENT_USER()` / `CURRENT_USER` | 🟡 | Limited one-row scalar select returns MyLite's embedded current identity `root@%`; no account or definer semantics. | [system functions](docs/compatibility/functions-system.md) |
 | `LAST_INSERT_ID()` | ❌ | Last auto-increment value. | [system functions](docs/compatibility/functions-system.md) |
-| `ROW_COUNT()` | ❌ | Rows affected by last statement. | [system functions](docs/compatibility/functions-system.md) |
+| `ROW_COUNT()` | 🟡 | Limited one-row scalar select returns connection-local row-count state for supported baseline statements; no protocol OK-packet parity, `CLIENT_FOUND_ROWS`, aliases, table-backed evaluation, or general diagnostics area support. | [system functions](docs/compatibility/functions-system.md) |
 | `USER()` | 🟡 | Limited one-row scalar select returns MyLite's embedded client identity `root@%`; no authentication or host matching. | [system functions](docs/compatibility/functions-system.md) |
 | `VERSION()` | 🟡 | Limited one-row scalar select returns MyLite's engine version string; no MySQL server-version impersonation or `@@version`. | [system functions](docs/compatibility/functions-system.md) |
 

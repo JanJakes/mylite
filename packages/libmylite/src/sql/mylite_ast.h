@@ -53,6 +53,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_VERSION_FUNCTION = 44,
     MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR = 45,
     MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST = 46,
+    MYLITE_SQL_AST_ROW_COUNT_FUNCTION = 47,
 };
 
 enum mylite_sql_ast_literal_kind {

@@ -429,6 +429,10 @@ expression(A) ::= VERSION(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR, B, R);
 }
+expression(A) ::= ROW_COUNT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_ROW_COUNT_FUNCTION, R);
+}
 expression(A) ::= PLUS(T) expression(B). [UPLUS] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);
@@ -516,6 +520,9 @@ identifier(A) ::= USER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= VERSION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ROW_COUNT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

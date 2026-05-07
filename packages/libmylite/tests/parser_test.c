@@ -10,6 +10,7 @@ static int test_select_expression_list(void);
 static int test_current_database_functions(void);
 static int test_current_user_identity_functions(void);
 static int test_version_function(void);
+static int test_row_count_function(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -87,6 +88,7 @@ int main(void) {
     failures += test_current_database_functions();
     failures += test_current_user_identity_functions();
     failures += test_version_function();
+    failures += test_row_count_function();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -444,6 +446,91 @@ static int test_version_function(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT VERSION() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_row_count_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT ROW_COUNT(), Row_Count(), row_count() FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_ROW_COUNT_FUNCTION, "row count function");
+    failures += expect_span_text(first_expression, "ROW_COUNT()", "row count function span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_ROW_COUNT_FUNCTION,
+        "mixed-case row count function"
+    );
+    failures += expect_span_text(second_expression, "Row_Count()", "mixed-case row count span");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_ROW_COUNT_FUNCTION,
+        "lower row count function"
+    );
+    failures += expect_span_text(third_expression, "row_count()", "lower row count span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "row count from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ROW_COUNT (), (ROW_COUNT());", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ROW_COUNT_FUNCTION,
+        "spaced row count function"
+    );
+    failures += expect_span_text(first_expression, "ROW_COUNT ()", "spaced row count span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized row count function"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_ROW_COUNT_FUNCTION,
+        "wrapped row count function"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE row_count (row_count INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "row count identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ROW_COUNT;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare row count identifier");
+    failures += expect_span_text(first_expression, "ROW_COUNT", "bare row count span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ROW_COUNT(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT ROW_COUNT(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT ROW_COUNT(1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT ROW_COUNT() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

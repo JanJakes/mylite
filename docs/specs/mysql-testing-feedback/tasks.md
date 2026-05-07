@@ -219,7 +219,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `SHOW WARNINGS`, `SHOW ERRORS`, and diagnostic count result sets are now
       covered too; `SHOW COLUMNS` / `SHOW FIELDS`, `DESCRIBE`, `SHOW INDEX`,
       `SHOW CREATE DATABASE`, and `SHOW CREATE TABLE` target result sets are
-      covered as well. Remaining expression and other SQLite-backed result
+      covered as well. Conditional scalar functions `IF`, `IFNULL`, `NULLIF`,
+      and `COALESCE` now infer MySQL-shaped result descriptors for the covered
+      scalar domains. Remaining expression and other SQLite-backed result
       metadata gaps are still tracked here.
 
 ## Test harness classification

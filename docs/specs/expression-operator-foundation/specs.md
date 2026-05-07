@@ -660,7 +660,7 @@ these cases.
 | `SELECT '2' = 2` | `1` | none |
 | `SELECT '2a' = 2` | `1` | one 1292 warning |
 | `SELECT 'a' = 0` | `1` | one 1292 warning |
-| `SELECT CONCAT('12', CHAR(0 USING binary), '3') + 0` | `12` | one 1292 warning |
+| `SELECT '12\\03' + 0` | `12` | one 1292 warning |
 | `SELECT '10' < '2'` | `1` | none |
 | `SELECT '10' < 2` | `0` | none |
 

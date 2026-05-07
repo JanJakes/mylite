@@ -45,6 +45,12 @@ stores the clipped endpoint. When a numeric string both has trailing garbage and
 rounds outside the target range, the range condition is the reported condition
 for the verified MySQL 8.4.9 cases.
 
+Embedded NUL bytes inside string values do not terminate numeric parsing.
+MySQL keeps the numeric prefix before the NUL and treats the NUL plus following
+bytes as trailing garbage. Strict mode rejects those covered integer and
+approximate assignments with error 1265; non-strict mode stores the prefix
+value with warning 1265.
+
 Verified clipping endpoints:
 
 | Type | Signed range | Unsigned range |
@@ -97,6 +103,8 @@ For signed integer-family columns, MyLite:
 - parses string values as numeric prefixes
 - treats no numeric prefix as incorrect value 1366
 - treats trailing garbage after a numeric prefix as data truncation 1265
+- treats embedded NUL bytes and following bytes as trailing garbage instead of
+  silently terminating the input
 - promotes incorrect/truncated values to errors in strict SQL modes and records
   warnings in non-strict modes
 - clips out-of-range signed and unsigned `TINYINT`, `SMALLINT`, `MEDIUMINT`,

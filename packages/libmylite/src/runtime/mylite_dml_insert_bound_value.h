@@ -29,6 +29,16 @@ bool mylite_dml_insert_bound_value_is_numeric(
     bool *out_is_integer
 );
 bool mylite_dml_parse_insert_integer_text(const char *text, int64_t *out_value);
+bool mylite_dml_parse_insert_integer_text_with_length(
+    const char *text,
+    size_t text_length,
+    int64_t *out_value
+);
 bool mylite_dml_parse_insert_real_text(const char *text, double *out_value);
+bool mylite_dml_parse_insert_real_text_with_length(
+    const char *text,
+    size_t text_length,
+    double *out_value
+);
 
 #endif

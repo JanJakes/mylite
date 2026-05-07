@@ -443,7 +443,7 @@ int mylite_dml_resolve_insert_text_value(
                    ? mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value)
                    : status;
     }
-    if (mylite_dml_parse_insert_integer_text(text, &integer_value)) {
+    if (mylite_dml_parse_insert_integer_text_with_length(text, text_length, &integer_value)) {
         int status = MYLITE_OK;
 
         if (integer_value == 0 &&
@@ -478,7 +478,7 @@ int mylite_dml_resolve_insert_text_value(
     if (column->auto_increment) {
         return mylite_dml_insert_set_unsupported_expression_error(database);
     }
-    if (mylite_dml_parse_insert_real_text(text, &real_value)) {
+    if (mylite_dml_parse_insert_real_text_with_length(text, text_length, &real_value)) {
         int status = MYLITE_OK;
 
         *out_value = (struct mylite_insert_bound_value){

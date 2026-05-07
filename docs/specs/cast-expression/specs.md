@@ -95,7 +95,7 @@ prefix returns `0` with warning 1292.
 | `CAST(-1e20 AS SIGNED)` | error | 1690 out of range |
 | `CAST('12.5' AS SIGNED)` | `12` | 1292 truncated integer |
 | `CAST('x' AS SIGNED)` | `0` | 1292 truncated integer |
-| `CAST(CONCAT('12', CHAR(0 USING binary), '3') AS SIGNED)` | `12` | 1292 truncated integer |
+| `CAST('12\\03' AS SIGNED)` | `12` | 1292 truncated integer |
 | `CAST(0x3132 AS SIGNED)` | `12594` | none |
 | `CAST(0b1010 AS SIGNED)` | `10` | none |
 
@@ -111,7 +111,7 @@ warning. Negative string inputs wrap and also emit warning 1105.
 | `CAST('-1' AS UNSIGNED)` | `18446744073709551615` | 1105 negative-to-unsigned |
 | `CAST('-1.5' AS UNSIGNED)` | `18446744073709551615` | 1292 truncated integer, 1105 negative-to-unsigned |
 | `CAST('x' AS UNSIGNED)` | `0` | 1292 truncated integer |
-| `CAST(CONCAT('12', CHAR(0 USING binary), '3') AS UNSIGNED)` | `12` | 1292 truncated integer |
+| `CAST('12\\03' AS UNSIGNED)` | `12` | 1292 truncated integer |
 | `CAST(X'3132' AS UNSIGNED)` | `12594` | none |
 | `CAST(B'1010' AS UNSIGNED)` | `10` | none |
 

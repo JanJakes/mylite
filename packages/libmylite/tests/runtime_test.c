@@ -34645,7 +34645,7 @@ static int test_cast_expression_execution(void) {
         "unsigned_value",
         "plus_value",
     };
-    static const char *const nul_numeric_values[] = {"12", "12", "12"};
+    static const char *const nul_numeric_values[] = {"12", "12", "12.0000"};
     static const struct expected_result_metadata metadata[] = {
         {"signed_value",
          NULL,
@@ -35071,9 +35071,9 @@ static int test_cast_expression_execution(void) {
 
     failures += expect_select_rows(
         database,
-        "SELECT CAST(CONCAT('12', CHAR(0 USING binary), '3') AS SIGNED) AS signed_value, "
-        "CAST(CONCAT('12', CHAR(0 USING binary), '3') AS UNSIGNED) AS unsigned_value, "
-        "CONCAT('12', CHAR(0 USING binary), '3') + 0 AS plus_value",
+        "SELECT CAST('12\\03' AS SIGNED) AS signed_value, "
+        "CAST('12\\03' AS UNSIGNED) AS unsigned_value, "
+        "'12\\03' + 0 AS plus_value",
         nul_numeric_columns,
         (int)(sizeof(nul_numeric_columns) / sizeof(nul_numeric_columns[0])),
         nul_numeric_values,
@@ -58175,6 +58175,10 @@ static int test_temporal_dml_coercion_execution(void) {
 
 static int test_numeric_dml_coercion_execution(void) {
     static const char *const numeric_columns[] = {"id", "i", "bi", "d"};
+    static const char *const numeric_nul_count_columns[] = {"rows_left"};
+    static const char *const numeric_nul_count_values[] = {"0"};
+    static const char *const numeric_nul_columns[] = {"id", "i", "r"};
+    static const char *const numeric_nul_values[] = {"1", "12", "12.0"};
     static const char *const strict_insert_values[] = {"1", "5", "-5", "4.57"};
     static const char *const non_strict_insert_values[] = {
         "1",
@@ -58201,6 +58205,11 @@ static int test_numeric_dml_coercion_execution(void) {
         database,
         "CREATE TABLE numeric_values ("
         "id INT PRIMARY KEY, i INT, bi BIGINT, d DECIMAL(5,2))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE numeric_nul_values (id INT PRIMARY KEY, i INT, r DOUBLE)",
         MYLITE_DONE
     );
 
@@ -58246,7 +58255,88 @@ static int test_numeric_dml_coercion_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(
+        database,
+        "INSERT INTO numeric_nul_values VALUES "
+        "(1, '12\\03', 0)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data truncated for column 'i' at row 1",
+        "strict embedded NUL integer insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "strict embedded NUL integer insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO numeric_nul_values VALUES "
+        "(2, 0, '12\\03')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data truncated for column 'r' at row 1",
+        "strict embedded NUL double insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "strict embedded NUL double insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS rows_left FROM numeric_nul_values",
+        numeric_nul_count_columns,
+        1,
+        numeric_nul_count_values,
+        1,
+        "strict embedded NUL numeric rollback"
+    );
+
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO numeric_nul_values VALUES ("
+        "1, '12\\03', '12\\03')",
+        1,
+        "non-strict embedded NUL numeric insert"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "non-strict embedded NUL warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "non-strict embedded NUL integer warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "non-strict embedded NUL double warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,i,r FROM numeric_nul_values",
+        numeric_nul_columns,
+        3,
+        numeric_nul_values,
+        1,
+        "non-strict embedded NUL numeric values"
+    );
+
     failures += execute_sql_expect_done_affected(
         database,
         "INSERT INTO numeric_values VALUES (2, '4.5x', 'abc', 'abc')",

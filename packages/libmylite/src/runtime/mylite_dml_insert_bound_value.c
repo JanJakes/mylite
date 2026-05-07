@@ -134,61 +134,113 @@ bool mylite_dml_insert_bound_value_is_numeric(
         *out_value = value->real_value;
         return true;
     }
-    if (value->kind == MYLITE_INSERT_BOUND_TEXT &&
-        mylite_dml_parse_insert_integer_text(value->text_value, &integer_value)) {
-        *out_value = (double)integer_value;
-        *out_is_integer = true;
-        return true;
-    }
-    if (value->kind == MYLITE_INSERT_BOUND_TEXT &&
-        mylite_dml_parse_insert_real_text(value->text_value, out_value)) {
-        return true;
+    if (value->kind == MYLITE_INSERT_BOUND_TEXT) {
+        if (mylite_dml_parse_insert_integer_text_with_length(
+                value->text_value,
+                value->text_length,
+                &integer_value
+            )) {
+            *out_value = (double)integer_value;
+            *out_is_integer = true;
+            return true;
+        }
+        if (mylite_dml_parse_insert_real_text_with_length(
+                value->text_value,
+                value->text_length,
+                out_value
+            )) {
+            return true;
+        }
     }
     return false;
 }
 
 bool mylite_dml_parse_insert_integer_text(const char *text, int64_t *out_value) {
+    return mylite_dml_parse_insert_integer_text_with_length(
+        text,
+        text == NULL ? 0U : strlen(text),
+        out_value
+    );
+}
+
+bool mylite_dml_parse_insert_integer_text_with_length(
+    const char *text,
+    size_t text_length,
+    int64_t *out_value
+) {
     enum { decimal_base = 10 };
 
+    char *copy = NULL;
     char *end = NULL;
+    size_t end_offset = 0U;
     long long value = 0;
 
-    if (text == NULL || text[0] == '\0' || out_value == NULL) {
+    if (text == NULL || text_length == 0U || out_value == NULL) {
+        return false;
+    }
+    copy = mylite_copy_span_text(text, text_length);
+    if (copy == NULL) {
         return false;
     }
     errno = 0;
-    value = strtoll(text, &end, decimal_base);
-    if (errno != 0 || end == text) {
+    value = strtoll(copy, &end, decimal_base);
+    if (errno != 0 || end == copy) {
+        free(copy);
         return false;
     }
-    while (*end != '\0' && isspace((unsigned char)*end)) {
-        ++end;
+    end_offset = (size_t)(end - copy);
+    while (end_offset < text_length && isspace((unsigned char)copy[end_offset])) {
+        ++end_offset;
     }
-    if (*end != '\0') {
+    if (end_offset != text_length) {
+        free(copy);
         return false;
     }
     *out_value = (int64_t)value;
+    free(copy);
     return true;
 }
 
 bool mylite_dml_parse_insert_real_text(const char *text, double *out_value) {
+    return mylite_dml_parse_insert_real_text_with_length(
+        text,
+        text == NULL ? 0U : strlen(text),
+        out_value
+    );
+}
+
+bool mylite_dml_parse_insert_real_text_with_length(
+    const char *text,
+    size_t text_length,
+    double *out_value
+) {
+    char *copy = NULL;
     char *end = NULL;
+    size_t end_offset = 0U;
     double value = 0.0;
 
-    if (text == NULL || text[0] == '\0' || out_value == NULL) {
+    if (text == NULL || text_length == 0U || out_value == NULL) {
+        return false;
+    }
+    copy = mylite_copy_span_text(text, text_length);
+    if (copy == NULL) {
         return false;
     }
     errno = 0;
-    value = strtod(text, &end);
-    if (errno != 0 || end == text) {
+    value = strtod(copy, &end);
+    if (errno != 0 || end == copy) {
+        free(copy);
         return false;
     }
-    while (*end != '\0' && isspace((unsigned char)*end)) {
-        ++end;
+    end_offset = (size_t)(end - copy);
+    while (end_offset < text_length && isspace((unsigned char)copy[end_offset])) {
+        ++end_offset;
     }
-    if (*end != '\0') {
+    if (end_offset != text_length) {
+        free(copy);
         return false;
     }
     *out_value = value;
+    free(copy);
     return true;
 }

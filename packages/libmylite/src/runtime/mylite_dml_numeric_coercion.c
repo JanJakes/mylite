@@ -758,6 +758,7 @@ static int coerce_negative_integer_text_if_needed(
 static struct mylite_dml_numeric_text_parse parse_numeric_text(const char *text, size_t length) {
     struct mylite_dml_numeric_text_parse parsed = {0};
     char *copy = mylite_copy_span_text(text == NULL ? "" : text, text == NULL ? 0U : length);
+    char *copy_end = copy == NULL ? NULL : copy + (text == NULL ? 0U : length);
     char *start = NULL;
     char *end = NULL;
     int parse_errno = 0;
@@ -767,7 +768,7 @@ static struct mylite_dml_numeric_text_parse parse_numeric_text(const char *text,
         return parsed;
     }
     start = copy;
-    while (*start != '\0' && isspace((unsigned char)*start)) {
+    while (start < copy_end && isspace((unsigned char)*start)) {
         ++start;
     }
     errno = 0;
@@ -775,10 +776,10 @@ static struct mylite_dml_numeric_text_parse parse_numeric_text(const char *text,
     parse_errno = errno;
     parsed.saw_number = end != start;
     parsed.range_error = parsed.saw_number && parse_errno == ERANGE && isinf(parsed.value);
-    while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
+    while (end != NULL && end < copy_end && isspace((unsigned char)*end)) {
         ++end;
     }
-    parsed.trailing_garbage = parsed.saw_number && end != NULL && *end != '\0';
+    parsed.trailing_garbage = parsed.saw_number && end != NULL && end < copy_end;
     free(copy);
     return parsed;
 }

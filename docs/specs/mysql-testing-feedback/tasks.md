@@ -240,6 +240,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Scalar numeric conversion for embedded-NUL text values now keeps the
       numeric prefix and still treats the NUL plus following bytes as trailing
       garbage for warning emission.
+      DML numeric coercion now applies the same embedded-NUL handling for
+      covered integer and approximate assignments, rejecting in strict mode and
+      warning/storing the prefix in non-strict mode.
       Scalar `CAST` and
       `CONVERT` to explicit `utf8mb4`/`utf8mb3` character targets now reject
       invalid byte sequences with warning 1300 and return `NULL`, while

@@ -67920,6 +67920,64 @@ static int test_union_query_expression_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
          1},
     };
+    static const struct expected_result_metadata values_mixed_metadata[] = {
+        {"column_0",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         12U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0},
+    };
+    static const struct expected_result_metadata values_char_widen_metadata[] = {
+        {"column_0",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         16U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+    };
+    static const struct expected_result_metadata values_pair_metadata[] = {
+        {"column_0",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         2U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"column_1",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         16U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0},
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -67932,6 +67990,7 @@ static int test_union_query_expression_execution(void) {
         MYLITE_DONE
     );
     failures += execute_sql(database, "USE mylite_union_query", MYLITE_DONE);
+    failures += execute_sql(database, "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci", MYLITE_DONE);
     failures += execute_sql(
         database,
         "CREATE TABLE left_t ("
@@ -67985,6 +68044,35 @@ static int test_union_query_expression_execution(void) {
         3,
         "values query expression"
     );
+    failures += prepare_sql(database, "VALUES ROW(1), ROW('abc') LIMIT 0", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, values_mixed_metadata, 1, "values mixed metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "values mixed metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "VALUES ROW(CAST('a' AS CHAR(1))), ROW(CAST('bbbb' AS CHAR(4))) LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        values_char_widen_metadata,
+        1,
+        "values char widening metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "values char widening metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "VALUES ROW(1, 'a'), ROW(2, 'bbbb') LIMIT 0", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, values_pair_metadata, 2, "values pair metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "values pair metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += expect_select_rows(
         database,
         "SELECT n AS v FROM left_t INTERSECT SELECT n FROM right_t "

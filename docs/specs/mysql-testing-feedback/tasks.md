@@ -365,6 +365,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `GROUP_CONCAT()` over `VARBINARY` and mixed binary/text argument lists now
       reports MySQL-shaped binary metadata with byte-counted lengths, while
       numeric arguments remain connection-text results.
+      Standalone `VALUES ROW(...)` result metadata now has MySQL-verified
+      regression coverage for zero-row mixed numeric/string descriptors,
+      character-width widening, and multi-column numeric/string rows.
       Remaining expression and other SQLite-backed result metadata gaps are
       still tracked here.
 

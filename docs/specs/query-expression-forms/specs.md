@@ -22,8 +22,9 @@ Out of scope:
   `DELETE`
 - optimizer choices, stable row order without a complete `ORDER BY`, and
   broader row-source support beyond currently executable MyLite statements
-- exact metadata for all possible `VALUES` expression type combinations beyond
-  the existing expression descriptor merger
+- exact metadata for `VALUES` expression type combinations beyond the current
+  MySQL-verified numeric, character, and mixed numeric/string descriptor merger
+  slice
 
 ## Sources
 
@@ -60,6 +61,18 @@ TABLE left_t ORDER BY id LIMIT 2;
 ```sql
 VALUES ROW(1,-2,3), ROW(5,7,9), ROW(4,6,8) ORDER BY column_1;
 ```
+
+For zero-row `VALUES ... LIMIT 0`, MySQL still reports merged result metadata.
+Verified MySQL 8.4.9 cases include:
+
+- `VALUES ROW(1), ROW('abc') LIMIT 0` reports `column_0` as `VAR_STRING`,
+  `utf8mb4_0900_ai_ci`, length `12`, decimals `31`, and `NOT_NULL`.
+- `VALUES ROW(CAST('a' AS CHAR(1))), ROW(CAST('bbbb' AS CHAR(4))) LIMIT 0`
+  reports `column_0` as nullable `VAR_STRING`, `utf8mb4_0900_ai_ci`, length
+  `16`, and decimals `31`.
+- `VALUES ROW(1, 'a'), ROW(2, 'bbbb') LIMIT 0` keeps the integer column as
+  non-null `LONGLONG` and widens the string column to non-null `VAR_STRING`
+  length `16`.
 
 Set operations compare whole result rows. The default duplicate mode is
 `DISTINCT`; `ALL` preserves multiset counts according to the operation:
@@ -123,7 +136,8 @@ resolution.
 - all rows must have the same column count
 - output columns are named `column_0`, `column_1`, ...
 - descriptors are inferred by merging each column's row expressions through the
-  existing expression descriptor merger
+  existing expression descriptor merger; the covered metadata slice includes
+  zero-row mixed numeric/string and character-width widening probes
 - `ORDER BY` and `LIMIT` use the same global query-expression binding as set
   operations
 

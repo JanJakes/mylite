@@ -4,6 +4,8 @@
 #include "mylite_select.h"
 #include "mylite_select_resolve.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 
 #include <stdlib.h>
 
@@ -84,6 +86,11 @@ static int append_select_item_outputs(
     }
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (allow_expression_outputs &&
+            (mylite_system_variable_identifier_is_system_variable(expression) ||
+             mylite_user_variable_identifier_is_user_variable(expression))) {
+            return append_select_expression_output(database, expression, alias, plan, callbacks);
+        }
         return append_select_column_output(database, expression, alias, plan);
     }
     if (allow_expression_outputs) {

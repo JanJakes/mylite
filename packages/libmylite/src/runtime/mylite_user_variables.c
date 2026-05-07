@@ -2,6 +2,7 @@
 
 #include "mylite_connection_statement.h"
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
@@ -82,6 +83,19 @@ static int eval_set_user_variable_identifier(
     void *user_data,
     const struct mylite_sql_ast_node *identifier,
     struct mylite_expression_value *out_value
+);
+
+static int eval_set_user_variable_assignment_expression(
+    void *user_data,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int append_user_variable_expression_assignment_warning(
+    mylite_db *database,
+    struct mylite_expression_warnings *warnings
 );
 
 static int set_user_variable_store_value(
@@ -211,6 +225,56 @@ int mylite_user_variable_infer_identifier(
     return MYLITE_OK;
 }
 
+int mylite_user_variable_eval_assignment(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    const struct mylite_sql_ast_node *variable = mylite_ast_child_at(assignment, 0U);
+    const struct mylite_sql_ast_node *expression = mylite_ast_child_at(assignment, 1U);
+    struct mylite_expression_value value = {0};
+    struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
+    char *name = NULL;
+    int status = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct mylite_expression_value){0};
+    if (database == NULL || assignment == NULL ||
+        assignment->kind != MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT || expression == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status = mylite_user_variable_copy_identifier_name(variable, &name);
+    if (status != MYLITE_OK) {
+        return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
+    }
+
+    status = mylite_expression_eval_with_context(expression, context, warnings, &value);
+    if (status != 0) {
+        goto done;
+    }
+    descriptor = user_variable_descriptor_from_value(database, &value);
+    status = set_user_variable_store_value(database, name, &value, &descriptor);
+    if (status != MYLITE_OK) {
+        goto done;
+    }
+    status = append_user_variable_expression_assignment_warning(database, warnings);
+    if (status != MYLITE_OK) {
+        goto done;
+    }
+    *out_value = value;
+    value = (struct mylite_expression_value){0};
+
+done:
+    free(name);
+    mylite_expression_value_deinit(&value);
+    return status;
+}
+
 int mylite_user_variable_prepare_set_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -255,6 +319,7 @@ int mylite_user_variable_execute_set_statement(mylite_stmt *stmt) {
     struct mylite_expression_eval_context expression_context = {
         .user_data = &user_context,
         .resolve_identifier = eval_set_user_variable_identifier,
+        .assign_user_variable = eval_set_user_variable_assignment_expression,
     };
     int status = MYLITE_OK;
 
@@ -665,6 +730,43 @@ static int eval_set_user_variable_identifier(
         identifier,
         out_value
     );
+}
+
+static int eval_set_user_variable_assignment_expression(
+    void *user_data,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    struct set_user_variable_eval_context *context = user_data;
+
+    return mylite_user_variable_eval_assignment(
+        context == NULL ? NULL : context->database,
+        assignment,
+        expression_context,
+        warnings,
+        out_value
+    );
+}
+
+static int append_user_variable_expression_assignment_warning(
+    mylite_db *database,
+    struct mylite_expression_warnings *warnings
+) {
+    int status = mylite_expression_warnings_append(
+        warnings,
+        MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX,
+        "Setting user variables within expressions is deprecated and will be removed in a future "
+        "release. Consider alternatives: 'SET variable=expression, ...', or 'SELECT "
+        "expression(s) INTO variables(s)'."
+    );
+
+    if (status != 0) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
 }
 
 static int set_user_variable_store_value(

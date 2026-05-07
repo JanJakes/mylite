@@ -42,6 +42,14 @@ int mylite_expression_infer_collation_info(
             callbacks,
             out_info
         );
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
+        return mylite_expression_infer_collation_info(
+            database,
+            context,
+            mylite_ast_child_at(node, 1U),
+            callbacks,
+            out_info
+        );
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return mylite_expression_infer_cast_collation_info(database, node, callbacks, out_info);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
@@ -145,7 +153,6 @@ int mylite_expression_infer_collation_info(
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
     case MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT:
     case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST:
-    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
     case MYLITE_SQL_AST_PREPARE_STATEMENT:
     case MYLITE_SQL_AST_EXECUTE_STATEMENT:
     case MYLITE_SQL_AST_EXECUTE_USING_LIST:

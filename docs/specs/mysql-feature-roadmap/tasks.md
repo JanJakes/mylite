@@ -344,9 +344,13 @@ level application surfaces.
        slice covers the current `SHOW VARIABLES` catalog. The first
        [user-variable foundation](../user-variable-foundation/specs.md) slice
        implements `SET @var`, expression reads, statement-start
-       multi-assignment semantics, and result metadata; global mutation,
-       persisted variables, direct arbitrary system-variable assignment, and
-       complete variable-catalog coverage remain unfinished.
+       multi-assignment semantics, result metadata, and MySQL-compatible
+       `@var := expr` expression assignment for scalar SELECT, table SELECT
+       projection, and SET RHS expressions, including immediate side effects
+       and warning 1287; global
+       mutation, persisted variables, direct arbitrary system-variable
+       assignment, complete variable-catalog coverage, and broad assignment
+       expression support in every DML/grouped-query context remain unfinished.
 42. [ ] Prepared statements: `PREPARE`, `EXECUTE`, `DEALLOCATE PREPARE`,
        parameter markers, metadata, and diagnostics. The first
        [SQL prepared statements](../sql-prepared-statements/specs.md) slice

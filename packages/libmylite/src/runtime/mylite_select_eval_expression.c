@@ -77,6 +77,14 @@ static int evaluate_table_select_row_subquery_expression(
     struct mylite_expression_value *out_value
 );
 
+static int evaluate_table_select_user_variable_assignment(
+    void *user_data,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int resolve_table_select_expression_identifier(
     void *user_data,
     const struct mylite_sql_ast_node *identifier,
@@ -120,6 +128,7 @@ void mylite_select_eval_expression_context_init(
         .eval_in_subquery = evaluate_table_select_in_subquery_expression,
         .eval_quantified_subquery = evaluate_table_select_quantified_subquery_expression,
         .eval_row_subquery = evaluate_table_select_row_subquery_expression,
+        .assign_user_variable = evaluate_table_select_user_variable_assignment,
         .eval_session_function = evaluate_table_select_session_function,
         .eval_default_function = evaluate_table_select_default_function,
     };
@@ -422,6 +431,24 @@ static int evaluate_table_select_row_subquery_expression(
     }
     return context->callbacks
         ->eval_row_subquery(context->stmt, expression, expression_context, warnings, out_value);
+}
+
+static int evaluate_table_select_user_variable_assignment(
+    void *user_data,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    struct mylite_table_select_eval_context *context = user_data;
+
+    return mylite_user_variable_eval_assignment(
+        context == NULL || context->stmt == NULL ? NULL : context->stmt->database,
+        assignment,
+        expression_context,
+        warnings,
+        out_value
+    );
 }
 
 static int resolve_table_select_expression_identifier(

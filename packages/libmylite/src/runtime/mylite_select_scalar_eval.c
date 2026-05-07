@@ -147,6 +147,14 @@ static int scalar_context_eval_row_subquery(
     struct mylite_expression_value *out_value
 );
 
+static int scalar_context_assign_user_variable(
+    void *user_data,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static bool scalar_eval_callbacks_are_valid(
     const struct mylite_select_scalar_eval_callbacks *callbacks
 );
@@ -736,6 +744,7 @@ static struct mylite_expression_eval_context scalar_expression_eval_context(
         .eval_in_subquery = scalar_context_eval_in_subquery,
         .eval_quantified_subquery = scalar_context_eval_quantified_subquery,
         .eval_row_subquery = scalar_context_eval_row_subquery,
+        .assign_user_variable = scalar_context_assign_user_variable,
         .eval_session_function = scalar_context_eval_session_function,
         .eval_default_function = scalar_context_eval_default_function,
     };
@@ -824,6 +833,24 @@ static int scalar_context_eval_default_function(
         );
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int scalar_context_assign_user_variable(
+    void *user_data,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_expression_eval_context *expression_context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    struct mylite_select_scalar_expression_context *context = user_data;
+
+    return mylite_user_variable_eval_assignment(
+        context == NULL || context->stmt == NULL ? NULL : context->stmt->database,
+        assignment,
+        expression_context,
+        warnings,
+        out_value
+    );
 }
 
 static int scalar_context_eval_subquery(

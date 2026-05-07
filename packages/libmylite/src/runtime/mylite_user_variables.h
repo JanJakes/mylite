@@ -30,6 +30,13 @@ int mylite_user_variable_infer_identifier(
     const struct mylite_sql_ast_node *identifier,
     struct mylite_field_descriptor *out_descriptor
 );
+int mylite_user_variable_eval_assignment(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *assignment,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
 int mylite_user_variable_prepare_set_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *statement,

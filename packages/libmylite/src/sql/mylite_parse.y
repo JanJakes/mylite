@@ -4476,6 +4476,10 @@ qualified_wildcard(A) ::= qualified_identifier(B) DOT STAR(T). {
 expression(A) ::= logical_or_expression(B). [LOWEST] {
     A = B;
 }
+expression(A) ::= USER_VARIABLE(T) ASSIGN expression(B). [LOWEST] {
+    A = mylite_sql_parser_make_user_variable_assignment(
+        state, mylite_sql_parser_make_identifier(state, T), B);
+}
 
 logical_or_expression(A) ::= logical_xor_expression(B). [OR] {
     A = B;

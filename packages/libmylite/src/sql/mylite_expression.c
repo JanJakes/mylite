@@ -3835,6 +3835,21 @@ static bool expression_is_supported_no_table(
     bool require_cacheable
 );
 
+static bool expression_children_are_supported_no_table(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+);
+
+static bool expression_function_is_supported_no_table(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+);
+
+static bool expression_assignment_is_supported_no_table(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+);
+
 static bool expression_is_supported_no_table_identifier(
     const struct mylite_sql_ast_node *expression,
     bool require_cacheable
@@ -4087,44 +4102,66 @@ static bool expression_is_supported_no_table(
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
-        for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
-             child = child->next_sibling) {
-            if (!expression_is_supported_no_table(child, require_cacheable)) {
-                return false;
-            }
-        }
-        return true;
+        return expression_children_are_supported_no_table(expression, require_cacheable);
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return expression_is_supported_no_table(child_at(expression, 0U), require_cacheable);
     case MYLITE_SQL_AST_FUNCTION_CALL:
-        if (!mylite_expression_is_supported_function_call(expression)) {
-            return false;
-        }
-        if (require_cacheable &&
-            scalar_function_depends_on_session(scalar_function_id(expression))) {
-            return false;
-        }
-        if (require_cacheable && scalar_function_id(expression) == MYLITE_SCALAR_FUNCTION_CHAR &&
-            child_at(expression, 2U) != NULL) {
-            return false;
-        }
-        for (const struct mylite_sql_ast_node *child =
-                 child_at(expression, 1U) == NULL ? NULL : child_at(expression, 1U)->first_child;
-             child != NULL;
-             child = child->next_sibling) {
-            if (!expression_is_supported_no_table(child, require_cacheable)) {
-                return false;
-            }
-        }
-        return true;
+        return expression_function_is_supported_no_table(expression, require_cacheable);
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP:
         return !require_cacheable;
     case MYLITE_SQL_AST_IDENTIFIER:
         return expression_is_supported_no_table_identifier(expression, require_cacheable);
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
+        return expression_assignment_is_supported_no_table(expression, require_cacheable);
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
     default:
         return false;
     }
+}
+
+static bool expression_children_are_supported_no_table(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+) {
+    for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+         child = child->next_sibling) {
+        if (!expression_is_supported_no_table(child, require_cacheable)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool expression_function_is_supported_no_table(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+) {
+    const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+
+    if (!mylite_expression_is_supported_function_call(expression)) {
+        return false;
+    }
+    if (require_cacheable && scalar_function_depends_on_session(scalar_function_id(expression))) {
+        return false;
+    }
+    if (require_cacheable && scalar_function_id(expression) == MYLITE_SCALAR_FUNCTION_CHAR &&
+        child_at(expression, 2U) != NULL) {
+        return false;
+    }
+    return expression_children_are_supported_no_table(arguments, require_cacheable);
+}
+
+static bool expression_assignment_is_supported_no_table(
+    const struct mylite_sql_ast_node *expression,
+    bool require_cacheable
+) {
+    if (require_cacheable) {
+        return false;
+    }
+    if (!expression_is_session_variable_identifier(child_at(expression, 0U))) {
+        return false;
+    }
+    return expression_is_supported_no_table(child_at(expression, 1U), false);
 }
 
 static bool expression_is_supported_no_table_identifier(
@@ -4422,6 +4459,12 @@ static int eval_node(
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
         if (context != NULL && context->resolve_identifier != NULL) {
             return context->resolve_identifier(context->user_data, node, out_value);
+        }
+        return -1;
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
+        if (context != NULL && context->assign_user_variable != NULL) {
+            return context
+                ->assign_user_variable(context->user_data, node, context, warnings, out_value);
         }
         return -1;
     case MYLITE_SQL_AST_UNARY_EXPRESSION:

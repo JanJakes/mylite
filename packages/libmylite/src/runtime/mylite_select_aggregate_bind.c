@@ -129,6 +129,14 @@ static int bind_aggregate_aware_expression( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_CASE_WHEN_LIST:
     case MYLITE_SQL_AST_CASE_WHEN:
         return bind_aggregate_aware_children(database, expression, plan, clause_context, callbacks);
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
+        return bind_aggregate_aware_expression(
+            database,
+            mylite_ast_child_at(expression, 1U),
+            plan,
+            clause_context,
+            callbacks
+        );
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         return bind_aggregate_aware_binary_expression(
             database,
@@ -246,7 +254,6 @@ static int bind_aggregate_aware_expression( // NOLINT(misc-no-recursion)
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
     case MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT:
     case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST:
-    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
     case MYLITE_SQL_AST_PREPARE_STATEMENT:
     case MYLITE_SQL_AST_EXECUTE_STATEMENT:
     case MYLITE_SQL_AST_EXECUTE_USING_LIST:

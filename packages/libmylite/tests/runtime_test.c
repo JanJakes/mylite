@@ -31775,6 +31775,26 @@ static int test_user_variable_foundation_execution(void) {
     static const char *const quoted_values[] = {"7", "quoted"};
     static const char *const assignment_columns[] = {"a_value", "b_value", "c_value"};
     static const char *const assignment_values[] = {"5", "11", NULL};
+    static const char *const expression_assignment_columns[] =
+        {"assigned", "after_a", "b", "bumped", "final_a", "final_b"};
+    static const char *const expression_assignment_values[] = {"1", "1", "2", "6", "6", "2"};
+    static const char *const nested_assignment_columns[] = {"a", "b", "c"};
+    static const char *const nested_assignment_values[] = {"1", "2", "2"};
+    static const struct expected_result_metadata expression_assignment_metadata[] = {
+        {"assigned",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         2U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+    };
     static const char *const mixed_set_columns[] =
         {"old_uc", "current_uc", "after_uc", "old_notes", "current_notes", "after_notes"};
     static const char *const mixed_set_values[] = {"1", "0", "1", "1", "0", "1"};
@@ -31782,6 +31802,8 @@ static int test_user_variable_foundation_execution(void) {
     static const char *const restored_set_values[] = {"1", "1"};
     static const char *const id_column[] = {"id"};
     static const char *const greater_than_threshold_values[] = {"2", "3"};
+    static const char *const table_assignment_columns[] = {"seen", "after_seen"};
+    static const char *const table_assignment_values[] = {"2", "2"};
     static const char *const row_columns[] = {"id", "note"};
     static const char *const final_row_values[] = {"1", "alpha", "2", "matched"};
     static const struct expected_result_metadata metadata[] = {
@@ -31897,6 +31919,91 @@ static int test_user_variable_foundation_execution(void) {
         1,
         "multi-assignment statement-start values"
     );
+
+    failures += execute_sql(database, "SET @expr_a = 10, @expr_b = NULL", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT @expr_a := 1 AS assigned, @expr_a AS after_a, "
+        "@expr_b := @expr_a + 1 AS b, @expr_a := @expr_a + 5 AS bumped, "
+        "@expr_a AS final_a, @expr_b AS final_b",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(
+        stmt,
+        expression_assignment_columns,
+        6,
+        "user variable expression assignment columns"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "user variable assignment row");
+    for (int column = 0; column < 6; ++column) {
+        failures += expect_string(
+            mylite_column_text(stmt, column),
+            expression_assignment_values[column],
+            "user variable expression assignment value"
+        );
+    }
+    failures += expect_int(
+        mylite_warning_count(database),
+        3,
+        "user variable expression assignment warning count"
+    );
+    for (int warning = 0; warning < 3; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            1287,
+            "user variable expression assignment warning code"
+        );
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "user variable assignment done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT @meta_assign := 1 AS assigned", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        expression_assignment_metadata,
+        1,
+        "user variable assignment metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "user variable metadata row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "user variable metadata value");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "user variable metadata warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        1287,
+        "user variable metadata warning code"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "user variable metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET @set_a = 10, @set_b = NULL, @set_c = NULL", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "SET @set_a = 1, @set_b = (@set_a := 2), @set_c = @set_a",
+        MYLITE_DONE
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "nested user variable assignment warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        1287,
+        "nested user variable assignment warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT @set_a AS a, @set_b AS b, @set_c AS c",
+        nested_assignment_columns,
+        3,
+        nested_assignment_values,
+        1,
+        "nested SET user variable expression assignment"
+    );
     failures += execute_sql(
         database,
         "SET @old_unique_checks = @@unique_checks, unique_checks = 0, "
@@ -31943,6 +32050,42 @@ static int test_user_variable_foundation_execution(void) {
         MYLITE_DONE
     );
     failures += execute_sql(database, "SET @threshold = 1, @label = 'matched'", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT @row_seen := id AS seen, @row_seen AS after_seen "
+        "FROM variable_rows WHERE id = 2",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(
+        stmt,
+        table_assignment_columns,
+        2,
+        "table user variable assignment columns"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "table user variable assignment row");
+    for (int column = 0; column < 2; ++column) {
+        failures += expect_string(
+            mylite_column_text(stmt, column),
+            table_assignment_values[column],
+            "table user variable assignment value"
+        );
+    }
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "table user variable assignment warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        1287,
+        "table user variable assignment warning code"
+    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "table user variable assignment done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += expect_select_rows(
         database,
         "SELECT id FROM variable_rows "

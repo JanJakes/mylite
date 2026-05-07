@@ -100,6 +100,14 @@ int mylite_expression_descriptor_infer(
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
         return mylite_expression_descriptor_infer_identifier(database, plan, node, out_descriptor);
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
+        return mylite_expression_descriptor_infer(
+            database,
+            plan,
+            mylite_ast_child_at(node, 1U),
+            value,
+            out_descriptor
+        );
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         break;
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
@@ -260,7 +268,6 @@ int mylite_expression_descriptor_infer(
     case MYLITE_SQL_AST_SET_SYSTEM_VARIABLE_STATEMENT:
     case MYLITE_SQL_AST_SET_USER_VARIABLE_STATEMENT:
     case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_LIST:
-    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT:
     case MYLITE_SQL_AST_PREPARE_STATEMENT:
     case MYLITE_SQL_AST_EXECUTE_STATEMENT:
     case MYLITE_SQL_AST_EXECUTE_USING_LIST:

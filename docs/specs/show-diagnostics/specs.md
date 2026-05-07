@@ -169,23 +169,23 @@ message.
 
 `SHOW WARNINGS` and `SHOW ERRORS` metadata:
 
-| Column | Type |
-| --- | --- |
-| `Level` | text |
-| `Code` | integer |
-| `Message` | text |
+| Column | Type | Collation | Length | Decimals | Flags |
+| --- | --- | --- | ---: | ---: | --- |
+| `Level` | `VAR_STRING` | `latin1_swedish_ci` | 7 | 31 | `NOT_NULL` |
+| `Code` | `LONG` | `binary` | 5 | 0 | `NOT_NULL UNSIGNED BINARY NUM` |
+| `Message` | `VAR_STRING` | `latin1_swedish_ci` | 512 | 31 | `NOT_NULL` |
 
 `SHOW COUNT(*) WARNINGS` metadata:
 
-| Column | Type |
-| --- | --- |
-| `@@session.warning_count` | integer |
+| Column | Type | Collation | Length | Decimals | Flags |
+| --- | --- | --- | ---: | ---: | --- |
+| `@@session.warning_count` | `LONGLONG` | `binary` | 21 | 0 | `UNSIGNED BINARY NUM` |
 
 `SHOW COUNT(*) ERRORS` metadata:
 
-| Column | Type |
-| --- | --- |
-| `@@session.error_count` | integer |
+| Column | Type | Collation | Length | Decimals | Flags |
+| --- | --- | --- | ---: | ---: | --- |
+| `@@session.error_count` | `LONGLONG` | `binary` | 21 | 0 | `UNSIGNED BINARY NUM` |
 
 ## Tests
 
@@ -200,6 +200,7 @@ Parser tests cover:
 Runtime tests cover:
 
 - Empty diagnostics row and count result shapes.
+- MySQL 8.4.9-derived result-column descriptors for row and count forms.
 - Existing expression warning generation through `SELECT 1/0`.
 - Existing note generation through `DROP TABLE IF EXISTS` on a missing table,
   `CREATE TABLE IF NOT EXISTS` on an existing table, and

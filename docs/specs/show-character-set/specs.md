@@ -74,8 +74,12 @@ The following behavior was verified against MySQL 8.4.9:
 
 Column metadata observed for `SHOW CHARACTER SET LIKE 'binary'`:
 
-- `Charset`, `Description`, and `Default collation` are non-null string columns.
-- `Maxlen` is a non-null unsigned integer column (`LONG`) with binary collation.
+| Column | Schema | Table | Origin table | Type | Collation | Length | Flags |
+| --- | --- | --- | --- | --- | --- | ---: | --- |
+| `Charset` | `information_schema` | `CHARACTER_SETS` | `cs` | `VAR_STRING` | `latin1_swedish_ci` | 64 | `NOT_NULL UNIQUE_KEY NO_DEFAULT_VALUE PART_KEY` |
+| `Description` | `information_schema` | `CHARACTER_SETS` | `cs` | `VAR_STRING` | `latin1_swedish_ci` | 2048 | `NOT_NULL NO_DEFAULT_VALUE` |
+| `Default collation` | `information_schema` | `CHARACTER_SETS` | `col` | `VAR_STRING` | `latin1_swedish_ci` | 64 | `NOT_NULL UNIQUE_KEY NO_DEFAULT_VALUE PART_KEY` |
+| `Maxlen` | `information_schema` | `CHARACTER_SETS` | `cs` | `LONG` | `binary` | 10 | `NOT_NULL UNSIGNED NO_DEFAULT_VALUE NUM` |
 
 ## Syntax
 
@@ -187,6 +191,8 @@ Parser coverage:
 Runtime coverage:
 
 - exact result column names
+- MySQL 8.4.9-derived result-column descriptors for names, schema/table origin,
+  field type, length, flags, charset, decimals, and nullability
 - unfiltered catalog contains only the supported MyLite registry subset
 - deterministic row ordering
 - exact row values for `binary`, `latin1`, `utf8mb3`, and `utf8mb4`

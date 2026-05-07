@@ -79,15 +79,15 @@ The following behavior was verified against MySQL 8.4.9:
 
 Column metadata observed for `SHOW COLLATION LIKE 'binary'`:
 
-| Column | Type | Collation | Length | Flags |
-| --- | --- | --- | ---: | --- |
-| `Collation` | `VAR_STRING` | `latin1_swedish_ci` | 64 | `NOT_NULL NO_DEFAULT_VALUE` |
-| `Charset` | `VAR_STRING` | `latin1_swedish_ci` | 64 | `NOT_NULL NO_DEFAULT_VALUE` |
-| `Id` | `LONGLONG` | `binary` | 20 | `NOT_NULL UNSIGNED NUM` |
-| `Default` | `VAR_STRING` | `latin1_swedish_ci` | 3 | `NOT_NULL` |
-| `Compiled` | `VAR_STRING` | `latin1_swedish_ci` | 3 | `NOT_NULL` |
-| `Sortlen` | `LONG` | `binary` | 10 | `NOT_NULL UNSIGNED NO_DEFAULT_VALUE NUM` |
-| `Pad_attribute` | `STRING` | `latin1_swedish_ci` | 9 | `NOT_NULL BINARY ENUM NO_DEFAULT_VALUE` |
+| Column | Schema | Table | Origin table | Type | Collation | Length | Flags |
+| --- | --- | --- | --- | --- | --- | ---: | --- |
+| `Collation` | `information_schema` | `COLLATIONS` | `COLLATIONS` | `VAR_STRING` | `latin1_swedish_ci` | 64 | `NOT_NULL NO_DEFAULT_VALUE` |
+| `Charset` | `information_schema` | `COLLATIONS` | `COLLATIONS` | `VAR_STRING` | `latin1_swedish_ci` | 64 | `NOT_NULL NO_DEFAULT_VALUE` |
+| `Id` | `information_schema` | `COLLATIONS` | `COLLATIONS` | `LONGLONG` | `binary` | 20 | `NOT_NULL UNSIGNED NUM` |
+| `Default` | `information_schema` | `COLLATIONS` | `COLLATIONS` | `VAR_STRING` | `latin1_swedish_ci` | 3 | `NOT_NULL` |
+| `Compiled` | `information_schema` | `COLLATIONS` | `COLLATIONS` | `VAR_STRING` | `latin1_swedish_ci` | 3 | `NOT_NULL` |
+| `Sortlen` | `information_schema` | `COLLATIONS` | `COLLATIONS` | `LONG` | `binary` | 10 | `NOT_NULL UNSIGNED NO_DEFAULT_VALUE NUM` |
+| `Pad_attribute` | `information_schema` | `COLLATIONS` | `COLLATIONS` | `STRING` | `latin1_swedish_ci` | 9 | `NOT_NULL BINARY ENUM NO_DEFAULT_VALUE` |
 
 ## Syntax
 
@@ -202,6 +202,8 @@ Parser coverage:
 Runtime coverage:
 
 - exact result column names
+- MySQL 8.4.9-derived result-column descriptors for names, schema/table origin,
+  field type, length, flags, charset, decimals, and nullability
 - unfiltered catalog contains only the supported MyLite registry subset
 - deterministic row ordering
 - exact row values for all supported collations

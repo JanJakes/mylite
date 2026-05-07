@@ -43657,6 +43657,52 @@ static int test_show_table_status_execution(void) {
 static int test_show_variables_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"Variable_name", "Value"};
+    static const struct expected_result_metadata session_metadata[] = {
+        {.name = "Variable_name",
+         .schema_name = "performance_schema",
+         .table_name = "session_variables",
+         .origin_schema_name = "performance_schema",
+         .origin_table_name = "session_variables",
+         .origin_column_name = "Variable_name",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Value",
+         .schema_name = "performance_schema",
+         .table_name = "session_variables",
+         .origin_schema_name = "performance_schema",
+         .origin_table_name = "session_variables",
+         .origin_column_name = "Value",
+         .declared_length = 1024U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
+    static const struct expected_result_metadata global_metadata[] = {
+        {.name = "Variable_name",
+         .schema_name = "performance_schema",
+         .table_name = "global_variables",
+         .origin_schema_name = "performance_schema",
+         .origin_table_name = "global_variables",
+         .origin_column_name = "Variable_name",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Value",
+         .schema_name = "performance_schema",
+         .table_name = "global_variables",
+         .origin_schema_name = "performance_schema",
+         .origin_table_name = "global_variables",
+         .origin_column_name = "Value",
+         .declared_length = 1024U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
     static const char *const autocommit_values[] = {"autocommit", "ON"};
     static const char *const on_variable_values[] = {
         "autocommit",
@@ -43980,6 +44026,20 @@ static int test_show_variables_execution(void) {
 
     failures +=
         expect_status(mylite_open_memory(&database), MYLITE_OK, "open show variables database");
+
+    failures += prepare_sql(database, "SHOW VARIABLES LIKE 'version'", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, session_metadata, 2, "show variables metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show variables metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show variables metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "SHOW GLOBAL VARIABLES LIKE 'version'", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, global_metadata, 2, "show global variables metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show global variables metadata row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "show global variables metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_select_rows(
         database,
@@ -45024,6 +45084,52 @@ static int expect_show_variables_contains(
 static int test_show_status_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"Variable_name", "Value"};
+    static const struct expected_result_metadata session_metadata[] = {
+        {.name = "Variable_name",
+         .schema_name = "performance_schema",
+         .table_name = "session_status",
+         .origin_schema_name = "performance_schema",
+         .origin_table_name = "session_status",
+         .origin_column_name = "Variable_name",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Value",
+         .schema_name = "performance_schema",
+         .table_name = "session_status",
+         .origin_schema_name = "performance_schema",
+         .origin_table_name = "session_status",
+         .origin_column_name = "Value",
+         .declared_length = 1024U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
+    static const struct expected_result_metadata global_metadata[] = {
+        {.name = "Variable_name",
+         .schema_name = "performance_schema",
+         .table_name = "global_status",
+         .origin_schema_name = "performance_schema",
+         .origin_table_name = "global_status",
+         .origin_column_name = "Variable_name",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Value",
+         .schema_name = "performance_schema",
+         .table_name = "global_status",
+         .origin_schema_name = "performance_schema",
+         .origin_table_name = "global_status",
+         .origin_column_name = "Value",
+         .declared_length = 1024U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
     static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
     static const char *const uptime_names[] = {"Uptime", "Uptime_since_flush_status"};
     static const char *const threads_values[] = {
@@ -45125,9 +45231,23 @@ static int test_show_status_execution(void) {
         {"Uptime_since_flush_status", NULL},
     };
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show status");
+
+    failures += prepare_sql(database, "SHOW STATUS LIKE 'Uptime'", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, session_metadata, 2, "show status metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show status metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show status metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "SHOW GLOBAL STATUS LIKE 'Uptime'", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, global_metadata, 2, "show global status metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show global status metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show global status metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_show_status_catalog_rows(
         database,
@@ -45696,6 +45816,51 @@ static int test_show_engines_execution(void) {
 static int test_show_character_set_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"Charset", "Description", "Default collation", "Maxlen"};
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "Charset",
+         .schema_name = "information_schema",
+         .table_name = "CHARACTER_SETS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "cs",
+         .origin_column_name = "Charset",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "Description",
+         .schema_name = "information_schema",
+         .table_name = "CHARACTER_SETS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "cs",
+         .origin_column_name = "Description",
+         .declared_length = 2048U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Default collation",
+         .schema_name = "information_schema",
+         .table_name = "CHARACTER_SETS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "col",
+         .origin_column_name = "Default collation",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "Maxlen",
+         .schema_name = "information_schema",
+         .table_name = "CHARACTER_SETS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "cs",
+         .origin_column_name = "Maxlen",
+         .declared_length = 10U,
+         .field_type = MYLITE_FIELD_TYPE_LONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_NUM},
+    };
     static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
     static const char *const error_count_column[] = {"@@session.error_count"};
     static const char *const zero_count[] = {"0"};
@@ -45734,9 +45899,22 @@ static int test_show_character_set_execution(void) {
     static const char *const latin1_values[] =
         {"latin1", "cp1252 West European", "latin1_swedish_ci", "1"};
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show character set");
+
+    failures += prepare_sql(database, "SHOW CHARACTER SET LIKE 'binary'", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        (int)(sizeof(metadata) / sizeof(metadata[0])),
+        "show character set metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show character set metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show character set metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_select_rows(
         database,
@@ -45972,6 +46150,81 @@ static int test_show_collation_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] =
         {"Collation", "Charset", "Id", "Default", "Compiled", "Sortlen", "Pad_attribute"};
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "Collation",
+         .schema_name = "information_schema",
+         .table_name = "COLLATIONS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "COLLATIONS",
+         .origin_column_name = "Collation",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Charset",
+         .schema_name = "information_schema",
+         .table_name = "COLLATIONS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "COLLATIONS",
+         .origin_column_name = "Charset",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Id",
+         .schema_name = "information_schema",
+         .table_name = "COLLATIONS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "COLLATIONS",
+         .origin_column_name = "Id",
+         .declared_length = 20U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set =
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM},
+        {.name = "Default",
+         .schema_name = "information_schema",
+         .table_name = "COLLATIONS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "COLLATIONS",
+         .origin_column_name = "Default",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Compiled",
+         .schema_name = "information_schema",
+         .table_name = "COLLATIONS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "COLLATIONS",
+         .origin_column_name = "Compiled",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Sortlen",
+         .schema_name = "information_schema",
+         .table_name = "COLLATIONS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "COLLATIONS",
+         .origin_column_name = "Sortlen",
+         .declared_length = 10U,
+         .field_type = MYLITE_FIELD_TYPE_LONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_NUM},
+        {.name = "Pad_attribute",
+         .schema_name = "information_schema",
+         .table_name = "COLLATIONS",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "COLLATIONS",
+         .origin_column_name = "Pad_attribute",
+         .declared_length = 9U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_ENUM | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+    };
     static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
     static const char *const error_count_column[] = {"@@session.error_count"};
     static const char *const zero_count[] = {"0"};
@@ -46129,9 +46382,22 @@ static int test_show_collation_execution(void) {
         "NO PAD",
     };
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show collation");
+
+    failures += prepare_sql(database, "SHOW COLLATION LIKE 'binary'", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        (int)(sizeof(metadata) / sizeof(metadata[0])),
+        "show collation metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show collation metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show collation metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_select_rows(
         database,
@@ -47862,6 +48128,44 @@ static int test_show_diagnostics_execution(void) {
     static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
     static const char *const warning_count_column[] = {"@@session.warning_count"};
     static const char *const error_count_column[] = {"@@session.error_count"};
+    static const struct expected_result_metadata diagnostics_metadata[] = {
+        {.name = "Level",
+         .declared_length = 7U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Code",
+         .declared_length = 5U,
+         .field_type = MYLITE_FIELD_TYPE_LONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM},
+        {.name = "Message",
+         .declared_length = 512U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+    };
+    static const struct expected_result_metadata warning_count_metadata[] = {
+        {.name = "@@session.warning_count",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
+    static const struct expected_result_metadata error_count_metadata[] = {
+        {.name = "@@session.error_count",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
     static const char *const zero_count[] = {"0"};
     static const char *const one_count[] = {"1"};
     static const char *const division_warning[] = {"Warning", "1365", "Division by 0"};
@@ -47907,6 +48211,30 @@ static int test_show_diagnostics_execution(void) {
 
     failures +=
         expect_status(mylite_open_memory(&database), MYLITE_OK, "open show diagnostics database");
+
+    failures += prepare_sql(database, "SHOW WARNINGS", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, diagnostics_metadata, 3, "show warnings metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show warnings metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "SHOW ERRORS", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, diagnostics_metadata, 3, "show errors metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show errors metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "SHOW COUNT(*) WARNINGS", MYLITE_OK, &stmt);
+    failures +=
+        expect_result_metadata(stmt, warning_count_metadata, 1, "show warning count metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show warning count metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show warning count metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "SHOW COUNT(*) ERRORS", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, error_count_metadata, 1, "show error count metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show error count metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show error count metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_select_rows(
         database,

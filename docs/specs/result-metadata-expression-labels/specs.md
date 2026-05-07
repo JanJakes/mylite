@@ -43,7 +43,10 @@ Follow-up result-set producers outside the original Task 23 `SELECT` scope must
 attach descriptors through the same statement-owned metadata model instead of
 falling back to SQLite column metadata. Current covered non-`SELECT` surfaces
 include `SHOW DATABASES`, `SHOW TABLES`, `SHOW TABLE STATUS`, and
-`CHECK` / `OPTIMIZE` / `REPAIR TABLE`.
+`CHECK` / `OPTIMIZE` / `REPAIR TABLE`. The static `SHOW` surfaces covered by
+the same model are `SHOW VARIABLES`, `SHOW STATUS`, `SHOW CHARACTER SET`,
+`SHOW COLLATION`, `SHOW WARNINGS`, `SHOW ERRORS`, `SHOW COUNT(*) WARNINGS`,
+and `SHOW COUNT(*) ERRORS`.
 
 This task should not change SQL grammar meaning except where the parser already
 accepts projection expressions that runtime has not yet executed. It turns

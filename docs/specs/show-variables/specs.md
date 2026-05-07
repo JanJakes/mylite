@@ -120,6 +120,15 @@ Rows:
   diagnostics before producing rows, so `warning_count` and `error_count`
   report `0` for the statement itself.
 
+Result metadata:
+
+| Scope | Column | Schema | Table | Type | Collation | Length | Flags |
+| --- | --- | --- | --- | --- | --- | ---: | --- |
+| session/local/default | `Variable_name` | `performance_schema` | `session_variables` | `VAR_STRING` | `latin1_swedish_ci` | 64 | `NOT_NULL NO_DEFAULT_VALUE` |
+| session/local/default | `Value` | `performance_schema` | `session_variables` | `VAR_STRING` | `latin1_swedish_ci` | 1024 | none |
+| global | `Variable_name` | `performance_schema` | `global_variables` | `VAR_STRING` | `latin1_swedish_ci` | 64 | `NOT_NULL NO_DEFAULT_VALUE` |
+| global | `Value` | `performance_schema` | `global_variables` | `VAR_STRING` | `latin1_swedish_ci` | 1024 | none |
+
 Scope:
 
 - Omitted scope, `SESSION`, and `LOCAL` expose session values.
@@ -207,6 +216,7 @@ Parser coverage:
 Runtime coverage:
 
 - exact result column names
+- MySQL 8.4.9-derived result-column descriptors for session and global scopes
 - unfiltered catalog contains expected high-value rows
 - deterministic row ordering
 - `LIKE` exact, wildcard, escaped underscore, case-insensitive, and empty

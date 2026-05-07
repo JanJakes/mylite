@@ -60362,6 +60362,26 @@ static int test_string_dml_coercion_execution(void) {
         {"1", "7A0000", "3", "7A", "1", "2", "616263", "3", "616263", "3"};
     static const char *const binary_long_update_values[] =
         {"1", "777879", "3", "777879", "3", "2", "616263", "3", "616263", "3"};
+    static const char *const binary_literal_columns[] =
+        {"id", "n", "fb_hex", "fb_len", "vb_hex", "vb_len", "bl_hex", "bl_len"};
+    static const char *const binary_literal_values[] = {
+        "1",
+        "43",
+        "030000",
+        "3",
+        "00FF",
+        "2",
+        "6100",
+        "2",
+        "2",
+        "44",
+        "620000",
+        "3",
+        "01",
+        "1",
+        "00",
+        "1",
+    };
     static const char *const invalid_utf8_columns[] =
         {"id", "v_hex", "v_len", "t_hex", "t_len", "b_hex", "b_len"};
     static const char *const invalid_utf8_non_strict_values[] =
@@ -60629,6 +60649,50 @@ static int test_string_dml_coercion_execution(void) {
         binary_long_update_values,
         2,
         "binary update ignore clipped values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE binary_literal_values ("
+        "id INT PRIMARY KEY, n INT, fb BINARY(3), vb VARBINARY(4), bl BLOB)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO binary_literal_values VALUES (1, 0x41, b'101', X'4100', 0x4200)",
+        1,
+        "binary literal insert values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO binary_literal_values SET "
+        "id=2, n=0x2A, fb=X'61', vb=b'101000001', bl=X'00FF'",
+        1,
+        "binary literal insert set"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO binary_literal_values VALUES (1, 0, X'00', X'', X'') "
+        "ON DUPLICATE KEY UPDATE n=0x2B, fb=b'11', vb=0x00FF, bl=X'6100'",
+        2,
+        "binary literal odku update"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE binary_literal_values SET n=0x2C, fb=X'62', vb=b'1', bl=0x00 WHERE id=2",
+        1,
+        "binary literal update"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, n, HEX(fb) AS fb_hex, LENGTH(fb) AS fb_len, "
+        "HEX(vb) AS vb_hex, LENGTH(vb) AS vb_len, HEX(bl) AS bl_hex, LENGTH(bl) AS bl_len "
+        "FROM binary_literal_values ORDER BY id",
+        binary_literal_columns,
+        8,
+        binary_literal_values,
+        2,
+        "binary literal DML values"
     );
 
     failures += execute_sql(

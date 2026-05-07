@@ -107,6 +107,19 @@ static int evaluate_insert_update_assignment_value(
 
     if (value->kind == MYLITE_INSERT_VALUE_DEFAULT) {
         status = resolve_insert_update_default_value(database, column, out_value);
+    } else if (
+        value->kind == MYLITE_INSERT_VALUE_HEX_LITERAL ||
+        value->kind == MYLITE_INSERT_VALUE_BIT_LITERAL
+    ) {
+        status = mylite_dml_resolve_insert_binary_literal_value(
+            database,
+            column,
+            value,
+            row_number,
+            state,
+            values_plan->ignore,
+            out_value
+        );
     } else if (value->kind == MYLITE_INSERT_VALUE_EXPRESSION) {
         const char *schema_name =
             values_plan->schema_name == NULL ? selected_schema : values_plan->schema_name;

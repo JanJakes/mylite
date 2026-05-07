@@ -455,6 +455,18 @@ static int evaluate_update_assignment_value(
 
     if (expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT) {
         status = mylite_dml_resolve_update_default_value(database, column, out_value);
+    } else if (
+        expression != NULL && (expression->kind == MYLITE_SQL_AST_LITERAL &&
+                               (expression->literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+                                expression->literal_kind == MYLITE_SQL_AST_LITERAL_BIT))
+    ) {
+        status = mylite_dml_resolve_update_binary_literal_value(
+            database,
+            column,
+            expression,
+            ignore,
+            out_value
+        );
     } else {
         size_t warning_start = database->warnings.count;
         int eval_status = mylite_expression_eval_with_context(

@@ -924,6 +924,18 @@ static int evaluate_joined_update_assignment(
 
     if (assignment->value != NULL && assignment->value->kind == MYLITE_SQL_AST_DEFAULT) {
         status = mylite_dml_resolve_update_default_value(database, column, out_value);
+    } else if (
+        assignment->value != NULL && assignment->value->kind == MYLITE_SQL_AST_LITERAL &&
+        (assignment->value->literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+         assignment->value->literal_kind == MYLITE_SQL_AST_LITERAL_BIT)
+    ) {
+        status = mylite_dml_resolve_update_binary_literal_value(
+            database,
+            column,
+            assignment->value,
+            false,
+            out_value
+        );
     } else {
         const struct mylite_select_eval_callbacks *callbacks =
             mylite_select_context_table_select_eval_callbacks();

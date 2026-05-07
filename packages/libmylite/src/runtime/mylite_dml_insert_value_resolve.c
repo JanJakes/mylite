@@ -445,6 +445,17 @@ static int resolve_insert_explicit_value(
             (plan != NULL && plan->ignore) != 0,
             out_value
         );
+    case MYLITE_INSERT_VALUE_HEX_LITERAL:
+    case MYLITE_INSERT_VALUE_BIT_LITERAL:
+        return mylite_dml_resolve_insert_binary_literal_value(
+            database,
+            column,
+            value,
+            statement_row_count,
+            state,
+            (plan != NULL && plan->ignore) != 0,
+            out_value
+        );
     case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:
         if (column->auto_increment) {
             return mylite_dml_insert_set_unsupported_expression_error(database);

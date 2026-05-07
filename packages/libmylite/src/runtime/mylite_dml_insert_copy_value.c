@@ -217,6 +217,15 @@ static int copy_insert_literal_value(
             mylite_copy_string_literal_span_with_length(literal, &out_value->text_length);
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
+    if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+        literal->literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        out_value->kind = literal->literal_kind == MYLITE_SQL_AST_LITERAL_HEX
+                              ? MYLITE_INSERT_VALUE_HEX_LITERAL
+                              : MYLITE_INSERT_VALUE_BIT_LITERAL;
+        out_value->text_length = literal->span.length;
+        out_value->text = mylite_copy_span_text(literal->span.text, literal->span.length);
+        return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    }
     if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_DATE ||
         literal->literal_kind == MYLITE_SQL_AST_LITERAL_TIME ||
         literal->literal_kind == MYLITE_SQL_AST_LITERAL_TIMESTAMP) {

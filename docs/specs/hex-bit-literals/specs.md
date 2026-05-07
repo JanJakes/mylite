@@ -11,12 +11,16 @@ the MyLite lexer and parser already accept:
 - table-backed projection, predicate, and order expression contexts that use
   the shared scalar evaluator
 - scalar functions over those literal values, such as `HEX()` and `LENGTH()`
+- target-aware DML assignment for supported `INSERT ... VALUES`,
+  `INSERT ... SET`, `ON DUPLICATE KEY UPDATE`, single-table `UPDATE`, and
+  joined `UPDATE` paths
 
 Out of scope:
 
 - `BIT` column storage semantics
-- hex/bit literal numeric coercion outside explicit signed and unsigned
-  integer `CAST` / `CONVERT` targets
+- hex/bit literal numeric coercion outside the covered explicit signed and
+  unsigned integer `CAST` / `CONVERT` targets and target-aware DML assignment
+  paths
 - broader prepared-statement and protocol metadata outside the current result
   column descriptor path
 - character-set introducer and SQL-mode interactions outside existing string
@@ -68,6 +72,11 @@ Representative results:
 | `CAST(0b1010 AS SIGNED)` | `10` |
 | `CAST(B'1010' AS UNSIGNED)` | `10` |
 
+In supported DML assignment paths, numeric target columns receive the literal's
+numeric value, while character and binary string targets receive decoded bytes.
+For example, `INSERT INTO t(n, vb) VALUES (0x41, X'4100')` stores numeric `65`
+in `n` and bytes `41 00` in `vb`.
+
 ## Metadata
 
 MySQL reports hex and bit literals as binary `VAR_STRING` result columns even
@@ -102,13 +111,16 @@ The evaluator:
 - uses the original literal AST for explicit signed and unsigned integer casts
   so those targets receive the literal's numeric value rather than the decoded
   binary string bytes
+- uses a target-aware DML literal resolver for covered write paths so numeric
+  columns receive unsigned literal numeric values and text/binary columns
+  receive byte-decoded values before normal column coercion
 
 No storage or file-format changes are required.
 
 ## Compatibility Status
 
 Hex and bit literal runtime evaluation is supported for the current shared
-scalar expression contexts, including explicit signed and unsigned integer
-casts. The status remains partial until MyLite implements full MySQL
-numeric/string coercion, `BIT` columns, and exact binary-string metadata across
-all protocol and prepared-statement surfaces.
+scalar expression contexts, explicit signed and unsigned integer casts, and the
+covered DML assignment paths. The status remains partial until MyLite implements
+full MySQL numeric/string coercion, `BIT` columns, and exact binary-string
+metadata across all protocol and prepared-statement surfaces.

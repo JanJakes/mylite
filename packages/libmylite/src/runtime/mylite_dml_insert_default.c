@@ -3,6 +3,7 @@
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_dml.h"
+#include "mylite_dml_binary_literal.h"
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
 #include "mylite_uint64_text.h"
@@ -35,6 +36,30 @@ static bool insert_column_uses_numeric_implicit_default(
 );
 
 static bool insert_column_uses_integer_storage(const struct mylite_insert_table_column *column);
+
+static int resolve_insert_binary_literal_numeric_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_binary_literal_kind literal_kind,
+    const char *text,
+    size_t text_length,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int resolve_insert_binary_literal_text_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_binary_literal_kind literal_kind,
+    const char *text,
+    size_t text_length,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+);
 
 static int resolve_insert_large_integer_text_value(
     mylite_db *database,
@@ -531,6 +556,51 @@ int mylite_dml_resolve_insert_quoted_text_value(
                : status;
 }
 
+int mylite_dml_resolve_insert_binary_literal_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_insert_value *value,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+) {
+    enum mylite_dml_binary_literal_kind literal_kind =
+        value == NULL ? MYLITE_DML_BINARY_LITERAL_NONE
+                      : mylite_dml_binary_literal_kind_for_insert_value(value->kind);
+
+    if (database == NULL || column == NULL || value == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (literal_kind == MYLITE_DML_BINARY_LITERAL_NONE || value->text == NULL) {
+        return mylite_dml_insert_set_unsupported_expression_error(database);
+    }
+    if (insert_column_uses_numeric_implicit_default(column)) {
+        return resolve_insert_binary_literal_numeric_value(
+            database,
+            column,
+            literal_kind,
+            value->text,
+            value->text_length,
+            statement_row_count,
+            state,
+            ignore,
+            out_value
+        );
+    }
+    return resolve_insert_binary_literal_text_value(
+        database,
+        column,
+        literal_kind,
+        value->text,
+        value->text_length,
+        statement_row_count,
+        state,
+        ignore,
+        out_value
+    );
+}
+
 bool mylite_dml_insert_auto_increment_zero_generates(
     const mylite_db *database,
     const struct mylite_insert_table_column *column
@@ -673,6 +743,110 @@ static bool insert_column_uses_integer_storage(const struct mylite_insert_table_
         }
     }
     return false;
+}
+
+static int resolve_insert_binary_literal_numeric_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_binary_literal_kind literal_kind,
+    const char *text,
+    size_t text_length,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+) {
+    uint64_t numeric_value = 0U;
+    int status = MYLITE_OK;
+
+    if (!mylite_dml_binary_literal_uint64(literal_kind, text, text_length, &numeric_value)) {
+        return mylite_dml_insert_set_unsupported_expression_error(database);
+    }
+    if (numeric_value <= (uint64_t)INT64_MAX) {
+        int64_t integer_value = (int64_t)numeric_value;
+
+        if (integer_value == 0 &&
+            mylite_dml_insert_auto_increment_zero_generates(database, column)) {
+            return mylite_dml_allocate_insert_auto_increment(
+                database,
+                statement_row_count,
+                state,
+                out_value
+            );
+        }
+        *out_value = (struct mylite_insert_bound_value){
+            .kind = MYLITE_INSERT_BOUND_INTEGER,
+            .integer_value = integer_value,
+        };
+        status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
+        return status == MYLITE_OK
+                   ? mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value)
+                   : status;
+    }
+
+    char *decimal_text = NULL;
+    size_t decimal_length = 0U;
+
+    status = mylite_dml_binary_literal_decimal_text(numeric_value, &decimal_text, &decimal_length);
+    if (status == MYLITE_OK) {
+        status = mylite_dml_resolve_insert_text_value(
+            database,
+            column,
+            decimal_text,
+            decimal_length,
+            statement_row_count,
+            state,
+            ignore,
+            out_value
+        );
+    }
+    free(decimal_text);
+    if (status == MYLITE_NOMEM) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+    }
+    return status;
+}
+
+static int resolve_insert_binary_literal_text_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_binary_literal_kind literal_kind,
+    const char *text,
+    size_t text_length,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+) {
+    char *decoded_text = NULL;
+    size_t decoded_length = 0U;
+    int status = mylite_dml_binary_literal_decode(
+        literal_kind,
+        text,
+        text_length,
+        &decoded_text,
+        &decoded_length
+    );
+
+    if (status == MYLITE_OK) {
+        status = mylite_dml_resolve_insert_quoted_text_value(
+            database,
+            column,
+            decoded_text,
+            decoded_length,
+            statement_row_count,
+            state,
+            ignore,
+            out_value
+        );
+    }
+    free(decoded_text);
+    if (status == MYLITE_NOMEM) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+    }
+    return status == MYLITE_UNSUPPORTED
+               ? mylite_dml_insert_set_unsupported_expression_error(database)
+               : status;
 }
 
 static int resolve_insert_large_integer_text_value(

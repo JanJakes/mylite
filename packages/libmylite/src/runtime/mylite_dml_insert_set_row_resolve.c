@@ -350,6 +350,19 @@ static int evaluate_insert_set_assignment_value(
             callbacks,
             out_value
         );
+    } else if (
+        value->kind == MYLITE_INSERT_VALUE_HEX_LITERAL ||
+        value->kind == MYLITE_INSERT_VALUE_BIT_LITERAL
+    ) {
+        status = mylite_dml_resolve_insert_binary_literal_value(
+            database,
+            column,
+            value,
+            1U,
+            NULL,
+            ignore,
+            out_value
+        );
     } else {
         status = mylite_dml_evaluate_insert_set_expression(
             database,

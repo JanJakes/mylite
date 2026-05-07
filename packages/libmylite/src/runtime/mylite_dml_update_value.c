@@ -2,6 +2,7 @@
 
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
+#include "mylite_dml_binary_literal.h"
 #include "mylite_dml_insert_bound_value.h"
 #include "mylite_dml_insert_default.h"
 #include "mylite_dml_insert_diagnostics.h"
@@ -215,6 +216,50 @@ int mylite_dml_resolve_update_default_value(
         }
     }
     mylite_dml_insert_bound_value_deinit(&value);
+    return status;
+}
+
+int mylite_dml_resolve_update_binary_literal_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_sql_ast_node *expression,
+    bool ignore,
+    struct mylite_expression_value *out_value
+) {
+    enum mylite_dml_binary_literal_kind literal_kind =
+        mylite_dml_binary_literal_kind_for_ast(expression);
+    struct mylite_insert_value value = {0};
+    struct mylite_insert_bound_value bound = {0};
+    int status = MYLITE_OK;
+
+    if (database == NULL || column == NULL || expression == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (literal_kind == MYLITE_DML_BINARY_LITERAL_NONE) {
+        return mylite_dml_set_update_unsupported_assignment_error(database);
+    }
+    value = (struct mylite_insert_value){
+        .kind = literal_kind == MYLITE_DML_BINARY_LITERAL_HEX ? MYLITE_INSERT_VALUE_HEX_LITERAL
+                                                              : MYLITE_INSERT_VALUE_BIT_LITERAL,
+        .text = (char *)expression->span.text,
+        .text_length = expression->span.length,
+    };
+    status = mylite_dml_resolve_insert_binary_literal_value(
+        database,
+        column,
+        &value,
+        1U,
+        NULL,
+        ignore,
+        &bound
+    );
+    if (status == MYLITE_OK) {
+        status = mylite_dml_copy_insert_bound_value_to_expression(&bound, out_value);
+        if (status == MYLITE_NOMEM) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        }
+    }
+    mylite_dml_insert_bound_value_deinit(&bound);
     return status;
 }
 

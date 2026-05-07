@@ -61,6 +61,15 @@ int mylite_dml_resolve_insert_quoted_text_value(
     bool ignore,
     struct mylite_insert_bound_value *out_value
 );
+int mylite_dml_resolve_insert_binary_literal_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_insert_value *value,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+);
 bool mylite_dml_insert_auto_increment_zero_generates(
     const mylite_db *database,
     const struct mylite_insert_table_column *column

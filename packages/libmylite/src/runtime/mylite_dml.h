@@ -501,6 +501,13 @@ int mylite_dml_resolve_update_default_value(
     const struct mylite_insert_table_column *column,
     struct mylite_expression_value *out_value
 );
+int mylite_dml_resolve_update_binary_literal_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const struct mylite_sql_ast_node *expression,
+    bool ignore,
+    struct mylite_expression_value *out_value
+);
 int mylite_dml_resolve_default_function_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,

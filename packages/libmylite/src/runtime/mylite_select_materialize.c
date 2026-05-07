@@ -32,10 +32,7 @@ int mylite_select_materialize_table_result(
     }
     if (mylite_select_plan_table_count(&stmt->select_plan) > 1U) {
         status = mylite_select_materialize_joined_table_result(stmt, callbacks);
-    } else if (
-        stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
-        stmt->select_plan.has_having
-    ) {
+    } else if (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate) {
         status = mylite_select_materialize_aggregate_table_result(stmt, callbacks);
     } else {
         status = mylite_select_materialize_single_table_result(stmt, callbacks);

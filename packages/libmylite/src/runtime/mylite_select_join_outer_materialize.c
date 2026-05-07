@@ -46,8 +46,7 @@ int mylite_select_materialize_outer_joined_table_result(
 ) {
     size_t table_count = mylite_select_plan_table_count(&stmt->select_plan);
     struct mylite_table_select_join_materialize_state state = {0};
-    bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
-                            stmt->select_plan.has_having) != 0;
+    bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate) != 0;
     bool distinct = mylite_select_duplicate_mode_is_distinct(stmt->select_plan.duplicate_mode);
     int status = MYLITE_OK;
 

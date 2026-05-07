@@ -22,7 +22,7 @@ static int set_select_only_full_group_by_error(
 );
 
 int mylite_select_validate_grouping(mylite_db *database, const struct mylite_select_plan *plan) {
-    bool aggregate_query = (plan->has_aggregate || plan->has_group_by || plan->has_having) != 0;
+    bool aggregate_query = (plan->has_aggregate || plan->has_group_by) != 0;
     bool implicit_group = true;
 
     if (plan->has_group_by) {

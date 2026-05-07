@@ -31,6 +31,13 @@ static int append_unordered_table_select_matched_row(
     const struct mylite_select_eval_callbacks *callbacks
 );
 
+static int table_select_row_matches_predicates(
+    mylite_stmt *stmt,
+    struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks,
+    bool *out_matches
+);
+
 static int append_unordered_table_select_distinct_row(
     mylite_stmt *stmt,
     struct mylite_table_select_row *row,
@@ -76,7 +83,7 @@ static int materialize_ordered_table_select_result(
         if (status != MYLITE_OK) {
             return status;
         }
-        status = mylite_select_row_matches(stmt, &row, &matches, callbacks);
+        status = table_select_row_matches_predicates(stmt, &row, callbacks, &matches);
         if (status != MYLITE_OK) {
             mylite_select_row_deinit(&row);
             return status;
@@ -158,7 +165,7 @@ static int materialize_unordered_table_select_result(
         if (status != MYLITE_OK) {
             return status;
         }
-        status = mylite_select_row_matches(stmt, &row, &matches, callbacks);
+        status = table_select_row_matches_predicates(stmt, &row, callbacks, &matches);
         if (status != MYLITE_OK) {
             mylite_select_row_deinit(&row);
             return status;
@@ -205,6 +212,20 @@ static int append_unordered_table_select_matched_row(
         return append_unordered_table_select_distinct_row(stmt, row, callbacks);
     }
     return append_unordered_table_select_limited_row(stmt, row, state);
+}
+
+static int table_select_row_matches_predicates(
+    mylite_stmt *stmt,
+    struct mylite_table_select_row *row,
+    const struct mylite_select_eval_callbacks *callbacks,
+    bool *out_matches
+) {
+    int status = mylite_select_row_matches(stmt, row, out_matches, callbacks);
+
+    if (status != MYLITE_OK || !*out_matches) {
+        return status;
+    }
+    return mylite_select_eval_having(stmt, row, callbacks, out_matches);
 }
 
 static int append_unordered_table_select_distinct_row(

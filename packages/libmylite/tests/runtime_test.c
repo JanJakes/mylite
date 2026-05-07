@@ -33864,6 +33864,12 @@ static int test_aggregate_grouping_execution(void) {
     static const char *const alias_count_column[] = {"col2"};
     static const char *const alias_count_all[] = {"3"};
     static const char *const alias_count_group[] = {"2"};
+    static const char *const nonaggregate_having_columns[] = {"id", "n"};
+    static const char *const nonaggregate_having_values[] = {"1", "10", "2", "20", "5", "7"};
+    static const char *const nonaggregate_having_alias_column[] = {"id"};
+    static const char *const nonaggregate_having_alias_values[] = {"10", "20"};
+    static const char *const joined_having_alias_column[] = {"x"};
+    static const char *const joined_having_alias_values[] = {"10", "10"};
     static const char *const count_distinct_columns[] = {"ca", "cb", "cs", "cab", "cas"};
     static const char *const count_distinct_values[] = {"3", "3", "5", "3", "4"};
     static const char *const count_distinct_grouped_columns[] = {"g", "ca", "cab", "cs"};
@@ -34279,6 +34285,60 @@ static int test_aggregate_grouping_execution(void) {
         0,
         "implicit group having filtered count"
     );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, n FROM t HAVING n > 0 ORDER BY id",
+        nonaggregate_having_columns,
+        2,
+        nonaggregate_having_values,
+        3,
+        "nonaggregate having output label"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT n AS id FROM t HAVING id >= 10 ORDER BY id",
+        nonaggregate_having_alias_column,
+        1,
+        nonaggregate_having_alias_values,
+        2,
+        "nonaggregate having alias over table column"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT id FROM t HAVING n > 0",
+        MYLITE_EXEC_ERROR,
+        "Unknown column 'n' in 'having clause'",
+        "nonaggregate having hidden column"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_unknown_column,
+        "nonaggregate hidden having warning code"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT n AS x, id AS x FROM t HAVING x = 10",
+        MYLITE_EXEC_ERROR,
+        "Column 'x' in having clause is ambiguous",
+        "duplicate having alias"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_ambiguous_column,
+        "duplicate having alias warning code"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT n AS x, id AS x, COUNT(*) AS c FROM t GROUP BY x",
+        MYLITE_EXEC_ERROR,
+        "Column 'x' in group statement is ambiguous",
+        "duplicate group alias"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_ambiguous_column,
+        "duplicate group alias warning code"
+    );
 
     failures += prepare_sql(
         database,
@@ -34473,6 +34533,17 @@ static int test_aggregate_grouping_execution(void) {
         (int)mylite_warning_code(database, 1),
         mysql_warning_ambiguous_column,
         "ambiguous having warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT a.col1 AS x FROM alias_t AS a "
+        "JOIN alias_t AS b ON b.col2 = a.col2 "
+        "HAVING x = 10 ORDER BY a.col1",
+        joined_having_alias_column,
+        1,
+        joined_having_alias_values,
+        2,
+        "joined nonaggregate having alias"
     );
 
     failures += execute_sql(

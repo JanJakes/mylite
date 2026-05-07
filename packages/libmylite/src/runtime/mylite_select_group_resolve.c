@@ -347,7 +347,7 @@ static int maybe_resolve_select_group_output_reference(
 
     output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
     if (output_matches > 1U) {
-        return mylite_select_set_ambiguous_order_column_error(database, parts[0]);
+        return mylite_select_set_ambiguous_column_error(database, parts[0], "group statement");
     }
     if (output_matches == 1U) {
         *out_kind = MYLITE_SELECT_GROUP_KEY_OUTPUT;
@@ -435,7 +435,7 @@ static int maybe_resolve_select_having_output_reference(
 
     output_matches = mylite_select_output_label_count(plan, parts[0], &output_index);
     if (output_matches > 1U) {
-        return mylite_select_set_ambiguous_order_column_error(database, parts[0]);
+        return mylite_select_set_ambiguous_column_error(database, parts[0], "having clause");
     }
     if (output_matches == 1U) {
         *out_kind = MYLITE_SELECT_ORDER_KEY_OUTPUT;

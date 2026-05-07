@@ -243,6 +243,8 @@ Representative runtime observations:
 | `SELECT grp, SUM(n) FROM t GROUP BY 0` | error 1054 / `42S22`, unknown column `0` in `group statement` |
 | `SELECT COUNT(*) FROM t GROUP BY missing_col` | error 1054 / `42S22`, unknown column `missing_col` in `group statement` |
 | `SELECT COUNT(col1) AS col2 FROM alias_t GROUP BY col2 HAVING col2 = 2` | returns `2`; records warning 1052 for `col2` in `group statement` and warning 1052 for `col2` in `having clause` |
+| `SELECT n AS x, id AS x, COUNT(*) AS c FROM t GROUP BY x` | error 1052 / `23000`, `Column 'x' in group statement is ambiguous` |
+| `SELECT n AS x, id AS x FROM t HAVING x = 10` | error 1052 / `23000`, `Column 'x' in having clause is ambiguous` |
 
 An implementation should preserve the resolved expression kind, not just a
 string name. This matters for aliases that resolve to scalar expressions,
@@ -256,6 +258,11 @@ aggregate state is finalized and can reference aggregate expressions. `HAVING`
 without an explicit `GROUP BY` is valid for aggregate queries because the query
 still has one implicit group.
 
+For a nonaggregate query, `HAVING` is not an implicit aggregation trigger.
+MySQL evaluates it as a row filter over projected output labels after `WHERE`
+and before `ORDER BY`/`LIMIT`. Non-projected table columns remain unknown in
+that context, and duplicate projected labels are ambiguous in `having clause`.
+
 Representative runtime observations:
 
 | SQL | MySQL behavior |
@@ -265,6 +272,9 @@ Representative runtime observations:
 | `SELECT id AS x, COUNT(*) AS c FROM conv_t GROUP BY x HAVING c = 1 ORDER BY x` | returns `(1,1)`, `(2,1)`, `(3,1)`, `(4,1)` |
 | `SELECT id, COUNT(*) AS c FROM conv_t GROUP BY id HAVING COUNT(*) > 0 ORDER BY id` | returns all four ids |
 | `SELECT id, COUNT(*) AS c FROM conv_t GROUP BY id HAVING SUM(id) > 2 ORDER BY id` | returns `(3,1)`, `(4,1)` |
+| `SELECT id, n FROM t HAVING n > 0 ORDER BY id` | returns rows where projected `n` is positive |
+| `SELECT n AS id FROM t HAVING id >= 10 ORDER BY id` | resolves `id` to the projected alias, not the base table `id` |
+| `SELECT id FROM t HAVING n > 0` | error 1054 / `42S22`, hidden `n` is not visible in `having clause` |
 
 `HAVING` predicates use MySQL truthiness conversion after group-level
 expression evaluation. Conversion warnings from `HAVING` expressions are
@@ -463,7 +473,8 @@ Analysis should process one query block at a time:
 4. Discover aggregate calls in select, `HAVING`, and `ORDER BY` expressions.
    Reject aggregate calls in `WHERE` and grouping key expressions.
 5. Determine whether the query is aggregated. A query is aggregated when it has
-   at least one aggregate call or a `GROUP BY` clause.
+   at least one aggregate call or a `GROUP BY` clause. `HAVING` alone does not
+   make a query aggregated.
 6. Validate `ONLY_FULL_GROUP_BY` for selected expressions, `HAVING`, and
    `ORDER BY`.
 7. Create result descriptors after aggregate and grouping validation, preserving
@@ -514,6 +525,11 @@ Suggested execution phases:
    state. `HAVING` false or `NULL` removes the group from the result.
 8. Apply `ORDER BY` and `LIMIT` after `HAVING`, preserving visible result
    metadata.
+
+Nonaggregate table-backed SELECT evaluates `HAVING` as a row predicate after
+`WHERE` and before `DISTINCT`, hidden `ORDER BY` evaluation, sorting, and
+limiting. The joined-row path applies the same ordering after join `ON` and
+`WHERE` predicates have accepted a row.
 
 For the first slice, a hash or sorted in-memory group table is acceptable. The
 implementation should keep the data structure narrow: grouping keys, aggregate
@@ -578,6 +594,8 @@ classify these cases:
 | unsafe nonaggregate in implicit aggregate query | error 1140 / `42000` |
 | ambiguous `GROUP BY` reference | warning 1052 in `group statement` when MySQL emits it |
 | ambiguous `HAVING` reference | warning 1052 in `having clause` when MySQL emits it |
+| duplicate `GROUP BY` output label | error 1052 in `group statement` |
+| duplicate `HAVING` output label | error 1052 in `having clause` |
 | numeric conversion in `SUM` / `AVG` | warning 1292 for truncated numeric conversion |
 | unsupported aggregate syntax accepted by parser | deterministic unsupported-feature diagnostic until implemented |
 
@@ -602,6 +620,10 @@ expectations:
 | `WHERE` before grouping | `SELECT grp, SUM(n) FROM t WHERE n IS NOT NULL GROUP BY grp HAVING SUM(n) > 7 ORDER BY grp IS NULL, grp` | one row: `('a',30)` |
 | `HAVING` without rows | `SELECT COUNT(*) AS c FROM t WHERE id > 10 HAVING c = 0` | one row: `0` |
 | `HAVING` removes implicit group | `SELECT COUNT(*) AS c FROM t WHERE id > 10 HAVING c > 0` | empty result |
+| nonaggregate `HAVING` over label | `SELECT id, n FROM t HAVING n > 0 ORDER BY id` | rows where projected `n` is positive |
+| nonaggregate `HAVING` hidden column | `SELECT id FROM t HAVING n > 0` | error 1054 / `42S22`, hidden `n` is unknown |
+| duplicate `HAVING` label | `SELECT n AS x, id AS x FROM t HAVING x = 10` | error 1052 / `23000`, ambiguous `x` in `having clause` |
+| duplicate `GROUP BY` label | `SELECT n AS x, id AS x, COUNT(*) AS c FROM t GROUP BY x` | error 1052 / `23000`, ambiguous `x` in `group statement` |
 | no-table aggregate | `SELECT COUNT(*), COUNT(NULL), COUNT(1), SUM(1), AVG(1), MIN(1), MAX(1)` | one row: `1`, `0`, `1`, `1`, `1.0000`, `1`, `1` |
 | conversion warnings | `SELECT SUM(s), AVG(s), MIN(s), MAX(s) FROM conv_t` | `12.5`, `4.166666666666667`, `10`, `bad`; four 1292 warnings |
 | aggregate in `WHERE` | `SELECT COUNT(*) FROM t WHERE COUNT(*) > 0` | error 1111 / `HY000` |

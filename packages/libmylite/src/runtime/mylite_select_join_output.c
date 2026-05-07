@@ -25,8 +25,7 @@ int mylite_select_join_materialize_row(
     const struct mylite_select_eval_callbacks *callbacks
 ) {
     bool matches = false;
-    bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate ||
-                            stmt->select_plan.has_having) != 0;
+    bool aggregate_query = (stmt->select_plan.has_group_by || stmt->select_plan.has_aggregate) != 0;
     int status = MYLITE_OK;
 
     if (stmt->select_predicate == NULL || stmt->select_constant_predicate_evaluated) {
@@ -38,6 +37,10 @@ int mylite_select_join_materialize_row(
         return status;
     }
     if (!aggregate_query) {
+        status = mylite_select_eval_having(stmt, row, callbacks, &matches);
+        if (status != MYLITE_OK || !matches) {
+            return status;
+        }
         return mylite_select_join_materialize_nonaggregate_row(stmt, state, row, callbacks);
     }
 

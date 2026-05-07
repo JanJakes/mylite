@@ -175,7 +175,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       `CONVERT ... USING utf8`.
 - [x] Complete `SELECT DATE(...)` and date-function predicates.
-- [ ] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
+- [x] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
+      Covered behavior includes duplicate output-label diagnostics in the
+      correct clause context, table-column-vs-alias warning behavior, and
+      nonaggregate `HAVING` filtering over projected labels without treating
+      `HAVING` alone as an aggregate query.
 - [x] Align literal expression column labels, such as `SELECT 'abc'`.
 - [ ] Complete result column metadata for expressions that currently report no
       metadata. FK information-schema result metadata is now covered for

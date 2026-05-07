@@ -200,6 +200,10 @@ static int prepare_parsed_statement(
             if (placeholder_statement_is_table_maintenance(statement)) {
                 return mylite_table_maintenance_prepare_statement(database, statement, out_stmt);
             }
+            if (statement->placeholder_statement_kind ==
+                MYLITE_SQL_AST_PLACEHOLDER_SHOW_ENGINE_STATUS) {
+                return mylite_show_prepare_engine_status_statement(database, statement, out_stmt);
+            }
             return mylite_statement_prepare_custom_statement(
                 database,
                 placeholder_statement_kind(statement),
@@ -590,6 +594,7 @@ static enum mylite_stmt_kind placeholder_statement_kind(
     case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE_QUICK:
     case MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE:
+    case MYLITE_SQL_AST_PLACEHOLDER_SHOW_ENGINE_STATUS:
         break;
     }
 

@@ -62,6 +62,11 @@ int mylite_show_prepare_diagnostics_count_statement(
     mylite_stmt **out_stmt
 );
 int mylite_show_prepare_engines_statement(mylite_db *database, mylite_stmt **out_stmt);
+int mylite_show_prepare_engine_status_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+);
 int mylite_show_prepare_schemas_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *statement,

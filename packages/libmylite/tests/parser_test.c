@@ -5556,6 +5556,7 @@ static int test_show_status_syntax(void) {
 static int test_show_engines_syntax(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *engine_name = NULL;
     int failures = 0;
 
     failures += parse_sql("SHOW ENGINES; SHOW STORAGE ENGINES;", MYLITE_SQL_PARSE_OK, &result);
@@ -5571,8 +5572,44 @@ static int test_show_engines_syntax(void) {
     failures += expect_child_count(statement, 0U, "show storage engines child count");
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("CREATE TABLE engines (storage INT, engines INT);", MYLITE_SQL_PARSE_OK, &result);
+    failures += parse_sql(
+        "SHOW ENGINE INNODB STATUS; SHOW ENGINE innodb STATUS; SHOW ENGINE `InnoDB` STATUS;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_child_count(result.root, 3U, "show engine status script count");
+    statement = child_at(result.root, 0U);
+    failures += expect_placeholder_statement(
+        statement,
+        MYLITE_SQL_AST_PLACEHOLDER_SHOW_ENGINE_STATUS,
+        "show engine status placeholder"
+    );
+    failures += expect_child_count(statement, 1U, "show engine status child count");
+    engine_name = child_at(statement, 0U);
+    failures += expect_span_text(engine_name, "INNODB", "show engine status engine");
+
+    statement = child_at(result.root, 1U);
+    failures += expect_placeholder_statement(
+        statement,
+        MYLITE_SQL_AST_PLACEHOLDER_SHOW_ENGINE_STATUS,
+        "show engine status lowercase placeholder"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "innodb", "show engine status lowercase");
+
+    statement = child_at(result.root, 2U);
+    failures += expect_placeholder_statement(
+        statement,
+        MYLITE_SQL_AST_PLACEHOLDER_SHOW_ENGINE_STATUS,
+        "show engine status quoted placeholder"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "`InnoDB`", "show engine status quoted");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE engines (storage INT, engines INT, engine INT, status INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     failures += expect_child_count(result.root, 1U, "show engines keyword identifiers");
     statement = child_at(result.root, 0U);
     failures +=
@@ -5588,6 +5625,29 @@ static int test_show_engines_syntax(void) {
         "engines",
         "engines keyword as column name"
     );
+    failures += expect_span_text(
+        child_at(child_at(statement, 2U), 0U),
+        "engine",
+        "engine keyword as column name"
+    );
+    failures += expect_span_text(
+        child_at(child_at(statement, 3U), 0U),
+        "status",
+        "status keyword as column name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINE STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINE INNODB;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINE INNODB MUTEX;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW ENGINE INNODB STATUS LIKE '%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW ENGINES LIKE 'InnoDB';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

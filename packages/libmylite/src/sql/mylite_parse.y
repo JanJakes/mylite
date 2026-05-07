@@ -313,6 +313,9 @@ statement(A) ::= show_status_statement(B). {
 statement(A) ::= show_engines_statement(B). {
     A = B;
 }
+statement(A) ::= show_engine_status_statement(B). {
+    A = B;
+}
 statement(A) ::= show_character_set_statement(B). {
     A = B;
 }
@@ -1505,10 +1508,15 @@ opt_show_status_filter(A) ::= where_clause(B). {
 show_engines_statement(A) ::= SHOW(T) opt_show_storage(S) ENGINES(E). {
     A = mylite_sql_parser_make_show_engines_statement(
         state, (struct mylite_sql_parser_show_engines_tokens){
-            .show = T,
-            .storage = S,
-            .engines = E,
-        });
+                   .show = T,
+                   .storage = S,
+                   .engines = E,
+               });
+}
+
+show_engine_status_statement(A) ::= SHOW(T) ENGINE identifier(E) STATUS. {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_SHOW_ENGINE_STATUS, T, E);
 }
 
 opt_show_storage(A) ::= . {

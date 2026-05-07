@@ -32,9 +32,17 @@ static struct mylite_field_descriptor show_latin1_string_descriptor(
     bool nullable
 );
 
+static int attach_show_engine_status_result_metadata(mylite_db *database, mylite_stmt *stmt);
+
 static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
 
 static int show_engines_sql(mylite_db *database, char **out_sql);
+
+static int show_engine_status_sql(mylite_db *database, const char *engine_name, char **out_sql);
+
+static bool show_engine_status_returns_empty(const char *engine_name);
+
+static int set_unknown_storage_engine_error(mylite_db *database, const char *engine_name);
 
 static char *copy_show_schemas_column_name(const struct mylite_sql_ast_node *filter);
 
@@ -123,6 +131,38 @@ int mylite_show_prepare_engines_statement(mylite_db *database, mylite_stmt **out
     return status;
 }
 
+int mylite_show_prepare_engine_status_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_stmt **out_stmt
+) {
+    const struct mylite_sql_ast_node *engine_node = mylite_ast_child_at(statement, 0U);
+    char *engine_name = mylite_copy_identifier_span(engine_node);
+    char *sqlite_sql = NULL;
+    mylite_stmt *stmt = NULL;
+    int status = engine_name == NULL ? MYLITE_NOMEM
+                                     : show_engine_status_sql(database, engine_name, &sqlite_sql);
+
+    *out_stmt = NULL;
+    if (status == MYLITE_OK) {
+        status = mylite_statement_prepare_sqlite(database, sqlite_sql, &stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = attach_show_engine_status_result_metadata(database, stmt);
+    }
+    if (status == MYLITE_OK) {
+        *out_stmt = stmt;
+    } else {
+        mylite_finalize(stmt);
+        if (status == MYLITE_NOMEM) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        }
+    }
+    free(engine_name);
+    sqlite3_free(sqlite_sql);
+    return status;
+}
+
 int mylite_show_prepare_schemas_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -203,6 +243,69 @@ static struct mylite_field_descriptor show_latin1_string_descriptor(
 
 static int show_engines_sql(mylite_db *database, char **out_sql) {
     return mylite_storage_engine_show_sql(database, out_sql);
+}
+
+static int show_engine_status_sql(mylite_db *database, const char *engine_name, char **out_sql) {
+    static const char innodb_status[] = "MyLite embedded InnoDB compatibility status\n"
+                                        "Storage: SQLite-backed single-file engine\n"
+                                        "Transactions: YES\n"
+                                        "XA: NO\n"
+                                        "Savepoints: YES";
+
+    *out_sql = NULL;
+    if (mylite_ascii_case_equal(engine_name, "InnoDB")) {
+        *out_sql = sqlite3_mprintf(
+            "SELECT 'InnoDB' AS \"Type\", '' AS \"Name\", %Q AS \"Status\"",
+            innodb_status
+        );
+    } else if (show_engine_status_returns_empty(engine_name)) {
+        *out_sql =
+            sqlite3_mprintf("SELECT '' AS \"Type\", '' AS \"Name\", '' AS \"Status\" WHERE 0");
+    } else {
+        return set_unknown_storage_engine_error(database, engine_name);
+    }
+    return *out_sql == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static bool show_engine_status_returns_empty(const char *engine_name) {
+    if (mylite_ascii_case_equal(engine_name, "MEMORY")) {
+        return true;
+    }
+    if (mylite_ascii_case_equal(engine_name, "MyISAM")) {
+        return true;
+    }
+    if (mylite_ascii_case_equal(engine_name, "MRG_MYISAM")) {
+        return true;
+    }
+    if (mylite_ascii_case_equal(engine_name, "BLACKHOLE")) {
+        return true;
+    }
+    if (mylite_ascii_case_equal(engine_name, "CSV")) {
+        return true;
+    }
+    if (mylite_ascii_case_equal(engine_name, "ARCHIVE")) {
+        return true;
+    }
+    return mylite_ascii_case_equal(engine_name, "PERFORMANCE_SCHEMA");
+}
+
+static int set_unknown_storage_engine_error(mylite_db *database, const char *engine_name) {
+    char *message = sqlite3_mprintf("Unknown storage engine '%q'", engine_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_UNKNOWN_STORAGE_ENGINE,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static char *copy_show_schemas_column_name(const struct mylite_sql_ast_node *filter) {
@@ -1075,6 +1178,42 @@ int mylite_show_attach_engines_result_metadata(mylite_db *database, mylite_stmt 
     mylite_result_metadata_deinit(&stmt->result_metadata);
     stmt->result_metadata = metadata;
     return MYLITE_OK;
+}
+
+static int attach_show_engine_status_result_metadata(mylite_db *database, mylite_stmt *stmt) {
+    const struct mylite_result_column_metadata_spec columns[] = {
+        {.name = "Type",
+         .descriptor = show_latin1_string_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             10U,
+             MYLITE_FIELD_FLAG_NOT_NULL,
+             mylite_mysql_not_fixed_decimals,
+             false
+         )},
+        {.name = "Name",
+         .descriptor = show_latin1_string_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             512U,
+             MYLITE_FIELD_FLAG_NOT_NULL,
+             mylite_mysql_not_fixed_decimals,
+             false
+         )},
+        {.name = "Status",
+         .descriptor = show_latin1_string_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             10U,
+             MYLITE_FIELD_FLAG_NOT_NULL,
+             mylite_mysql_not_fixed_decimals,
+             false
+         )},
+    };
+
+    return mylite_result_metadata_attach_columns(
+        database,
+        stmt,
+        columns,
+        sizeof(columns) / sizeof(columns[0])
+    );
 }
 
 static struct mylite_field_descriptor show_engines_field_descriptor(

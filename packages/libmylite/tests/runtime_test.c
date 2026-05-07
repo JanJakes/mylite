@@ -144,6 +144,7 @@ enum {
     mysql_warning_group_concat_cut = 1260,
     mysql_warning_data_out_of_range = 1264,
     mysql_warning_data_truncated = 1265,
+    mysql_warning_unknown_storage_engine = 1286,
     mysql_warning_deprecated_syntax = 1287,
     mysql_warning_truncated_wrong_value = 1292,
     mysql_warning_unsupported_prepared_statement = 1295,
@@ -45968,8 +45969,14 @@ static int test_show_engines_execution(void) {
     static const char *const diagnostics_columns[] = {"Level", "Code", "Message"};
     static const char *const warning_count_column[] = {"@@session.warning_count"};
     static const char *const error_count_column[] = {"@@session.error_count"};
+    static const char *const engine_status_columns[] = {"Type", "Name", "Status"};
     static const char *const zero_count[] = {"0"};
     static const char *const one_count[] = {"1"};
+    static const char *const innodb_status = "MyLite embedded InnoDB compatibility status\n"
+                                             "Storage: SQLite-backed single-file engine\n"
+                                             "Transactions: YES\n"
+                                             "XA: NO\n"
+                                             "Savepoints: YES";
     static const char *const values[] = {
         "InnoDB",     "DEFAULT", "MyLite SQLite-backed transactional engine facade",
         "YES",        "NO",      "YES",
@@ -46068,6 +46075,47 @@ static int test_show_engines_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
+    static const struct expected_result_metadata engine_status_metadata[] = {
+        {"Type",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         10U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         0U,
+         0},
+        {"Name",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         512U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         0U,
+         0},
+        {"Status",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         10U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         0U,
+         0},
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -46100,6 +46148,95 @@ static int test_show_engines_execution(void) {
         expect_string(mylite_column_text(stmt, 0), "InnoDB", "show engines metadata first engine");
     failures += expect_int64(mylite_affected_rows(stmt), -1, "show engines affected rows");
     mylite_finalize(stmt);
+
+    failures += prepare_sql(database, "SHOW ENGINE INNODB STATUS", MYLITE_OK, &stmt);
+    failures +=
+        expect_result_metadata(stmt, engine_status_metadata, 3, "show engine status metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show engine innodb status row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "InnoDB", "show engine innodb status type");
+    failures += expect_string(mylite_column_text(stmt, 1), "", "show engine innodb status name");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), innodb_status, "show engine innodb status text");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show engine innodb status done");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), -1, "show engine innodb status affected rows");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "show engine innodb status warning count");
+
+    failures += expect_select_rows(
+        database,
+        "SHOW ENGINE innodb STATUS",
+        engine_status_columns,
+        3,
+        (const char *const[]){"InnoDB", "", innodb_status},
+        1,
+        "show engine innodb status lowercase"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW ENGINE `InnoDB` STATUS",
+        engine_status_columns,
+        3,
+        (const char *const[]){"InnoDB", "", innodb_status},
+        1,
+        "show engine innodb status quoted"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW ENGINE MEMORY STATUS",
+        engine_status_columns,
+        3,
+        NULL,
+        0,
+        "show engine memory status empty"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW ENGINE MyISAM STATUS",
+        engine_status_columns,
+        3,
+        NULL,
+        0,
+        "show engine myisam status empty"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW ENGINE PERFORMANCE_SCHEMA STATUS",
+        engine_status_columns,
+        3,
+        NULL,
+        0,
+        "show engine performance schema status empty"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SHOW ENGINE NO_SUCH_ENGINE STATUS",
+        MYLITE_EXEC_ERROR,
+        "Unknown storage engine 'NO_SUCH_ENGINE'",
+        "show engine unknown status"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_unknown_storage_engine,
+        "show engine unknown status code"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SHOW ENGINE INNODB MUTEX",
+        MYLITE_PARSE_ERROR,
+        "syntax_error",
+        "show engine mutex syntax"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SHOW ENGINE INNODB STATUS LIKE '%'",
+        MYLITE_PARSE_ERROR,
+        "syntax_error",
+        "show engine status like syntax"
+    );
 
     failures += expect_prepare_error(
         database,
@@ -46181,6 +46318,50 @@ static int test_show_engines_execution(void) {
         NULL,
         0,
         "show engines cleared diagnostics"
+    );
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT * FROM missing_show_engine_status_table",
+        MYLITE_EXEC_ERROR,
+        "doesn't exist",
+        "show engine status error source"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW COUNT(*) ERRORS",
+        error_count_column,
+        1,
+        one_count,
+        1,
+        "show engine status source error count"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW ENGINE MEMORY STATUS",
+        engine_status_columns,
+        3,
+        NULL,
+        0,
+        "show engine status clears diagnostics"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW COUNT(*) ERRORS",
+        error_count_column,
+        1,
+        zero_count,
+        1,
+        "show engine status cleared error count"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW ERRORS",
+        diagnostics_columns,
+        3,
+        NULL,
+        0,
+        "show engine status cleared diagnostics"
     );
 
     failures += expect_select_rows(

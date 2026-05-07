@@ -389,13 +389,22 @@ static int validate_index_ddl_target(
 }
 
 static int set_duplicate_key_name_error(mylite_db *database, const char *index_name) {
-    (void)mylite_diagnostics_set_error_message_parts(
+    int status = mylite_diagnostics_set_error_message_parts(
         database,
         "Duplicate key name '",
         index_name,
         "'"
     );
-    return MYLITE_EXEC_ERROR;
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_append_error(
+        database,
+        MYLITE_MYSQL_ER_DUP_KEYNAME,
+        mylite_error_message(database)
+    );
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_drop_index_missing_error(mylite_db *database, const char *index_name) {

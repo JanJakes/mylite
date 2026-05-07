@@ -41230,6 +41230,11 @@ static int test_create_drop_index_execution(void) {
         "Duplicate key name",
         "create index rejects duplicate name case-insensitively"
     );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_key,
+        "create index duplicate name error code"
+    );
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(database, "DROP INDEX missing_idx ON idx_base", MYLITE_OK, &stmt);

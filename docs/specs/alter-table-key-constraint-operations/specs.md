@@ -33,7 +33,7 @@ MyLite:
   exposed from the CHECK catalog and `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS`
   exposed from the foreign-key catalog for supported `CREATE TABLE` metadata
 - duplicate validation, dependency validation, warning records, affected rows,
-  diagnostics, statement atomicity, and deferred implicit-commit boundaries
+  diagnostics, statement atomicity, and implicit-commit boundaries
 
 This task does not implement the complete `ALTER TABLE` statement. These
 surfaces remain separate roadmap items or later slices:
@@ -53,8 +53,7 @@ surfaces remain separate roadmap items or later slices:
   MyLite at the time of the CHECK slice
 - foreign-key enforcement, cascades, locks, generated-column interactions,
   triggers, privileges, replication, and binary logging
-- exact DDL implicit-commit behavior until the broader DDL transaction task
-  retrofits current DDL statements
+- remaining temporary-table DDL transaction exceptions
 
 ### First executable implementation slice
 
@@ -161,9 +160,12 @@ DDL atomically: metadata and storage effects become visible together, and a
 failure leaves the table definition and data unchanged.
 
 Ordinary non-temporary `ALTER TABLE` is DDL and has implicit commit boundaries.
-MyLite already defers full DDL implicit-commit behavior for existing DDL
-features; this task should document the same gap rather than inventing a
-partial transaction model for key actions only.
+MyLite commits any active explicit transaction before `ALTER TABLE` validation
+and execution. Successful key and constraint mutations run in their own
+statement transaction and leave no explicit transaction active. Validation
+failures after the pre-DDL commit also leave the session outside the explicit
+transaction; later writes therefore autocommit unless the client starts a new
+transaction.
 
 `ALGORITHM` and `LOCK` are statement options rather than key definitions.
 MySQL accepts them with many key operations, but exact algorithm selection is

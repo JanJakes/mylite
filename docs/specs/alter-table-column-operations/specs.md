@@ -152,6 +152,12 @@ successful DDL is atomic: metadata and storage changes become visible together.
 If validation or row copying fails, the original table definition and data
 remain in place.
 
+MyLite commits any active explicit transaction before `ALTER TABLE` validation
+and execution. Successful mutations run in their own statement transaction and
+leave no explicit transaction active. Validation failures after the pre-DDL
+commit also leave the session outside the explicit transaction; later writes
+therefore autocommit unless the client starts a new transaction.
+
 The verified MySQL runtime accepted both `ADD c INT` and `ADD COLUMN c INT`.
 `DROP c` and `DROP COLUMN c` are equivalent. `CHANGE` and `MODIFY` also accept
 the optional `COLUMN` keyword.
@@ -596,9 +602,8 @@ type conversion, generated values, warnings, and diagnostics.
 
 - update `auto_increment` when an auto column is added or removed
 - preserve table-level metadata unrelated to the column operation
-- later DDL implicit-commit work may update timestamps and protocol-visible OK
-  information; the first slice can leave timestamp fidelity deferred if current
-  DDL features do the same
+- later timestamp and protocol-visible OK-packet fidelity work may refine
+  metadata beyond the current first slice
 
 ### Affected rows, diagnostics, and warnings
 
@@ -760,7 +765,7 @@ own schema so results are isolated.
   - trigger body non-rewrite and later execution-time missing-column errors
   - check-constraint dependency handling
   - `ALGORITHM` and `LOCK` compatibility
-  - temporary table behavior and DDL implicit commit fidelity
+  - temporary table behavior
 
 ## Compatibility gaps and deferred behavior
 
@@ -769,8 +774,6 @@ own schema so results are isolated.
   metadata, rows, diagnostics, atomicity, and affected rows match the tested
   MySQL behavior.
 - Exact online-DDL `ALGORITHM` and `LOCK` validation is deferred.
-- DDL implicit-commit behavior remains part of the broader DDL transaction
-  retrofit unless implemented before this feature lands.
 - New key and constraint creation through `ADD`, `CHANGE`, or `MODIFY` is
   deferred to Task 36.
 - Generated columns, triggers, and check constraints need explicit hooks now but

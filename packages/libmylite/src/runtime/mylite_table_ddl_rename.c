@@ -57,6 +57,8 @@ static int rewrite_rename_table_parent_foreign_key_catalog(
     const struct mylite_rename_table_target *target
 );
 
+static int commit_rename_table_implicit_transaction(mylite_db *database);
+
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 int mylite_table_ddl_execute_rename_table_statement(
@@ -64,12 +66,23 @@ int mylite_table_ddl_execute_rename_table_statement(
     const char *selected_schema,
     struct mylite_rename_table_plan *plan
 ) {
-    int status = mylite_table_ddl_validate_rename_table_plan(database, selected_schema, plan);
+    int status = commit_rename_table_implicit_transaction(database);
 
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_validate_rename_table_plan(database, selected_schema, plan);
+    }
     if (status == MYLITE_OK) {
         status = rename_table_transaction(database, plan);
     }
     return status;
+}
+
+static int commit_rename_table_implicit_transaction(mylite_db *database) {
+    if (!database->transaction_active) {
+        return MYLITE_OK;
+    }
+
+    return mylite_transaction_commit_explicit(database);
 }
 
 static int rename_table_transaction(

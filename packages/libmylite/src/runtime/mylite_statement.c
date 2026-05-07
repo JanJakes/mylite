@@ -183,8 +183,7 @@ int mylite_statement_map_translate_status(
 bool mylite_statement_kind_writes(enum mylite_stmt_kind kind) {
     if (kind == MYLITE_STMT_INSERT_VALUES || kind == MYLITE_STMT_INSERT_SET ||
         kind == MYLITE_STMT_REPLACE_VALUES || kind == MYLITE_STMT_REPLACE_SET ||
-        kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE ||
-        kind == MYLITE_STMT_ALTER_TABLE || kind == MYLITE_STMT_RENAME_TABLE) {
+        kind == MYLITE_STMT_UPDATE || kind == MYLITE_STMT_DELETE) {
         return true;
     }
     return false;

@@ -39355,6 +39355,8 @@ static int test_create_drop_index_execution(void) {
 static int test_alter_table_column_operations_execution(void) {
     static const char *const all_columns[] =
         {"first_col", "id", "added", "a", "b", "c", "hidden", "nn"};
+    static const char *const count_column[] = {"c"};
+    static const char *const id_column[] = {"id"};
     static const char *const visible_after_add_columns[] =
         {"first_col", "id", "added", "a", "b", "c", "nn"};
     static const char *const final_columns[] = {"c", "first_col", "id", "b2", "added", "nn"};
@@ -39459,6 +39461,9 @@ static int test_alter_table_column_operations_execution(void) {
     static const char *const invalid_modify_text_columns[] = {"id", "s"};
     static const char *const invalid_modify_null_values[] = {"1", NULL, "2", "5"};
     static const char *const invalid_modify_text_values[] = {"1", "abcd", "2", "xy"};
+    static const char *const one_count[] = {"1"};
+    static const char *const successful_alter_implicit_values[] = {"1", "2"};
+    static const char *const failed_alter_implicit_values[] = {"1", "2", "3", "4"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -39471,6 +39476,74 @@ static int test_alter_table_column_operations_execution(void) {
 
     failures += execute_sql(database, "CREATE DATABASE mylite_alter", MYLITE_DONE);
     failures += execute_sql(database, "USE mylite_alter", MYLITE_DONE);
+
+    failures +=
+        execute_sql(database, "CREATE TABLE alter_tx_keep (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE alter_tx_target (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO alter_tx_keep VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "ALTER TABLE alter_tx_target ADD COLUMN a INT", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO alter_tx_keep VALUES (2)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM alter_tx_keep ORDER BY id",
+        id_column,
+        1,
+        successful_alter_implicit_values,
+        2,
+        "alter table commits active transaction"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_alter' AND TABLE_NAME = 'alter_tx_target' "
+        "AND COLUMN_NAME = 'a'",
+        count_column,
+        1,
+        one_count,
+        1,
+        "alter table column survives rollback"
+    );
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO alter_tx_keep VALUES (3)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "ALTER TABLE alter_tx_target DROP COLUMN missing", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Can't DROP",
+        "failed alter table commits active transaction"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO alter_tx_keep VALUES (4)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM alter_tx_keep ORDER BY id",
+        id_column,
+        1,
+        failed_alter_implicit_values,
+        4,
+        "failed alter table leaves later work autocommitted"
+    );
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures += execute_sql(database, "ALTER TABLE alter_tx_target ADD COLUMN ro INT", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_alter' AND TABLE_NAME = 'alter_tx_target' "
+        "AND COLUMN_NAME = 'ro'",
+        count_column,
+        1,
+        one_count,
+        1,
+        "alter table read-only transaction commits before execution"
+    );
+    failures += execute_sql(database, "DROP TABLE alter_tx_keep, alter_tx_target", MYLITE_DONE);
 
     failures +=
         prepare_sql(database, "ALTER TABLE missing_alter.t ADD COLUMN c INT", MYLITE_OK, &stmt);
@@ -39515,19 +39588,24 @@ static int test_alter_table_column_operations_execution(void) {
     }
 
     failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
-    failures += prepare_sql(
+    failures += execute_sql_expect_done_affected(
         database,
         "ALTER TABLE qualified_alter ADD COLUMN blocked INT",
-        MYLITE_OK,
-        &stmt
+        0,
+        "read only transaction commits before alter table"
     );
-    failures +=
-        expect_exec_error(stmt, database, "READ ONLY", "read only transaction rejects alter table");
-    failures += expect_int64(mylite_affected_rows(stmt), -1, "read only alter affected rows");
-    mylite_finalize(stmt);
-    stmt = NULL;
     failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
-    failures += expect_no_information_schema_column_row(database, "qualified_alter", "blocked");
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_alter' AND TABLE_NAME = 'qualified_alter' "
+        "AND COLUMN_NAME = 'blocked'",
+        count_column,
+        1,
+        one_count,
+        1,
+        "read only alter table column survives rollback"
+    );
 
     failures += execute_sql(
         database,
@@ -41270,13 +41348,22 @@ static int test_alter_table_key_operations_execution(void) {
 
 static int test_rename_table_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
+    static const char *const count_column[] = {"c"};
     static const char *const id_columns[] = {"id"};
     static const char *const id_v_columns[] = {"id", "v"};
+    static const char *const one_count[] = {"1"};
+    static const char *const zero_count[] = {"0"};
     static const char *const single_1[] = {"1"};
     static const char *const single_2[] = {"2"};
     static const char *const source_value[] = {"11"};
     static const char *const target_value[] = {"22"};
     static const char *const t2_values[] = {"1", "10", "2", "20"};
+    static const char *const successful_rename_implicit_values[] = {"1", "2"};
+    static const char *const failed_missing_rename_implicit_values[] = {"1", "2", "3", "4"};
+    static const char *const failed_collision_rename_implicit_values[] =
+        {"1", "2", "3", "4", "5", "6"};
+    static const char *const successful_alter_rename_implicit_values[] =
+        {"1", "2", "3", "4", "5", "6", "7", "8"};
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
     mylite_db *file_database = NULL;
@@ -41300,6 +41387,163 @@ static int test_rename_table_execution(void) {
     failures += execute_sql(database, "CREATE DATABASE mylite_rename_a", MYLITE_DONE);
     failures += execute_sql(database, "CREATE DATABASE mylite_rename_b", MYLITE_DONE);
     failures += execute_sql(database, "USE mylite_rename_a", MYLITE_DONE);
+
+    failures +=
+        execute_sql(database, "CREATE TABLE rename_tx_keep (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE rename_tx_src (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE rename_tx_existing (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO rename_tx_keep VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "RENAME TABLE rename_tx_src TO rename_tx_dst", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO rename_tx_keep VALUES (2)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM rename_tx_keep ORDER BY id",
+        id_columns,
+        1,
+        successful_rename_implicit_values,
+        2,
+        "rename table commits active transaction"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = 'mylite_rename_a' AND TABLE_NAME = 'rename_tx_src'",
+        count_column,
+        1,
+        zero_count,
+        1,
+        "rename source disappears after rollback"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = 'mylite_rename_a' AND TABLE_NAME = 'rename_tx_dst'",
+        count_column,
+        1,
+        one_count,
+        1,
+        "rename target survives rollback"
+    );
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO rename_tx_keep VALUES (3)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "RENAME TABLE missing_rename TO missing_done", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "doesn't exist",
+        "failed missing rename commits active transaction"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO rename_tx_keep VALUES (4)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM rename_tx_keep ORDER BY id",
+        id_columns,
+        1,
+        failed_missing_rename_implicit_values,
+        4,
+        "failed missing rename leaves later work autocommitted"
+    );
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO rename_tx_keep VALUES (5)", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "RENAME TABLE rename_tx_dst TO rename_tx_existing", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "already exists",
+        "failed collision rename commits active transaction"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO rename_tx_keep VALUES (6)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM rename_tx_keep ORDER BY id",
+        id_columns,
+        1,
+        failed_collision_rename_implicit_values,
+        6,
+        "failed collision rename leaves later work autocommitted"
+    );
+    failures += execute_sql(database, "CREATE TABLE alter_rename_tx_src (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO rename_tx_keep VALUES (7)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "ALTER TABLE alter_rename_tx_src RENAME alter_rename_tx_dst",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO rename_tx_keep VALUES (8)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM rename_tx_keep ORDER BY id",
+        id_columns,
+        1,
+        successful_alter_rename_implicit_values,
+        8,
+        "alter table rename commits active transaction"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = 'mylite_rename_a' AND TABLE_NAME = 'alter_rename_tx_dst'",
+        count_column,
+        1,
+        one_count,
+        1,
+        "alter rename target survives rollback"
+    );
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "RENAME TABLE alter_rename_tx_dst TO rename_tx_read_only",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = 'mylite_rename_a' AND TABLE_NAME = 'rename_tx_read_only'",
+        count_column,
+        1,
+        one_count,
+        1,
+        "rename table read-only transaction commits before execution"
+    );
+    failures += execute_sql(database, "CREATE TABLE alter_rename_ro_src (id INT)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "ALTER TABLE alter_rename_ro_src RENAME alter_rename_ro_dst",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = 'mylite_rename_a' AND TABLE_NAME = 'alter_rename_ro_dst'",
+        count_column,
+        1,
+        one_count,
+        1,
+        "alter rename read-only transaction commits before execution"
+    );
+    failures += execute_sql(
+        database,
+        "DROP TABLE rename_tx_keep, rename_tx_dst, rename_tx_existing, "
+        "rename_tx_read_only, alter_rename_ro_dst",
+        MYLITE_DONE
+    );
 
     failures += execute_sql(
         database,

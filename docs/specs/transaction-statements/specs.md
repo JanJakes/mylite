@@ -278,12 +278,12 @@ The inserted row and the created table both survived the later rollback.
 
 MyLite now applies this behavior to non-temporary `CREATE TABLE`, ordinary
 non-`TEMPORARY` `DROP TABLE`, `TRUNCATE TABLE`, and standalone `CREATE INDEX`
-/ `DROP INDEX`: an active explicit transaction is committed before validation
-and execution, the DDL runs in its own statement transaction when it reaches
-mutation, and no explicit transaction remains active afterward. Temporary
-table DDL remains a transaction exception. Remaining DDL statements still need
-the same retrofit, so the compatibility matrix continues to mark implicit
-commit boundaries as incomplete.
+/ `DROP INDEX`, `RENAME TABLE`, and `ALTER TABLE`: an active explicit
+transaction is committed before validation and execution, the DDL runs in its
+own statement transaction when it reaches mutation, and no explicit transaction
+remains active afterward. Temporary table DDL remains a transaction exception.
+Remaining DDL statements still need the same retrofit, so the compatibility
+matrix continues to mark implicit commit boundaries as incomplete.
 
 ### Diagnostics, Affected Rows, And Metadata
 
@@ -645,6 +645,12 @@ Required Task 21 runtime cases:
 | `START TRANSACTION; INSERT; DROP INDEX missing_idx ON t; INSERT; ROLLBACK` | both inserts survive because the failed index drop still commits before validation |
 | `START TRANSACTION READ ONLY; CREATE INDEX idx ON t (a); ROLLBACK` | index creation succeeds because the read-only transaction is committed first |
 | `START TRANSACTION READ ONLY; DROP INDEX idx ON t; ROLLBACK` | index removal succeeds because the read-only transaction is committed first |
+| `START TRANSACTION; INSERT; RENAME TABLE old TO new; INSERT; ROLLBACK` | both inserts and the rename survive due implicit commit |
+| `START TRANSACTION; INSERT; RENAME TABLE missing TO new; INSERT; ROLLBACK` | both inserts survive because the failed rename still commits before validation |
+| `START TRANSACTION READ ONLY; RENAME TABLE old TO new; ROLLBACK` | rename succeeds because the read-only transaction is committed first |
+| `START TRANSACTION; INSERT; ALTER TABLE t ADD COLUMN c INT; INSERT; ROLLBACK` | both inserts and the alter survive due implicit commit |
+| `START TRANSACTION; INSERT; ALTER TABLE t DROP COLUMN missing; INSERT; ROLLBACK` | both inserts survive because the failed alter still commits before validation |
+| `START TRANSACTION READ ONLY; ALTER TABLE t ADD COLUMN c INT; ROLLBACK` | alter succeeds because the read-only transaction is committed first |
 | `BEGIN IMMEDIATE` on a file-backed handle while another handle reads | pre-opened reader can still run `SELECT`, `SHOW TABLES`, and `DESCRIBE` |
 | `COMMIT RELEASE` followed by another statement in protocol tests | connection is released after OK response |
 | `ROLLBACK RELEASE` followed by another statement in protocol tests | connection is released after OK response |

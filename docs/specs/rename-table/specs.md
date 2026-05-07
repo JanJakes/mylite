@@ -21,9 +21,8 @@ missing-table and missing-schema diagnostics, and statement atomicity for
 multi-table rename.
 
 Deferred behavior is explicit: temporary tables, views, triggers, CHECK
-constraints, privilege propagation, metadata locks, and implicit commit
-boundaries are not modeled in this slice. MyLite does not yet implement
-temporary tables; top-level `RENAME TABLE` therefore looks only for base tables.
+constraints, privilege propagation, and metadata locks are not modeled in this
+slice. Top-level `RENAME TABLE` looks only for base tables.
 `ALTER TABLE ... RENAME` over temporary tables is deferred with temporary-table
 support.
 
@@ -113,6 +112,14 @@ as `RENAME TABLE`. Mixing table rename with other `ALTER TABLE` actions is not
 part of this slice and returns a deterministic unsupported diagnostic before
 mutation if parsed.
 
+`RENAME TABLE` and `ALTER TABLE ... RENAME` commit any active explicit
+transaction before validation and execution. Successful renames run in their
+own statement transaction and leave no explicit transaction active. Validation
+failures after the pre-DDL commit also leave the session outside the explicit
+transaction, so later writes autocommit unless the client starts a new
+transaction. A read-only transaction is committed before the rename executes,
+matching MySQL's DDL boundary behavior.
+
 ## Grammar Sketch
 
 The grammar is authored for MyLite Lemon syntax:
@@ -170,4 +177,6 @@ Runtime tests cover:
 - swap via a temporary intermediary name;
 - existing-target, same-name, missing-source, and missing-target-schema errors;
 - rollback/no partial mutation for multi-pair failures;
+- implicit commits for successful and failing top-level `RENAME TABLE` and
+  `ALTER TABLE ... RENAME`, including read-only transaction boundaries;
 - deferred temporary-table behavior documented as base-table lookup only.

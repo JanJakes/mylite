@@ -52,6 +52,8 @@ struct alter_table_mixed_constraint_state {
 
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
 
+static int commit_alter_table_implicit_transaction(mylite_db *database);
+
 static bool alter_table_has_only_check_actions(const mylite_stmt *stmt);
 
 static bool alter_table_has_check_action(const mylite_stmt *stmt);
@@ -424,6 +426,11 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
     int status = MYLITE_OK;
 
     stmt->affected_rows = 0;
+    status = commit_alter_table_implicit_transaction(stmt->database);
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+        return status;
+    }
     if (alter_table_has_table_rename_action(stmt)) {
         return execute_alter_table_rename_statement(stmt);
     }
@@ -471,6 +478,14 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
         stmt->affected_rows = -1;
     }
     return status;
+}
+
+static int commit_alter_table_implicit_transaction(mylite_db *database) {
+    if (!database->transaction_active) {
+        return MYLITE_OK;
+    }
+
+    return mylite_transaction_commit_explicit(database);
 }
 
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt) {

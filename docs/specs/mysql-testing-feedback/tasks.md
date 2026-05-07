@@ -247,8 +247,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       covered integer and approximate assignments, rejecting in strict mode and
       warning/storing the prefix in non-strict mode.
       `INSERT IGNORE ... ON DUPLICATE KEY UPDATE` update assignments now demote
-      covered numeric, string-length, and temporal coercion failures through
-      row-numbered warnings and MySQL-compatible coerced values.
+      covered numeric, string-length, temporal, and `NOT NULL` coercion
+      failures through MySQL-compatible warnings and coerced values, including
+      source row numbers for conversion warnings and once-per-target-column
+      `NOT NULL` warnings.
       Scalar `CAST` and
       `CONVERT` to explicit `utf8mb4`/`utf8mb3` character targets now reject
       invalid byte sequences with warning 1300 and return `NULL`, while

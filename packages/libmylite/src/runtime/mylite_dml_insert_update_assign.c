@@ -12,6 +12,7 @@ static int evaluate_insert_update_assignment_value(
     const struct mylite_insert_table *table,
     size_t target_column,
     const struct mylite_insert_row_column_indexes *column_indexes,
+    struct mylite_insert_execution_state *state,
     uint64_t row_number,
     const struct mylite_insert_value *value,
     const struct mylite_insert_bound_value *target_values,
@@ -28,6 +29,8 @@ static int resolve_insert_update_default_value(
 static int validate_insert_update_assignment_result(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
+    struct mylite_insert_execution_state *state,
+    size_t column_index,
     uint64_t row_number,
     bool ignore,
     struct mylite_insert_bound_value *value
@@ -40,12 +43,13 @@ int mylite_dml_apply_insert_update_assignments(
     const struct mylite_insert_duplicate_update_plan *update_plan,
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
+    struct mylite_insert_execution_state *state,
     uint64_t row_number,
     const struct mylite_insert_bound_value *candidate_values,
     struct mylite_insert_bound_value *updated_values
 ) {
     if (database == NULL || values_plan == NULL || update_plan == NULL || table == NULL ||
-        column_indexes == NULL || column_indexes->update_columns == NULL ||
+        column_indexes == NULL || column_indexes->update_columns == NULL || state == NULL ||
         candidate_values == NULL || updated_values == NULL ||
         (values_plan->schema_name == NULL && selected_schema == NULL)) {
         return MYLITE_MISUSE;
@@ -61,6 +65,7 @@ int mylite_dml_apply_insert_update_assignments(
             table,
             column_index,
             column_indexes,
+            state,
             row_number,
             &update_plan->assignments[index].value,
             updated_values,
@@ -86,6 +91,7 @@ static int evaluate_insert_update_assignment_value(
     const struct mylite_insert_table *table,
     size_t target_column,
     const struct mylite_insert_row_column_indexes *column_indexes,
+    struct mylite_insert_execution_state *state,
     uint64_t row_number,
     const struct mylite_insert_value *value,
     const struct mylite_insert_bound_value *target_values,
@@ -114,6 +120,8 @@ static int evaluate_insert_update_assignment_value(
         status = validate_insert_update_assignment_result(
             database,
             column,
+            state,
+            target_column,
             row_number,
             values_plan->ignore,
             out_value
@@ -133,6 +141,8 @@ static int resolve_insert_update_default_value(
 static int validate_insert_update_assignment_result(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
+    struct mylite_insert_execution_state *state,
+    size_t column_index,
     uint64_t row_number,
     bool ignore,
     struct mylite_insert_bound_value *value
@@ -144,7 +154,8 @@ static int validate_insert_update_assignment_result(
             return MYLITE_OK;
         }
         if (ignore || !mylite_connection_sql_mode_is_strict(database)) {
-            int status = mylite_dml_insert_append_null_warning(database, column->name);
+            int status =
+                mylite_dml_insert_append_null_warning_once(database, column, state, column_index);
 
             if (status != MYLITE_OK) {
                 return status;

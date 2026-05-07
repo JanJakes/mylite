@@ -576,10 +576,10 @@ For the first ODKU implementation, MyLite should support at least:
 - preserving inserts and updates from other source rows in the statement
 - retaining generated auto-increment consumption for the failed update
   candidate
-- demoting covered numeric, string-length, and temporal conversion problems in
-  update assignments through the same warning and coerced-value paths used by
-  insert/update validation, with diagnostics using the source candidate row
-  number
+- demoting covered numeric, string-length, temporal conversion, and `NOT NULL`
+  assignment problems through the same warning and coerced-value paths used by
+  insert/update validation, with conversion diagnostics using the source
+  candidate row number and `NOT NULL` warnings emitted once per target column
 
 If a broader `INSERT IGNORE` conversion slice has not landed, conversion,
 range, truncation, and temporal demotion outside the covered assignment paths
@@ -752,8 +752,8 @@ Implemented runtime tests:
   validation tests plus ODKU rollback probes
 - update-branch duplicate-key error with rollback
 - `INSERT IGNORE` update-branch duplicate-key demotion and continuation
-- `INSERT IGNORE` update-assignment numeric, string-length, and temporal
-  coercion demotion with row-numbered warnings
+- `INSERT IGNORE` update-assignment numeric, string-length, temporal, and
+  `NOT NULL` coercion demotion with MySQL-shaped warning behavior
 - warning records for 1287 and demoted 1062, including warning ordering
 - affected rows, warning count, session last insert id, and auto-increment
   catalog state

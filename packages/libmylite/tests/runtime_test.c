@@ -60487,6 +60487,17 @@ static int test_insert_on_duplicate_key_update_execution(void) {
         "abc",
         "0000-00-00",
     };
+    static const char *const odku_ignore_null_columns[] = {"id", "n", "s", "dt"};
+    static const char *const odku_ignore_null_values[] = {
+        "1",
+        "0",
+        "",
+        "0000-00-00",
+        "2",
+        "0",
+        "",
+        "0000-00-00",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     uint64_t last_insert_id = 0U;
@@ -61041,6 +61052,59 @@ static int test_insert_on_duplicate_key_update_execution(void) {
         odku_ignore_coercion_values,
         2,
         "ODKU IGNORE assignment coercion rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE odku_ignore_nulls ("
+        "id INT PRIMARY KEY, n INT NOT NULL, "
+        "s VARCHAR(3) NOT NULL, dt DATE NOT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO odku_ignore_nulls VALUES "
+        "(1,7,'abc','2024-01-01'),(2,8,'def','2024-01-02')",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO odku_ignore_nulls "
+        "VALUES (1,9,'ghi','2024-02-01'),(2,9,'ghi','2024-02-02') "
+        "ON DUPLICATE KEY UPDATE n = NULL, s = NULL, dt = NULL",
+        4,
+        "ODKU IGNORE NULL assignment affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "ODKU IGNORE NULL assignment warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_bad_null,
+        "ODKU IGNORE NULL integer warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Column 'n' cannot be null",
+        "ODKU IGNORE NULL integer warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_bad_null,
+        "ODKU IGNORE NULL string warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_bad_null,
+        "ODKU IGNORE NULL temporal warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, n, s, dt FROM odku_ignore_nulls ORDER BY id",
+        odku_ignore_null_columns,
+        4,
+        odku_ignore_null_values,
+        2,
+        "ODKU IGNORE NULL assignment rows"
     );
 
     failures += execute_sql(

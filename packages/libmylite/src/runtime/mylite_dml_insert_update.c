@@ -229,6 +229,7 @@ static int execute_insert_update_bound_row(
             update_plan,
             table,
             column_indexes,
+            state,
             row_number,
             values,
             updated_values

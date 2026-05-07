@@ -297,6 +297,7 @@ int mylite_dml_apply_insert_update_assignments(
     const struct mylite_insert_duplicate_update_plan *update_plan,
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
+    struct mylite_insert_execution_state *state,
     uint64_t row_number,
     const struct mylite_insert_bound_value *candidate_values,
     struct mylite_insert_bound_value *updated_values

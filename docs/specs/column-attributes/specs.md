@@ -138,13 +138,13 @@ MySQL rejects the following as syntax:
   `NOW(1,2)`
 - oversized `CURRENT_TIMESTAMP(18446744073709551616)` precision tokens
 
-MySQL accepts `VARCHAR(20) DEFAULT (UPPER('x'))`, but MyLite's current
-expression grammar has no general function-call expressions. This task
-therefore supports parenthesized defaults using the expression subset already
-implemented by MyLite plus targeted `CURRENT_TIMESTAMP` and `NOW()` expressions; generic
-function-call defaults, `INTERVAL`, subqueries, variables, parameters, stored
-functions, loadable functions, and full default-expression semantic validation
-are deferred.
+MySQL accepts `VARCHAR(20) DEFAULT (UPPER('x'))`, but MyLite's current column
+default grammar rejects non-`NOW` function calls. This task therefore supports
+parenthesized defaults using the expression subset already implemented by MyLite
+plus targeted `CURRENT_TIMESTAMP` and `NOW()` expressions; generic function-call
+defaults, `INTERVAL`, subqueries, variables, parameters, stored functions,
+loadable functions, and full default-expression semantic validation are
+deferred.
 
 MySQL also accepts introducer-prefixed string defaults such as
 `_utf8mb4'abc'`. MyLite string introducers are not part of the current lexer

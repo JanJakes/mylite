@@ -5,6 +5,7 @@
 #include "mylite_dml.h"
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
+#include "sql/mylite_parser.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -72,6 +73,22 @@ static unsigned int insert_column_temporal_fsp(const struct mylite_insert_table_
 
 static bool parse_insert_column_type_fsp(const char *column_type, unsigned int *out_fsp);
 
+static int resolve_insert_generated_default_bound_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+);
+
+static char *insert_generated_default_select_sql(const char *default_text);
+
+static unsigned int insert_default_parse_modes(const mylite_db *database);
+
+static const struct mylite_sql_ast_node *insert_generated_default_expression(
+    const struct mylite_sql_parse_result *parse_result
+);
+
 int mylite_dml_resolve_insert_default_bound_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -129,7 +146,13 @@ int mylite_dml_resolve_insert_default_bound_value(
         }
     }
     if (column->generated_default) {
-        return mylite_dml_insert_set_unsupported_generated_default_error(database, column->name);
+        return resolve_insert_generated_default_bound_value(
+            database,
+            column,
+            statement_row_count,
+            state,
+            out_value
+        );
     }
     int status = mylite_dml_resolve_insert_text_value(
         database,
@@ -149,6 +172,111 @@ int mylite_dml_resolve_insert_default_bound_value(
         out_value->generated_auto_increment = true;
     }
     return MYLITE_OK;
+}
+
+static int resolve_insert_generated_default_bound_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+) {
+    struct mylite_sql_parse_result parse_result = {0};
+    struct mylite_insert_values_plan plan = {.table_name = ""};
+    struct mylite_insert_table table = {
+        .columns = (struct mylite_insert_table_column *)column,
+        .column_count = 1U,
+    };
+    char *sql = insert_generated_default_select_sql(column->default_text);
+    const struct mylite_sql_ast_node *expression = NULL;
+    int status = MYLITE_OK;
+
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    enum mylite_sql_parse_status parse_status = mylite_sql_parse(
+        (struct mylite_sql_parse_config){
+            .input = sql,
+            .length = strlen(sql),
+            .modes = insert_default_parse_modes(database),
+        },
+        &parse_result
+    );
+    if (parse_status != MYLITE_SQL_PARSE_OK) {
+        status = mylite_dml_insert_set_unsupported_generated_default_error(database, column->name);
+        goto done;
+    }
+
+    expression = insert_generated_default_expression(&parse_result);
+    if (expression == NULL) {
+        status = mylite_dml_insert_set_unsupported_generated_default_error(database, column->name);
+        goto done;
+    }
+    status = mylite_dml_resolve_insert_expression_bound_value(
+        database,
+        "",
+        &plan,
+        &table,
+        NULL,
+        column,
+        expression,
+        statement_row_count,
+        state,
+        NULL,
+        out_value
+    );
+
+done:
+    mylite_sql_parse_result_deinit(&parse_result);
+    free(sql);
+    return status;
+}
+
+static char *insert_generated_default_select_sql(const char *default_text) {
+    static const char prefix[] = "SELECT ";
+    size_t prefix_length = sizeof(prefix) - 1U;
+    size_t default_length = default_text == NULL ? 0U : strlen(default_text);
+    char *sql = malloc(prefix_length + default_length + 1U);
+
+    if (sql == NULL) {
+        return NULL;
+    }
+    memcpy(sql, prefix, prefix_length);
+    if (default_length > 0U) {
+        memcpy(sql + prefix_length, default_text, default_length);
+    }
+    sql[prefix_length + default_length] = '\0';
+    return sql;
+}
+
+static unsigned int insert_default_parse_modes(const mylite_db *database) {
+    unsigned int modes = 0U;
+
+    if (mylite_connection_sql_mode_has_ansi_quotes(database)) {
+        modes |= MYLITE_SQL_MODE_ANSI_QUOTES;
+    }
+    if (mylite_connection_sql_mode_has_no_backslash_escapes(database)) {
+        modes |= MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES;
+    }
+    return modes;
+}
+
+static const struct mylite_sql_ast_node *insert_generated_default_expression(
+    const struct mylite_sql_parse_result *parse_result
+) {
+    const struct mylite_sql_ast_node *statement =
+        parse_result == NULL ? NULL : mylite_ast_single_statement(parse_result->root);
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *item = select_list == NULL ? NULL : select_list->first_child;
+
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT ||
+        select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST || item == NULL ||
+        item->kind != MYLITE_SQL_AST_SELECT_ITEM || item->next_sibling != NULL) {
+        return NULL;
+    }
+    return mylite_ast_child_at(item, 0U);
 }
 
 int mylite_dml_resolve_insert_implicit_expression_default(

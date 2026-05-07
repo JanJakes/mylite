@@ -132,9 +132,10 @@ forms allocate following ids.
 
 For a table with `DEFAULT (1 + 2)`, `DEFAULT (concat('a','b'))`, and
 `DEFAULT (CURRENT_TIMESTAMP)`, MySQL evaluates all generated default
-expressions at write time. MyLite defers arbitrary generated default-expression
-evaluation until expression and function execution are implemented; only
-deterministic literal/unary/current-timestamp default forms are in scope now.
+expressions at write time. MyLite evaluates parenthesized generated defaults
+that are constant expressions in the existing scalar expression subset, such as
+`DEFAULT (1 + 2)`, plus targeted `CURRENT_TIMESTAMP` / `NOW()` defaults.
+Generic function-call defaults remain deferred.
 
 ### AUTO_INCREMENT
 
@@ -317,8 +318,8 @@ Value resolution:
   target temporal column precision.
 - Parenthesized `CURRENT_TIMESTAMP` and `NOW()` defaults are supported and
   stored as MySQL-style `now()` generated defaults.
-- Other generated default expressions fail with a deterministic unsupported
-  generated-default diagnostic when they are needed for a row.
+- Parenthesized constant default expressions are evaluated at execution time and
+  then coerced through the normal target-column write path.
 
 Storage and side effects:
 
@@ -356,9 +357,8 @@ and survives statement finalization.
 
 MyLite intentionally documents these boundaries for Task 13:
 
-- Arbitrary generated default expressions are not evaluated yet. This includes
-  arithmetic expressions such as `(1 + 2)` and function calls such as
-  `concat('a','b')`.
+- Generated default expressions outside the existing scalar expression subset
+  are not evaluated yet. This includes function calls such as `concat('a','b')`.
 - Row value expression forms not yet supported by the shared scalar evaluator
   fail with the evaluator's deterministic expression diagnostic.
 - Full MySQL type conversion is deferred. Current storage binds deterministic

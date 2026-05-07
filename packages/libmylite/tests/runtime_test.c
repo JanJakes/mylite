@@ -53582,29 +53582,24 @@ static int test_insert_values_execution(void) {
     }
     failures +=
         execute_sql(database, "INSERT INTO expr_defaults (a, b) VALUES (1, DEFAULT)", MYLITE_DONE);
-    failures += prepare_sql(
-        database,
-        "INSERT INTO expr_defaults VALUES (DEFAULT, DEFAULT)",
-        MYLITE_OK,
-        &stmt
-    );
     failures +=
-        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "unsupported generated default insert");
-    failures += expect_contains(
-        mylite_error_message(database),
-        "Unsupported generated default",
-        "unsupported generated default error"
-    );
-    mylite_finalize(stmt);
-    stmt = NULL;
+        execute_sql(database, "INSERT INTO expr_defaults VALUES (DEFAULT, DEFAULT)", MYLITE_DONE);
     if (expr_physical != NULL) {
         failures += expect_sqlite_physical_int64(
             path,
             expr_physical,
             "COUNT(*)",
             "",
+            2,
+            "generated default row count"
+        );
+        failures += expect_sqlite_physical_int64(
+            path,
+            expr_physical,
+            "COUNT(*)",
+            "WHERE a = 3",
             1,
-            "generated default rollback row count"
+            "parenthesized integer expression default"
         );
         failures += expect_sqlite_physical_not_null(
             path,

@@ -59953,6 +59953,27 @@ static int test_string_dml_coercion_execution(void) {
     static const char *const text_utf8_columns[] = {"id", "t_len", "t_chars"};
     static const char *const text_utf8_values[] = {"3", "65534", "32767"};
     static const char *const text_utf8_replace_values[] = {"4", "65534", "32767"};
+    static const char *const medium_lob_columns[] = {"id", "t_len", "b_len", "t_last", "b_last"};
+    static const char *const medium_lob_row1_insert_values[] =
+        {"1", "16777215", "16777215", "a", "62"};
+    static const char *const medium_lob_insert_ignore_values[] = {
+        "1",
+        "16777215",
+        "16777215",
+        "a",
+        "62",
+        "2",
+        "16777215",
+        "16777215",
+        "c",
+        "64",
+    };
+    static const char *const medium_lob_row1_non_strict_update_values[] =
+        {"1", "16777215", "16777215", "u", "76"};
+    static const char *const medium_lob_row1_update_values[] =
+        {"1", "16777215", "16777215", "x", "79"};
+    static const char *const medium_text_utf8_columns[] = {"id", "t_len", "t_chars", "t_last_hex"};
+    static const char *const medium_text_utf8_values[] = {"3", "16777214", "8388607", "C3A9"};
     static const char *const binary_columns[] = {"id", "fb_hex", "fb_len", "vb_hex", "vb_len"};
     static const char *const binary_insert_values[] = {"1", "610000", "3", "61", "1"};
     static const char *const binary_update_values[] = {"1", "787900", "3", "7879", "2"};
@@ -60808,6 +60829,191 @@ static int test_string_dml_coercion_execution(void) {
         text_utf8_replace_values,
         1,
         "text replace multibyte clipped values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE medium_lobs (id INT PRIMARY KEY, t MEDIUMTEXT, b MEDIUMBLOB)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO medium_lobs VALUES "
+        "(1, REPEAT('a', 16777216), REPEAT('b', 16777216))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict medium text insert length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict medium text insert length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM medium_lobs",
+        0,
+        "strict medium lob no row"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO medium_lobs VALUES "
+        "(1, REPEAT('a', 16777216), REPEAT('b', 16777216))",
+        1,
+        "non-strict medium lob insert"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "medium lob insert warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "medium text insert warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "medium blob insert warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs ORDER BY id",
+        medium_lob_columns,
+        5,
+        medium_lob_row1_insert_values,
+        1,
+        "medium lob non-strict clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "UPDATE medium_lobs SET t = REPEAT('s', 16777216), "
+        "b = REPEAT('t', 16777216) WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict medium text update length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict medium text update length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 1",
+        medium_lob_columns,
+        5,
+        medium_lob_row1_insert_values,
+        1,
+        "strict medium lob update preserves row"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO medium_lobs VALUES "
+        "(2, REPEAT('c', 16777216), REPEAT('d', 16777216))",
+        1,
+        "insert ignore medium lob truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "medium lob insert ignore warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs ORDER BY id",
+        medium_lob_columns,
+        5,
+        medium_lob_insert_ignore_values,
+        2,
+        "medium lob insert ignore clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE medium_lobs SET t = REPEAT('u', 16777216), "
+        "b = REPEAT('v', 16777216) WHERE id = 1",
+        1,
+        "non-strict medium lob update"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "medium lob update warning count");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 1",
+        medium_lob_columns,
+        5,
+        medium_lob_row1_non_strict_update_values,
+        1,
+        "medium lob non-strict update clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE medium_lobs SET t = REPEAT('x', 16777216), "
+        "b = REPEAT('y', 16777216) WHERE id = 1",
+        1,
+        "update ignore medium lob truncation"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "medium lob update ignore warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM medium_lobs WHERE id = 1",
+        medium_lob_columns,
+        5,
+        medium_lob_row1_update_values,
+        1,
+        "medium lob update ignore clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO medium_lobs VALUES "
+        "(3, REPEAT('\xC3\xA9', 8388608), '')",
+        1,
+        "non-strict mediumtext multibyte insert"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "mediumtext multibyte warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "mediumtext multibyte warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, CHAR_LENGTH(t) AS t_chars, "
+        "HEX(RIGHT(t, 1)) AS t_last_hex FROM medium_lobs WHERE id = 3",
+        medium_text_utf8_columns,
+        4,
+        medium_text_utf8_values,
+        1,
+        "mediumtext multibyte clipped values"
     );
 
     mylite_close(database);

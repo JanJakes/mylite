@@ -140,6 +140,18 @@ struct planned_delete {
     const char *rowid_alias;
 };
 
+struct planned_update {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor assignment_column;
+    const struct mylite_sql_ast_node *assignment_value_node;
+    struct planned_value assignment_value;
+    struct planned_select_predicate predicate;
+    struct planned_select_order order;
+    struct planned_select_limit limit;
+    const char *rowid_alias;
+};
+
 struct dynamic_string {
     char *text;
     size_t length;
@@ -188,6 +200,11 @@ static int execute_insert_statement(
     mylite_result **out_result
 );
 static int execute_delete_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_update_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -277,6 +294,23 @@ static int execute_delete_from_plan(
     struct mylite_db *database,
     const struct planned_delete *plan,
     mylite_result *result
+);
+
+static int plan_update(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_update *out_plan
+);
+static void planned_update_deinit(struct planned_update *plan);
+static int execute_update_from_plan(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    mylite_result *result
+);
+static int update_matches_any_row(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    bool *out_matches
 );
 
 static int resolve_table_name(
@@ -506,6 +540,30 @@ static int plan_delete_limit(
     const struct mylite_sql_ast_node *limit_clause,
     struct planned_select_limit *out_limit
 );
+static int plan_update_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+);
+static int convert_update_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int convert_update_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
+static int plan_update_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *limit_clause,
+    struct planned_select_limit *out_limit
+);
 static int convert_limit_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -564,6 +622,18 @@ static int append_delete_rowid_limited_sql(
     const struct planned_delete *plan,
     size_t *next_parameter
 );
+static int build_update_sql(const struct planned_update *plan, char **out_sql);
+static int build_update_matched_sql(const struct planned_update *plan, char **out_sql);
+static int append_update_rowid_limited_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
+static int append_update_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+);
 static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind);
 static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql);
 static int execute_sqlite_control_sql(const struct mylite_db *database, const char *sql);
@@ -577,12 +647,23 @@ static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert 
 static int step_insert_row(sqlite3_stmt *statement);
 static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan);
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan);
+static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan);
+static int bind_update_matched_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_update *plan
+);
+static int bind_planned_value_parameter(
+    sqlite3_stmt *statement,
+    int parameter_index,
+    const struct planned_value *value
+);
 static int bind_int64_parameter(sqlite3_stmt *statement, int parameter_index, int64_t value);
 static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *result);
 static int choose_sqlite_rowid_alias(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
+    const char *unsupported_message,
     const char **out_alias
 );
 static bool column_name_exists(
@@ -755,6 +836,8 @@ static int execute_parsed_statement(
         return execute_insert_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DELETE_STATEMENT:
         return execute_delete_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_UPDATE_STATEMENT:
+        return execute_update_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SELECT_STATEMENT:
         return execute_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -784,6 +867,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
         break;
     }
 
@@ -1004,6 +1089,33 @@ static int execute_delete_statement(
         rc = execute_delete_from_plan(database, &plan, result);
     }
     planned_delete_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_update_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_update plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_update(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = execute_update_from_plan(database, &plan, result);
+    }
+    planned_update_deinit(&plan);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -1490,6 +1602,215 @@ static int execute_insert_from_plan(
     return MYLITE_OK;
 }
 
+static int plan_update(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *assignment_list = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    struct mylite_catalog_column_descriptor *table_columns = NULL;
+    size_t table_column_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_update){0};
+    optional_clause = child_at(statement, 2U);
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+            order_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            limit_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "UPDATE supports only SET, WHERE, ORDER BY, and LIMIT");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &out_plan->target, &out_plan->table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &table_columns,
+            &table_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_update_assignment(
+            database,
+            assignment_list,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_predicate(
+            database,
+            where_clause,
+            table_columns,
+            table_column_count,
+            &out_plan->predicate
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_order(
+            database,
+            order_clause,
+            table_columns,
+            table_column_count,
+            &out_plan->order
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_update_limit(database, limit_clause, &out_plan->limit);
+    }
+    if (rc == MYLITE_OK && out_plan->limit.has_limit && out_plan->limit.row_count > 0) {
+        rc = choose_sqlite_rowid_alias(
+            database,
+            table_columns,
+            table_column_count,
+            "UPDATE LIMIT requires an unshadowed SQLite rowid alias",
+            &out_plan->rowid_alias
+        );
+    }
+
+    free(table_columns);
+    if (rc != MYLITE_OK) {
+        planned_update_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static void planned_update_deinit(struct planned_update *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    *plan = (struct planned_update){0};
+}
+
+static int execute_update_from_plan(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    mylite_result *result
+) {
+    sqlite3_stmt *statement = NULL;
+    struct planned_update executable_plan = *plan;
+    char *sql = NULL;
+    bool transaction_started = false;
+    bool matches_any_row = false;
+    int64_t affected_rows = 0;
+    int sqlite_rc = SQLITE_OK;
+    int rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+
+    if (rc == MYLITE_OK) {
+        transaction_started = true;
+        rc = update_matches_any_row(database, plan, &matches_any_row);
+    }
+    if (rc == MYLITE_OK && matches_any_row) {
+        rc = convert_update_value(
+            database,
+            plan->assignment_value_node,
+            &plan->assignment_column,
+            &executable_plan.assignment_value
+        );
+    }
+    if (rc == MYLITE_OK && matches_any_row) {
+        rc = build_update_sql(&executable_plan, &sql);
+    }
+    if (rc == MYLITE_OK && matches_any_row) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK && matches_any_row) {
+        rc = bind_update_parameters(statement, &executable_plan);
+    }
+    if (rc == MYLITE_OK && matches_any_row) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            affected_rows = (int64_t)sqlite3_changes64(database->sqlite);
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    statement = NULL;
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_control_sql(database, "COMMIT");
+        transaction_started = false;
+    }
+    if (rc != MYLITE_OK && transaction_started) {
+        (void)execute_sqlite_control_sql(database, "ROLLBACK");
+    }
+    free(sql);
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+            return rc;
+        }
+        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
+            return rc;
+        }
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    mylite_result_set_affected_rows(result, affected_rows);
+
+    return MYLITE_OK;
+}
+
+static int update_matches_any_row(
+    struct mylite_db *database,
+    const struct planned_update *plan,
+    bool *out_matches
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_matches = false;
+    if (plan->limit.has_limit && plan->limit.row_count == 0) {
+        return MYLITE_OK;
+    }
+
+    rc = build_update_matched_sql(plan, &sql);
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_update_matched_parameters(statement, plan);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            *out_matches = true;
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    return rc;
+}
+
 static int plan_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1713,6 +2034,7 @@ static int plan_delete(
             database,
             table_columns,
             table_column_count,
+            "DELETE LIMIT requires an unshadowed SQLite rowid alias",
             &out_plan->rowid_alias
         );
     }
@@ -3126,6 +3448,166 @@ static int plan_delete_limit(
     return MYLITE_OK;
 }
 
+static int plan_update_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_update *out_plan
+) {
+    const struct mylite_sql_ast_node *assignment = child_at(assignment_list, 0U);
+    const struct mylite_sql_ast_node *target = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (assignment_list == NULL || assignment_list->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(assignment_list) != 1U) {
+        set_unsupported_error(database, "UPDATE supports exactly one assignment");
+        return MYLITE_ERROR;
+    }
+    if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_UPDATE_ASSIGNMENT) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    target = child_at(assignment, 0U);
+    if (target == NULL || target->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "UPDATE supports only unqualified assignment columns");
+        return MYLITE_ERROR;
+    }
+    rc = copy_identifier_text(target, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    out_plan->assignment_column = table_columns[column_index];
+    out_plan->assignment_value_node = child_at(assignment, 1U);
+    if (out_plan->assignment_value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int convert_update_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    if (value_node == NULL || column == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (struct planned_value){.is_null = true, .integer = 0};
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        if (!column->is_nullable) {
+            set_bad_null_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    return convert_update_integer_literal(database, value_node, column, out_value);
+}
+
+static int convert_update_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "UPDATE supports only integer and NULL assignment values"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, "UPDATE supports only integer and NULL assignment values");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+    if (rc != MYLITE_OK) {
+        set_out_of_range_error(database, column->name, 1U);
+        return MYLITE_ERROR;
+    }
+
+    out_value->is_null = false;
+    rc = convert_integer_for_column(
+        database,
+        magnitude,
+        is_negative,
+        column,
+        1U,
+        &out_value->integer
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_update_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *limit_clause,
+    struct planned_select_limit *out_limit
+) {
+    int rc = MYLITE_OK;
+
+    out_limit->has_limit = false;
+    out_limit->row_count = 0;
+    out_limit->has_offset = false;
+    out_limit->offset = 0;
+    if (limit_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (limit_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE) {
+        set_unsupported_error(database, "UPDATE supports only LIMIT row_count");
+        return MYLITE_ERROR;
+    }
+    if (child_at(limit_clause, 1U) != NULL) {
+        set_unsupported_error(database, "UPDATE supports only LIMIT row_count");
+        return MYLITE_ERROR;
+    }
+
+    rc = convert_limit_integer_literal(database, child_at(limit_clause, 0U), &out_limit->row_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_limit->has_limit = true;
+
+    return MYLITE_OK;
+}
+
 static int convert_limit_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -3589,6 +4071,162 @@ static int append_delete_rowid_limited_sql(
     return rc;
 }
 
+static int build_update_sql(const struct planned_update *plan, char **out_sql) {
+    struct dynamic_string string;
+    size_t next_parameter = 2U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "UPDATE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " SET ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " = ?1");
+    }
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = append_update_rowid_limited_sql(&string, plan, &next_parameter);
+    } else if (rc == MYLITE_OK && plan->predicate.kind != PLANNED_SELECT_PREDICATE_NONE) {
+        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " WHERE ");
+    }
+    if (rc == MYLITE_OK &&
+        (plan->limit.has_limit || plan->predicate.kind != PLANNED_SELECT_PREDICATE_NONE)) {
+        rc = dynamic_string_append(&string, " AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_update_changed_condition_sql(&string, plan, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_update_matched_sql(const struct planned_update *plan, char **out_sql) {
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT 1 FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " LIMIT 1");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_update_rowid_limited_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, " WHERE ");
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, plan->rowid_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IN (SELECT ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, plan->rowid_alias);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_order_sql(string, &plan->order);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_limit_sql(string, &plan->limit, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_update_changed_condition_sql(
+    struct dynamic_string *string,
+    const struct planned_update *plan,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (plan->assignment_value.is_null) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " IS NOT NULL");
+        }
+        return rc;
+    }
+
+    rc = dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " IS NULL OR ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " <> ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
 static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind) {
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
@@ -3762,6 +4400,65 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
     return rc;
 }
 
+static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan) {
+    int parameter_index = 1;
+    int rc = bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
+
+    if (rc == MYLITE_OK) {
+        ++parameter_index;
+    }
+    if (rc == MYLITE_OK && plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->predicate.value.integer);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
+    }
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
+    }
+    if (rc == MYLITE_OK && !plan->assignment_value.is_null) {
+        rc = bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
+    }
+
+    return rc;
+}
+
+static int bind_update_matched_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_update *plan
+) {
+    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+        return bind_int64_parameter(statement, 1, plan->predicate.value.integer);
+    }
+
+    return MYLITE_OK;
+}
+
+static int bind_planned_value_parameter(
+    sqlite3_stmt *statement,
+    int parameter_index,
+    const struct planned_value *value
+) {
+    int sqlite_rc = SQLITE_OK;
+
+    if (parameter_index <= 0 || value == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (value->is_null) {
+        sqlite_rc = sqlite3_bind_null(statement, parameter_index);
+    } else {
+        sqlite_rc = sqlite3_bind_int64(statement, parameter_index, (sqlite3_int64)value->integer);
+    }
+    if (sqlite_rc != SQLITE_OK) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
 static int bind_int64_parameter(sqlite3_stmt *statement, int parameter_index, int64_t value) {
     int sqlite_rc = SQLITE_OK;
 
@@ -3832,6 +4529,7 @@ static int choose_sqlite_rowid_alias(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
+    const char *unsupported_message,
     const char **out_alias
 ) {
     static const char *const rowid_aliases[] = {"rowid", "_rowid_", "oid"};
@@ -3847,7 +4545,7 @@ static int choose_sqlite_rowid_alias(
         }
     }
 
-    set_unsupported_error(database, "DELETE LIMIT requires an unshadowed SQLite rowid alias");
+    set_unsupported_error(database, unsupported_message);
     return MYLITE_ERROR;
 }
 

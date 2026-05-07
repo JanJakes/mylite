@@ -74,6 +74,9 @@ statement(A) ::= insert_values_statement(B). {
 statement(A) ::= delete_statement(B). {
     A = B;
 }
+statement(A) ::= update_statement(B). {
+    A = B;
+}
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
@@ -109,6 +112,23 @@ insert_values_statement(A) ::=
 delete_statement(A) ::=
     DELETE(D) FROM table_name(T) where_clause_opt(W) order_clause_opt(O) delete_limit_clause_opt(L). {
     A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
+}
+
+update_statement(A) ::=
+    UPDATE(U) table_name(T) SET update_assignment_list(S) where_clause_opt(W)
+    order_clause_opt(O) update_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_update_statement(state, U, T, S, W, O, L);
+}
+
+update_assignment_list(A) ::= update_assignment(B). {
+    A = mylite_sql_parser_make_update_assignment_list(state, B);
+}
+update_assignment_list(A) ::= update_assignment_list(B) COMMA update_assignment(C). {
+    A = mylite_sql_parser_append_update_assignment(state, B, C);
+}
+
+update_assignment(A) ::= qualified_identifier(T) EQUAL(E) update_value(V). {
+    A = mylite_sql_parser_make_update_assignment(state, T, E, V);
 }
 
 insert_column_list_opt(A) ::= . {
@@ -157,6 +177,23 @@ insert_value(A) ::= MINUS(M) INTEGER(T). {
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
 insert_value(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+
+update_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+update_value(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+update_value(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+update_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
 
@@ -291,6 +328,13 @@ delete_limit_clause_opt(A) ::= . {
     A = NULL;
 }
 delete_limit_clause_opt(A) ::= LIMIT(L) limit_integer(C). {
+    A = mylite_sql_parser_make_limit_clause(state, L, C, NULL);
+}
+
+update_limit_clause_opt(A) ::= . {
+    A = NULL;
+}
+update_limit_clause_opt(A) ::= LIMIT(L) limit_integer(C). {
     A = mylite_sql_parser_make_limit_clause(state, L, C, NULL);
 }
 

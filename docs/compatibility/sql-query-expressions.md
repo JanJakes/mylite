@@ -8,13 +8,13 @@ Core query expression, SELECT, set operation, ordering, limiting, locking, modif
 | Query expression grammar | ❌ | Query terms and primaries |
 | Projection list | 🟡 | Wildcard uses catalog ordinal order; explicit projections resolve unqualified descriptor column names only, with duplicate projected columns allowed and no aliases, expression metadata, or table-qualified references |
 | `SELECT ... FROM DUAL` | ❌ | `DUAL` one-row table semantics |
-| `WHERE` | 🟡 | One unqualified descriptor column predicate for filtered table `SELECT`: integer comparisons with a non-`NULL` decimal integer right operand (`=`, `<=>`, `<>`, `!=`, `<`, `<=`, `>`, `>=`) plus `IS NULL` and `IS NOT NULL`; no boolean composition, literal-left comparisons, table-qualified columns, `col = NULL`, functions, parameters, string/decimal/float/hex/bit literals, subqueries, or general expression predicates |
+| `WHERE` | 🟡 | One unqualified descriptor column predicate for filtered table `SELECT`, `DELETE`, and `UPDATE`: integer comparisons with a non-`NULL` decimal integer right operand (`=`, `<=>`, `<>`, `!=`, `<`, `<=`, `>`, `>=`) plus `IS NULL` and `IS NOT NULL`; no boolean composition, literal-left comparisons, table-qualified columns, `col = NULL`, functions, parameters, string/decimal/float/hex/bit literals, subqueries, or general expression predicates |
 | `GROUP BY` | ❌ | Grouping and ONLY_FULL_GROUP_BY |
 | `WITH ROLLUP` | ❌ | Super-aggregate rows and GROUPING() behavior |
 | `HAVING` | ❌ | Post-group predicate semantics and alias resolution |
 | Window definitions | ❌ | Named windows, frames, restrictions |
-| `ORDER BY` | 🟡 | One unqualified descriptor column for supported base-table `SELECT`; optional `ASC`/`DESC`; `ASC` is the default, `NULL` sorts before non-`NULL` ascending and after non-`NULL` descending; no aliases, ordinals, expressions, table-qualified keys, collations, multiple keys, or tie-order guarantee |
-| `LIMIT` / `OFFSET` | 🟡 | Supported base-table `SELECT` forms are `LIMIT row_count`, `LIMIT row_count OFFSET offset`, and `LIMIT offset, row_count` with unsigned decimal integer literals in the signed 64-bit range; `LIMIT 0` returns metadata and no rows; no signed, string, decimal, float, hex, bit, parameter, or expression limits |
+| `ORDER BY` | 🟡 | One unqualified descriptor column for supported base-table `SELECT`, `DELETE`, and `UPDATE`; optional `ASC`/`DESC`; `ASC` is the default, `NULL` sorts before non-`NULL` ascending and after non-`NULL` descending; no aliases, ordinals, expressions, table-qualified keys, collations, multiple keys, or tie-order guarantee |
+| `LIMIT` / `OFFSET` | 🟡 | Supported base-table `SELECT` forms are `LIMIT row_count`, `LIMIT row_count OFFSET offset`, and `LIMIT offset, row_count`; supported single-table `DELETE` and `UPDATE` admit only `LIMIT row_count`; all supported forms use unsigned decimal integer literals in the signed 64-bit range; `LIMIT 0` returns no rows for `SELECT` and matches no rows for supported DML; no signed, string, decimal, float, hex, bit, parameter, or expression limits |
 | `DISTINCT` / `DISTINCTROW` | ❌ | Duplicate elimination semantics and metadata |
 | `UNION` | ❌ | ALL/DISTINCT, metadata, ordering |
 | `INTERSECT` | ❌ | set operator semantics |

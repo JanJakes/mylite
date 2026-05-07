@@ -23,7 +23,7 @@ statements.
 | `REPLACE ... SET` | ❌ | SET-form replace semantics |
 | `REPLACE ... SELECT` | ❌ | Replace from query expression semantics |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | Priority and deprecated delayed modifiers for REPLACE |
-| `UPDATE` (single-table) | ❌ | Assignment order, LIMIT, modifiers |
+| `UPDATE` (single-table) | 🟡 | Limited persistent base-table `UPDATE table_name SET column_name = value` with one unqualified assignment column, supported decimal integer/`NULL` assignment values, optional baseline `WHERE`, optional one-column `ORDER BY` with `ASC`/`DESC`, and optional `LIMIT row_count` using unsigned decimal literals in signed 64-bit range; affected rows report changed rows; no aliases, table-qualified assignment targets, multiple assignments, expression assignments, defaults, partitions, modifiers, joined updates, multi-table updates, table-qualified/order expression/ordinal/multiple-key ordering, offset forms, triggers, cascades, foreign keys, generated columns, or privilege semantics |
 | `UPDATE` (multi-table) | ❌ | Joined update semantics |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

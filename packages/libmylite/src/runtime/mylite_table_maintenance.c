@@ -1,7 +1,10 @@
 #include "mylite_table_maintenance.h"
 
+#include <mylite/mylite.h>
+
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_information_schema.h"
 #include "mylite_metadata.h"
@@ -18,14 +21,23 @@
 
 enum mylite_table_maintenance_operation {
     MYLITE_TABLE_MAINTENANCE_CHECK = 0,
-    MYLITE_TABLE_MAINTENANCE_OPTIMIZE = 1,
-    MYLITE_TABLE_MAINTENANCE_REPAIR = 2,
+    MYLITE_TABLE_MAINTENANCE_CHECKSUM = 1,
+    MYLITE_TABLE_MAINTENANCE_CHECKSUM_QUICK = 2,
+    MYLITE_TABLE_MAINTENANCE_OPTIMIZE = 3,
+    MYLITE_TABLE_MAINTENANCE_REPAIR = 4,
 };
 
 enum mylite_table_maintenance_target_status {
     MYLITE_TABLE_MAINTENANCE_TARGET_EXISTS = 0,
     MYLITE_TABLE_MAINTENANCE_TARGET_MISSING_TABLE = 1,
     MYLITE_TABLE_MAINTENANCE_TARGET_UNKNOWN_SCHEMA = 2,
+    MYLITE_TABLE_MAINTENANCE_TARGET_NON_BASE_TABLE = 3,
+    MYLITE_TABLE_MAINTENANCE_TARGET_UNKNOWN_SYSTEM_TABLE = 4,
+};
+
+enum mylite_table_maintenance_metadata_length {
+    MYLITE_CHECKSUM_TABLE_TABLE_LENGTH = 384,
+    MYLITE_CHECKSUM_TABLE_CHECKSUM_LENGTH = 22,
 };
 
 struct mylite_table_maintenance_target {
@@ -67,11 +79,13 @@ static int copy_maintenance_target_display(
 
 static int classify_maintenance_target(
     mylite_db *database,
+    enum mylite_table_maintenance_operation operation,
     const struct mylite_table_maintenance_target *target,
     enum mylite_table_maintenance_target_status *out_status
 );
 
 static int append_target_rows(
+    mylite_db *database,
     sqlite3_str *sql,
     bool *first,
     enum mylite_table_maintenance_operation operation,
@@ -100,6 +114,15 @@ static int append_missing_table_rows(
     const struct mylite_table_maintenance_target *target
 );
 
+static int append_checksum_target_row(
+    mylite_db *database,
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_table_maintenance_target *target,
+    enum mylite_table_maintenance_target_status target_status
+);
+
 static void append_result_row(
     sqlite3_str *sql,
     bool *first,
@@ -109,7 +132,36 @@ static void append_result_row(
     const char *msg_text
 );
 
+static void append_checksum_result_row(
+    sqlite3_str *sql,
+    bool *first,
+    const char *table_name,
+    bool has_checksum
+);
+
+static bool operation_is_checksum(enum mylite_table_maintenance_operation operation);
+
 static const char *operation_name(enum mylite_table_maintenance_operation operation);
+
+static int append_checksum_unknown_schema_warning(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target
+);
+
+static int append_checksum_missing_table_warning(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target
+);
+
+static int append_checksum_non_base_table_warning(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target
+);
+
+static int set_unknown_information_schema_table_error(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target
+);
 
 static void table_maintenance_target_deinit(struct mylite_table_maintenance_target *target);
 
@@ -119,7 +171,11 @@ static int set_maintenance_out_of_memory(mylite_db *database);
 
 static int attach_table_maintenance_result_metadata(mylite_db *database, mylite_stmt *stmt);
 
+static int attach_checksum_table_result_metadata(mylite_db *database, mylite_stmt *stmt);
+
 static struct mylite_field_descriptor table_maintenance_field_descriptor(int type, uint64_t length);
+
+static struct mylite_field_descriptor checksum_table_field_descriptor(void);
 
 int mylite_table_maintenance_prepare_statement(
     mylite_db *database,
@@ -174,7 +230,14 @@ int mylite_table_maintenance_prepare_statement(
 
     status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     if (status == MYLITE_OK) {
-        status = attach_table_maintenance_result_metadata(database, *out_stmt);
+        if (operation_is_checksum(operation)) {
+            status = attach_checksum_table_result_metadata(database, *out_stmt);
+        } else {
+            status = attach_table_maintenance_result_metadata(database, *out_stmt);
+        }
+    }
+    if (status == MYLITE_OK && operation_is_checksum(operation)) {
+        (*out_stmt)->preserve_prepare_warnings = true;
     }
     if (status != MYLITE_OK) {
         mylite_finalize(*out_stmt);
@@ -205,6 +268,24 @@ static int attach_table_maintenance_result_metadata(mylite_db *database, mylite_
     );
 }
 
+static int attach_checksum_table_result_metadata(mylite_db *database, mylite_stmt *stmt) {
+    const struct mylite_result_column_metadata_spec columns[] = {
+        {.name = "Table",
+         .descriptor = table_maintenance_field_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             MYLITE_CHECKSUM_TABLE_TABLE_LENGTH
+         )},
+        {.name = "Checksum", .descriptor = checksum_table_field_descriptor()},
+    };
+
+    return mylite_result_metadata_attach_columns(
+        database,
+        stmt,
+        columns,
+        sizeof(columns) / sizeof(columns[0])
+    );
+}
+
 static struct mylite_field_descriptor table_maintenance_field_descriptor(
     int type,
     uint64_t length
@@ -221,6 +302,20 @@ static struct mylite_field_descriptor table_maintenance_field_descriptor(
     return descriptor;
 }
 
+static struct mylite_field_descriptor checksum_table_field_descriptor(void) {
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_LONGLONG,
+        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .length = MYLITE_CHECKSUM_TABLE_CHECKSUM_LENGTH,
+        .decimals = 0U,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
 static int operation_from_statement(
     const struct mylite_sql_ast_node *statement,
     enum mylite_table_maintenance_operation *out_operation
@@ -228,6 +323,12 @@ static int operation_from_statement(
     switch (statement->placeholder_statement_kind) {
     case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
         *out_operation = MYLITE_TABLE_MAINTENANCE_CHECK;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE:
+        *out_operation = MYLITE_TABLE_MAINTENANCE_CHECKSUM;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE_QUICK:
+        *out_operation = MYLITE_TABLE_MAINTENANCE_CHECKSUM_QUICK;
         return MYLITE_OK;
     case MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE:
         *out_operation = MYLITE_TABLE_MAINTENANCE_OPTIMIZE;
@@ -257,9 +358,9 @@ static int append_table_maintenance_sql(
         return status;
     }
 
-    status = classify_maintenance_target(database, &target, &target_status);
+    status = classify_maintenance_target(database, operation, &target, &target_status);
     if (status == MYLITE_OK) {
-        status = append_target_rows(sql, first, operation, &target, target_status);
+        status = append_target_rows(database, sql, first, operation, &target, target_status);
     }
 
     table_maintenance_target_deinit(&target);
@@ -341,6 +442,7 @@ static int copy_maintenance_target_display(
 
 static int classify_maintenance_target(
     mylite_db *database,
+    enum mylite_table_maintenance_operation operation,
     const struct mylite_table_maintenance_target *target,
     enum mylite_table_maintenance_target_status *out_status
 ) {
@@ -352,7 +454,12 @@ static int classify_maintenance_target(
     int status = MYLITE_OK;
 
     if (mylite_ascii_case_equal(target->schema_name, "information_schema")) {
-        if (mylite_information_schema_has_table(target->table_name)) {
+        if (operation_is_checksum(operation) &&
+            mylite_information_schema_has_table(target->table_name)) {
+            *out_status = MYLITE_TABLE_MAINTENANCE_TARGET_NON_BASE_TABLE;
+        } else if (operation_is_checksum(operation)) {
+            *out_status = MYLITE_TABLE_MAINTENANCE_TARGET_UNKNOWN_SYSTEM_TABLE;
+        } else if (mylite_information_schema_has_table(target->table_name)) {
             *out_status = MYLITE_TABLE_MAINTENANCE_TARGET_EXISTS;
         } else {
             *out_status = MYLITE_TABLE_MAINTENANCE_TARGET_MISSING_TABLE;
@@ -402,12 +509,17 @@ static int classify_maintenance_target(
 }
 
 static int append_target_rows(
+    mylite_db *database,
     sqlite3_str *sql,
     bool *first,
     enum mylite_table_maintenance_operation operation,
     const struct mylite_table_maintenance_target *target,
     enum mylite_table_maintenance_target_status target_status
 ) {
+    if (operation_is_checksum(operation)) {
+        return append_checksum_target_row(database, sql, first, operation, target, target_status);
+    }
+
     switch (target_status) {
     case MYLITE_TABLE_MAINTENANCE_TARGET_EXISTS:
         return append_existing_target_rows(sql, first, operation, target->display_name);
@@ -415,6 +527,9 @@ static int append_target_rows(
         return append_missing_table_rows(sql, first, operation, target);
     case MYLITE_TABLE_MAINTENANCE_TARGET_UNKNOWN_SCHEMA:
         return append_unknown_schema_rows(sql, first, operation, target);
+    case MYLITE_TABLE_MAINTENANCE_TARGET_NON_BASE_TABLE:
+    case MYLITE_TABLE_MAINTENANCE_TARGET_UNKNOWN_SYSTEM_TABLE:
+        break;
     }
     return MYLITE_UNSUPPORTED;
 }
@@ -431,6 +546,9 @@ static int append_existing_target_rows(
     case MYLITE_TABLE_MAINTENANCE_CHECK:
         append_result_row(sql, first, display_name, operation_text, "status", "OK");
         break;
+    case MYLITE_TABLE_MAINTENANCE_CHECKSUM:
+    case MYLITE_TABLE_MAINTENANCE_CHECKSUM_QUICK:
+        return MYLITE_UNSUPPORTED;
     case MYLITE_TABLE_MAINTENANCE_OPTIMIZE:
         append_result_row(
             sql,
@@ -519,6 +637,46 @@ static int append_missing_table_rows(
     return sqlite3_str_errcode(sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
 }
 
+static int append_checksum_target_row(
+    mylite_db *database,
+    sqlite3_str *sql,
+    bool *first,
+    enum mylite_table_maintenance_operation operation,
+    const struct mylite_table_maintenance_target *target,
+    enum mylite_table_maintenance_target_status target_status
+) {
+    int status = MYLITE_OK;
+
+    switch (target_status) {
+    case MYLITE_TABLE_MAINTENANCE_TARGET_EXISTS:
+        append_checksum_result_row(
+            sql,
+            first,
+            target->display_name,
+            operation != MYLITE_TABLE_MAINTENANCE_CHECKSUM_QUICK
+        );
+        break;
+    case MYLITE_TABLE_MAINTENANCE_TARGET_MISSING_TABLE:
+        append_checksum_result_row(sql, first, target->display_name, false);
+        status = append_checksum_missing_table_warning(database, target);
+        break;
+    case MYLITE_TABLE_MAINTENANCE_TARGET_UNKNOWN_SCHEMA:
+        append_checksum_result_row(sql, first, target->display_name, false);
+        status = append_checksum_unknown_schema_warning(database, target);
+        break;
+    case MYLITE_TABLE_MAINTENANCE_TARGET_NON_BASE_TABLE:
+        append_checksum_result_row(sql, first, target->display_name, false);
+        status = append_checksum_non_base_table_warning(database, target);
+        break;
+    case MYLITE_TABLE_MAINTENANCE_TARGET_UNKNOWN_SYSTEM_TABLE:
+        return set_unknown_information_schema_table_error(database, target);
+    }
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return sqlite3_str_errcode(sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
+}
+
 static void append_result_row(
     sqlite3_str *sql,
     bool *first,
@@ -542,16 +700,114 @@ static void append_result_row(
     *first = false;
 }
 
+static void append_checksum_result_row(
+    sqlite3_str *sql,
+    bool *first,
+    const char *table_name,
+    bool has_checksum
+) {
+    const char *checksum_sql = "NULL";
+
+    if (!*first) {
+        sqlite3_str_appendall(sql, " UNION ALL ");
+    }
+    if ((int)has_checksum != 0) {
+        checksum_sql = "0";
+    }
+    sqlite3_str_appendf(
+        sql,
+        "SELECT %Q AS \"Table\", %s AS \"Checksum\"",
+        table_name,
+        checksum_sql
+    );
+    *first = false;
+}
+
+static bool operation_is_checksum(enum mylite_table_maintenance_operation operation) {
+    if (operation == MYLITE_TABLE_MAINTENANCE_CHECKSUM) {
+        return true;
+    }
+    return operation == MYLITE_TABLE_MAINTENANCE_CHECKSUM_QUICK;
+}
+
 static const char *operation_name(enum mylite_table_maintenance_operation operation) {
     switch (operation) {
     case MYLITE_TABLE_MAINTENANCE_CHECK:
         return "check";
+    case MYLITE_TABLE_MAINTENANCE_CHECKSUM:
+    case MYLITE_TABLE_MAINTENANCE_CHECKSUM_QUICK:
+        return "checksum";
     case MYLITE_TABLE_MAINTENANCE_OPTIMIZE:
         return "optimize";
     case MYLITE_TABLE_MAINTENANCE_REPAIR:
         return "repair";
     }
     return "";
+}
+
+static int append_checksum_unknown_schema_warning(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target
+) {
+    char *message = sqlite3_mprintf("Unknown database '%q'", target->schema_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_BAD_DB_ERROR, message);
+    sqlite3_free(message);
+    return status;
+}
+
+static int append_checksum_missing_table_warning(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target
+) {
+    char *message =
+        sqlite3_mprintf("Table '%q.%q' doesn't exist", target->schema_name, target->table_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NO_SUCH_TABLE, message);
+    sqlite3_free(message);
+    return status;
+}
+
+static int append_checksum_non_base_table_warning(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target
+) {
+    char *message =
+        sqlite3_mprintf("'%q.%q' is not BASE TABLE", target->schema_name, target->table_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_OBJECT, message);
+    sqlite3_free(message);
+    return status;
+}
+
+static int set_unknown_information_schema_table_error(
+    mylite_db *database,
+    const struct mylite_table_maintenance_target *target
+) {
+    char *message = sqlite3_mprintf("Unknown table '%q' in information_schema", target->table_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_UNKNOWN_TABLE, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static void table_maintenance_target_deinit(struct mylite_table_maintenance_target *target) {

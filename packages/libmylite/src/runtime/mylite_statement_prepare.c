@@ -513,6 +513,8 @@ static bool placeholder_statement_is_table_maintenance(
 ) {
     switch (statement->placeholder_statement_kind) {
     case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
+    case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE:
+    case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE_QUICK:
     case MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE:
         return true;
@@ -582,6 +584,8 @@ static enum mylite_stmt_kind placeholder_statement_kind(
     case MYLITE_SQL_AST_PLACEHOLDER_UNLOCK_TABLES:
         return MYLITE_STMT_UNLOCK_TABLES_PLACEHOLDER;
     case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
+    case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE:
+    case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE_QUICK:
     case MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE:
         break;

@@ -4976,12 +4976,15 @@ static int test_table_maintenance_syntax(void) {
     enum {
         check_simple_index = 0,
         check_options_index = 1,
-        optimize_index = 2,
-        optimize_local_index = 3,
-        optimize_no_write_index = 4,
-        repair_options_index = 5,
-        repair_local_index = 6,
-        statement_count = 7,
+        checksum_index = 2,
+        checksum_quick_index = 3,
+        checksum_extended_index = 4,
+        optimize_index = 5,
+        optimize_local_index = 6,
+        optimize_no_write_index = 7,
+        repair_options_index = 8,
+        repair_local_index = 9,
+        statement_count = 10,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -4992,6 +4995,9 @@ static int test_table_maintenance_syntax(void) {
     failures += parse_sql(
         "CHECK TABLE t; "
         "CHECK TABLE app.t, u QUICK FAST MEDIUM EXTENDED CHANGED FOR UPGRADE; "
+        "CHECKSUM TABLE t, app.u; "
+        "CHECKSUM TABLE t QUICK; "
+        "CHECKSUM TABLE app.t EXTENDED; "
         "OPTIMIZE TABLE t, app.u; "
         "OPTIMIZE LOCAL TABLE t; "
         "OPTIMIZE NO_WRITE_TO_BINLOG TABLE t; "
@@ -5027,6 +5033,32 @@ static int test_table_maintenance_syntax(void) {
         expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "check qualified target");
     failures += expect_span_text(child_at(table_name, 0U), "app", "check target schema");
     failures += expect_span_text(child_at(table_name, 1U), "t", "check target table");
+
+    statement = child_at(result.root, checksum_index);
+    failures += expect_placeholder_statement(
+        statement,
+        MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE,
+        "checksum table placeholder"
+    );
+    table_list = child_at(statement, 0U);
+    failures += expect_child_count(table_list, 2U, "checksum target count");
+    failures += expect_span_text(child_at(table_list, 0U), "t", "checksum first target");
+    table_name = child_at(table_list, 1U);
+    failures +=
+        expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "checksum qualified target");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "checksum target schema");
+    failures += expect_span_text(child_at(table_name, 1U), "u", "checksum target table");
+
+    failures += expect_placeholder_statement(
+        child_at(result.root, checksum_quick_index),
+        MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE_QUICK,
+        "checksum quick placeholder"
+    );
+    failures += expect_placeholder_statement(
+        child_at(result.root, checksum_extended_index),
+        MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE,
+        "checksum extended placeholder"
+    );
 
     statement = child_at(result.root, optimize_index);
     failures += expect_placeholder_statement(
@@ -5075,6 +5107,26 @@ static int test_table_maintenance_syntax(void) {
     failures += parse_sql("CHECK TABLE t FOR;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("CHECKSUM TABLE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE t QUICK, u;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CHECKSUM TABLE t QUICK EXTENDED;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CHECKSUM TABLE t EXTENDED QUICK;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE t LOCAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CHECKSUM TABLE t FOR UPGRADE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("OPTIMIZE TABLE t QUICK;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -5085,7 +5137,7 @@ static int test_table_maintenance_syntax(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE quick (fast INT, medium INT, changed INT, "
+        "CREATE TABLE quick (fast INT, medium INT, changed INT, checksum INT, "
         "upgrade INT, use_frm INT);",
         MYLITE_SQL_PARSE_OK,
         &result

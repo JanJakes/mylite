@@ -836,6 +836,18 @@ table_maintenance_statement(A) ::= CHECK(T) TABLE maintenance_table_name_list(B)
     A = mylite_sql_parser_make_placeholder_statement_with_child(
         state, MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE, T, B);
 }
+table_maintenance_statement(A) ::= CHECKSUM(T) TABLE maintenance_table_name_list(B). {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE, T, B);
+}
+table_maintenance_statement(A) ::= CHECKSUM(T) TABLE maintenance_table_name_list(B) QUICK. {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE_QUICK, T, B);
+}
+table_maintenance_statement(A) ::= CHECKSUM(T) TABLE maintenance_table_name_list(B) EXTENDED. {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE, T, B);
+}
 table_maintenance_statement(A) ::= OPTIMIZE(T) opt_write_to_binlog TABLE maintenance_table_name_list(B). {
     A = mylite_sql_parser_make_placeholder_statement_with_child(
         state, MYLITE_SQL_AST_PLACEHOLDER_OPTIMIZE_TABLE, T, B);
@@ -5500,6 +5512,9 @@ nonreserved_identifier_keyword(A) ::= COALESCE(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= CHANGED(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= CHECKSUM(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= CONNECTION(T). {

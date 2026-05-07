@@ -109,6 +109,7 @@ enum {
     simple_create_statistics_count = 3,
     mysql_warning_no_database = 1046,
     mysql_warning_bad_null = 1048,
+    mysql_warning_bad_db = 1049,
     mysql_warning_table_exists = 1050,
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
@@ -150,6 +151,7 @@ enum {
     mysql_warning_no_default = 1364,
     mysql_warning_division_by_zero = 1365,
     mysql_warning_truncated_wrong_value_for_field = 1366,
+    mysql_warning_wrong_object = 1347,
     mysql_error_data_too_long = 1406,
     mysql_warning_incorrect_string_value = 1411,
     mysql_warning_datetime_function_overflow = 1441,
@@ -42460,6 +42462,7 @@ static int test_truncate_table_execution(void) {
 static int test_table_maintenance_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"Table", "Op", "Msg_type", "Msg_text"};
+    static const char *const checksum_columns[] = {"Table", "Checksum"};
     static const struct expected_result_metadata metadata[] = {
         {.name = "Table",
          .declared_length = 128U,
@@ -42490,11 +42493,32 @@ static int test_table_maintenance_execution(void) {
          .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
          .nullable = 1},
     };
+    static const struct expected_result_metadata checksum_metadata[] = {
+        {.name = "Table",
+         .declared_length = 384U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Checksum",
+         .declared_length = 22U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .decimals = 0U,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
     static const char *const no_default_values[] = {
         "mylite_table_maintenance_no_default.q",
         "check",
         "status",
         "OK",
+    };
+    static const char *const checksum_no_default_values[] = {
+        "mylite_table_maintenance_no_default.q",
+        "0",
     };
     static const char *const check_values[] = {
         "mylite_table_maintenance.t",
@@ -42576,6 +42600,28 @@ static int test_table_maintenance_execution(void) {
         "status",
         "Operation failed",
     };
+    static const char *const checksum_values[] = {
+        "mylite_table_maintenance.t",
+        "0",
+        "mylite_table_maintenance.temp_t",
+        "0",
+        "mylite_table_maintenance.missing_t",
+        NULL,
+    };
+    static const char *const checksum_quick_values[] = {
+        "mylite_table_maintenance.t",
+        NULL,
+        "mylite_table_maintenance.temp_t",
+        NULL,
+    };
+    static const char *const checksum_unknown_schema_values[] = {
+        "missing_maintenance.t",
+        NULL,
+    };
+    static const char *const checksum_information_schema_values[] = {
+        "information_schema.TABLES",
+        NULL,
+    };
     mylite_db *database = NULL;
     mylite_db *no_default_database = NULL;
     mylite_stmt *stmt = NULL;
@@ -42589,6 +42635,13 @@ static int test_table_maintenance_execution(void) {
         MYLITE_EXEC_ERROR,
         "No database selected",
         "check table requires selected schema"
+    );
+    failures += expect_prepare_error(
+        database,
+        "CHECKSUM TABLE t",
+        MYLITE_EXEC_ERROR,
+        "No database selected",
+        "checksum table requires selected schema"
     );
 
     failures += execute_sql(database, "CREATE DATABASE mylite_table_maintenance", MYLITE_DONE);
@@ -42609,6 +42662,19 @@ static int test_table_maintenance_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "table maintenance metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "table maintenance metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "CHECKSUM TABLE t", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        checksum_metadata,
+        (int)(sizeof(checksum_metadata) / sizeof(checksum_metadata[0])),
+        "checksum table metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "checksum table metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "checksum table metadata done");
+    failures += expect_int(mylite_warning_count(database), 0, "checksum table metadata warnings");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -42685,6 +42751,76 @@ static int test_table_maintenance_execution(void) {
         2,
         "check table missing information schema table"
     );
+    failures += expect_select_rows(
+        database,
+        "CHECKSUM TABLE t, temp_t, missing_t",
+        checksum_columns,
+        2,
+        checksum_values,
+        3,
+        "checksum table selected schema targets"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "checksum missing warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_such_table,
+        "checksum missing warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Table 'mylite_table_maintenance.missing_t' doesn't exist",
+        "checksum missing warning message"
+    );
+    failures += expect_select_rows(
+        database,
+        "CHECKSUM TABLE t, temp_t QUICK",
+        checksum_columns,
+        2,
+        checksum_quick_values,
+        2,
+        "checksum table quick targets"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "checksum quick warning count");
+    failures += expect_select_rows(
+        database,
+        "CHECKSUM TABLE missing_maintenance.t",
+        checksum_columns,
+        2,
+        checksum_unknown_schema_values,
+        1,
+        "checksum table unknown schema"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_bad_db,
+        "checksum unknown schema warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "CHECKSUM TABLE information_schema.TABLES",
+        checksum_columns,
+        2,
+        checksum_information_schema_values,
+        1,
+        "checksum table information schema"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_wrong_object,
+        "checksum information schema warning code"
+    );
+    failures += expect_prepare_error(
+        database,
+        "CHECKSUM TABLE information_schema.NO_SUCH_TABLE",
+        MYLITE_EXEC_ERROR,
+        "Unknown table 'NO_SUCH_TABLE' in information_schema",
+        "checksum missing information schema table"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_unknown_table,
+        "checksum missing information schema table code"
+    );
 
     mylite_close(database);
 
@@ -42711,6 +42847,15 @@ static int test_table_maintenance_execution(void) {
         no_default_values,
         1,
         "check qualified table without selected schema"
+    );
+    failures += expect_select_rows(
+        no_default_database,
+        "CHECKSUM TABLE mylite_table_maintenance_no_default.q",
+        checksum_columns,
+        2,
+        checksum_no_default_values,
+        1,
+        "checksum qualified table without selected schema"
     );
     mylite_close(no_default_database);
 

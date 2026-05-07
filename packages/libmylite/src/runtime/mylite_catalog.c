@@ -299,13 +299,22 @@ static int read_secondary_index_count(
     sqlite3_int64 *out_index_count
 );
 
+static int refresh_table_statistics(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *physical_name,
+    bool force_update_time
+);
+
 static int update_table_statistics(
     mylite_db *database,
     const char *table_catalog,
     const char *schema_name,
     const char *table_name,
     sqlite3_int64 row_count,
-    sqlite3_int64 secondary_index_count
+    sqlite3_int64 secondary_index_count,
+    bool force_update_time
 );
 
 static int ensure_index_catalog_display_type_column(mylite_db *database, const char *catalog_name);
@@ -608,6 +617,25 @@ int mylite_catalog_refresh_table_statistics(
     const char *table_name,
     const char *physical_name
 ) {
+    return refresh_table_statistics(database, schema_name, table_name, physical_name, false);
+}
+
+int mylite_catalog_refresh_table_statistics_after_write(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *physical_name
+) {
+    return refresh_table_statistics(database, schema_name, table_name, physical_name, true);
+}
+
+static int refresh_table_statistics(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *physical_name,
+    bool force_update_time
+) {
     const char *table_catalog = NULL;
     bool temporary = false;
     bool exists = false;
@@ -651,7 +679,8 @@ int mylite_catalog_refresh_table_statistics(
             schema_name,
             table_name,
             row_count,
-            secondary_index_count
+            secondary_index_count,
+            force_update_time
         );
     }
     return status;
@@ -1177,23 +1206,25 @@ static int update_table_statistics(
     const char *schema_name,
     const char *table_name,
     sqlite3_int64 row_count,
-    sqlite3_int64 secondary_index_count
+    sqlite3_int64 secondary_index_count,
+    bool force_update_time
 ) {
     enum {
         bind_rows = 1,
         bind_avg_row_length = 2,
         bind_data_length = 3,
         bind_index_length = 4,
-        bind_update_time_rows = 5,
-        bind_schema = 6,
-        bind_table = 7,
+        bind_update_time_force = 5,
+        bind_update_time_rows = 6,
+        bind_schema = 7,
+        bind_table = 8,
     };
 
     sqlite3_stmt *update = NULL;
     char *sql = sqlite3_mprintf(
         "UPDATE %s SET table_rows = ?, avg_row_length = ?, data_length = ?, "
         "max_data_length = 0, index_length = ?, data_free = 0, "
-        "update_time = CASE WHEN table_rows IS NOT ? "
+        "update_time = CASE WHEN ? OR table_rows IS NOT ? "
         "THEN strftime('%%Y-%%m-%%d %%H:%%M:%%S', 'now') ELSE update_time END "
         "WHERE table_schema = ? AND table_name = ?",
         table_catalog
@@ -1218,6 +1249,7 @@ static int update_table_statistics(
     sqlite3_bind_int64(update, bind_avg_row_length, avg_row_length);
     sqlite3_bind_int64(update, bind_data_length, data_length);
     sqlite3_bind_int64(update, bind_index_length, index_length);
+    sqlite3_bind_int(update, bind_update_time_force, force_update_time ? 1 : 0);
     sqlite3_bind_int64(update, bind_update_time_rows, row_count);
     sqlite3_bind_text(update, bind_schema, schema_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(update, bind_table, table_name, -1, sqlite_transient_destructor());

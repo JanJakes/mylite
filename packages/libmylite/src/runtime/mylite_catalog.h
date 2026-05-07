@@ -64,6 +64,12 @@ int mylite_catalog_refresh_table_statistics(
     const char *table_name,
     const char *physical_name
 );
+int mylite_catalog_refresh_table_statistics_after_write(
+    mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char *physical_name
+);
 int mylite_catalog_delete_table_rows(
     mylite_db *database,
     const char *schema_name,

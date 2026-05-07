@@ -132,8 +132,8 @@ Column mapping:
 - `Auto_increment`: `auto_increment`
 - `Create_time`: the table catalog creation timestamp recorded when MyLite
   executes `CREATE TABLE`.
-- `Update_time`: `update_time`, stamped when maintained row statistics change
-  after covered DML.
+- `Update_time`: `update_time`, stamped when covered DML changes table rows or
+  maintained row statistics.
 - `Check_time`: `check_time`
 - `Collation`: `table_collation`
 - `Checksum`: `checksum`

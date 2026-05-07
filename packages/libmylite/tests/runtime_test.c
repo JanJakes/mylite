@@ -46030,6 +46030,7 @@ static int test_show_table_status_execution(void) {
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
+    char status_meta_update_time_before[32] = "";
     int failures = 0;
 
     failures +=
@@ -46173,6 +46174,70 @@ static int test_show_table_status_execution(void) {
         1,
         "show table status where is true"
     );
+    failures += prepare_sql(
+        database,
+        "SELECT UPDATE_TIME FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'status_meta'",
+        MYLITE_OK,
+        &stmt
+    );
+    if (stmt != NULL) {
+        const char *update_time = NULL;
+
+        failures +=
+            expect_status(mylite_step(stmt), MYLITE_ROW, "show table status update time before");
+        update_time = mylite_column_text(stmt, 0);
+        failures += expect_datetime_text(update_time, 0U, "show table status update time shape");
+        if (update_time != NULL) {
+            (void)snprintf(
+                status_meta_update_time_before,
+                sizeof(status_meta_update_time_before),
+                "%s",
+                update_time
+            );
+        }
+        failures += expect_status(
+            mylite_step(stmt),
+            MYLITE_DONE,
+            "show table status update time before done"
+        );
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
+    sqlite3_sleep(1100);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE status_meta SET v = 11 WHERE id = 42",
+        1,
+        "show table status update time affected rows"
+    );
+    failures += prepare_sql(
+        database,
+        "SELECT UPDATE_TIME FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'status_meta'",
+        MYLITE_OK,
+        &stmt
+    );
+    if (stmt != NULL) {
+        const char *update_time = NULL;
+
+        failures +=
+            expect_status(mylite_step(stmt), MYLITE_ROW, "show table status update time after");
+        update_time = mylite_column_text(stmt, 0);
+        failures +=
+            expect_datetime_text(update_time, 0U, "show table status update time after shape");
+        if (update_time != NULL && strcmp(update_time, status_meta_update_time_before) == 0) {
+            fprintf(stderr, "show table status update time did not change after UPDATE\n");
+            ++failures;
+        }
+        failures += expect_status(
+            mylite_step(stmt),
+            MYLITE_DONE,
+            "show table status update time after done"
+        );
+        mylite_finalize(stmt);
+        stmt = NULL;
+    }
     failures += execute_sql(database, "DELETE FROM status_meta WHERE v = 20", MYLITE_DONE);
     failures += expect_select_rows(
         database,

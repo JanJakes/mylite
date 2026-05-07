@@ -1,5 +1,6 @@
 #include "mylite_dml.h"
 
+#include "mylite_catalog.h"
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
@@ -167,6 +168,14 @@ int mylite_dml_execute_update_rows_transaction(
             table->schema_name,
             table->table_name,
             next_auto_increment
+        );
+    }
+    if (status == MYLITE_OK && affected_rows > 0) {
+        status = mylite_catalog_refresh_table_statistics_after_write(
+            database,
+            table->schema_name,
+            table->table_name,
+            table->physical_name
         );
     }
     if (status == MYLITE_OK) {

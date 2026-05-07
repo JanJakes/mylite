@@ -2292,6 +2292,7 @@ struct MyliteColumnType {
 # define MYLITE_COLTYPE_SET              15
 # define MYLITE_COLTYPE_BIT              16
 # define MYLITE_COLTYPE_JSON             17
+# define MYLITE_COLTYPE_TIMESTAMP        18
 
 # define MYLITE_COLTYPE_FLAG_UNSIGNED    0x0001
 # define MYLITE_COLTYPE_FLAG_ALLOW_ZERO  0x0002

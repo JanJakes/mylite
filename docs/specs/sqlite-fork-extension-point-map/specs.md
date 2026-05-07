@@ -27,6 +27,8 @@ Implemented fork points:
 - decimal precision/scale rounding and range checks through column descriptors
 - date, datetime, time, and year parsing, fractional rounding, mapping, and
   range checks through column descriptors
+- timestamp parsing, fractional rounding, and strict range checks through a
+  distinct column descriptor
 - enum label/index assignment and readback through payload descriptors
 - set label-list/bit-mask assignment and readback through payload descriptors
 - bit-width assignment, fixed-width binary readback, and unsigned numeric
@@ -88,6 +90,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-bit-column-descriptors/specs.md`
 - SQLite fork JSON column descriptors:
   `docs/specs/sqlite-fork-json-column-descriptors/specs.md`
+- SQLite fork TIMESTAMP column descriptors:
+  `docs/specs/sqlite-fork-timestamp-column-descriptors/specs.md`
 - SQLite collation prefix uniqueness:
   `docs/specs/sqlite-collation-prefix-unique/specs.md`
 
@@ -162,10 +166,6 @@ Implemented first slice:
 - MyLite result materialization that preserves fork-provided display strings
   and numeric context for `ENUM`/`SET`
 
-Next likely descriptor families:
-
-- `TIMESTAMP` temporal values with SQL-mode and time-zone behavior
-
 `ENUM` establishes a descriptor-payload and read-type boundary: physical
 storage can be compact while selected values expose MySQL's string display and
 numeric index behavior. `SET` reuses that payload ownership pattern with
@@ -178,20 +178,22 @@ must expose fixed-width binary display bytes to string functions and unsigned
 numeric context to arithmetic/order paths. `JSON` confirms a related
 write-boundary need even when physical storage is currently text: assignment
 validation must happen before SQLite affinity and record construction, while
-metadata and diagnostics remain MySQL-owned.
+metadata and diagnostics remain MySQL-owned. `TIMESTAMP` confirms that a
+descriptor can share parser/formatter code with `DATETIME` while still carrying
+separate range and future time-zone semantics.
 
-The next temporal-specific fork points are accepted-assignment warnings,
+The next type-adjacent fork points are accepted-assignment warnings,
 SQL-mode-sensitive zero date handling, `TIME_TRUNCATE_FRACTIONAL`,
-`TIMESTAMP` time-zone conversion, `YEAR(4)` declaration warnings, and direct
-SQLite parser/catalog descriptor loading. The next decimal-specific fork points
-are comparison/index ordering and direct SQLite parser numeric-literal
-preservation. The next JSON-specific fork points are binary JSON
-normalization/storage, exact diagnostic messages with parser positions, JSON
-comparison/index semantics, mutator/partial-update storage metadata, and direct
-SQLite parser/catalog descriptor loading. The expression side still needs
-continued MySQL numeric-context coercion work for collation-aware value-list
-string comparisons, unsigned 64-bit bit rendering, cross-column descriptor
-comparisons, and optimizer/index ordering.
+`TIMESTAMP` time-zone conversion, `YEAR(4)` declaration warnings, direct
+SQLite parser/catalog descriptor loading, and descriptor hydration after schema
+reload. The next decimal-specific fork points are comparison/index ordering and
+direct SQLite parser numeric-literal preservation. The next JSON-specific fork
+points are binary JSON normalization/storage, exact diagnostic messages with
+parser positions, JSON comparison/index semantics, mutator/partial-update
+storage metadata, and direct SQLite parser/catalog descriptor loading. The
+expression side still needs continued MySQL numeric-context coercion work for
+collation-aware value-list string comparisons, unsigned 64-bit bit rendering,
+cross-column descriptor comparisons, and optimizer/index ordering.
 
 ### Diagnostics and warnings
 
@@ -255,7 +257,12 @@ For the next foundation work, prefer this order:
    and synthetic schema exposure.
 2. Extend the column-descriptor/VDBE assignment path before adding more
    statement-specific DML lowering code.
-3. Add fork diagnostics only when a conversion or constraint behavior needs
+3. Add direct parser/schema-builder attachment and schema reload hydration only
+   after catalog-fed descriptors cover the semantic primitive.
+4. Add fork diagnostics only when a conversion or constraint behavior needs
    MySQL warning/error semantics that cannot be represented by SQLite errors.
-4. Delay broad parser patches until the primitive semantics are strong enough
+5. Move row identity, sequence allocation, and constraint mapping into the fork
+   when public MyLite SQL lowering cannot preserve MySQL affected-row,
+   duplicate-key, or auto-increment side effects without duplicated logic.
+6. Delay broad parser patches until the primitive semantics are strong enough
    that parser integration can attach metadata instead of recreating behavior.

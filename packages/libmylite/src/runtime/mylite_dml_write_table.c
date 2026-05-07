@@ -73,6 +73,12 @@ static bool write_table_column_fork_type(
     struct mylite_sqlite_fork_column_type *out_type
 );
 
+static bool write_table_column_temporal_fork_type(
+    const struct mylite_insert_table_column *column,
+    bool allow_zero_temporal,
+    struct mylite_sqlite_fork_column_type *out_type
+);
+
 static bool write_table_column_signed_integer_bounds(
     const struct mylite_insert_table_column *column,
     struct write_table_integer_bounds *out_bounds
@@ -110,6 +116,8 @@ static bool write_table_column_uses_json_type(const struct mylite_insert_table_c
 static bool write_table_column_uses_date_type(const struct mylite_insert_table_column *column);
 
 static bool write_table_column_uses_datetime_type(const struct mylite_insert_table_column *column);
+
+static bool write_table_column_uses_timestamp_type(const struct mylite_insert_table_column *column);
 
 static bool write_table_column_uses_time_type(const struct mylite_insert_table_column *column);
 
@@ -547,6 +555,17 @@ static bool write_table_column_fork_type(
         out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_JSON;
         return true;
     }
+    return write_table_column_temporal_fork_type(column, allow_zero_temporal, out_type);
+}
+
+static bool write_table_column_temporal_fork_type(
+    const struct mylite_insert_table_column *column,
+    bool allow_zero_temporal,
+    struct mylite_sqlite_fork_column_type *out_type
+) {
+    if (column == NULL || out_type == NULL) {
+        return false;
+    }
     if (write_table_column_uses_date_type(column)) {
         out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATE;
         if (allow_zero_temporal) {
@@ -556,6 +575,14 @@ static bool write_table_column_fork_type(
     }
     if (write_table_column_uses_datetime_type(column)) {
         out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATETIME;
+        out_type->datetime_precision = column->datetime_precision;
+        if (allow_zero_temporal) {
+            out_type->flags |= MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL;
+        }
+        return true;
+    }
+    if (write_table_column_uses_timestamp_type(column)) {
+        out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_TIMESTAMP;
         out_type->datetime_precision = column->datetime_precision;
         if (allow_zero_temporal) {
             out_type->flags |= MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL;
@@ -732,6 +759,15 @@ static bool write_table_column_uses_datetime_type(const struct mylite_insert_tab
         return false;
     }
     return mylite_ascii_case_equal(column->data_type, "datetime");
+}
+
+static bool write_table_column_uses_timestamp_type(
+    const struct mylite_insert_table_column *column
+) {
+    if (column == NULL || !column->has_datetime_precision) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "timestamp");
 }
 
 static bool write_table_column_uses_time_type(const struct mylite_insert_table_column *column) {

@@ -508,6 +508,14 @@ static int myliteCoerceDateTime(
   u32 *pMyErrno,
   const char **pzSqlState
 );
+static int myliteCoerceTimestamp(
+  Mem *pMem,
+  u8 nFsp,
+  int bAllowZero,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
 static int myliteCoerceTime(
   Mem *pMem,
   u8 nFsp,
@@ -687,6 +695,11 @@ static int myliteTemporalReadVariableDigits(
 );
 static int myliteTemporalValidDate(int y, int m, int d, int bAllowZero);
 static int myliteTemporalZeroDate(const MyliteTemporalParts *pOut);
+static int myliteTimestampWithinRange(const MyliteTemporalParts *pParts, int bAllowZero);
+static int myliteTemporalCompareParts(
+  const MyliteTemporalParts *pLeft,
+  const MyliteTemporalParts *pRight
+);
 static int myliteTemporalValidTime(int h, int min, int s);
 static int myliteTemporalDaysInMonth(int y, int m);
 static int myliteTemporalLeapYear(int y);
@@ -875,6 +888,12 @@ static int myliteApplyColumnType(
       );
     case MYLITE_COLTYPE_DATETIME:
       return myliteCoerceDateTime(
+          pMem, pCol->myliteType.nFsp,
+          (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_ALLOW_ZERO)!=0,
+          pzErr, pMyErrno, pzSqlState
+      );
+    case MYLITE_COLTYPE_TIMESTAMP:
+      return myliteCoerceTimestamp(
           pMem, pCol->myliteType.nFsp,
           (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_ALLOW_ZERO)!=0,
           pzErr, pMyErrno, pzSqlState
@@ -1646,6 +1665,32 @@ static int myliteCoerceDateTime(
   return sqlite3VdbeMemSetStr(pMem, zOut, nOut, SQLITE_UTF8, SQLITE_TRANSIENT);
 }
 
+static int myliteCoerceTimestamp(
+  Mem *pMem,
+  u8 nFsp,
+  int bAllowZero,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  MyliteTemporalParts parts;
+  char zOut[32];
+  int nOut = 0;
+  int rc;
+
+  rc = myliteTemporalText(pMem);
+  if( rc!=SQLITE_OK ) return rc;
+  rc = myliteParseTemporalText(pMem->z, pMem->n, 1, nFsp, bAllowZero, &parts);
+  if( rc!=MYLITE_TEMPORAL_OK || !myliteTimestampWithinRange(&parts, bAllowZero) ){
+    *pzErr = "invalid timestamp value";
+    *pMyErrno = 1292;
+    *pzSqlState = "22007";
+    return SQLITE_MISMATCH;
+  }
+  myliteTemporalFormatDateTime(&parts, nFsp, zOut, &nOut);
+  return sqlite3VdbeMemSetStr(pMem, zOut, nOut, SQLITE_UTF8, SQLITE_TRANSIENT);
+}
+
 static int myliteCoerceTime(
   Mem *pMem,
   u8 nFsp,
@@ -2301,6 +2346,36 @@ static int myliteTemporalValidDate(int y, int m, int d, int bAllowZero){
 
 static int myliteTemporalZeroDate(const MyliteTemporalParts *pOut){
   return pOut->y==0 && pOut->m==0 && pOut->d==0;
+}
+
+static int myliteTimestampWithinRange(const MyliteTemporalParts *pParts, int bAllowZero){
+  static const MyliteTemporalParts minTimestamp = {
+    1970, 1, 1, 0, 0, 1, 0
+  };
+  static const MyliteTemporalParts maxTimestamp = {
+    2038, 1, 19, 3, 14, 7, 999999
+  };
+
+  if( bAllowZero && myliteTemporalZeroDate(pParts) &&
+      pParts->h==0 && pParts->min==0 && pParts->s==0 && pParts->us==0 ){
+    return 1;
+  }
+  if( myliteTemporalCompareParts(pParts, &minTimestamp)<0 ) return 0;
+  return myliteTemporalCompareParts(pParts, &maxTimestamp)<=0;
+}
+
+static int myliteTemporalCompareParts(
+  const MyliteTemporalParts *pLeft,
+  const MyliteTemporalParts *pRight
+){
+  if( pLeft->y!=pRight->y ) return pLeft->y < pRight->y ? -1 : 1;
+  if( pLeft->m!=pRight->m ) return pLeft->m < pRight->m ? -1 : 1;
+  if( pLeft->d!=pRight->d ) return pLeft->d < pRight->d ? -1 : 1;
+  if( pLeft->h!=pRight->h ) return pLeft->h < pRight->h ? -1 : 1;
+  if( pLeft->min!=pRight->min ) return pLeft->min < pRight->min ? -1 : 1;
+  if( pLeft->s!=pRight->s ) return pLeft->s < pRight->s ? -1 : 1;
+  if( pLeft->us!=pRight->us ) return pLeft->us < pRight->us ? -1 : 1;
+  return 0;
 }
 
 static int myliteTemporalValidTime(int h, int min, int s){

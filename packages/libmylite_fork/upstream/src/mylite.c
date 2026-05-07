@@ -379,6 +379,17 @@ static int myliteMakeColumnType(
         pOut->mFlags |= MYLITE_COLTYPE_FLAG_ALLOW_ZERO;
       }
       return SQLITE_OK;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_TIMESTAMP:
+      if( pType->flags & ~MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL ){
+        return SQLITE_MISUSE;
+      }
+      if( pType->datetime_precision>6 ) return SQLITE_MISUSE;
+      pOut->eType = MYLITE_COLTYPE_TIMESTAMP;
+      pOut->nFsp = (u8)pType->datetime_precision;
+      if( pType->flags & MYLITE_SQLITE_FORK_COLUMN_TYPE_ALLOW_ZERO_TEMPORAL ){
+        pOut->mFlags |= MYLITE_COLTYPE_FLAG_ALLOW_ZERO;
+      }
+      return SQLITE_OK;
     case MYLITE_SQLITE_FORK_COLUMN_TYPE_TIME:
       if( pType->flags!=0 ) return SQLITE_MISUSE;
       if( pType->datetime_precision>6 ) return SQLITE_MISUSE;

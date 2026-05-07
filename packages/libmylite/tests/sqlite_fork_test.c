@@ -47,6 +47,8 @@ static int test_native_decimal_type_coercion(void);
 
 static int test_native_temporal_type_coercion(void);
 
+static int test_native_timestamp_type_coercion(void);
+
 static int test_native_time_type_coercion(void);
 
 static int test_native_year_type_coercion(void);
@@ -72,6 +74,8 @@ static int test_mylite_text_blob_family_coercion(void);
 static int test_mylite_decimal_type_coercion(void);
 
 static int test_mylite_temporal_type_coercion(void);
+
+static int test_mylite_timestamp_type_coercion(void);
 
 static int test_mylite_time_type_coercion(void);
 
@@ -142,6 +146,7 @@ int main(void) {
     failures += test_native_text_blob_family_coercion();
     failures += test_native_decimal_type_coercion();
     failures += test_native_temporal_type_coercion();
+    failures += test_native_timestamp_type_coercion();
     failures += test_native_time_type_coercion();
     failures += test_native_year_type_coercion();
     failures += test_native_bit_type_coercion();
@@ -155,6 +160,7 @@ int main(void) {
     failures += test_mylite_text_blob_family_coercion();
     failures += test_mylite_decimal_type_coercion();
     failures += test_mylite_temporal_type_coercion();
+    failures += test_mylite_timestamp_type_coercion();
     failures += test_mylite_time_type_coercion();
     failures += test_mylite_year_type_coercion();
     failures += test_mylite_bit_type_coercion();
@@ -1167,6 +1173,200 @@ static int test_native_temporal_type_coercion(void) {
             .sql = "SELECT d || ':' || dt FROM temporal_zero_direct WHERE id = 1",
             .expected = "0000-00-00:0000-00-00 00:00:00",
             .context = "direct temporal descriptors can allow zero sentinels",
+        }
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_timestamp_type_coercion(void) {
+    enum {
+        invalid_timestamp_error = 1292,
+        timestamp_millisecond_precision = 3,
+        timestamp_microsecond_precision = 6,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE timestamp_direct("
+        "id INTEGER PRIMARY KEY, ts TEXT, ts3 TEXT, ts6 TEXT)",
+        "create direct timestamp descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "timestamp_direct",
+            "ts",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_TIMESTAMP,
+            }
+        ),
+        database,
+        "set direct timestamp descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "timestamp_direct",
+            "ts3",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_TIMESTAMP,
+                .datetime_precision = timestamp_millisecond_precision,
+            }
+        ),
+        database,
+        "set direct timestamp(3) descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "timestamp_direct",
+            "ts6",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_TIMESTAMP,
+                .datetime_precision = timestamp_microsecond_precision,
+            }
+        ),
+        database,
+        "set direct timestamp(6) descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO timestamp_direct VALUES "
+        "(1, '1970-01-01 00:00:01', '1970-01-01 00:00:01.1234', "
+        "'1970-01-01 00:00:01.1234567'),"
+        "(2, '2038-01-19 03:14:07', '2038-01-19 03:14:07.9994', "
+        "'2038-01-19 03:14:07.999999'),"
+        "(3, 20240229123456, '2024-02-29 12:34:56.7896', NULL)",
+        "insert direct timestamp descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || ts || ':' || ts3 || ':' || "
+                   "COALESCE(ts6, 'NULL'), '|') FROM ("
+                   "SELECT id, ts, ts3, ts6 FROM timestamp_direct ORDER BY id)",
+            .expected = "1:1970-01-01 00:00:01:1970-01-01 00:00:01.123:"
+                        "1970-01-01 00:00:01.123457|"
+                        "2:2038-01-19 03:14:07:2038-01-19 03:14:07.999:"
+                        "2038-01-19 03:14:07.999999|"
+                        "3:2024-02-29 12:34:56:2024-02-29 12:34:56.790:NULL",
+            .context = "direct timestamp descriptors normalize stored text",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE timestamp_direct SET ts = '2038-01-19 03:14:07', "
+        "ts3 = '2038-01-19 03:14:07.9994', "
+        "ts6 = '2038-01-19 03:14:07.999999' WHERE id = 3",
+        "update direct timestamp descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT ts || ':' || ts3 || ':' || ts6 FROM timestamp_direct WHERE id = 3",
+            .expected = "2038-01-19 03:14:07:2038-01-19 03:14:07.999:"
+                        "2038-01-19 03:14:07.999999",
+            .context = "direct timestamp update coerces assigned values",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO timestamp_direct VALUES "
+                   "(4, '1970-01-01 00:00:00', '1970-01-01 00:00:01', "
+                   "'1970-01-01 00:00:01')",
+            .message_fragment = "invalid timestamp value",
+            .context = "direct timestamp descriptor rejects lower bound",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_timestamp_error,
+            .sqlstate = "22007",
+            .context = "lower-bound timestamp exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear lower-bound timestamp fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO timestamp_direct VALUES "
+                   "(4, '2038-01-19 03:14:08', '2038-01-19 03:14:07', "
+                   "'2038-01-19 03:14:07')",
+            .message_fragment = "invalid timestamp value",
+            .context = "direct timestamp descriptor rejects upper bound",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_timestamp_error,
+            .sqlstate = "22007",
+            .context = "upper-bound timestamp exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear upper-bound timestamp fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO timestamp_direct VALUES "
+                   "(4, '2038-01-19 03:14:07.5', '2038-01-19 03:14:07', "
+                   "'2038-01-19 03:14:07')",
+            .message_fragment = "invalid timestamp value",
+            .context = "direct timestamp descriptor rejects rounded overflow",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_timestamp_error,
+            .sqlstate = "22007",
+            .context = "rounded timestamp overflow exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear rounded timestamp overflow fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO timestamp_direct VALUES "
+                   "(4, '2038-01-19 03:14:07', '2038-01-19 03:14:07.9995', "
+                   "'2038-01-19 03:14:07.999999')",
+            .message_fragment = "invalid timestamp value",
+            .context = "direct timestamp(3) descriptor rejects rounded overflow",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = invalid_timestamp_error,
+            .sqlstate = "22007",
+            .context = "rounded timestamp(3) overflow exposes MySQL condition",
         }
     );
 
@@ -3594,6 +3794,218 @@ static int test_mylite_temporal_type_coercion(void) {
         database,
         datetime_overflow_error,
         "MyLite datetime overflow condition"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_timestamp_type_coercion(void) {
+    enum {
+        after_delete_column_count = 5,
+        after_delete_row_count = 2,
+        summary_column_count = 4,
+        after_truncate_column_count = 2,
+        after_reinsert_column_count = 5,
+        remaining_table_column_count = 1,
+        single_row_count = 1,
+        invalid_timestamp_error = 1292,
+    };
+
+    static const char *const after_delete[] = {
+        "1",
+        "epoch-start",
+        "1970-01-01 00:00:01",
+        "1970-01-01 00:00:01.123",
+        "1970-01-01 00:00:01.123457",
+        "3",
+        "ordinary",
+        "2024-02-29 12:34:56",
+        "2024-03-01 01:02:04.000",
+        "2024-03-01 01:02:03.000001",
+    };
+    static const char *const summary[] = {
+        "2",
+        "1970-01-01 00:00:01",
+        "2024-03-01 01:02:04.000",
+        "epoch-start,ordinary",
+    };
+    static const char *const after_truncate[] = {"0", "0"};
+    static const char *const after_reinsert[] = {
+        "1",
+        "restored",
+        "2038-01-19 03:14:07",
+        "2038-01-19 03:14:07.999",
+        "2038-01-19 03:14:07.999999",
+    };
+    static const char *const remaining_tables[] = {"0"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite TIMESTAMP CRUD");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_timestamp_column_crud "
+        "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite TIMESTAMP CRUD schema"
+    );
+    failures +=
+        exec_mylite_sql(database, "USE mylite_timestamp_column_crud", "use TIMESTAMP CRUD schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE wp_events_timestamp_like ("
+        "event_id INT NOT NULL AUTO_INCREMENT,"
+        "event_name VARCHAR(64) NOT NULL,"
+        "created_at TIMESTAMP NOT NULL,"
+        "updated_at TIMESTAMP(3) NOT NULL,"
+        "seen_at TIMESTAMP(6) DEFAULT NULL,"
+        "PRIMARY KEY (event_id),"
+        "UNIQUE KEY event_name (event_name)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite TIMESTAMP events table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_events_timestamp_like "
+        "(event_name, created_at, updated_at, seen_at) VALUES "
+        "('epoch-start', '1970-01-01 00:00:01', '1970-01-01 00:00:01.1234', "
+        "'1970-01-01 00:00:01.1234567'),"
+        "('max-edge', '2038-01-19 03:14:07', '2038-01-19 03:14:07.9994', "
+        "'2038-01-19 03:14:07.999999'),"
+        "('ordinary', 20240229123456, '2024-02-29 12:34:56.7896', NULL)",
+        "insert MyLite TIMESTAMP event rows"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE wp_events_timestamp_like "
+        "SET updated_at = '2024-03-01 01:02:03.9999', "
+        "seen_at = '2024-03-01 01:02:03.000001' "
+        "WHERE event_name = 'ordinary'",
+        "update MyLite TIMESTAMP event row"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "DELETE FROM wp_events_timestamp_like WHERE event_name = 'max-edge'",
+        "delete MyLite TIMESTAMP event row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT event_id, event_name, created_at, updated_at, "
+                   "IFNULL(seen_at, 'SQLNULL') "
+                   "FROM wp_events_timestamp_like ORDER BY event_id",
+            .values = after_delete,
+            .column_count = after_delete_column_count,
+            .row_count = after_delete_row_count,
+            .context = "MyLite TIMESTAMP CRUD rows match MySQL fixture",
+        }
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*), MIN(created_at), MAX(updated_at), "
+                   "GROUP_CONCAT(event_name ORDER BY event_id SEPARATOR ',') "
+                   "FROM wp_events_timestamp_like",
+            .values = summary,
+            .column_count = summary_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite TIMESTAMP summary matches MySQL fixture",
+        }
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO wp_events_timestamp_like "
+        "(event_name, created_at, updated_at, seen_at) VALUES "
+        "('too-low', '1970-01-01 00:00:00', '1970-01-01 00:00:01', NULL)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite TIMESTAMP coercion rejects lower bound"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        invalid_timestamp_error,
+        "MyLite lower-bound TIMESTAMP condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO wp_events_timestamp_like "
+        "(event_name, created_at, updated_at, seen_at) VALUES "
+        "('too-high', '2038-01-19 03:14:08', '2038-01-19 03:14:07', NULL)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite TIMESTAMP coercion rejects upper bound"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        invalid_timestamp_error,
+        "MyLite upper-bound TIMESTAMP condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO wp_events_timestamp_like "
+        "(event_name, created_at, updated_at, seen_at) VALUES "
+        "('round-high', '2038-01-19 03:14:07.5', '2038-01-19 03:14:07', NULL)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite TIMESTAMP coercion rejects rounded upper overflow"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        invalid_timestamp_error,
+        "MyLite rounded TIMESTAMP overflow condition"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "TRUNCATE TABLE wp_events_timestamp_like",
+        "truncate MyLite TIMESTAMP events table"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*), COALESCE(MAX(event_id), 0) FROM wp_events_timestamp_like",
+            .values = after_truncate,
+            .column_count = after_truncate_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite TIMESTAMP truncate matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_events_timestamp_like "
+        "(event_name, created_at, updated_at, seen_at) VALUES "
+        "('restored', '2038-01-19 03:14:07', '2038-01-19 03:14:07.9994', "
+        "'2038-01-19 03:14:07.999999')",
+        "reinsert MyLite TIMESTAMP event row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT event_id, event_name, created_at, updated_at, seen_at "
+                   "FROM wp_events_timestamp_like",
+            .values = after_reinsert,
+            .column_count = after_reinsert_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite TIMESTAMP reinsert after truncate matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "DROP TABLE wp_events_timestamp_like",
+        "drop MyLite TIMESTAMP events table"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*) FROM information_schema.tables "
+                   "WHERE table_schema = DATABASE() "
+                   "AND table_name = 'wp_events_timestamp_like'",
+            .values = remaining_tables,
+            .column_count = remaining_table_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite TIMESTAMP drop table matches MySQL fixture",
+        }
     );
 
     mylite_close(database);

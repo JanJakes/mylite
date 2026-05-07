@@ -775,7 +775,7 @@ static const struct mylite_temporal_type_info *lookup_temporal_type_info(
             .permits_fractional_seconds = true,
             .has_datetime_precision = true,
             .range_min = "1970-01-01 00:00:01.000000",
-            .range_max = "2038-01-19 03:14:07.499999",
+            .range_max = "2038-01-19 03:14:07.999999",
         },
         {
             .canonical_type_name = "year",

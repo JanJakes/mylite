@@ -195,6 +195,7 @@ static int test_registered_functions(void) {
         mysql_truncated_wrong_value = 1292,
         utf8_z_caron_bit_length = 16,
         numeric_123_bit_length = 24,
+        uint64_bit_count = 64,
     };
 
     sqlite3 *database = NULL;
@@ -349,6 +350,84 @@ static int test_registered_functions(void) {
     );
     failures +=
         expect_int64(database, "SELECT BIT_LENGTH(NULL) IS NULL", 1, "BIT_LENGTH propagates NULL");
+    failures += expect_int64(database, "SELECT BIT_COUNT(0)", 0, "BIT_COUNT counts zero bits");
+    failures += expect_int64(database, "SELECT BIT_COUNT(7)", 3, "BIT_COUNT counts set bits");
+    failures += expect_int64(
+        database,
+        "SELECT BIT_COUNT(-1)",
+        uint64_bit_count,
+        "BIT_COUNT uses unsigned 64-bit representation"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT BIT_COUNT(7.5)",
+        1,
+        "BIT_COUNT rounds approximate numeric arguments"
+    );
+    failures +=
+        expect_int64(database, "SELECT BIT_COUNT(NULL) IS NULL", 1, "BIT_COUNT propagates NULL");
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear condition before BIT_COUNT truncation warning"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT BIT_COUNT('7x')",
+        3,
+        "BIT_COUNT uses leading integer text before truncation"
+    );
+    failures += expect_fork_warning_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "BIT_COUNT trailing text publishes truncation warning",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear BIT_COUNT trailing text warning"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT BIT_COUNT('18446744073709551616')",
+        uint64_bit_count,
+        "BIT_COUNT clamps overflowing unsigned integer text"
+    );
+    failures += expect_fork_warning_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "BIT_COUNT overflowing text publishes truncation warning",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear BIT_COUNT overflowing text warning"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT BIT_COUNT('-9223372036854775809')",
+        1,
+        "BIT_COUNT clamps overflowing negative integer text"
+    );
+    failures += expect_fork_warning_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "BIT_COUNT overflowing negative text publishes truncation warning",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear BIT_COUNT overflowing negative text warning"
+    );
     failures += expect_int64(database, "SELECT ISNULL(NULL)", 1, "ISNULL returns 1 for NULL");
     failures +=
         expect_int64(database, "SELECT ISNULL(0)", 0, "ISNULL returns 0 for non-NULL values");

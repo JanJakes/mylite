@@ -275,7 +275,7 @@ specs should guide implementation. Function descriptors need:
   `LAST_INSERT_ID()`, `ROW_COUNT()`, user variables, and locks
 
 The current executable slice registers compact callbacks for `CONCAT`,
-`CONCAT_WS`, `IF`, `BIT_LENGTH`, `ISNULL`, `LENGTH`, `OCTET_LENGTH`,
+`CONCAT_WS`, `IF`, `BIT_LENGTH`, `BIT_COUNT`, `ISNULL`, `LENGTH`, `OCTET_LENGTH`,
 `CHAR_LENGTH`, and `CHARACTER_LENGTH`. `IF()` also proves the first
 successful-statement scalar warning path by publishing MySQL warning 1292 for
 truncated numeric condition conversion. `ISNULL()` proves the first narrow

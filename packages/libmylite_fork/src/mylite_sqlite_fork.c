@@ -4,6 +4,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -27,6 +28,10 @@ enum mylite_sqlite_utf8_byte_masks {
 
 enum mylite_sqlite_byte_units {
     mylite_sqlite_bits_per_byte = 8,
+};
+
+enum mylite_sqlite_numeric_units {
+    mylite_sqlite_decimal_base = 10,
 };
 
 enum mylite_sqlite_mysql_conditions {
@@ -75,6 +80,12 @@ static void mysql_concat_ws(
 static void mysql_if(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
 static void mysql_bit_length(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+);
+
+static void mysql_bit_count(
     sqlite3_context *context,
     int argument_count,
     sqlite3_value **arguments
@@ -143,6 +154,20 @@ static bool coerce_value_to_mysql_comparison_double(
     sqlite3_value *value,
     double *out_value
 );
+
+static bool coerce_value_to_mysql_bit_uint64(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    uint64_t *out_value
+);
+
+static bool parse_mysql_text_bit_uint64(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    uint64_t *out_value
+);
+
+static int count_uint64_bits(uint64_t value);
 
 static bool value_is_sql_numeric(sqlite3_value *value);
 
@@ -296,6 +321,9 @@ static int register_mysql_functions(sqlite3 *database) {
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "BIT_LENGTH", 1, mysql_bit_length);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function(database, "BIT_COUNT", 1, mysql_bit_count);
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "ISNULL", 1, mysql_isnull);
@@ -498,6 +526,24 @@ static void mysql_bit_length(
         return;
     }
     sqlite3_result_int64(context, (sqlite3_int64)bytes * mylite_sqlite_bits_per_byte);
+}
+
+static void mysql_bit_count(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    uint64_t value = 0U;
+
+    (void)argument_count;
+    if (sqlite3_value_type(arguments[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (!coerce_value_to_mysql_bit_uint64(context, arguments[0], &value)) {
+        return;
+    }
+    sqlite3_result_int(context, count_uint64_bits(value));
 }
 
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {
@@ -904,6 +950,113 @@ static bool coerce_value_to_mysql_comparison_double(
     }
     *out_value = number;
     return true;
+}
+
+static bool coerce_value_to_mysql_bit_uint64(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    uint64_t *out_value
+) {
+    int type = sqlite3_value_type(value);
+    double number = 0.0;
+    long double rounded = 0.0L;
+
+    if (type == SQLITE_INTEGER) {
+        *out_value = (uint64_t)sqlite3_value_int64(value);
+        return true;
+    }
+    if (type != SQLITE_FLOAT) {
+        return parse_mysql_text_bit_uint64(context, value, out_value);
+    }
+
+    number = sqlite3_value_double(value);
+    rounded = number < 0.0 ? ceill((long double)number - mylite_sqlite_integer_round_half)
+                           : floorl((long double)number + mylite_sqlite_integer_round_half);
+    if (rounded <= (long double)LLONG_MIN) {
+        *out_value = (uint64_t)LLONG_MIN;
+        return true;
+    }
+    if (rounded >= (long double)UINT64_MAX) {
+        *out_value = UINT64_MAX;
+        return true;
+    }
+    if (rounded < 0.0L) {
+        *out_value = (uint64_t)(sqlite3_int64)rounded;
+        return true;
+    }
+    *out_value = (uint64_t)rounded;
+    return true;
+}
+
+static bool parse_mysql_text_bit_uint64(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    uint64_t *out_value
+) {
+    const unsigned char *text = sqlite3_value_text(value);
+    int bytes = sqlite3_value_bytes(value);
+    const char *start = NULL;
+    const char *digits = NULL;
+    const char *end = NULL;
+    char *cursor = NULL;
+    unsigned long long magnitude = 0U;
+    bool negative = false;
+    bool truncated = false;
+
+    if (text == NULL && bytes > 0) {
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+
+    start = text == NULL ? "" : (const char *)text;
+    end = start + bytes;
+    while (start < end && isspace((unsigned char)*start)) {
+        ++start;
+    }
+    if (start < end && (*start == '+' || *start == '-')) {
+        negative = *start == '-';
+        ++start;
+    }
+
+    digits = start;
+    errno = 0;
+    magnitude = strtoull(digits, &cursor, mylite_sqlite_decimal_base);
+    truncated = cursor == digits;
+    if (errno == ERANGE || text_has_non_space_tail(cursor, end)) {
+        truncated = true;
+    }
+
+    if (negative) {
+        const unsigned long long signed_min_magnitude = (unsigned long long)LLONG_MAX + 1ULL;
+
+        if (magnitude > signed_min_magnitude) {
+            truncated = true;
+        }
+        if (errno == ERANGE || magnitude >= signed_min_magnitude) {
+            *out_value = (uint64_t)LLONG_MIN;
+        } else {
+            *out_value = (uint64_t)(-(sqlite3_int64)magnitude);
+        }
+    } else if (errno == ERANGE) {
+        *out_value = UINT64_MAX;
+    } else {
+        *out_value = (uint64_t)magnitude;
+    }
+
+    if (truncated) {
+        publish_truncated_wrong_value_warning(context);
+    }
+    return true;
+}
+
+static int count_uint64_bits(uint64_t value) {
+    int count = 0;
+
+    while (value != 0U) {
+        value &= value - 1U;
+        ++count;
+    }
+    return count;
 }
 
 static bool value_is_sql_numeric(sqlite3_value *value) {

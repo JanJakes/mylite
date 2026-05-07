@@ -11,6 +11,7 @@ static int allocate_database_handle(struct mylite_db **out_database);
 static int open_memory_sqlite(struct mylite_db *database);
 static int open_file_sqlite(struct mylite_db *database, const char *path);
 static int bootstrap_sqlite_connection(struct mylite_db *database);
+static int initialize_file_backed_catalog(struct mylite_db *database);
 static void destroy_database_handle(struct mylite_db *database);
 static int sqlite_status_to_mylite(int sqlite_status);
 static void initialize_session_state(struct mylite_session_state *session);
@@ -146,6 +147,14 @@ const struct mylite_sqlite_bootstrap_state *mylite_connection_sqlite_bootstrap_s
     return &database->sqlite_bootstrap;
 }
 
+const struct mylite_catalog *mylite_connection_catalog_for_test(const struct mylite_db *database) {
+    if (database == NULL) {
+        return NULL;
+    }
+
+    return &database->catalog;
+}
+
 static int allocate_database_handle(struct mylite_db **out_database) {
     struct mylite_db *database = calloc(1U, sizeof(*database));
 
@@ -155,6 +164,7 @@ static int allocate_database_handle(struct mylite_db **out_database) {
 
     mylite_diagnostics_init(&database->diagnostics);
     initialize_session_state(&database->session);
+    mylite_catalog_init(&database->catalog);
     *out_database = database;
 
     return MYLITE_OK;
@@ -205,7 +215,12 @@ static int open_file_sqlite(struct mylite_db *database, const char *path) {
         return rc;
     }
 
-    return mylite_storage_configure_sqlite_payload(database->sqlite);
+    rc = mylite_storage_configure_sqlite_payload(database->sqlite);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return initialize_file_backed_catalog(database);
 }
 
 static int bootstrap_sqlite_connection(struct mylite_db *database) {
@@ -216,11 +231,16 @@ static int bootstrap_sqlite_connection(struct mylite_db *database) {
     );
 }
 
+static int initialize_file_backed_catalog(struct mylite_db *database) {
+    return mylite_catalog_initialize_file_backed(database);
+}
+
 static void destroy_database_handle(struct mylite_db *database) {
     if (database == NULL) {
         return;
     }
 
+    mylite_catalog_deinit(&database->catalog);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
     if (database->sqlite != NULL) {
         (void)sqlite3_close(database->sqlite);

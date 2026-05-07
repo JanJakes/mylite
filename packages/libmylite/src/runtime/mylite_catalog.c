@@ -1,0 +1,1742 @@
+#include "mylite_catalog.h"
+
+#include "mylite_connection.h"
+#include "mylite_file_format.h"
+#include "mylite_sqlite_registration.h"
+#include "sqlite3.h"
+
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+enum {
+    catalog_table_count = 4,
+    sqlite_use_nul_terminated_string = -1,
+};
+
+enum catalog_table_insert_bind_index {
+    catalog_table_insert_schema_id_bind = 1,
+    catalog_table_insert_name_bind = 2,
+    catalog_table_insert_kind_bind = 3,
+    catalog_table_insert_physical_name_bind = 4,
+    catalog_table_insert_generation_bind = 5,
+};
+
+enum catalog_column_insert_bind_index {
+    catalog_column_insert_table_id_bind = 1,
+    catalog_column_insert_ordinal_position_bind = 2,
+    catalog_column_insert_name_bind = 3,
+    catalog_column_insert_logical_type_bind = 4,
+    catalog_column_insert_physical_type_bind = 5,
+    catalog_column_insert_is_nullable_bind = 6,
+    catalog_column_insert_generation_bind = 7,
+};
+
+enum catalog_table_select_column_index {
+    catalog_table_select_table_id_column = 0,
+    catalog_table_select_schema_id_column = 1,
+    catalog_table_select_name_column = 2,
+    catalog_table_select_kind_column = 3,
+    catalog_table_select_physical_name_column = 4,
+    catalog_table_select_descriptor_version_column = 5,
+    catalog_table_select_created_generation_column = 6,
+    catalog_table_select_updated_generation_column = 7,
+};
+
+enum catalog_column_select_column_index {
+    catalog_column_select_column_id_column = 0,
+    catalog_column_select_table_id_column = 1,
+    catalog_column_select_ordinal_position_column = 2,
+    catalog_column_select_name_column = 3,
+    catalog_column_select_logical_type_column = 4,
+    catalog_column_select_physical_type_column = 5,
+    catalog_column_select_is_nullable_column = 6,
+    catalog_column_select_descriptor_version_column = 7,
+    catalog_column_select_created_generation_column = 8,
+    catalog_column_select_updated_generation_column = 9,
+};
+
+enum catalog_state_select_column_index {
+    catalog_state_select_singleton_id_column = 0,
+    catalog_state_select_schema_version_column = 1,
+    catalog_state_select_minimum_reader_schema_version_column = 2,
+    catalog_state_select_catalog_generation_column = 3,
+    catalog_state_select_file_format_version_column = 4,
+};
+
+struct catalog_generation_change {
+    uint64_t next_generation;
+};
+
+static int ensure_catalog_schema(struct mylite_db *database);
+static int load_existing_catalog(struct mylite_db *database);
+static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
+static int validate_select_shape(sqlite3 *sqlite, const char *sql);
+static int initialize_catalog_schema(struct mylite_db *database);
+static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count);
+static int read_catalog_state(sqlite3 *sqlite, struct mylite_catalog *catalog);
+static int apply_catalog_state(struct mylite_db *database, const struct mylite_catalog *catalog);
+static int begin_catalog_transaction(sqlite3 *sqlite);
+static int commit_catalog_transaction(sqlite3 *sqlite);
+static void rollback_catalog_transaction(sqlite3 *sqlite);
+static int begin_generation_change(
+    struct mylite_db *database,
+    struct catalog_generation_change *out_change
+);
+static int finish_generation_change(
+    struct mylite_db *database,
+    const struct catalog_generation_change *change
+);
+static void abandon_generation_change(sqlite3 *sqlite);
+static int update_catalog_generation(sqlite3 *sqlite, uint64_t generation);
+static int execute_sql(sqlite3 *sqlite, const char *sql);
+static int prepare_statement(sqlite3 *sqlite, const char *sql, sqlite3_stmt **out_statement);
+static int bind_text(sqlite3_stmt *statement, int index, const char *value);
+static int bind_i64(sqlite3_stmt *statement, int index, int64_t value);
+static int bind_u64(sqlite3_stmt *statement, int index, uint64_t value);
+static int step_done(sqlite3_stmt *statement);
+static int require_changed_row(sqlite3 *sqlite);
+static int finalize_statement(sqlite3_stmt *statement, int rc);
+static int read_schema_by_name(
+    sqlite3 *sqlite,
+    const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
+static int read_schema_by_id(
+    sqlite3 *sqlite,
+    int64_t schema_id,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
+static int read_table_by_name(
+    sqlite3 *sqlite,
+    int64_t schema_id,
+    const char *name,
+    struct mylite_catalog_table_descriptor *out_table
+);
+static int read_table_by_id(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    struct mylite_catalog_table_descriptor *out_table
+);
+static int read_column_by_name(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    const char *name,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int materialize_schema(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_schema_descriptor *out_schema
+);
+static int materialize_table(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_table_descriptor *out_table
+);
+static int materialize_column(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int checked_column_i64(sqlite3_stmt *statement, int index, int64_t *out_value);
+static int checked_column_u64(sqlite3_stmt *statement, int index, uint64_t *out_value);
+static int checked_column_text(
+    sqlite3_stmt *statement,
+    int index,
+    char *destination,
+    size_t destination_size
+);
+static int validate_database(struct mylite_db *database);
+static int validate_catalog_ready_database(struct mylite_db *database);
+static int validate_required_name(const char *name, size_t capacity);
+static int validate_logical_object_name(const char *name, size_t capacity);
+static int validate_table_kind(enum mylite_catalog_table_kind kind);
+static int validate_positive_id(int64_t id);
+static int validate_positive_ordinal(int64_t ordinal_position);
+static int validate_generation(uint64_t generation);
+static int u64_to_i64(uint64_t value, int64_t *out_value);
+static int i64_to_u32(int64_t value, uint32_t *out_value);
+static int i64_to_u64(int64_t value, uint64_t *out_value);
+static void reset_descriptor_cache_state(struct mylite_catalog *catalog);
+
+static const char *catalog_state_table_name(void);
+static const char *catalog_schemas_table_name(void);
+static const char *catalog_tables_table_name(void);
+static const char *catalog_columns_table_name(void);
+
+void mylite_catalog_init(struct mylite_catalog *catalog) {
+    if (catalog == NULL) {
+        return;
+    }
+
+    memset(catalog, 0, sizeof(*catalog));
+}
+
+void mylite_catalog_deinit(struct mylite_catalog *catalog) {
+    if (catalog == NULL) {
+        return;
+    }
+
+    memset(catalog, 0, sizeof(*catalog));
+}
+
+int mylite_catalog_initialize_file_backed(struct mylite_db *database) {
+    int rc = MYLITE_OK;
+
+    rc = validate_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    mylite_catalog_deinit(&database->catalog);
+
+    rc = ensure_catalog_schema(database);
+    if (rc != MYLITE_OK) {
+        mylite_catalog_deinit(&database->catalog);
+        return rc;
+    }
+
+    database->catalog.initialized = true;
+    reset_descriptor_cache_state(&database->catalog);
+    database->session.catalog_generation = database->catalog.generation;
+
+    return MYLITE_OK;
+}
+
+void mylite_catalog_invalidate_descriptor_cache(struct mylite_db *database) {
+    if (database == NULL) {
+        return;
+    }
+
+    reset_descriptor_cache_state(&database->catalog);
+}
+
+int mylite_catalog_create_schema(
+    struct mylite_db *database,
+    const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema
+) {
+    struct catalog_generation_change generation = {0};
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_schema != NULL) {
+        *out_schema = (struct mylite_catalog_schema_descriptor){0};
+    }
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = begin_generation_change(database, &generation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "INSERT INTO _mylite_catalog_schemas "
+        "(name, descriptor_version, created_catalog_generation, updated_catalog_generation) "
+        "VALUES (?1, 1, ?2, ?2)",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 1, name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, 2, generation.next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+    rc = finalize_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        rc = finish_generation_change(database, &generation);
+    }
+    if (rc != MYLITE_OK) {
+        abandon_generation_change(database->sqlite);
+        return rc;
+    }
+
+    if (out_schema != NULL) {
+        return read_schema_by_name(database->sqlite, name, out_schema);
+    }
+
+    return MYLITE_OK;
+}
+
+int mylite_catalog_read_schema_by_name(
+    struct mylite_db *database,
+    const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema
+) {
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_schema == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return read_schema_by_name(database->sqlite, name, out_schema);
+}
+
+int mylite_catalog_delete_schema(struct mylite_db *database, int64_t schema_id) {
+    struct catalog_generation_change generation = {0};
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(schema_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = begin_generation_change(database, &generation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "DELETE FROM _mylite_catalog_columns "
+        "WHERE table_id IN ("
+        "SELECT table_id FROM _mylite_catalog_tables WHERE schema_id = ?1"
+        ")",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_tables WHERE schema_id = ?1",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_schemas WHERE schema_id = ?1",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = finish_generation_change(database, &generation);
+    }
+    if (rc != MYLITE_OK) {
+        abandon_generation_change(database->sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+int mylite_catalog_create_table(
+    struct mylite_db *database,
+    int64_t schema_id,
+    const char *name,
+    const char *physical_name,
+    enum mylite_catalog_table_kind kind,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    struct catalog_generation_change generation = {0};
+    struct mylite_catalog_schema_descriptor schema = {0};
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_table != NULL) {
+        *out_table = (struct mylite_catalog_table_descriptor){0};
+    }
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(schema_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_required_name(physical_name, MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_table_kind(kind);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = begin_generation_change(database, &generation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = read_schema_by_id(database->sqlite, schema_id, &schema);
+    if (rc != MYLITE_OK) {
+        abandon_generation_change(database->sqlite);
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "INSERT INTO _mylite_catalog_tables "
+        "(schema_id, name, kind, physical_name, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_table_insert_schema_id_bind, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_table_insert_name_bind, name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_table_insert_kind_bind, (int64_t)kind);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_table_insert_physical_name_bind, physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, catalog_table_insert_generation_bind, generation.next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        rc = finish_generation_change(database, &generation);
+    }
+    if (rc != MYLITE_OK) {
+        abandon_generation_change(database->sqlite);
+        return rc;
+    }
+
+    if (out_table != NULL) {
+        return read_table_by_name(database->sqlite, schema_id, name, out_table);
+    }
+
+    return MYLITE_OK;
+}
+
+int mylite_catalog_read_table_by_name(
+    struct mylite_db *database,
+    int64_t schema_id,
+    const char *name,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_table == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = validate_positive_id(schema_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return read_table_by_name(database->sqlite, schema_id, name, out_table);
+}
+
+int mylite_catalog_update_table_name(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *name
+) {
+    struct catalog_generation_change generation = {0};
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = begin_generation_change(database, &generation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_tables "
+        "SET name = ?1, descriptor_version = descriptor_version + 1, "
+        "updated_catalog_generation = ?2 "
+        "WHERE table_id = ?3",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 1, name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, 2, generation.next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 3, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+    rc = finalize_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        rc = finish_generation_change(database, &generation);
+    }
+    if (rc != MYLITE_OK) {
+        abandon_generation_change(database->sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+int mylite_catalog_delete_table(struct mylite_db *database, int64_t table_id) {
+    struct catalog_generation_change generation = {0};
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = begin_generation_change(database, &generation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "DELETE FROM _mylite_catalog_columns WHERE table_id = ?1",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_tables WHERE table_id = ?1",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = finish_generation_change(database, &generation);
+    }
+    if (rc != MYLITE_OK) {
+        abandon_generation_change(database->sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+int mylite_catalog_create_column(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t ordinal_position,
+    const char *name,
+    const char *logical_type,
+    const char *physical_type,
+    bool is_nullable,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    struct catalog_generation_change generation = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    sqlite3_stmt *statement = NULL;
+    int64_t nullable_value = 0;
+    int rc = MYLITE_OK;
+
+    if (out_column != NULL) {
+        *out_column = (struct mylite_catalog_column_descriptor){0};
+    }
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_ordinal(ordinal_position);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_required_name(logical_type, MYLITE_CATALOG_TYPE_NAME_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_required_name(physical_type, MYLITE_CATALOG_TYPE_NAME_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = begin_generation_change(database, &generation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_nullable) {
+        nullable_value = 1;
+    }
+    rc = read_table_by_id(database->sqlite, table_id, &table);
+    if (rc != MYLITE_OK) {
+        abandon_generation_change(database->sqlite);
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "INSERT INTO _mylite_catalog_columns "
+        "(table_id, ordinal_position, name, logical_type, physical_type, is_nullable, "
+        "descriptor_version, created_catalog_generation, updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_insert_table_id_bind, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_insert_ordinal_position_bind, ordinal_position);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_column_insert_name_bind, name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_column_insert_logical_type_bind, logical_type);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_column_insert_physical_type_bind, physical_type);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_insert_is_nullable_bind, nullable_value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, catalog_column_insert_generation_bind, generation.next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        rc = finish_generation_change(database, &generation);
+    }
+    if (rc != MYLITE_OK) {
+        abandon_generation_change(database->sqlite);
+        return rc;
+    }
+
+    if (out_column != NULL) {
+        return read_column_by_name(database->sqlite, table_id, name, out_column);
+    }
+
+    return MYLITE_OK;
+}
+
+int mylite_catalog_read_column_by_name(
+    struct mylite_db *database,
+    int64_t table_id,
+    const char *name,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_column == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return read_column_by_name(database->sqlite, table_id, name, out_column);
+}
+
+int mylite_catalog_delete_column(struct mylite_db *database, int64_t column_id) {
+    struct catalog_generation_change generation = {0};
+    sqlite3_stmt *statement = NULL;
+    int rc = MYLITE_OK;
+
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(column_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = begin_generation_change(database, &generation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "DELETE FROM _mylite_catalog_columns WHERE column_id = ?1",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, column_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+    rc = finalize_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        rc = finish_generation_change(database, &generation);
+    }
+    if (rc != MYLITE_OK) {
+        abandon_generation_change(database->sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+bool mylite_catalog_name_is_reserved(const char *name) {
+    static const char prefix[] = "_mylite_";
+
+    if (name == NULL) {
+        return false;
+    }
+
+    return strncmp(name, prefix, sizeof(prefix) - 1U) == 0;
+}
+
+static int ensure_catalog_schema(struct mylite_db *database) {
+    int table_count = 0;
+    int rc = existing_catalog_table_count(database->sqlite, &table_count);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (table_count == 0) {
+        return initialize_catalog_schema(database);
+    }
+    if (table_count != catalog_table_count) {
+        return MYLITE_ERROR;
+    }
+
+    return load_existing_catalog(database);
+}
+
+static int load_existing_catalog(struct mylite_db *database) {
+    struct mylite_catalog catalog = {.initialized = false};
+    int rc = validate_catalog_descriptor_tables(database->sqlite);
+
+    if (rc == MYLITE_OK) {
+        rc = read_catalog_state(database->sqlite, &catalog);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return apply_catalog_state(database, &catalog);
+}
+
+static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
+    int rc = validate_select_shape(
+        sqlite,
+        "SELECT schema_id, name, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
+        "FROM _mylite_catalog_schemas WHERE 0"
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = validate_select_shape(
+            sqlite,
+            "SELECT table_id, schema_id, name, kind, physical_name, descriptor_version, "
+            "created_catalog_generation, updated_catalog_generation "
+            "FROM _mylite_catalog_tables WHERE 0"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_select_shape(
+            sqlite,
+            "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+            "is_nullable, descriptor_version, created_catalog_generation, "
+            "updated_catalog_generation "
+            "FROM _mylite_catalog_columns WHERE 0"
+        );
+    }
+
+    return rc;
+}
+
+static int validate_select_shape(sqlite3 *sqlite, const char *sql) {
+    sqlite3_stmt *statement = NULL;
+    int rc = prepare_statement(sqlite, sql, &statement);
+
+    return finalize_statement(statement, rc);
+}
+
+static int initialize_catalog_schema(struct mylite_db *database) {
+    static const char *sql =
+        "BEGIN IMMEDIATE;"
+        "CREATE TABLE _mylite_catalog_state ("
+        "singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),"
+        "schema_version INTEGER NOT NULL,"
+        "minimum_reader_schema_version INTEGER NOT NULL,"
+        "catalog_generation INTEGER NOT NULL,"
+        "created_with_file_format_version INTEGER NOT NULL"
+        ");"
+        "CREATE TABLE _mylite_catalog_schemas ("
+        "schema_id INTEGER PRIMARY KEY,"
+        "name TEXT NOT NULL UNIQUE,"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL"
+        ");"
+        "CREATE TABLE _mylite_catalog_tables ("
+        "table_id INTEGER PRIMARY KEY,"
+        "schema_id INTEGER NOT NULL,"
+        "name TEXT NOT NULL,"
+        "kind INTEGER NOT NULL CHECK(kind = 1),"
+        "physical_name TEXT NOT NULL UNIQUE,"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(schema_id, name)"
+        ");"
+        "CREATE TABLE _mylite_catalog_columns ("
+        "column_id INTEGER PRIMARY KEY,"
+        "table_id INTEGER NOT NULL,"
+        "ordinal_position INTEGER NOT NULL CHECK(ordinal_position > 0),"
+        "name TEXT NOT NULL,"
+        "logical_type TEXT NOT NULL,"
+        "physical_type TEXT NOT NULL,"
+        "is_nullable INTEGER NOT NULL CHECK(is_nullable IN (0, 1)),"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(table_id, ordinal_position),"
+        "UNIQUE(table_id, name)"
+        ");"
+        "INSERT INTO _mylite_catalog_state "
+        "(singleton_id, schema_version, minimum_reader_schema_version, catalog_generation, "
+        "created_with_file_format_version) "
+        "VALUES (1, 1, 1, 1, 1);"
+        "COMMIT;";
+    struct mylite_catalog catalog = {.initialized = false};
+    int rc = execute_sql(database->sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(database->sqlite);
+        return rc;
+    }
+
+    rc = read_catalog_state(database->sqlite, &catalog);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return apply_catalog_state(database, &catalog);
+}
+
+static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_count = 0;
+    rc = prepare_statement(
+        sqlite,
+        "SELECT count(*) FROM sqlite_master "
+        "WHERE type = 'table' "
+        "AND name IN (?1, ?2, ?3, ?4)",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 1, catalog_state_table_name());
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 2, catalog_schemas_table_name());
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 3, catalog_tables_table_name());
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 4, catalog_columns_table_name());
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            *out_count = sqlite3_column_int(statement, 0);
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int read_catalog_state(sqlite3 *sqlite, struct mylite_catalog *catalog) {
+    sqlite3_stmt *statement = NULL;
+    int64_t singleton_id = 0;
+    int64_t schema_version = 0;
+    int64_t minimum_reader_schema_version = 0;
+    int64_t generation = 0;
+    int64_t file_format_version = 0;
+    int sqlite_rc = SQLITE_OK;
+    int rc = prepare_statement(
+        sqlite,
+        "SELECT singleton_id, schema_version, minimum_reader_schema_version, catalog_generation, "
+        "created_with_file_format_version "
+        "FROM _mylite_catalog_state",
+        &statement
+    );
+
+    *catalog = (struct mylite_catalog){.initialized = false};
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc != SQLITE_ROW) {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(statement, catalog_state_select_singleton_id_column, &singleton_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_state_select_schema_version_column,
+            &schema_version
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_state_select_minimum_reader_schema_version_column,
+            &minimum_reader_schema_version
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_state_select_catalog_generation_column,
+            &generation
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_state_select_file_format_version_column,
+            &file_format_version
+        );
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc != SQLITE_DONE) {
+            rc = sqlite_rc == SQLITE_ROW ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    if (rc == MYLITE_OK && (singleton_id != 1 || schema_version != MYLITE_CATALOG_SCHEMA_VERSION ||
+                            minimum_reader_schema_version > MYLITE_CATALOG_SCHEMA_VERSION ||
+                            minimum_reader_schema_version < 1 ||
+                            file_format_version != MYLITE_FILE_FORMAT_VERSION || generation < 1)) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = i64_to_u32(schema_version, &catalog->schema_version);
+    }
+    if (rc == MYLITE_OK) {
+        rc = i64_to_u64(generation, &catalog->generation);
+    }
+    if (rc == MYLITE_OK) {
+        catalog->initialized = true;
+        reset_descriptor_cache_state(catalog);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int apply_catalog_state(struct mylite_db *database, const struct mylite_catalog *catalog) {
+    database->catalog = *catalog;
+    database->session.catalog_generation = catalog->generation;
+
+    return MYLITE_OK;
+}
+
+static int begin_catalog_transaction(sqlite3 *sqlite) {
+    return execute_sql(sqlite, "BEGIN IMMEDIATE");
+}
+
+static int commit_catalog_transaction(sqlite3 *sqlite) {
+    return execute_sql(sqlite, "COMMIT");
+}
+
+static void rollback_catalog_transaction(sqlite3 *sqlite) {
+    if (sqlite == NULL) {
+        return;
+    }
+
+    (void)sqlite3_exec(sqlite, "ROLLBACK", NULL, NULL, NULL);
+}
+
+static int begin_generation_change(
+    struct mylite_db *database,
+    struct catalog_generation_change *out_change
+) {
+    struct mylite_catalog catalog = {.initialized = false};
+    int rc = begin_catalog_transaction(database->sqlite);
+
+    *out_change = (struct catalog_generation_change){0};
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = read_catalog_state(database->sqlite, &catalog);
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(database->sqlite);
+        return rc;
+    }
+    if (catalog.generation == UINT64_MAX) {
+        rollback_catalog_transaction(database->sqlite);
+        return MYLITE_ERROR;
+    }
+
+    out_change->next_generation = catalog.generation + 1U;
+
+    return MYLITE_OK;
+}
+
+static int finish_generation_change(
+    struct mylite_db *database,
+    const struct catalog_generation_change *change
+) {
+    int rc = update_catalog_generation(database->sqlite, change->next_generation);
+
+    if (rc == MYLITE_OK) {
+        rc = commit_catalog_transaction(database->sqlite);
+    }
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(database->sqlite);
+        return rc;
+    }
+
+    database->catalog.generation = change->next_generation;
+    database->session.catalog_generation = change->next_generation;
+    reset_descriptor_cache_state(&database->catalog);
+
+    return MYLITE_OK;
+}
+
+static void abandon_generation_change(sqlite3 *sqlite) {
+    rollback_catalog_transaction(sqlite);
+}
+
+static int update_catalog_generation(sqlite3 *sqlite, uint64_t generation) {
+    sqlite3_stmt *statement = NULL;
+    int rc = validate_generation(generation);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        sqlite,
+        "UPDATE _mylite_catalog_state SET catalog_generation = ?1 WHERE singleton_id = 1",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, 1, generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(sqlite);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int execute_sql(sqlite3 *sqlite, const char *sql) {
+    int sqlite_rc = sqlite3_exec(sqlite, sql, NULL, NULL, NULL);
+
+    return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static int prepare_statement(sqlite3 *sqlite, const char *sql, sqlite3_stmt **out_statement) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+
+    *out_statement = NULL;
+    sqlite_rc = sqlite3_prepare_v2(sqlite, sql, sqlite_use_nul_terminated_string, &statement, NULL);
+    if (sqlite_rc != SQLITE_OK) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    *out_statement = statement;
+
+    return MYLITE_OK;
+}
+
+static int bind_text(sqlite3_stmt *statement, int index, const char *value) {
+    int sqlite_rc = sqlite3_bind_text(
+        statement,
+        index,
+        value,
+        sqlite_use_nul_terminated_string,
+        SQLITE_TRANSIENT
+    );
+
+    return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static int bind_i64(sqlite3_stmt *statement, int index, int64_t value) {
+    int sqlite_rc = sqlite3_bind_int64(statement, index, (sqlite3_int64)value);
+
+    return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): mirrors SQLite bind helper order.
+static int bind_u64(sqlite3_stmt *statement, int index, uint64_t value) {
+    int64_t signed_value = 0;
+    int rc = u64_to_i64(value, &signed_value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return bind_i64(statement, index, signed_value);
+}
+
+static int step_done(sqlite3_stmt *statement) {
+    int sqlite_rc = sqlite3_step(statement);
+
+    if (sqlite_rc != SQLITE_DONE) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int require_changed_row(sqlite3 *sqlite) {
+    if (sqlite3_changes(sqlite) != 1) {
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int finalize_statement(sqlite3_stmt *statement, int rc) {
+    int sqlite_rc = SQLITE_OK;
+
+    if (statement == NULL) {
+        return rc;
+    }
+
+    sqlite_rc = sqlite3_finalize(statement);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static int read_schema_by_name(
+    sqlite3 *sqlite,
+    const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = prepare_statement(
+        sqlite,
+        "SELECT schema_id, name, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
+        "FROM _mylite_catalog_schemas WHERE name = ?1",
+        &statement
+    );
+
+    *out_schema = (struct mylite_catalog_schema_descriptor){0};
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 1, name);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = materialize_schema(statement, out_schema);
+        } else {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int read_schema_by_id(
+    sqlite3 *sqlite,
+    int64_t schema_id,
+    struct mylite_catalog_schema_descriptor *out_schema
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = prepare_statement(
+        sqlite,
+        "SELECT schema_id, name, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
+        "FROM _mylite_catalog_schemas WHERE schema_id = ?1",
+        &statement
+    );
+
+    *out_schema = (struct mylite_catalog_schema_descriptor){0};
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = materialize_schema(statement, out_schema);
+        } else {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int read_table_by_name(
+    sqlite3 *sqlite,
+    int64_t schema_id,
+    const char *name,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = prepare_statement(
+        sqlite,
+        "SELECT table_id, schema_id, name, kind, physical_name, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
+        "FROM _mylite_catalog_tables WHERE schema_id = ?1 AND name = ?2",
+        &statement
+    );
+
+    *out_table = (struct mylite_catalog_table_descriptor){0};
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 2, name);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = materialize_table(statement, out_table);
+        } else {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int read_table_by_id(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = prepare_statement(
+        sqlite,
+        "SELECT table_id, schema_id, name, kind, physical_name, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
+        "FROM _mylite_catalog_tables WHERE table_id = ?1",
+        &statement
+    );
+
+    *out_table = (struct mylite_catalog_table_descriptor){0};
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = materialize_table(statement, out_table);
+        } else {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int read_column_by_name(
+    sqlite3 *sqlite,
+    int64_t table_id,
+    const char *name,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = prepare_statement(
+        sqlite,
+        "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, descriptor_version, created_catalog_generation, updated_catalog_generation "
+        "FROM _mylite_catalog_columns WHERE table_id = ?1 AND name = ?2",
+        &statement
+    );
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 2, name);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = materialize_column(statement, out_column);
+        } else {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+static int materialize_schema(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_schema_descriptor *out_schema
+) {
+    int rc = checked_column_i64(statement, 0, &out_schema->schema_id);
+
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(statement, 1, out_schema->name, sizeof(out_schema->name));
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(statement, 2, &out_schema->descriptor_version);
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(statement, 3, &out_schema->created_catalog_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(statement, 4, &out_schema->updated_catalog_generation);
+    }
+
+    return rc;
+}
+
+static int materialize_table(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    int64_t kind = 0;
+    int rc =
+        checked_column_i64(statement, catalog_table_select_table_id_column, &out_table->table_id);
+
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_table_select_schema_id_column,
+            &out_table->schema_id
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_table_select_name_column,
+            out_table->name,
+            sizeof(out_table->name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(statement, catalog_table_select_kind_column, &kind);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_table_kind((enum mylite_catalog_table_kind)kind);
+    }
+    if (rc == MYLITE_OK) {
+        out_table->kind = (enum mylite_catalog_table_kind)kind;
+        rc = checked_column_text(
+            statement,
+            catalog_table_select_physical_name_column,
+            out_table->physical_name,
+            sizeof(out_table->physical_name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_table_select_descriptor_version_column,
+            &out_table->descriptor_version
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_table_select_created_generation_column,
+            &out_table->created_catalog_generation
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_table_select_updated_generation_column,
+            &out_table->updated_catalog_generation
+        );
+    }
+
+    return rc;
+}
+
+static int materialize_column(
+    sqlite3_stmt *statement,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    int64_t nullable = 0;
+    int rc = checked_column_i64(
+        statement,
+        catalog_column_select_column_id_column,
+        &out_column->column_id
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_column_select_table_id_column,
+            &out_column->table_id
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(
+            statement,
+            catalog_column_select_ordinal_position_column,
+            &out_column->ordinal_position
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_column_select_name_column,
+            out_column->name,
+            sizeof(out_column->name)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_column_select_logical_type_column,
+            out_column->logical_type,
+            sizeof(out_column->logical_type)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_text(
+            statement,
+            catalog_column_select_physical_type_column,
+            out_column->physical_type,
+            sizeof(out_column->physical_type)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_i64(statement, catalog_column_select_is_nullable_column, &nullable);
+    }
+    if (rc == MYLITE_OK && nullable != 0 && nullable != 1) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_column->is_nullable = nullable != 0;
+        rc = checked_column_u64(
+            statement,
+            catalog_column_select_descriptor_version_column,
+            &out_column->descriptor_version
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_column_select_created_generation_column,
+            &out_column->created_catalog_generation
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = checked_column_u64(
+            statement,
+            catalog_column_select_updated_generation_column,
+            &out_column->updated_catalog_generation
+        );
+    }
+
+    return rc;
+}
+
+static int checked_column_i64(sqlite3_stmt *statement, int index, int64_t *out_value) {
+    if (sqlite3_column_type(statement, index) != SQLITE_INTEGER) {
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (int64_t)sqlite3_column_int64(statement, index);
+
+    return MYLITE_OK;
+}
+
+static int checked_column_u64(sqlite3_stmt *statement, int index, uint64_t *out_value) {
+    int64_t signed_value = 0;
+    int rc = checked_column_i64(statement, index, &signed_value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return i64_to_u64(signed_value, out_value);
+}
+
+static int checked_column_text(
+    sqlite3_stmt *statement,
+    int index,
+    char *destination,
+    size_t destination_size
+) {
+    const unsigned char *source = NULL;
+    int byte_count = 0;
+
+    if (sqlite3_column_type(statement, index) != SQLITE_TEXT) {
+        return MYLITE_ERROR;
+    }
+
+    source = sqlite3_column_text(statement, index);
+    byte_count = sqlite3_column_bytes(statement, index);
+    if (source == NULL || byte_count < 0 || (size_t)byte_count >= destination_size) {
+        return MYLITE_ERROR;
+    }
+
+    memcpy(destination, source, (size_t)byte_count);
+    destination[(size_t)byte_count] = '\0';
+
+    return MYLITE_OK;
+}
+
+static int validate_database(struct mylite_db *database) {
+    if (database == NULL || database->sqlite == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_catalog_ready_database(struct mylite_db *database) {
+    int rc = validate_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!database->catalog.initialized) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_required_name(const char *name, size_t capacity) {
+    size_t length = 0U;
+
+    if (name == NULL || name[0] == '\0') {
+        return MYLITE_MISUSE;
+    }
+
+    length = strlen(name);
+    if (length >= capacity) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_logical_object_name(const char *name, size_t capacity) {
+    int rc = validate_required_name(name, capacity);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (mylite_catalog_name_is_reserved(name)) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_table_kind(enum mylite_catalog_table_kind kind) {
+    if (kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_positive_id(int64_t id) {
+    if (id <= 0) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_positive_ordinal(int64_t ordinal_position) {
+    if (ordinal_position <= 0) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_generation(uint64_t generation) {
+    int64_t signed_generation = 0;
+
+    if (generation == 0U) {
+        return MYLITE_ERROR;
+    }
+
+    return u64_to_i64(generation, &signed_generation);
+}
+
+static int u64_to_i64(uint64_t value, int64_t *out_value) {
+    if (value > INT64_MAX) {
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (int64_t)value;
+
+    return MYLITE_OK;
+}
+
+static int i64_to_u32(int64_t value, uint32_t *out_value) {
+    if (value < 0 || value > UINT32_MAX) {
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (uint32_t)value;
+
+    return MYLITE_OK;
+}
+
+static int i64_to_u64(int64_t value, uint64_t *out_value) {
+    if (value < 0) {
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (uint64_t)value;
+
+    return MYLITE_OK;
+}
+
+static void reset_descriptor_cache_state(struct mylite_catalog *catalog) {
+    catalog->cached_generation = 0U;
+    catalog->descriptor_cache_is_valid = false;
+}
+
+static const char *catalog_state_table_name(void) {
+    return "_mylite_catalog_state";
+}
+
+static const char *catalog_schemas_table_name(void) {
+    return "_mylite_catalog_schemas";
+}
+
+static const char *catalog_tables_table_name(void) {
+    return "_mylite_catalog_tables";
+}
+
+static const char *catalog_columns_table_name(void) {
+    return "_mylite_catalog_columns";
+}

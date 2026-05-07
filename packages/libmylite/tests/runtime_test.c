@@ -36131,6 +36131,31 @@ static int test_cast_expression_execution(void) {
 
     failures += prepare_sql(
         database,
+        "SELECT HEX(CAST(UNHEX('61FF62') AS CHAR(1) CHARACTER SET utf8mb4)) AS value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_column_names(stmt, cast_connection_charset_column, 1, "CAST charset length column");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST charset length row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "CAST invalid utf8mb4 length value");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST charset length warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_invalid_character_string,
+        "CAST charset length warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Invalid utf8mb4 character string: 'FF62'",
+        "CAST charset length warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST charset length done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
         "SELECT HEX(CAST(UNHEX('61FF62') AS CHAR)) AS value",
         MYLITE_OK,
         &stmt
@@ -36154,6 +36179,32 @@ static int test_cast_expression_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(
+        database,
+        "SELECT HEX(CAST(UNHEX('61FF62') AS CHAR(1))) AS value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_column_names(stmt, cast_connection_charset_column, 1, "CAST default length column");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST default length row");
+    failures +=
+        expect_null_text(mylite_column_text(stmt, 0), "CAST default utf8mb4 length invalid");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST default length warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_invalid_character_string,
+        "CAST default length warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Invalid utf8mb4 character string: 'FF62'",
+        "CAST default length warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST default length done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
     failures += prepare_sql(
         database,
@@ -36171,6 +36222,31 @@ static int test_cast_expression_execution(void) {
     );
     failures += expect_int(mylite_warning_count(database), 0, "CAST latin1 warning count");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST latin1 charset done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT HEX(CAST(UNHEX('61FF62') AS CHAR(1))) AS value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_column_names(stmt, cast_connection_charset_column, 1, "CAST latin1 length column");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST latin1 length row");
+    failures += expect_string(mylite_column_text(stmt, 0), "61", "CAST latin1 length value");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST latin1 length warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CAST latin1 length warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "CHAR(1)",
+        "CAST latin1 length warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST latin1 length done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
@@ -36780,6 +36856,36 @@ static int test_convert_expression_execution(void) {
 
     failures += prepare_sql(
         database,
+        "SELECT HEX(CONVERT(UNHEX('61FF62'), CHAR(1) CHARACTER SET utf8mb4)) AS value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(
+        stmt,
+        convert_connection_charset_column,
+        1,
+        "CONVERT charset length column"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT charset length row");
+    failures +=
+        expect_null_text(mylite_column_text(stmt, 0), "CONVERT invalid utf8mb4 length value");
+    failures += expect_int(mylite_warning_count(database), 1, "CONVERT charset length warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_invalid_character_string,
+        "CONVERT charset length warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Invalid utf8mb4 character string: 'FF62'",
+        "CONVERT charset length warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT charset length done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
         "SELECT HEX(CONVERT(UNHEX('61FF62'), CHAR)) AS value",
         MYLITE_OK,
         &stmt
@@ -36809,6 +36915,36 @@ static int test_convert_expression_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(
+        database,
+        "SELECT HEX(CONVERT(UNHEX('61FF62'), CHAR(1))) AS value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(
+        stmt,
+        convert_connection_charset_column,
+        1,
+        "CONVERT default length column"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT default length row");
+    failures +=
+        expect_null_text(mylite_column_text(stmt, 0), "CONVERT default utf8mb4 length invalid");
+    failures += expect_int(mylite_warning_count(database), 1, "CONVERT default length warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_invalid_character_string,
+        "CONVERT default length warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "Invalid utf8mb4 character string: 'FF62'",
+        "CONVERT default length warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT default length done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
     failures += prepare_sql(
         database,
@@ -36830,6 +36966,35 @@ static int test_convert_expression_execution(void) {
     );
     failures += expect_int(mylite_warning_count(database), 0, "CONVERT latin1 warning count");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT latin1 charset done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT HEX(CONVERT(UNHEX('61FF62'), CHAR(1))) AS value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(
+        stmt,
+        convert_connection_charset_column,
+        1,
+        "CONVERT latin1 length column"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT latin1 length row");
+    failures += expect_string(mylite_column_text(stmt, 0), "61", "CONVERT latin1 length value");
+    failures += expect_int(mylite_warning_count(database), 1, "CONVERT latin1 length warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT latin1 length warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "CHAR(1)",
+        "CONVERT latin1 length warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT latin1 length done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);

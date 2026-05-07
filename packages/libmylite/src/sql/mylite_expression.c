@@ -5632,6 +5632,12 @@ static int eval_char_cast(
     if (status != 0) {
         return status;
     }
+    status = validate_char_cast_text(target, context, text, text_length, warnings, &null_result);
+    if (status == 0 && null_result) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        free(text);
+        return 0;
+    }
     if (target->has_column_length) {
         int64_t character_count = 0;
 
@@ -5649,15 +5655,6 @@ static int eval_char_cast(
                 text[offset] = '\0';
             }
         }
-    }
-    if (status == 0) {
-        status =
-            validate_char_cast_text(target, context, text, text_length, warnings, &null_result);
-    }
-    if (status == 0 && null_result) {
-        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
-        free(text);
-        return 0;
     }
     if (status == 0) {
         status = set_text_value(text, text_length, out_value);

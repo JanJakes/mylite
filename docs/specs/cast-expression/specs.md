@@ -158,6 +158,7 @@ truncate by byte count, right-pad shorter values with `0x00`, and use
 | `HEX(CAST(UNHEX('61FF62') AS CHAR CHARACTER SET ascii))` | `61FF62` | none |
 | `SET NAMES utf8mb4; HEX(CAST(UNHEX('61FF62') AS CHAR))` | `NULL` | 1300 invalid character string |
 | `SET NAMES latin1; HEX(CAST(UNHEX('61FF62') AS CHAR))` | `61FF62` | none |
+| `SET NAMES latin1; HEX(CAST(UNHEX('E282AC62') AS CHAR(1)))` | `E2` | 1292 truncated char |
 | `HEX(CAST('a\\0b' AS BINARY))` | `610062` | none |
 | `LENGTH(CAST('a\\0b' AS BINARY))` | `3` | none |
 | `HEX(CAST('a' AS BINARY(3)))` | `610000` | none |

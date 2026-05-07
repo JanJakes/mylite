@@ -134,6 +134,7 @@ set for the same validation decision.
 | `SET NAMES utf8mb4; HEX(CONVERT(UNHEX('61FF62'), CHAR))` | `NULL`, warning 1300 |
 | `HEX(CONVERT(UNHEX('61FF62'), CHAR CHARACTER SET ascii))` | `61FF62` |
 | `SET NAMES latin1; HEX(CONVERT(UNHEX('61FF62'), CHAR))` | `61FF62` |
+| `SET NAMES latin1; HEX(CONVERT(UNHEX('E282AC62'), CHAR(1)))` | `E2`, warning 1292 |
 | `COLLATION(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `latin1_bin` |
 | `COERCIBILITY(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `0` |
 | `COLLATION(CONVERT('abc' USING utf8mb4) COLLATE utf8mb4_bin)` | `utf8mb4_bin` |

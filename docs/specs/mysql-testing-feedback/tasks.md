@@ -274,7 +274,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       source byte string before truncation, matching MySQL's warning 1300
       precedence for invalid UTF-8 after the retained prefix. Length-qualified
       `CAST`/`CONVERT` to `CHAR(N) CHARACTER SET binary` now share `BINARY(N)`
-      byte truncation, right-padding, warning text, and binary metadata. Hex and
+      byte truncation, right-padding, warning text, and binary metadata.
+      Single-byte `latin1` connection `CHAR(N)` casts and conversions now
+      truncate by bytes rather than UTF-8 code points. Hex and
       bit literals in covered `INSERT ... VALUES`, `INSERT ... SET`, ODKU
       update assignments, single-table `UPDATE`, and joined `UPDATE` paths now
       resolve with target-aware MySQL semantics: numeric columns receive the

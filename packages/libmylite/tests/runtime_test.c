@@ -36264,6 +36264,47 @@ static int test_cast_expression_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST latin1 length done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT HEX(CAST(UNHEX('E282AC62') AS CHAR(1))), "
+        "HEX(CAST(UNHEX('E282AC62') AS CHAR(2))), "
+        "HEX(CAST(UNHEX('E282AC62') AS CHAR CHARACTER SET latin1))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST latin1 byte length row");
+    failures += expect_string(mylite_column_text(stmt, 0), "E2", "CAST latin1 char(1) bytes");
+    failures += expect_string(mylite_column_text(stmt, 1), "E282", "CAST latin1 char(2) bytes");
+    failures += expect_string(
+        mylite_column_text(stmt, 2),
+        "E282AC62",
+        "CAST explicit latin1 preserves bytes"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "CAST latin1 byte warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CAST latin1 byte warning 0 code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "CHAR(1)",
+        "CAST latin1 byte warning 0 message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "CAST latin1 byte warning 1 code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 1),
+        "CHAR(2)",
+        "CAST latin1 byte warning 1 message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST latin1 byte length done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
 
     failures += execute_sql(
@@ -37048,6 +37089,41 @@ static int test_convert_expression_execution(void) {
         "CONVERT latin1 length warning message"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT latin1 length done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT HEX(CONVERT(UNHEX('E282AC62'), CHAR(1))), "
+        "HEX(CONVERT(UNHEX('E282AC62'), CHAR(2)))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT latin1 byte length row");
+    failures += expect_string(mylite_column_text(stmt, 0), "E2", "CONVERT latin1 char(1) bytes");
+    failures += expect_string(mylite_column_text(stmt, 1), "E282", "CONVERT latin1 char(2) bytes");
+    failures += expect_int(mylite_warning_count(database), 2, "CONVERT latin1 byte warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT latin1 byte warning 0 code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "CHAR(1)",
+        "CONVERT latin1 byte warning 0 message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT latin1 byte warning 1 code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 1),
+        "CHAR(2)",
+        "CONVERT latin1 byte warning 1 message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT latin1 byte length done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);

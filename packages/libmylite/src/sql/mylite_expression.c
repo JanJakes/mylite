@@ -897,6 +897,14 @@ static int eval_char_cast(
     struct mylite_expression_value *out_value
 );
 
+static int truncate_char_cast_text(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_eval_context *context,
+    char *text,
+    size_t *text_length,
+    struct mylite_expression_warnings *warnings
+);
+
 static int validate_char_cast_text(
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_eval_context *context,
@@ -5638,23 +5646,8 @@ static int eval_char_cast(
         free(text);
         return 0;
     }
-    if (target->has_column_length) {
-        int64_t character_count = 0;
-
-        status = utf8_char_count_with_length(text, text_length, &character_count);
-        if (status == 0 && character_count > (int64_t)target->column_length) {
-            size_t offset = utf8_offset_for_chars_with_length(
-                text,
-                text_length,
-                (int64_t)target->column_length
-            );
-
-            status = append_char_truncation_warning(warnings, target->column_length, text);
-            if (status == 0) {
-                text_length = offset;
-                text[offset] = '\0';
-            }
-        }
+    if (status == 0) {
+        status = truncate_char_cast_text(target, context, text, &text_length, warnings);
     }
     if (status == 0) {
         status = set_text_value(text, text_length, out_value);
@@ -5678,6 +5671,83 @@ static bool cast_target_uses_binary_charset(const struct mylite_sql_ast_node *ta
     uses_binary = char_function_charset_from_name(charset_name) == CHAR_FUNCTION_CHARSET_BINARY;
     free(charset_name);
     return uses_binary;
+}
+
+static int truncate_char_cast_text(
+    const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_eval_context *context,
+    char *text,
+    size_t *text_length,
+    struct mylite_expression_warnings *warnings
+) {
+    char *owned_charset_name = NULL;
+    const char *charset_name = NULL;
+    enum char_function_charset charset = CHAR_FUNCTION_CHARSET_UNKNOWN;
+    int status = 0;
+
+    if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE ||
+        target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR || !target->has_column_length ||
+        text_length == NULL) {
+        return 0;
+    }
+
+    if (target->has_column_character_set) {
+        owned_charset_name = copy_cast_target_charset_name(target);
+        if (owned_charset_name == NULL) {
+            return -1;
+        }
+        charset_name = owned_charset_name;
+    } else {
+        charset_name = default_char_cast_charset_name(context);
+    }
+    charset = char_function_charset_from_name(charset_name);
+
+    switch (charset) {
+    case CHAR_FUNCTION_CHARSET_UTF8MB4:
+    case CHAR_FUNCTION_CHARSET_UTF8MB3: {
+        int64_t character_count = 0;
+
+        if (target->column_length > (uint64_t)INT64_MAX) {
+            free(owned_charset_name);
+            return -1;
+        }
+        status = utf8_char_count_with_length(text, *text_length, &character_count);
+        if (status == 0 && character_count > (int64_t)target->column_length) {
+            size_t offset = utf8_offset_for_chars_with_length(
+                text,
+                *text_length,
+                (int64_t)target->column_length
+            );
+
+            status = append_char_truncation_warning(warnings, target->column_length, text);
+            if (status == 0) {
+                *text_length = offset;
+                text[offset] = '\0';
+            }
+        }
+        break;
+    }
+    case CHAR_FUNCTION_CHARSET_BINARY:
+    case CHAR_FUNCTION_CHARSET_LATIN1:
+    case CHAR_FUNCTION_CHARSET_ASCII:
+        if (target->column_length > (uint64_t)SIZE_MAX - 1U) {
+            free(owned_charset_name);
+            return -1;
+        }
+        if (*text_length > (size_t)target->column_length) {
+            status = append_char_truncation_warning(warnings, target->column_length, text);
+            if (status == 0) {
+                *text_length = (size_t)target->column_length;
+                text[*text_length] = '\0';
+            }
+        }
+        break;
+    case CHAR_FUNCTION_CHARSET_UNKNOWN:
+        break;
+    }
+
+    free(owned_charset_name);
+    return status;
 }
 
 static int validate_char_cast_text(

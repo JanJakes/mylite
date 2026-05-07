@@ -17,7 +17,9 @@ void mylite_show_create_append_identifier(sqlite3_str *create_sql, const char *i
 void mylite_show_create_append_string_literal(sqlite3_str *create_sql, const char *text) {
     sqlite3_str_appendchar(create_sql, 1, '\'');
     for (const char *cursor = text == NULL ? "" : text; *cursor != '\0'; ++cursor) {
-        if (*cursor == '\'' || *cursor == '\\') {
+        if (*cursor == '\'') {
+            sqlite3_str_appendchar(create_sql, 1, '\'');
+        } else if (*cursor == '\\') {
             sqlite3_str_appendchar(create_sql, 1, '\\');
         }
         sqlite3_str_appendchar(create_sql, 1, *cursor);

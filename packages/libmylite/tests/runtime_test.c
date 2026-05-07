@@ -51226,6 +51226,16 @@ static int test_show_create_table_execution(void) {
         ") ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin "
         "COMMENT='table comment'";
     static const char *const meta_values[] = {"meta", meta_create};
+    static const char escaped_literals_create[] =
+        "CREATE TABLE `escaped_literals` (\n"
+        "  `v` varchar(20) DEFAULT 'd''e\\\\f' COMMENT 'c''m\\\\t',\n"
+        "  KEY `idx_literal` (`v`) COMMENT 'i''x\\\\k'\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci "
+        "COMMENT='t''b\\\\l'";
+    static const char *const escaped_literals_values[] = {
+        "escaped_literals",
+        escaped_literals_create
+    };
     static const char index_options_create[] =
         "CREATE TABLE `index_options` (\n"
         "  `id` int DEFAULT NULL,\n"
@@ -51472,6 +51482,23 @@ static int test_show_create_table_execution(void) {
         meta_values,
         1,
         "show create table full metadata"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE escaped_literals ("
+        "v VARCHAR(20) DEFAULT 'd''e\\\\f' COMMENT 'c''m\\\\t', "
+        "KEY idx_literal (v) COMMENT 'i''x\\\\k') "
+        "COMMENT='t''b\\\\l'",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE escaped_literals",
+        columns,
+        2,
+        escaped_literals_values,
+        1,
+        "show create table escapes string literals"
     );
 
     failures += execute_sql(

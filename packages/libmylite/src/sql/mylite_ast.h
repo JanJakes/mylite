@@ -35,6 +35,9 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_WHERE_CLAUSE = 26,
     MYLITE_SQL_AST_COMPARISON_PREDICATE = 27,
     MYLITE_SQL_AST_IS_NULL_PREDICATE = 28,
+    MYLITE_SQL_AST_ORDER_BY_CLAUSE = 29,
+    MYLITE_SQL_AST_ORDER_DIRECTION = 30,
+    MYLITE_SQL_AST_LIMIT_CLAUSE = 31,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -82,6 +85,12 @@ enum mylite_sql_ast_nullability {
     MYLITE_SQL_AST_NULLABILITY_NOT_NULL = 2,
 };
 
+enum mylite_sql_ast_order_direction {
+    MYLITE_SQL_AST_ORDER_DIRECTION_DEFAULT = 0,
+    MYLITE_SQL_AST_ORDER_DIRECTION_ASC = 1,
+    MYLITE_SQL_AST_ORDER_DIRECTION_DESC = 2,
+};
+
 struct mylite_sql_ast_literal_payload {
     enum mylite_sql_ast_literal_kind kind;
 };
@@ -99,11 +108,16 @@ struct mylite_sql_ast_nullability_payload {
     enum mylite_sql_ast_nullability kind;
 };
 
+struct mylite_sql_ast_order_direction_payload {
+    enum mylite_sql_ast_order_direction kind;
+};
+
 union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_literal_payload literal;
     struct mylite_sql_ast_expression_payload expression;
     struct mylite_sql_ast_integer_type_payload integer_type;
     struct mylite_sql_ast_nullability_payload nullability;
+    struct mylite_sql_ast_order_direction_payload order_direction;
 };
 
 struct mylite_sql_ast_node {
@@ -153,6 +167,10 @@ void mylite_sql_ast_node_set_nullability(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability nullability
 );
+void mylite_sql_ast_node_set_order_direction(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_order_direction direction
+);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
@@ -166,11 +184,15 @@ int mylite_sql_ast_node_integer_type_is_unsigned(const struct mylite_sql_ast_nod
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 );
+enum mylite_sql_ast_order_direction mylite_sql_ast_node_order_direction(
+    const struct mylite_sql_ast_node *node
+);
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);
 const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind kind);
 const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_kind);
 const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type integer_type);
 const char *mylite_sql_ast_nullability_name(enum mylite_sql_ast_nullability nullability);
+const char *mylite_sql_ast_order_direction_name(enum mylite_sql_ast_order_direction direction);
 
 #endif

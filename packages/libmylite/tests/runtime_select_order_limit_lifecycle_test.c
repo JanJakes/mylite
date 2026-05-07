@@ -18,8 +18,9 @@
 enum {
     test_path_capacity = 1024,
     sqlite_sql_capacity = 512,
-    numbers_column_count = 6,
-    numbers_nn_column_index = 5,
+    ordered_numbers_column_count = 7,
+    ordered_numbers_nullable_column_index = 5,
+    ordered_numbers_not_null_column_index = 6,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -28,7 +29,6 @@ enum {
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
     mysql_error_table_does_not_exist = 1146,
-    mysql_error_data_out_of_range = 1264,
 };
 
 struct expected_sql_error {
@@ -37,27 +37,22 @@ struct expected_sql_error {
     const char *message_part;
 };
 
-struct expected_single_value_query {
+struct expected_query {
     const char *sql;
-    const char *expected;
+    const char *const *values;
+    size_t value_count;
     const char *context;
 };
 
-struct expected_empty_query {
-    const char *sql;
-    const char *context;
-};
-
-static int test_filtered_select_success_persistence_rename_and_drop(void);
-static int test_filtered_select_diagnostics(void);
-static int test_independent_filtered_select_handles(void);
+static int test_order_limit_success_persistence_rename_and_drop(void);
+static int test_order_limit_diagnostics(void);
+static int test_independent_order_limit_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
-static int create_select_tables(mylite_db *database);
+static int create_order_tables(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int expect_query_single_value(mylite_db *database, struct expected_single_value_query query);
-static int expect_query_empty(mylite_db *database, struct expected_empty_query query);
-static int expect_select_value(
+static int expect_query_values(mylite_db *database, struct expected_query query);
+static int expect_result_value(
     const mylite_result *result,
     size_t row,
     size_t column,
@@ -87,14 +82,32 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_filtered_select_success_persistence_rename_and_drop();
-    failures += test_filtered_select_diagnostics();
-    failures += test_independent_filtered_select_handles();
+    failures += test_order_limit_success_persistence_rename_and_drop();
+    failures += test_order_limit_diagnostics();
+    failures += test_independent_order_limit_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_filtered_select_success_persistence_rename_and_drop(void) {
+static int test_order_limit_success_persistence_rename_and_drop(void) {
+    static const char *const ordered_i[] = {"-2", "0", "1", "2147483647"};
+    static const char *const desc_i[] = {"2147483647", "1", "0", "-2"};
+    static const char *const ordered_n[] = {NULL, NULL, "9", "9"};
+    static const char *const desc_n[] = {"9", "9", NULL, NULL};
+    static const char *const ordered_iu[] = {"0", "2", "8", "4294967295"};
+    static const char *const ordered_b[] = {
+        "-9223372036854775808",
+        "3",
+        "8",
+        "9223372036854775807",
+    };
+    static const char *const ordered_bu[] = {"0", "4", "8", "9223372036854775807"};
+    static const char *const alias_first[] = {"1"};
+    static const char *const alias_unsigned_last[] = {"2"};
+    static const char *const limit_two[] = {"1", "2"};
+    static const char *const all_ids[] = {"1", "2", "3", "4"};
+    static const char *const offset_two[] = {"2", "3"};
+    static const char *const single_three[] = {"3"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -117,7 +130,7 @@ static int test_filtered_select_success_persistence_rename_and_drop(void) {
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += create_select_tables(database);
+    failures += create_order_tables(database);
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
@@ -128,209 +141,240 @@ static int test_filtered_select_success_persistence_rename_and_drop(void) {
         sqlite_generation_before_select = session->sqlite_schema_generation;
     }
 
-    failures += execute_ok(database, "SELECT * FROM numbers WHERE i = 1", &result);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i FROM ordered_numbers ORDER BY i",
+            .values = ordered_i,
+            .value_count = sizeof(ordered_i) / sizeof(ordered_i[0]),
+            .context = "default ascending order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i FROM ordered_numbers ORDER BY i ASC",
+            .values = ordered_i,
+            .value_count = sizeof(ordered_i) / sizeof(ordered_i[0]),
+            .context = "explicit ascending order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT i FROM ordered_numbers ORDER BY i DESC",
+            .values = desc_i,
+            .value_count = sizeof(desc_i) / sizeof(desc_i[0]),
+            .context = "descending order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT n FROM ordered_numbers ORDER BY n",
+            .values = ordered_n,
+            .value_count = sizeof(ordered_n) / sizeof(ordered_n[0]),
+            .context = "ascending null ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT n FROM ordered_numbers ORDER BY n DESC",
+            .values = desc_n,
+            .value_count = sizeof(desc_n) / sizeof(desc_n[0]),
+            .context = "descending null ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT iu FROM ordered_numbers ORDER BY iu",
+            .values = ordered_iu,
+            .value_count = sizeof(ordered_iu) / sizeof(ordered_iu[0]),
+            .context = "unsigned int ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT b FROM ordered_numbers ORDER BY b",
+            .values = ordered_b,
+            .value_count = sizeof(ordered_b) / sizeof(ordered_b[0]),
+            .context = "signed bigint ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT bu FROM ordered_numbers ORDER BY bu",
+            .values = ordered_bu,
+            .value_count = sizeof(ordered_bu) / sizeof(ordered_bu[0]),
+            .context = "bigint unsigned signed64 ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM integer_aliases ORDER BY ii LIMIT 1",
+            .values = alias_first,
+            .value_count = sizeof(alias_first) / sizeof(alias_first[0]),
+            .context = "integer alias ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM integer_aliases ORDER BY integeru DESC LIMIT 1",
+            .values = alias_unsigned_last,
+            .value_count = sizeof(alias_unsigned_last) / sizeof(alias_unsigned_last[0]),
+            .context = "integer unsigned alias ordering",
+        }
+    );
+
+    failures += execute_ok(database, "SELECT * FROM ordered_numbers ORDER BY nn LIMIT 1", &result);
     failures += expect_size(
         mylite_result_column_count(result),
-        numbers_column_count,
-        "filtered star column count"
+        ordered_numbers_column_count,
+        "ordered star column count"
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "filtered star row count");
-    failures += expect_text(mylite_result_column_name(result, 0U), "i", "filtered star i name");
-    failures += expect_text(mylite_result_column_name(result, 1U), "iu", "filtered star iu name");
-    failures += expect_text(mylite_result_column_name(result, 2U), "b", "filtered star b name");
-    failures += expect_text(mylite_result_column_name(result, 3U), "bu", "filtered star bu name");
-    failures += expect_text(mylite_result_column_name(result, 4U), "n", "filtered star n name");
+    failures += expect_size(mylite_result_row_count(result), 1U, "ordered star row count");
+    failures += expect_text(mylite_result_column_name(result, 0U), "id", "ordered star id name");
+    failures += expect_text(mylite_result_column_name(result, 1U), "i", "ordered star i name");
     failures += expect_text(
-        mylite_result_column_name(result, numbers_nn_column_index),
+        mylite_result_column_name(result, ordered_numbers_not_null_column_index),
         "nn",
-        "filtered star nn name"
+        "ordered star nn name"
     );
-    failures += expect_select_value(result, 0U, 0U, "1", "filtered star i value");
-    failures += expect_select_value(result, 0U, 1U, "2", "filtered star iu value");
-    failures += expect_select_value(result, 0U, 2U, "3", "filtered star b value");
-    failures += expect_select_value(result, 0U, 3U, "4", "filtered star bu value");
-    failures += expect_select_value(result, 0U, 4U, "9", "filtered star n value");
+    failures += expect_result_value(result, 0U, 0U, "1", "ordered star id value");
+    failures += expect_result_value(result, 0U, 1U, "-2", "ordered star i value");
+    failures += expect_result_value(
+        result,
+        0U,
+        ordered_numbers_nullable_column_index,
+        NULL,
+        "ordered star null value"
+    );
+    failures += expect_int64(mylite_result_affected_rows(result), 0, "ordered star affected rows");
+    failures += expect_size(mylite_result_warning_count(result), 0U, "ordered star warnings");
+    mylite_result_free(result);
+    result = NULL;
+
     failures +=
-        expect_select_value(result, 0U, numbers_nn_column_index, "6", "filtered star nn value");
-    failures += expect_int64(mylite_result_affected_rows(result), 0, "filtered star affected rows");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "filtered star warnings");
+        execute_ok(database, "SELECT i, i FROM ordered_numbers ORDER BY nn LIMIT 1", &result);
+    failures += expect_size(mylite_result_column_count(result), 2U, "duplicate ordered columns");
+    failures += expect_text(mylite_result_column_name(result, 0U), "i", "duplicate ordered col 1");
+    failures += expect_text(mylite_result_column_name(result, 1U), "i", "duplicate ordered col 2");
+    failures += expect_result_value(result, 0U, 0U, "-2", "duplicate ordered value 1");
+    failures += expect_result_value(result, 0U, 1U, "-2", "duplicate ordered value 2");
     mylite_result_free(result);
     result = NULL;
 
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT id FROM single_values WHERE id <> 2",
-            .expected = "1",
-            .context = "not equal angle predicate",
-        }
-    );
-    failures += expect_query_empty(
-        database,
-        (struct expected_empty_query){
-            .sql = "SELECT id FROM single_values WHERE id != 1",
-            .context = "not equal bang predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE i < 0",
-            .expected = "-2",
-            .context = "less than predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE i <= -2",
-            .expected = "-2",
-            .context = "less equal predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE i > 2147483646",
-            .expected = "2147483647",
-            .context = "greater than predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE i >= 2147483647",
-            .expected = "2147483647",
-            .context = "greater equal predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE i <=> 1",
-            .expected = "1",
-            .context = "null safe equal predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT id FROM null_probe WHERE n IS NULL",
-            .expected = "1",
-            .context = "is null predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT id FROM null_probe WHERE n IS NOT NULL",
-            .expected = "2",
-            .context = "is not null predicate",
-        }
-    );
-    failures += expect_query_empty(
-        database,
-        (struct expected_empty_query){
-            .sql = "SELECT id FROM null_probe WHERE nn IS NULL",
-            .context = "not null column is null predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT n FROM numbers WHERE i = -2",
-            .expected = NULL,
-            .context = "filtered null value",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE n = 9",
-            .expected = "1",
-            .context = "nullable equal predicate",
-        }
-    );
-    failures += expect_query_empty(
-        database,
-        (struct expected_empty_query){
-            .sql = "SELECT i FROM numbers WHERE n <> 9",
-            .context = "nullable not equal predicate excludes null rows",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE iu >= 4294967295",
-            .expected = "2147483647",
-            .context = "unsigned int boundary predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE b = -9223372036854775808",
-            .expected = "-2",
-            .context = "signed bigint minimum predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE bu = 9223372036854775807",
-            .expected = "2147483647",
-            .context = "bigint unsigned signed64 predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT id FROM integer_aliases WHERE ii = -3",
-            .expected = "1",
-            .context = "integer alias signed predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT id FROM integer_aliases WHERE intu = 4294967295",
-            .expected = "1",
-            .context = "int unsigned predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT id FROM integer_aliases WHERE integeru = 7",
-            .expected = "1",
-            .context = "integer unsigned predicate",
-        }
-    );
-    failures += expect_query_single_value(
-        database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM app.numbers WHERE nn = 6",
-            .expected = "1",
-            .context = "schema-qualified filtered select",
-        }
-    );
-
-    failures += execute_ok(database, "SELECT i, i FROM numbers WHERE (i = +1)", &result);
-    failures += expect_size(mylite_result_column_count(result), 2U, "duplicate filtered columns");
-    failures += expect_text(mylite_result_column_name(result, 0U), "i", "duplicate filtered col 1");
-    failures += expect_text(mylite_result_column_name(result, 1U), "i", "duplicate filtered col 2");
-    failures += expect_size(mylite_result_row_count(result), 1U, "duplicate filtered rows");
-    failures += expect_select_value(result, 0U, 0U, "1", "duplicate filtered value 1");
-    failures += expect_select_value(result, 0U, 1U, "1", "duplicate filtered value 2");
+    failures += execute_ok(database, "SELECT id FROM ordered_numbers ORDER BY id LIMIT 0", &result);
+    failures += expect_size(mylite_result_column_count(result), 1U, "limit zero column count");
+    failures += expect_size(mylite_result_row_count(result), 0U, "limit zero row count");
+    failures += expect_int64(mylite_result_affected_rows(result), 0, "limit zero affected rows");
+    failures += expect_size(mylite_result_warning_count(result), 0U, "limit zero warnings");
     mylite_result_free(result);
     result = NULL;
+
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id LIMIT 2",
+            .values = limit_two,
+            .value_count = sizeof(limit_two) / sizeof(limit_two[0]),
+            .context = "limit exact count",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id LIMIT 10",
+            .values = all_ids,
+            .value_count = sizeof(all_ids) / sizeof(all_ids[0]),
+            .context = "limit larger than result",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id LIMIT 9223372036854775807",
+            .values = all_ids,
+            .value_count = sizeof(all_ids) / sizeof(all_ids[0]),
+            .context = "maximum supported limit",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id LIMIT 2 OFFSET 1",
+            .values = offset_two,
+            .value_count = sizeof(offset_two) / sizeof(offset_two[0]),
+            .context = "limit offset form",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1, 2",
+            .values = offset_two,
+            .value_count = sizeof(offset_two) / sizeof(offset_two[0]),
+            .context = "limit comma form",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id LIMIT 2 OFFSET 10",
+            .values = NULL,
+            .value_count = 0U,
+            .context = "limit offset beyond result",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1 OFFSET 9223372036854775807",
+            .values = NULL,
+            .value_count = 0U,
+            .context = "maximum supported offset",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1, 0",
+            .values = NULL,
+            .value_count = 0U,
+            .context = "limit zero count after offset",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers WHERE n IS NULL ORDER BY id DESC LIMIT 1",
+            .values = single_three,
+            .value_count = sizeof(single_three) / sizeof(single_three[0]),
+            .context = "where order limit composition",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM app.ordered_numbers WHERE nn >= 6 ORDER BY i DESC LIMIT 1",
+            .values = single_three,
+            .value_count = sizeof(single_three) / sizeof(single_three[0]),
+            .context = "schema-qualified ordered limited select",
+        }
+    );
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
         failures += expect_size(
             (size_t)catalog->generation,
             (size_t)catalog_generation_before_select,
-            "filtered select leaves catalog generation"
+            "ordered select leaves catalog generation"
         );
     }
     session = mylite_connection_session_state(database);
@@ -338,7 +382,7 @@ static int test_filtered_select_success_persistence_rename_and_drop(void) {
         failures += expect_size(
             (size_t)session->sqlite_schema_generation,
             (size_t)sqlite_generation_before_select,
-            "filtered select leaves SQLite schema generation"
+            "ordered select leaves SQLite schema generation"
         );
     }
 
@@ -350,53 +394,56 @@ static int test_filtered_select_success_persistence_rename_and_drop(void) {
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "filtered select preserves preamble"
+        "ordered select preserves preamble"
     );
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_query_single_value(
+    failures += expect_query_values(
         database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM numbers WHERE nn = 6",
-            .expected = "1",
-            .context = "reopened filtered row",
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY i DESC LIMIT 1",
+            .values = single_three,
+            .value_count = sizeof(single_three) / sizeof(single_three[0]),
+            .context = "reopened ordered limited row",
         }
     );
 
-    failures += execute_ok(database, "RENAME TABLE numbers TO renamed_numbers", &result);
+    failures +=
+        execute_ok(database, "RENAME TABLE ordered_numbers TO renamed_ordered_numbers", &result);
     mylite_result_free(result);
     result = NULL;
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE nn = 6",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
-            .message_part = "Table 'app.numbers' doesn't exist",
+            .message_part = "Table 'app.ordered_numbers' doesn't exist",
         }
     );
-    failures += expect_query_single_value(
+    failures += expect_query_values(
         database,
-        (struct expected_single_value_query){
-            .sql = "SELECT i FROM renamed_numbers WHERE nn = 6",
-            .expected = "1",
-            .context = "renamed filtered row",
+        (struct expected_query){
+            .sql = "SELECT id FROM renamed_ordered_numbers ORDER BY i DESC LIMIT 1",
+            .values = single_three,
+            .value_count = sizeof(single_three) / sizeof(single_three[0]),
+            .context = "renamed ordered limited row",
         }
     );
 
-    failures += execute_ok(database, "DROP TABLE renamed_numbers", &result);
+    failures += execute_ok(database, "DROP TABLE renamed_ordered_numbers", &result);
     mylite_result_free(result);
     result = NULL;
     failures += execute_error(
         database,
-        "SELECT i FROM renamed_numbers WHERE nn = 6",
+        "SELECT id FROM renamed_ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
-            .message_part = "Table 'app.renamed_numbers' doesn't exist",
+            .message_part = "Table 'app.renamed_ordered_numbers' doesn't exist",
         }
     );
 
@@ -406,7 +453,7 @@ static int test_filtered_select_success_persistence_rename_and_drop(void) {
     return failures;
 }
 
-static int test_filtered_select_diagnostics(void) {
+static int test_order_limit_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -425,7 +472,7 @@ static int test_filtered_select_diagnostics(void) {
 
     failures += execute_error(
         database,
-        "SELECT * FROM numbers WHERE i = 1",
+        "SELECT * FROM ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_no_database_selected,
             .sqlstate = "3D000",
@@ -434,7 +481,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT * FROM missing_schema.numbers WHERE i = 1",
+        "SELECT * FROM missing_schema.ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
             .sqlstate = "42000",
@@ -443,7 +490,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT * FROM _mylite_reserved.numbers WHERE i = 1",
+        "SELECT * FROM _mylite_reserved.ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
             .sqlstate = "42000",
@@ -454,11 +501,11 @@ static int test_filtered_select_diagnostics(void) {
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += create_select_tables(database);
+    failures += create_order_tables(database);
 
     failures += execute_error(
         database,
-        "SELECT * FROM missing_table WHERE i = 1",
+        "SELECT * FROM missing_table ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -467,7 +514,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT * FROM _mylite_reserved WHERE i = 1",
+        "SELECT * FROM _mylite_reserved ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
             .sqlstate = "42000",
@@ -476,7 +523,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT missing FROM numbers WHERE i = 1",
+        "SELECT missing FROM ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -485,7 +532,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE missing = 1",
+        "SELECT id FROM ordered_numbers WHERE missing = 1 ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -494,53 +541,43 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE numbers.i = 1",
+        "SELECT id FROM ordered_numbers ORDER BY missing LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'order clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM ordered_numbers ORDER BY ordered_numbers.id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
+            .message_part = "ORDER BY supports only unqualified descriptor columns",
         }
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = 2147483648",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT 9223372036854775808",
         (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'i' in WHERE",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "LIMIT literal is outside the supported range",
         }
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE iu = -1",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1 OFFSET 9223372036854775808",
         (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'iu' in WHERE",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "LIMIT literal is outside the supported range",
         }
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE b = 9223372036854775808",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'b' in WHERE",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT i FROM numbers WHERE bu = 9223372036854775808",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'bu' in WHERE",
-        }
-    );
-
-    failures += execute_error(
-        database,
-        "SELECT i FROM numbers WHERE 1 = i",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT +1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -549,7 +586,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i + 1 = 2",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT -1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -558,7 +595,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = NULL",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1.0",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -567,7 +604,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = '1'",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT '1'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -576,7 +613,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = 1.0",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT 0x1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -585,7 +622,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = 0x1",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT b'1'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -594,7 +631,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = ?",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT ?",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -603,7 +640,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = 1 AND nn = 6",
+        "SELECT id FROM ordered_numbers ORDER BY id, nn LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -612,7 +649,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = 1 OR nn = 6",
+        "SELECT id FROM ordered_numbers ORDER BY 1 LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -621,7 +658,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE NOT i = 1",
+        "SELECT id FROM ordered_numbers ORDER BY id + 1 LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -630,7 +667,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = 1 XOR nn = 6",
+        "SELECT id AS x FROM ordered_numbers ORDER BY x LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -639,7 +676,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE ABS(i) = 1",
+        "SELECT id FROM ordered_numbers GROUP BY id ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -648,7 +685,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = b'1'",
+        "SELECT id FROM ordered_numbers HAVING id > 0 ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -657,7 +694,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i BETWEEN 1 AND 2",
+        "SELECT id FROM ordered_numbers WHERE id IN (SELECT id FROM ordered_numbers) ORDER BY id",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -666,70 +703,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i LIKE 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT i FROM numbers WHERE i REGEXP '1'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT i FROM numbers JOIN null_probe WHERE i = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT i FROM numbers WHERE i = 1 ORDER BY nn, i",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT i FROM numbers WHERE i = 1 LIMIT +1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT i AS alias FROM numbers WHERE i = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT i FROM numbers GROUP BY i",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT i FROM numbers WHERE i IN (SELECT i FROM numbers)",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1 FOR UPDATE",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -743,7 +717,7 @@ static int test_filtered_select_diagnostics(void) {
         "read diagnostics schema"
     );
     failures += expect_int(
-        mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &table),
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "ordered_numbers", &table),
         MYLITE_OK,
         "read diagnostics table"
     );
@@ -753,7 +727,7 @@ static int test_filtered_select_diagnostics(void) {
     }
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = 1",
+        "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown,
             .sqlstate = "HY000",
@@ -767,7 +741,9 @@ static int test_filtered_select_diagnostics(void) {
     return failures;
 }
 
-static int test_independent_filtered_select_handles(void) {
+static int test_independent_order_limit_handles(void) {
+    static const char *const first_expected[] = {"10"};
+    static const char *const second_expected[] = {"20"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -792,43 +768,34 @@ static int test_independent_filtered_select_handles(void) {
     failures += execute_ok(second, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += create_select_tables(first);
-    failures += create_select_tables(second);
+    failures += create_order_tables(first);
+    failures += create_order_tables(second);
 
-    failures += execute_ok(first, "INSERT INTO numbers (i, nn) VALUES (101, 102)", &result);
+    failures +=
+        execute_ok(first, "INSERT INTO ordered_numbers (id, i, nn) VALUES (10, 10, 10)", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += execute_ok(second, "INSERT INTO numbers (i, nn) VALUES (201, 202)", &result);
+    failures +=
+        execute_ok(second, "INSERT INTO ordered_numbers (id, i, nn) VALUES (20, 20, 20)", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_query_single_value(
+
+    failures += expect_query_values(
         first,
-        (struct expected_single_value_query){
-            .sql = "SELECT nn FROM numbers WHERE i = 101",
-            .expected = "102",
-            .context = "first filtered row",
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id DESC LIMIT 1",
+            .values = first_expected,
+            .value_count = sizeof(first_expected) / sizeof(first_expected[0]),
+            .context = "first ordered limited row",
         }
     );
-    failures += expect_query_single_value(
+    failures += expect_query_values(
         second,
-        (struct expected_single_value_query){
-            .sql = "SELECT nn FROM numbers WHERE i = 201",
-            .expected = "202",
-            .context = "second filtered row",
-        }
-    );
-    failures += expect_query_empty(
-        first,
-        (struct expected_empty_query){
-            .sql = "SELECT nn FROM numbers WHERE i = 201",
-            .context = "first handle excludes second row",
-        }
-    );
-    failures += expect_query_empty(
-        second,
-        (struct expected_empty_query){
-            .sql = "SELECT nn FROM numbers WHERE i = 101",
-            .context = "second handle excludes first row",
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY id DESC LIMIT 1",
+            .values = second_expected,
+            .value_count = sizeof(second_expected) / sizeof(second_expected[0]),
+            .context = "second ordered limited row",
         }
     );
 
@@ -850,11 +817,12 @@ static int seed_schema(mylite_db *database, const char *name) {
     );
 }
 
-static int create_select_tables(mylite_db *database) {
+static int create_order_tables(mylite_db *database) {
     mylite_result *result = NULL;
     int failures = execute_ok(
         database,
-        "CREATE TABLE numbers ("
+        "CREATE TABLE ordered_numbers ("
+        "id INT NOT NULL, "
         "i INT, "
         "iu INTEGER UNSIGNED, "
         "b BIGINT, "
@@ -864,16 +832,6 @@ static int create_select_tables(mylite_db *database) {
         &result
     );
 
-    mylite_result_free(result);
-    result = NULL;
-    failures += execute_ok(database, "CREATE TABLE single_values (id INT NOT NULL)", &result);
-    mylite_result_free(result);
-    result = NULL;
-    failures += execute_ok(
-        database,
-        "CREATE TABLE null_probe (id INT NOT NULL, n INT NULL, nn INT NOT NULL)",
-        &result
-    );
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(
@@ -889,23 +847,20 @@ static int create_select_tables(mylite_db *database) {
     result = NULL;
     failures += execute_ok(
         database,
-        "INSERT INTO numbers VALUES "
-        "(-2, 0, -9223372036854775808, 0, NULL, 5), "
-        "(1, 2, 3, 4, 9, 6), "
-        "(2147483647, 4294967295, 9223372036854775807, 9223372036854775807, NULL, 7)",
+        "INSERT INTO ordered_numbers VALUES "
+        "(1, -2, 0, -9223372036854775808, 0, NULL, 5), "
+        "(2, 1, 2, 3, 4, 9, 6), "
+        "(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, NULL, 7), "
+        "(4, 0, 8, 8, 8, 9, 8)",
         &result
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_ok(database, "INSERT INTO single_values VALUES (1)", &result);
-    mylite_result_free(result);
-    result = NULL;
-    failures +=
-        execute_ok(database, "INSERT INTO null_probe VALUES (1, NULL, 10), (2, 20, 20)", &result);
-    mylite_result_free(result);
-    result = NULL;
-    failures +=
-        execute_ok(database, "INSERT INTO integer_aliases VALUES (1, -3, 4294967295, 7)", &result);
+    failures += execute_ok(
+        database,
+        "INSERT INTO integer_aliases VALUES (1, -3, 4294967295, 7), (2, 5, 0, 8)",
+        &result
+    );
     mylite_result_free(result);
 
     return failures;
@@ -948,16 +903,15 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     return failures;
 }
 
-static int expect_query_single_value(
-    mylite_db *database,
-    struct expected_single_value_query query
-) {
+static int expect_query_values(mylite_db *database, struct expected_query query) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, query.sql, &result);
 
     failures += expect_size(mylite_result_column_count(result), 1U, query.context);
-    failures += expect_size(mylite_result_row_count(result), 1U, query.context);
-    failures += expect_select_value(result, 0U, 0U, query.expected, query.context);
+    failures += expect_size(mylite_result_row_count(result), query.value_count, query.context);
+    for (size_t index = 0U; index < query.value_count; ++index) {
+        failures += expect_result_value(result, index, 0U, query.values[index], query.context);
+    }
     failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
     failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
     mylite_result_free(result);
@@ -965,20 +919,7 @@ static int expect_query_single_value(
     return failures;
 }
 
-static int expect_query_empty(mylite_db *database, struct expected_empty_query query) {
-    mylite_result *result = NULL;
-    int failures = execute_ok(database, query.sql, &result);
-
-    failures += expect_size(mylite_result_column_count(result), 1U, query.context);
-    failures += expect_size(mylite_result_row_count(result), 0U, query.context);
-    failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
-    mylite_result_free(result);
-
-    return failures;
-}
-
-static int expect_select_value(
+static int expect_result_value(
     const mylite_result *result,
     size_t row,
     size_t column,
@@ -1008,7 +949,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     written = snprintf(
         path,
         path_size,
-        "%s/mylite_select_where_lifecycle_%d_%s.mylite",
+        "%s/mylite_select_order_limit_lifecycle_%d_%s.mylite",
         directory,
         current_process_id(),
         name

@@ -119,8 +119,8 @@ tests.
 | `TINYINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `SMALLINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `MEDIUMINT` | ❌ | Ranges, display width, metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
-| `INT` / `INTEGER` | 🟡 | Limited DDL descriptors, integer/`NULL` assignment, text readback, and descriptor-driven filtered-select predicate conversion; no general expression semantics, display width, or protocol-grade result metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
-| `BIGINT` | 🟡 | Limited DDL descriptors, integer/`NULL` assignment, text readback, and descriptor-driven filtered-select predicate conversion; `BIGINT UNSIGNED` is capped at the signed 64-bit SQLite integer range in this slice. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `INT` / `INTEGER` | 🟡 | Limited DDL descriptors, integer/`NULL` assignment, text readback, descriptor-driven filtered-select predicate conversion, and single-column sort support; no general expression semantics, display width, or protocol-grade result metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BIGINT` | 🟡 | Limited DDL descriptors, integer/`NULL` assignment, text readback, descriptor-driven filtered-select predicate conversion, and single-column sort support; `BIGINT UNSIGNED` is capped at the signed 64-bit SQLite integer range in this slice. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Integer type aliases | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `DECIMAL` / `NUMERIC` | ❌ | Exact math and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `FIXED` | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
@@ -156,11 +156,11 @@ tests.
 | `ENUM` | ❌ | Indexing, sorting, invalid values. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `SET` | ❌ | Bitmap membership metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `JSON` | ❌ | Validation and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
-| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES` inputs and supported filtered-select predicate right operands; no expression-level numeric semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES` inputs and supported filtered-select predicate right operands; unsigned decimal integer literals for supported `LIMIT`/`OFFSET`; no expression-level numeric semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | String literals | ❌ | Escapes, introducers, SQL modes. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP syntax. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | JSON path literals | ❌ | Path grammar and errors. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
-| Type conversion | 🟡 | Limited strict assignment conversion for inserted integer/`NULL` values and descriptor-driven integer predicate conversion for supported filtered selects only. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Type conversion | 🟡 | Limited strict assignment conversion for inserted integer/`NULL` values, descriptor-driven integer predicate conversion, and unsigned signed-64 range conversion for supported `LIMIT`/`OFFSET` literals only. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Collation coercibility | ❌ | Coercibility and diagnostics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [collations](docs/compatibility/collations.md) |
 
 ### Character Sets, Collations, and SET
@@ -250,9 +250,11 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `SELECT` | 🟡 | Descriptor-driven single persistent base-table `SELECT *` or unqualified column-list reads with an optional limited `WHERE` predicate; no ordering, joins, grouping, aliases, expression projection, or locking clauses. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
+| `SELECT` | 🟡 | Descriptor-driven single persistent base-table `SELECT *` or unqualified column-list reads with optional limited `WHERE`, single-column `ORDER BY`, and `LIMIT`/`OFFSET`; no joins, grouping, aliases, expression projection, or locking clauses. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | Projection list | 🟡 | Wildcard uses catalog ordinal order; explicit projections resolve unqualified descriptor column names only, with duplicate projected columns allowed and no aliases or table-qualified references. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `WHERE` | 🟡 | One unqualified descriptor column predicate on supported integer/`NULL` columns for filtered table `SELECT` only; no boolean composition, literal-left comparisons, table-qualified columns, or general expression predicates. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
+| `ORDER BY` | 🟡 | One unqualified descriptor column for supported base-table `SELECT`; optional `ASC`/`DESC`, MySQL-compatible `NULL` placement, and no tie-order guarantee without additional keys. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
+| `LIMIT` / `OFFSET` | 🟡 | Supported base-table `SELECT` forms are `LIMIT row_count`, `LIMIT row_count OFFSET offset`, and `LIMIT offset, row_count` with unsigned decimal literals in signed 64-bit range. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 
 ### Table DML
 

@@ -12,6 +12,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_table_lifecycle_statements(void);
 static int test_select_where_predicates(void);
+static int test_select_order_limit_clauses(void);
 static int test_comments_are_skipped(void);
 static int test_syntax_errors(void);
 static int test_lexer_errors(void);
@@ -23,6 +24,10 @@ static int parse_sql(
 static const struct mylite_sql_ast_node *child_at(
     const struct mylite_sql_ast_node *node,
     size_t index
+);
+static const struct mylite_sql_ast_node *first_child_kind(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_node_kind kind
 );
 static int expect_node(
     const struct mylite_sql_ast_node *node,
@@ -61,6 +66,11 @@ static int expect_nullability(
     enum mylite_sql_ast_nullability expected,
     const char *context
 );
+static int expect_order_direction(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_order_direction expected,
+    const char *context
+);
 
 int main(void) {
     int failures = 0;
@@ -73,6 +83,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_table_lifecycle_statements();
     failures += test_select_where_predicates();
+    failures += test_select_order_limit_clauses();
     failures += test_comments_are_skipped();
     failures += test_syntax_errors();
     failures += test_lexer_errors();
@@ -593,6 +604,74 @@ static int test_select_where_predicates(void) {
     return failures;
 }
 
+static int test_select_order_limit_clauses(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("SELECT * FROM simple_lifecycle ORDER BY id;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    failures += expect_node(order_clause, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "order clause");
+    failures += expect_span_text(child_at(order_clause, 0U), "id", "default order key");
+    failures += expect_true(child_at(order_clause, 1U) == NULL, "default order has no direction");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id = 1 ORDER BY nn ASC LIMIT 2 OFFSET 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(order_clause, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "asc order clause");
+    failures += expect_span_text(child_at(order_clause, 0U), "nn", "asc order key");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "asc order direction"
+    );
+    failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "offset limit clause");
+    failures += expect_span_text(child_at(limit_clause, 0U), "2", "offset limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "1", "offset limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle ORDER BY simple_lifecycle.id DESC LIMIT 1, 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(
+        child_at(order_clause, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified order key"
+    );
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "desc order direction"
+    );
+    failures += expect_span_text(child_at(limit_clause, 0U), "2", "comma limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "1", "comma limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM simple_lifecycle LIMIT 0;", MYLITE_SQL_PARSE_OK, &result);
+    limit_clause = first_child_kind(child_at(result.root, 0U), MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "simple limit clause");
+    failures += expect_span_text(child_at(limit_clause, 0U), "0", "simple limit row count");
+    failures += expect_true(child_at(limit_clause, 1U) == NULL, "simple limit has no offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_comments_are_skipped(void) {
     struct mylite_sql_parse_result result;
     int failures = 0;
@@ -730,14 +809,17 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "SELECT id FROM t WHERE id = 1 ORDER BY nn;",
+        "SELECT id FROM t WHERE id = 1 ORDER BY nn, id;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("SELECT id FROM t WHERE id = 1 LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "SELECT id FROM t WHERE id = 1 LIMIT +1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -804,6 +886,27 @@ static const struct mylite_sql_ast_node *child_at(
         child = child->next_sibling;
     }
     return child;
+}
+
+static const struct mylite_sql_ast_node *first_child_kind(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_node_kind kind
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (node == NULL) {
+        return NULL;
+    }
+
+    child = node->first_child;
+    while (child != NULL) {
+        if (child->kind == kind) {
+            return child;
+        }
+        child = child->next_sibling;
+    }
+
+    return NULL;
 }
 
 static int expect_node(
@@ -976,6 +1079,27 @@ static int expect_nullability(
             context,
             mylite_sql_ast_nullability_name(expected),
             mylite_sql_ast_nullability_name(actual)
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_order_direction(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_order_direction expected,
+    const char *context
+) {
+    enum mylite_sql_ast_order_direction actual = mylite_sql_ast_node_order_direction(node);
+
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected order direction %s, got %s\n",
+            context,
+            mylite_sql_ast_order_direction_name(expected),
+            mylite_sql_ast_order_direction_name(actual)
         );
         return 1;
     }

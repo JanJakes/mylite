@@ -153,29 +153,33 @@ insert_value(A) ::= NULL(T). {
 }
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL);
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL);
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(N) where_clause_opt(W). {
+select_statement(A) ::=
+    SELECT(T) select_item_list(B) FROM(F) table_name(N) where_clause_opt(W)
+    order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N), W);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N), W, O, L);
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL);
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
 }
-select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(N) where_clause_opt(W). {
+select_statement(A) ::=
+    SELECT(T) STAR(S) FROM(F) table_name(N) where_clause_opt(W)
+    order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N), W);
+        mylite_sql_parser_make_from_table(state, F, N), W, O, L);
 }
 
 where_clause_opt(A) ::= . {
@@ -241,6 +245,42 @@ predicate_integer_value(A) ::= MINUS(M) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+
+order_clause_opt(A) ::= . {
+    A = NULL;
+}
+order_clause_opt(A) ::= ORDER(O) BY qualified_identifier(K) order_direction_opt(D). {
+    A = mylite_sql_parser_make_order_by_clause(state, O, K, D);
+}
+
+order_direction_opt(A) ::= . {
+    A = NULL;
+}
+order_direction_opt(A) ::= ASC(T). {
+    A = mylite_sql_parser_make_order_direction(
+        state, T, MYLITE_SQL_AST_ORDER_DIRECTION_ASC);
+}
+order_direction_opt(A) ::= DESC(T). {
+    A = mylite_sql_parser_make_order_direction(
+        state, T, MYLITE_SQL_AST_ORDER_DIRECTION_DESC);
+}
+
+limit_clause_opt(A) ::= . {
+    A = NULL;
+}
+limit_clause_opt(A) ::= LIMIT(L) limit_integer(C). {
+    A = mylite_sql_parser_make_limit_clause(state, L, C, NULL);
+}
+limit_clause_opt(A) ::= LIMIT(L) limit_integer(C) OFFSET limit_integer(O). {
+    A = mylite_sql_parser_make_limit_clause(state, L, C, O);
+}
+limit_clause_opt(A) ::= LIMIT(L) limit_integer(O) COMMA limit_integer(C). {
+    A = mylite_sql_parser_make_limit_clause(state, L, C, O);
+}
+
+limit_integer(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
 
 select_item_list(A) ::= select_item(B). {

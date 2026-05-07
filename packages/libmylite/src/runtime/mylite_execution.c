@@ -95,11 +95,30 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_IS_NULL = 2,
 };
 
+enum planned_select_order_direction {
+    PLANNED_SELECT_ORDER_DEFAULT = 0,
+    PLANNED_SELECT_ORDER_ASC = 1,
+    PLANNED_SELECT_ORDER_DESC = 2,
+};
+
 struct planned_select_predicate {
     enum planned_select_predicate_kind kind;
     enum mylite_sql_ast_operator operator_kind;
     struct mylite_catalog_column_descriptor column;
     struct planned_value value;
+};
+
+struct planned_select_order {
+    bool has_order;
+    enum planned_select_order_direction direction;
+    struct mylite_catalog_column_descriptor column;
+};
+
+struct planned_select_limit {
+    bool has_limit;
+    int64_t row_count;
+    bool has_offset;
+    int64_t offset;
 };
 
 struct planned_select {
@@ -108,6 +127,8 @@ struct planned_select {
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
     struct planned_select_predicate predicate;
+    struct planned_select_order order;
+    struct planned_select_limit limit;
 };
 
 struct dynamic_string {
@@ -435,6 +456,30 @@ static int convert_integer_for_predicate(
     const struct mylite_catalog_column_descriptor *column,
     int64_t *out_value
 );
+static int plan_select_order(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_order *out_order
+);
+static int resolve_order_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int plan_select_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *limit_clause,
+    struct planned_select_limit *out_limit
+);
+static int convert_limit_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    int64_t *out_value
+);
 static int integer_range_for_column(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
@@ -470,7 +515,17 @@ static int append_numbered_parameter(struct dynamic_string *string, size_t param
 static int build_select_sql(const struct planned_select *plan, char **out_sql);
 static int append_select_predicate_sql(
     struct dynamic_string *string,
-    const struct planned_select_predicate *predicate
+    const struct planned_select_predicate *predicate,
+    size_t *next_parameter
+);
+static int append_select_order_sql(
+    struct dynamic_string *string,
+    const struct planned_select_order *order
+);
+static int append_select_limit_sql(
+    struct dynamic_string *string,
+    const struct planned_select_limit *limit,
+    size_t *next_parameter
 );
 static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator_kind);
 static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql);
@@ -483,10 +538,8 @@ static int prepare_sqlite_statement(
 static int finalize_sqlite_statement(sqlite3_stmt *statement, int rc);
 static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert *plan, size_t row);
 static int step_insert_row(sqlite3_stmt *statement);
-static int bind_select_predicate(
-    sqlite3_stmt *statement,
-    const struct planned_select_predicate *predicate
-);
+static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan);
+static int bind_int64_parameter(sqlite3_stmt *statement, int parameter_index, int64_t value);
 static int append_selected_sqlite_row(sqlite3_stmt *statement, mylite_result *result);
 
 static void dynamic_string_init(struct dynamic_string *string);
@@ -512,6 +565,7 @@ static void set_unknown_database_error(struct mylite_db *database, const char *s
 static void set_table_exists_error(struct mylite_db *database, const char *table_name);
 static void set_unknown_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_where_column_error(struct mylite_db *database, const char *column_name);
+static void set_unknown_order_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_table_error(
     struct mylite_db *database,
     const char *schema_name,
@@ -533,6 +587,7 @@ static void set_out_of_range_error(
     size_t row_number
 );
 static void set_predicate_out_of_range_error(struct mylite_db *database, const char *column_name);
+static void set_limit_out_of_range_error(struct mylite_db *database);
 static void set_identifier_too_long_error(struct mylite_db *database, const char *kind);
 static void set_reserved_name_error(struct mylite_db *database, const char *kind, const char *name);
 static void set_nomem_error(struct mylite_db *database);
@@ -675,6 +730,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
+    case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
+    case MYLITE_SQL_AST_ORDER_DIRECTION:
+    case MYLITE_SQL_AST_LIMIT_CLAUSE:
         break;
     }
 
@@ -1361,7 +1419,10 @@ static int plan_select(
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *where_clause = child_at(statement, 2U);
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
@@ -1370,6 +1431,20 @@ static int plan_select(
     if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
         set_unsupported_error(database, "SELECT supports only descriptor-backed table reads");
         return MYLITE_ERROR;
+    }
+    optional_clause = child_at(statement, 2U);
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+            order_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            limit_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "SELECT supports only WHERE, ORDER BY, and LIMIT");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
     }
 
     rc = resolve_table_name(database, child_at(from_clause, 0U), &out_plan->source);
@@ -1400,6 +1475,18 @@ static int plan_select(
             table_column_count,
             &out_plan->predicate
         );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_order(
+            database,
+            order_clause,
+            table_columns,
+            table_column_count,
+            &out_plan->order
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_limit(database, limit_clause, &out_plan->limit);
     }
 
     free(table_columns);
@@ -1449,7 +1536,7 @@ static int execute_select_from_plan(
         rc = prepare_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
-        rc = bind_select_predicate(statement, &plan->predicate);
+        rc = bind_select_parameters(statement, plan);
     }
     while (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_step(statement);
@@ -2673,6 +2760,141 @@ static int convert_integer_for_predicate(
     return MYLITE_OK;
 }
 
+static int plan_select_order(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_order *out_order
+) {
+    const struct mylite_sql_ast_node *direction = NULL;
+    int rc = MYLITE_OK;
+
+    out_order->has_order = false;
+    out_order->column = (struct mylite_catalog_column_descriptor){0};
+    out_order->direction = PLANNED_SELECT_ORDER_DEFAULT;
+    if (order_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+        set_unsupported_error(database, "SELECT supports only one descriptor ORDER BY column");
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_order_column(
+        database,
+        child_at(order_clause, 0U),
+        table_columns,
+        table_column_count,
+        &out_order->column
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_order->has_order = true;
+    out_order->direction = PLANNED_SELECT_ORDER_ASC;
+    direction = child_at(order_clause, 1U);
+    if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+        out_order->direction = PLANNED_SELECT_ORDER_DESC;
+    }
+
+    return MYLITE_OK;
+}
+
+static int resolve_order_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "ORDER BY supports only unqualified descriptor columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_order_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    *out_column = table_columns[column_index];
+    return MYLITE_OK;
+}
+
+static int plan_select_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *limit_clause,
+    struct planned_select_limit *out_limit
+) {
+    int rc = MYLITE_OK;
+
+    out_limit->has_limit = false;
+    out_limit->row_count = 0;
+    out_limit->has_offset = false;
+    out_limit->offset = 0;
+    if (limit_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (limit_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE) {
+        set_unsupported_error(database, "SELECT supports only literal LIMIT clauses");
+        return MYLITE_ERROR;
+    }
+
+    rc = convert_limit_integer_literal(database, child_at(limit_clause, 0U), &out_limit->row_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_limit->has_limit = true;
+
+    if (child_at(limit_clause, 1U) != NULL) {
+        rc =
+            convert_limit_integer_literal(database, child_at(limit_clause, 1U), &out_limit->offset);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_limit->has_offset = true;
+    }
+
+    return MYLITE_OK;
+}
+
+static int convert_limit_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    int64_t *out_value
+) {
+    const uint64_t sqlite_int64_positive_max = 9223372036854775807ULL;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(database, "LIMIT supports only unsigned decimal integer literals");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&value_node->span, &magnitude);
+    if (rc != MYLITE_OK || magnitude > sqlite_int64_positive_max) {
+        set_limit_out_of_range_error(database);
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (int64_t)magnitude;
+    return MYLITE_OK;
+}
+
 static int integer_range_for_column(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column,
@@ -2899,6 +3121,7 @@ static int append_numbered_parameter(struct dynamic_string *string, size_t param
 
 static int build_select_sql(const struct planned_select *plan, char **out_sql) {
     struct dynamic_string string;
+    size_t next_parameter = 1U;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -2921,7 +3144,13 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
         rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_predicate_sql(&string, &plan->predicate);
+        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_order_sql(&string, &plan->order);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);
@@ -2937,7 +3166,8 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
 
 static int append_select_predicate_sql(
     struct dynamic_string *string,
-    const struct planned_select_predicate *predicate
+    const struct planned_select_predicate *predicate,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
@@ -2957,7 +3187,13 @@ static int append_select_predicate_sql(
             rc = dynamic_string_append(string, comparison_operator_sql(predicate->operator_kind));
         }
         if (rc == MYLITE_OK) {
-            rc = dynamic_string_append(string, " ?1");
+            rc = dynamic_string_append_char(string, ' ');
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, *next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
         }
     } else if (predicate->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
         if (predicate->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
@@ -2969,6 +3205,62 @@ static int append_select_predicate_sql(
                 rc = dynamic_string_append(string, " IS NULL");
             }
         }
+    }
+
+    return rc;
+}
+
+static int append_select_order_sql(
+    struct dynamic_string *string,
+    const struct planned_select_order *order
+) {
+    int rc = MYLITE_OK;
+
+    if (!order->has_order) {
+        return MYLITE_OK;
+    }
+
+    rc = dynamic_string_append(string, " ORDER BY ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, order->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        if (order->direction == PLANNED_SELECT_ORDER_DESC) {
+            rc = dynamic_string_append(string, " DESC");
+        } else {
+            rc = dynamic_string_append(string, " ASC");
+        }
+    }
+
+    return rc;
+}
+
+static int append_select_limit_sql(
+    struct dynamic_string *string,
+    const struct planned_select_limit *limit,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (!limit->has_limit) {
+        return MYLITE_OK;
+    }
+
+    rc = dynamic_string_append(string, " LIMIT ");
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK && limit->has_offset) {
+        rc = dynamic_string_append(string, " OFFSET ");
+    }
+    if (rc == MYLITE_OK && limit->has_offset) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK && limit->has_offset) {
+        ++(*next_parameter);
     }
 
     return rc;
@@ -3107,17 +3399,37 @@ static int step_insert_row(sqlite3_stmt *statement) {
     return MYLITE_OK;
 }
 
-static int bind_select_predicate(
-    sqlite3_stmt *statement,
-    const struct planned_select_predicate *predicate
-) {
-    int sqlite_rc = SQLITE_OK;
+static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan) {
+    int parameter_index = 1;
+    int rc = MYLITE_OK;
 
-    if (predicate->kind != PLANNED_SELECT_PREDICATE_COMPARISON) {
-        return MYLITE_OK;
+    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->predicate.value.integer);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
+    }
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
+    }
+    if (rc == MYLITE_OK && plan->limit.has_offset) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
     }
 
-    sqlite_rc = sqlite3_bind_int64(statement, 1, (sqlite3_int64)predicate->value.integer);
+    return rc;
+}
+
+static int bind_int64_parameter(sqlite3_stmt *statement, int parameter_index, int64_t value) {
+    int sqlite_rc = SQLITE_OK;
+
+    if (parameter_index <= 0) {
+        return MYLITE_ERROR;
+    }
+
+    sqlite_rc = sqlite3_bind_int64(statement, parameter_index, (sqlite3_int64)value);
     if (sqlite_rc != SQLITE_OK) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
@@ -3504,6 +3816,22 @@ static void set_unknown_where_column_error(struct mylite_db *database, const cha
     );
 }
 
+static void set_unknown_order_column_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Unknown column '%s' in 'order clause'", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_column,
+        "42S22",
+        message
+    );
+}
+
 static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written = snprintf(message, sizeof(message), "Column '%s' specified twice", column_name);
@@ -3612,6 +3940,15 @@ static void set_predicate_out_of_range_error(struct mylite_db *database, const c
         mysql_error_data_out_of_range,
         "22003",
         message
+    );
+}
+
+static void set_limit_out_of_range_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_parse,
+        "42000",
+        "LIMIT literal is outside the supported range"
     );
 }
 

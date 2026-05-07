@@ -374,6 +374,20 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts unsigned64 maximum offset upstream" \
+    "" \
+    "SELECT id FROM numbers ORDER BY id LIMIT 1 OFFSET 18446744073709551615;" \
+    "$DATABASE"
+
+expect_error \
+    "unsigned64 overflow offset upstream" \
+    1064 \
+    42000 \
+    "near '18446744073709551616'" \
+    "SELECT id FROM numbers ORDER BY id LIMIT 1 OFFSET 18446744073709551616;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts table-qualified order upstream" \
     "1
 2" \

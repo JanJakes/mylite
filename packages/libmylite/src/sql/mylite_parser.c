@@ -281,7 +281,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_token select_token,
     struct mylite_sql_ast_node *select_list,
     struct mylite_sql_ast_node *from_clause,
-    struct mylite_sql_ast_node *where_clause
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *limit_clause
 ) {
     struct mylite_sql_source_span span = span_from_token(&select_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -295,6 +297,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     if (where_clause != NULL) {
         span = span_join(span, where_clause->span);
     }
+    if (order_clause != NULL) {
+        span = span_join(span, order_clause->span);
+    }
+    if (limit_clause != NULL) {
+        span = span_join(span, limit_clause->span);
+    }
 
     statement = make_node(state, MYLITE_SQL_AST_SELECT_STATEMENT, span);
     if (statement == NULL) {
@@ -304,6 +312,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     mylite_sql_ast_node_append_child(statement, select_list);
     mylite_sql_ast_node_append_child(statement, from_clause);
     mylite_sql_ast_node_append_child(statement, where_clause);
+    mylite_sql_ast_node_append_child(statement, order_clause);
+    mylite_sql_ast_node_append_child(statement, limit_clause);
     return statement;
 }
 
@@ -604,6 +614,72 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
     mylite_sql_ast_node_set_operator(predicate, operator_kind);
     mylite_sql_ast_node_append_child(predicate, left);
     return predicate;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token order_token,
+    struct mylite_sql_ast_node *order_key,
+    struct mylite_sql_ast_node *direction
+) {
+    struct mylite_sql_source_span span = span_from_token(&order_token);
+    struct mylite_sql_ast_node *order_clause = NULL;
+
+    if (direction != NULL) {
+        span = span_join(span, direction->span);
+    } else if (order_key != NULL) {
+        span = span_join(span, order_key->span);
+    }
+
+    order_clause = make_node(state, MYLITE_SQL_AST_ORDER_BY_CLAUSE, span);
+    if (order_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(order_clause, order_key);
+    mylite_sql_ast_node_append_child(order_clause, direction);
+    return order_clause;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_direction(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token direction_token,
+    enum mylite_sql_ast_order_direction direction
+) {
+    struct mylite_sql_ast_node *direction_node =
+        make_node(state, MYLITE_SQL_AST_ORDER_DIRECTION, span_from_token(&direction_token));
+    if (direction_node == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_order_direction(direction_node, direction);
+    return direction_node;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_limit_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token limit_token,
+    struct mylite_sql_ast_node *row_count,
+    struct mylite_sql_ast_node *offset
+) {
+    struct mylite_sql_source_span span = span_from_token(&limit_token);
+    struct mylite_sql_ast_node *limit_clause = NULL;
+
+    if (offset != NULL) {
+        span = span_join(span, offset->span);
+    }
+    if (row_count != NULL) {
+        span = span_join(span, row_count->span);
+    }
+
+    limit_clause = make_node(state, MYLITE_SQL_AST_LIMIT_CLAUSE, span);
+    if (limit_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(limit_clause, row_count);
+    mylite_sql_ast_node_append_child(limit_clause, offset);
+    return limit_clause;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
@@ -1055,7 +1131,10 @@ static bool map_keyword_token(
         int parser_token;
     } keyword_mappings[] = {
         {"SELECT", MYLITE_SQL_PARSE_SELECT}, {"FROM", MYLITE_SQL_PARSE_FROM},
-        {"WHERE", MYLITE_SQL_PARSE_WHERE},   {"USE", MYLITE_SQL_PARSE_USE},
+        {"WHERE", MYLITE_SQL_PARSE_WHERE},   {"ORDER", MYLITE_SQL_PARSE_ORDER},
+        {"BY", MYLITE_SQL_PARSE_BY},         {"ASC", MYLITE_SQL_PARSE_ASC},
+        {"DESC", MYLITE_SQL_PARSE_DESC},     {"LIMIT", MYLITE_SQL_PARSE_LIMIT},
+        {"OFFSET", MYLITE_SQL_PARSE_OFFSET}, {"USE", MYLITE_SQL_PARSE_USE},
         {"CREATE", MYLITE_SQL_PARSE_CREATE}, {"TABLE", MYLITE_SQL_PARSE_TABLE},
         {"DROP", MYLITE_SQL_PARSE_DROP},     {"SHOW", MYLITE_SQL_PARSE_SHOW},
         {"TABLES", MYLITE_SQL_PARSE_TABLES}, {"RENAME", MYLITE_SQL_PARSE_RENAME},

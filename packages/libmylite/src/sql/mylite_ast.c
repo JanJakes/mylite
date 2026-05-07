@@ -121,6 +121,17 @@ void mylite_sql_ast_node_set_nullability(
     node->payload.nullability.kind = nullability;
 }
 
+void mylite_sql_ast_node_set_order_direction(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_order_direction direction
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.order_direction.kind = direction;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *child = NULL;
     size_t count = 0U;
@@ -186,6 +197,16 @@ enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     return node->payload.nullability.kind;
 }
 
+enum mylite_sql_ast_order_direction mylite_sql_ast_node_order_direction(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_ORDER_DIRECTION) {
+        return MYLITE_SQL_AST_ORDER_DIRECTION_DEFAULT;
+    }
+
+    return node->payload.order_direction.kind;
+}
+
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
     switch (kind) {
     case MYLITE_SQL_AST_SCRIPT:
@@ -246,6 +267,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "comparison_predicate";
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
         return "is_null_predicate";
+    case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
+        return "order_by_clause";
+    case MYLITE_SQL_AST_ORDER_DIRECTION:
+        return "order_direction";
+    case MYLITE_SQL_AST_LIMIT_CLAUSE:
+        return "limit_clause";
     }
 
     return "unknown";
@@ -340,6 +367,19 @@ const char *mylite_sql_ast_nullability_name(enum mylite_sql_ast_nullability null
         return "null";
     case MYLITE_SQL_AST_NULLABILITY_NOT_NULL:
         return "not_null";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_order_direction_name(enum mylite_sql_ast_order_direction direction) {
+    switch (direction) {
+    case MYLITE_SQL_AST_ORDER_DIRECTION_DEFAULT:
+        return "default";
+    case MYLITE_SQL_AST_ORDER_DIRECTION_ASC:
+        return "asc";
+    case MYLITE_SQL_AST_ORDER_DIRECTION_DESC:
+        return "desc";
     }
 
     return "unknown";

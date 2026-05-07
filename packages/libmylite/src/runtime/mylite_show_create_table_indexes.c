@@ -33,7 +33,7 @@ int mylite_show_create_table_append_indexes(
         " SELECT index_name, MIN(rowid) AS first_rowid FROM %s "
         " WHERE table_schema = ? AND table_name = ? GROUP BY index_name)"
         "SELECT i.index_name, i.non_unique, i.index_comment, i.is_visible, "
-        "i.table_schema, i.table_name, i.index_type, i.display_index_type "
+        "i.table_schema, i.table_name, i.index_type, i.display_index_type, i.parser_name "
         "FROM %s i "
         "JOIN first_parts f ON f.index_name = i.index_name "
         "WHERE i.table_schema = ? AND i.table_name = ? AND i.seq_in_index = 1 "
@@ -98,15 +98,19 @@ static int append_show_create_table_index(sqlite3_str *create_sql, sqlite3_stmt 
     enum {
         index_name_column = 0,
         non_unique_column = 1,
+        index_type_column = 6,
     };
 
     const char *index_name = (const char *)sqlite3_column_text(select, index_name_column);
     int non_unique = sqlite3_column_int(select, non_unique_column);
+    const char *index_type = (const char *)sqlite3_column_text(select, index_type_column);
 
     if (mylite_ascii_case_equal(index_name, "PRIMARY")) {
         sqlite3_str_appendall(create_sql, "PRIMARY KEY (");
     } else {
-        if (non_unique == 0) {
+        if (mylite_ascii_case_equal(index_type, "FULLTEXT")) {
+            sqlite3_str_appendall(create_sql, "FULLTEXT ");
+        } else if (non_unique == 0) {
             sqlite3_str_appendall(create_sql, "UNIQUE ");
         }
         sqlite3_str_appendall(create_sql, "KEY ");
@@ -130,6 +134,7 @@ static int append_show_create_table_key_parts(
         table_name_column = 5,
         index_type_column = 6,
         display_index_type_column = 7,
+        parser_name_column = 8,
     };
 
     sqlite3_stmt *parts = NULL;
@@ -145,6 +150,7 @@ static int append_show_create_table_key_parts(
     const char *index_comment = (const char *)sqlite3_column_text(select, index_comment_column);
     const char *is_visible = (const char *)sqlite3_column_text(select, is_visible_column);
     const char *index_type = (const char *)sqlite3_column_text(select, index_type_column);
+    const char *parser_name = (const char *)sqlite3_column_text(select, parser_name_column);
     bool display_index_type = sqlite3_column_int(select, display_index_type_column) != 0;
     bool first_part = true;
     int rc = SQLITE_OK;
@@ -196,6 +202,11 @@ static int append_show_create_table_key_parts(
     if (index_comment != NULL && index_comment[0] != '\0') {
         sqlite3_str_appendall(create_sql, " COMMENT ");
         mylite_show_create_append_string_literal(create_sql, index_comment);
+    }
+    if (parser_name != NULL && parser_name[0] != '\0') {
+        sqlite3_str_appendall(create_sql, " /*!50100 WITH PARSER ");
+        mylite_show_create_append_identifier(create_sql, parser_name);
+        sqlite3_str_appendall(create_sql, " */");
     }
     if (!mylite_ascii_case_equal(index_name, "PRIMARY") &&
         mylite_ascii_case_equal(is_visible, "NO")) {

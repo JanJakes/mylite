@@ -107,6 +107,7 @@ enum {
     simple_create_amount_precision = 10,
     simple_create_column_count = 6,
     simple_create_statistics_count = 3,
+    mysql_warning_innodb_rebuild_fts_doc_id = 124,
     mysql_warning_dbaccess_denied = 1044,
     mysql_warning_no_database = 1046,
     mysql_warning_bad_null = 1048,
@@ -147,6 +148,7 @@ enum {
     mysql_warning_group_concat_cut = 1260,
     mysql_warning_data_out_of_range = 1264,
     mysql_warning_data_truncated = 1265,
+    mysql_warning_column_cannot_be_fulltext = 1283,
     mysql_warning_unknown_storage_engine = 1286,
     mysql_warning_deprecated_syntax = 1287,
     mysql_warning_truncated_wrong_value = 1292,
@@ -285,6 +287,7 @@ struct expected_statistics_row {
     int64_t non_unique;
     const char *collation;
     const char *sub_part;
+    const char *index_type;
     const char *index_comment;
     const char *visible;
 };
@@ -40692,6 +40695,43 @@ static int test_create_drop_index_execution(void) {
     static const char *const failed_drop_implicit_values[] =
         {"1", "2", "3", "4", "5", "6", "7", "8"};
     static const char *const zero_count[] = {"0"};
+    static const char *const show_index_columns[] = {
+        "Table",
+        "Non_unique",
+        "Key_name",
+        "Seq_in_index",
+        "Column_name",
+        "Collation",
+        "Cardinality",
+        "Sub_part",
+        "Packed",
+        "Null",
+        "Index_type",
+        "Comment",
+        "Index_comment",
+        "Visible",
+        "Expression"
+    };
+    static const char *const fulltext_show_index_values[] = {
+        "idx_fulltext", "1", "ft_body", "1",   "title",
+        NULL,           "0", NULL,      NULL,  "YES",
+        "FULLTEXT",     "",  "ft",      "YES", NULL,
+        "idx_fulltext", "1", "ft_body", "2",   "body",
+        NULL,           "0", NULL,      NULL,  "YES",
+        "FULLTEXT",     "",  "ft",      "YES", NULL,
+    };
+    static const char *const show_create_columns[] = {"Table", "Create Table"};
+    static const char fulltext_show_create[] =
+        "CREATE TABLE `idx_fulltext` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `title` varchar(20) DEFAULT NULL,\n"
+        "  `body` text,\n"
+        "  `n` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  FULLTEXT KEY `ft_body` (`title`,`body`) COMMENT 'ft' "
+        "/*!50100 WITH PARSER `ngram` */\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const fulltext_show_create_values[] = {"idx_fulltext", fulltext_show_create};
     mylite_db *database = NULL;
     mylite_db *no_schema_database = NULL;
     mylite_stmt *stmt = NULL;
@@ -41217,26 +41257,145 @@ static int test_create_drop_index_execution(void) {
     );
     mylite_finalize(stmt);
     stmt = NULL;
-    failures += prepare_sql(
+    failures += execute_sql(
         database,
-        "CREATE FULLTEXT INDEX ft_b ON idx_base (b) WITH PARSER ngram",
-        MYLITE_OK,
-        &stmt
+        "CREATE TABLE idx_fulltext ("
+        "id INT PRIMARY KEY, title VARCHAR(20), body TEXT, n INT)",
+        MYLITE_DONE
     );
-    failures += expect_status(
-        mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "fulltext create index deferred unsupported"
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE FULLTEXT INDEX ft_body ON idx_fulltext (title, body) "
+        "WITH PARSER ngram COMMENT 'ft'",
+        0,
+        "create fulltext index"
     );
-    failures += expect_int64(mylite_affected_rows(stmt), -1, "fulltext create index affected rows");
+    failures += expect_int(mylite_warning_count(database), 1, "fulltext doc id warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_innodb_rebuild_fts_doc_id,
+        "fulltext doc id warning code"
+    );
     failures += expect_contains(
-        mylite_error_message(database),
-        "Unsupported standalone index class",
-        "fulltext create index unsupported error"
+        mylite_warning_message(database, 0),
+        "FTS_DOC_ID",
+        "fulltext doc id warning message"
+    );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "idx_fulltext",
+            .index_name = "ft_body",
+            .seq_in_index = 1,
+            .column_name = "title",
+            .non_unique = 1,
+            .collation = NULL,
+            .sub_part = NULL,
+            .index_type = "FULLTEXT",
+            .index_comment = "ft",
+            .visible = "YES",
+        }
+    );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "idx_fulltext",
+            .index_name = "ft_body",
+            .seq_in_index = 2,
+            .column_name = "body",
+            .non_unique = 1,
+            .collation = NULL,
+            .sub_part = NULL,
+            .index_type = "FULLTEXT",
+            .index_comment = "ft",
+            .visible = "YES",
+        }
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW INDEX FROM idx_fulltext WHERE Key_name = 'ft_body'",
+        show_index_columns,
+        15,
+        fulltext_show_index_values,
+        2,
+        "show index exposes fulltext metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE idx_fulltext",
+        show_create_columns,
+        2,
+        fulltext_show_create_values,
+        1,
+        "show create table exposes fulltext metadata"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE FULLTEXT INDEX ft_title_prefix ON idx_fulltext (title(3))",
+        0,
+        "create fulltext prefix index"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "second fulltext warning count");
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "idx_fulltext",
+            .index_name = "ft_title_prefix",
+            .seq_in_index = 1,
+            .column_name = "title",
+            .non_unique = 1,
+            .collation = NULL,
+            .sub_part = NULL,
+            .index_type = "FULLTEXT",
+            .index_comment = "",
+            .visible = "YES",
+        }
+    );
+    failures +=
+        prepare_sql(database, "CREATE FULLTEXT INDEX ft_n ON idx_fulltext (n)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "cannot be part of FULLTEXT index",
+        "fulltext create index rejects non-text columns"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_column_cannot_be_fulltext,
+        "fulltext non-text error code"
     );
     mylite_finalize(stmt);
     stmt = NULL;
-    failures += expect_no_information_schema_statistics_index_row(database, "idx_base", "ft_b");
+    failures += expect_no_information_schema_statistics_index_row(database, "idx_fulltext", "ft_n");
+    failures += prepare_sql(
+        database,
+        "CREATE FULLTEXT INDEX ft_order ON idx_fulltext (title ASC)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect usage of spatial/fulltext/hash index and explicit index order",
+        "fulltext create index rejects explicit order"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_wrong_usage,
+        "fulltext explicit order error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_fulltext", "ft_order");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DROP INDEX ft_body ON idx_fulltext",
+        0,
+        "drop fulltext index"
+    );
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_fulltext", "ft_body");
     failures +=
         prepare_sql(database, "CREATE SPATIAL INDEX sp_b ON idx_base (b)", MYLITE_OK, &stmt);
     failures += expect_status(
@@ -71930,11 +72089,18 @@ static int expect_information_schema_statistics_row(
             expected->column_name,
             "statistics column name"
         );
-        failures += expect_string(
-            mylite_column_text(stmt, statistics_collation_column),
-            expected->collation,
-            "statistics collation"
-        );
+        if (expected->collation == NULL) {
+            failures += expect_null_text(
+                mylite_column_text(stmt, statistics_collation_column),
+                "statistics collation"
+            );
+        } else {
+            failures += expect_string(
+                mylite_column_text(stmt, statistics_collation_column),
+                expected->collation,
+                "statistics collation"
+            );
+        }
         failures += expect_string(
             mylite_column_text(stmt, statistics_cardinality_column),
             "0",
@@ -71954,7 +72120,7 @@ static int expect_information_schema_statistics_row(
         }
         failures += expect_string(
             mylite_column_text(stmt, statistics_index_type_column),
-            "BTREE",
+            expected->index_type == NULL ? "BTREE" : expected->index_type,
             "statistics index type"
         );
         failures += expect_string(

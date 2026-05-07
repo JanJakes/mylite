@@ -97,6 +97,7 @@ static const char index_catalog_sql[] =
     "nullable TEXT NOT NULL,"
     "index_type TEXT NOT NULL,"
     "display_index_type INTEGER NOT NULL DEFAULT 0,"
+    "parser_name TEXT NOT NULL DEFAULT '',"
     "comment TEXT NOT NULL,"
     "index_comment TEXT NOT NULL,"
     "is_visible TEXT NOT NULL,"
@@ -206,6 +207,7 @@ static const char temporary_index_catalog_sql[] =
     "nullable TEXT NOT NULL,"
     "index_type TEXT NOT NULL,"
     "display_index_type INTEGER NOT NULL DEFAULT 0,"
+    "parser_name TEXT NOT NULL DEFAULT '',"
     "comment TEXT NOT NULL,"
     "index_comment TEXT NOT NULL,"
     "is_visible TEXT NOT NULL,"
@@ -308,6 +310,8 @@ static int update_table_statistics(
 
 static int ensure_index_catalog_display_type_column(mylite_db *database, const char *catalog_name);
 
+static int ensure_index_catalog_parser_name_column(mylite_db *database, const char *catalog_name);
+
 static int ensure_column_catalog_has_default_column(mylite_db *database, const char *catalog_name);
 
 static int catalog_column_exists(
@@ -348,6 +352,10 @@ int mylite_catalog_initialize(mylite_db *database) {
     if (rc != MYLITE_OK) {
         return rc;
     }
+    rc = ensure_index_catalog_parser_name_column(database, index_catalog_name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     rc = sqlite3_exec(database->sqlite, check_constraint_catalog_sql, NULL, NULL, NULL);
     if (rc != SQLITE_OK) {
@@ -378,6 +386,10 @@ int mylite_catalog_initialize(mylite_db *database) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
     rc = ensure_index_catalog_display_type_column(database, temporary_index_catalog_name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = ensure_index_catalog_parser_name_column(database, temporary_index_catalog_name);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -429,6 +441,29 @@ static int ensure_index_catalog_display_type_column(mylite_db *database, const c
 
     sql = sqlite3_mprintf(
         "ALTER TABLE %s ADD COLUMN display_index_type INTEGER NOT NULL DEFAULT 0",
+        catalog_name
+    );
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_exec(database->sqlite, sql, NULL, NULL, NULL);
+    sqlite3_free(sql);
+    return rc == SQLITE_OK ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+}
+
+static int ensure_index_catalog_parser_name_column(mylite_db *database, const char *catalog_name) {
+    bool exists = false;
+    char *sql = NULL;
+    int rc = SQLITE_OK;
+    int status = catalog_column_exists(database, catalog_name, "parser_name", &exists);
+
+    if (status != MYLITE_OK || exists) {
+        return status;
+    }
+
+    sql = sqlite3_mprintf(
+        "ALTER TABLE %s ADD COLUMN parser_name TEXT NOT NULL DEFAULT ''",
         catalog_name
     );
     if (sql == NULL) {

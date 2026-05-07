@@ -215,6 +215,7 @@ int mylite_table_ddl_copy_create_table_index(
     int status = MYLITE_OK;
 
     index.is_primary = index_node->kind == MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT;
+    index.is_fulltext = index_node->index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT;
     if (index.is_primary) {
         index.is_unique = true;
     } else {
@@ -336,6 +337,12 @@ int mylite_table_ddl_copy_create_table_index_options(
             index->has_engine_attribute = true;
             break;
         case MYLITE_SQL_AST_INDEX_OPTION_WITH_PARSER:
+            copy = mylite_copy_identifier_span(mylite_ast_child_at(option, 0U));
+            if (copy == NULL) {
+                return MYLITE_NOMEM;
+            }
+            free(index->parser_name);
+            index->parser_name = copy;
             index->has_with_parser = true;
             break;
         }

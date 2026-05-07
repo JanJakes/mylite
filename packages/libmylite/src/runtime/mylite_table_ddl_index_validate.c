@@ -31,6 +31,18 @@ static bool drop_index_primary_has_auto_increment_column(
     const struct mylite_alter_table_model *model
 );
 
+static int validate_create_fulltext_index(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+);
+
+static int set_fulltext_index_column_type_error(mylite_db *database, const char *column_name);
+
+static int set_fulltext_index_order_error(mylite_db *database);
+
+static bool column_supports_fulltext_index(const struct mylite_alter_table_column *column);
+
 static char *build_create_unique_index_duplicate_sql(
     mylite_db *database,
     const struct mylite_alter_table_model *model,
@@ -192,19 +204,22 @@ int mylite_table_ddl_validate_create_index_columns(
 
 int mylite_table_ddl_validate_create_index_supported_features(
     mylite_db *database,
-    const struct mylite_index_ddl_plan *plan
+    const struct mylite_index_ddl_plan *plan,
+    const struct mylite_alter_table_model *model
 ) {
-    if (plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT ||
-        plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_SPATIAL) {
+    if (plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_SPATIAL) {
         (void)mylite_diagnostics_set_error_message(database, "Unsupported standalone index class");
         return MYLITE_UNSUPPORTED;
     }
-    if (plan->index.has_with_parser) {
+    if (plan->index.has_with_parser && plan->index_class != MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT) {
         (void)mylite_diagnostics_set_error_message(
             database,
             "WITH PARSER is only supported for FULLTEXT indexes"
         );
         return MYLITE_EXEC_ERROR;
+    }
+    if (plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT) {
+        return validate_create_fulltext_index(database, model, &plan->index);
     }
     if (plan->index.has_engine_attribute) {
         (void)mylite_diagnostics_set_error_message(
@@ -214,6 +229,77 @@ int mylite_table_ddl_validate_create_index_supported_features(
         return MYLITE_EXEC_ERROR;
     }
     return MYLITE_OK;
+}
+
+static int validate_create_fulltext_index(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+) {
+    if (index->has_engine_attribute) {
+        (void)mylite_diagnostics_set_error_message(
+            database,
+            "Storage engine 'InnoDB' does not support ENGINE_ATTRIBUTE"
+        );
+        return MYLITE_EXEC_ERROR;
+    }
+
+    for (size_t part = 0U; part < index->part_count; ++part) {
+        const struct mylite_alter_table_column *column =
+            mylite_table_ddl_find_alter_table_column(model, index->parts[part].column_name);
+
+        if (!column_supports_fulltext_index(column)) {
+            return set_fulltext_index_column_type_error(database, index->parts[part].column_name);
+        }
+        if (index->parts[part].order != MYLITE_SQL_AST_KEY_PART_ORDER_NONE) {
+            return set_fulltext_index_order_error(database);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int set_fulltext_index_column_type_error(mylite_db *database, const char *column_name) {
+    char *message = sqlite3_mprintf("Column '%q' cannot be part of FULLTEXT index", column_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_COLUMN_CANNOT_BE_FULLTEXT,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_fulltext_index_order_error(mylite_db *database) {
+    static const char message[] =
+        "Incorrect usage of spatial/fulltext/hash index and explicit index order";
+    int status = mylite_diagnostics_set_error_message(database, message);
+
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_USAGE, message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static bool column_supports_fulltext_index(const struct mylite_alter_table_column *column) {
+    if (column == NULL || column->data_type == NULL) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "char") ||
+           mylite_ascii_case_equal(column->data_type, "varchar") ||
+           mylite_ascii_case_equal(column->data_type, "tinytext") ||
+           mylite_ascii_case_equal(column->data_type, "text") ||
+           mylite_ascii_case_equal(column->data_type, "mediumtext") ||
+           mylite_ascii_case_equal(column->data_type, "longtext");
 }
 
 int mylite_table_ddl_validate_create_unique_index_values(

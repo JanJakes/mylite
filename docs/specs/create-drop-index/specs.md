@@ -569,19 +569,23 @@ The first executable slice is implemented for supported base tables:
   `foreign_key_checks=0`.
 - warning 3502 is recorded for HASH fallback and warning 1831 is recorded for
   redundant index definitions.
-- `WITH PARSER` is accepted by the parser only on the full-text standalone
-  index shape; full-text parser-plugin behavior remains tied to the deferred
-  full-text index surface.
+- standalone `CREATE FULLTEXT INDEX` over supported character/text columns
+  records metadata with `INDEX_TYPE='FULLTEXT'`, `COLLATION=NULL`,
+  `SUB_PART=NULL`, parser-name/comment preservation for `SHOW CREATE TABLE`,
+  and the first-index InnoDB `FTS_DOC_ID` warning.
+- `WITH PARSER` is accepted and preserved as metadata for standalone
+  full-text indexes; parser-plugin tokenization behavior is deferred.
 
 The remaining gaps in the next section are still intentionally unsupported or
 metadata-only.
 
 ### Compatibility gaps
 
-- `FULLTEXT` and `SPATIAL` standalone index creation can be parsed, but
-  executable metadata and runtime search/spatial semantics are deferred from
-  the first slice.
-- `WITH PARSER` parser-plugin semantics are deferred.
+- Full-text search semantics, `MATCH ... AGAINST`, table-definition
+  `FULLTEXT KEY`, and `ALTER TABLE ... ADD FULLTEXT` remain deferred.
+- `SPATIAL` standalone index creation can be parsed, but executable metadata
+  and runtime spatial semantics are deferred.
+- `WITH PARSER` parser-plugin tokenization semantics are deferred.
 - Functional key parts and multi-valued indexes are deferred until expression,
   JSON, generated-column, and virtual-index machinery exists.
 - Prefix-length storage and comparison semantics are partial until MyLite has
@@ -627,7 +631,9 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | missing key column | Error 1072; no mutation. |
 | empty or trailing-comma key-part list | Syntax error. |
 | `COMMENT = 'bad'` | Syntax error. |
-| `CREATE FULLTEXT INDEX ft_c ON t (c) WITH PARSER ngram COMMENT 'ft'` | Deferred unsupported or parse-only until full-text metadata/runtime is implemented. |
+| `CREATE FULLTEXT INDEX ft_c ON t (c) WITH PARSER ngram COMMENT 'ft'` over text columns | Succeeds, affected rows `0`, warning 124 when it is the table's first full-text index, statistics row `NON_UNIQUE=1`, `COLLATION=NULL`, `SUB_PART=NULL`, `INDEX_TYPE='FULLTEXT'`, `INDEX_COMMENT='ft'`, and `SHOW CREATE TABLE` displays the full-text key with parser metadata. |
+| `CREATE FULLTEXT INDEX ft_n ON t (n)` over an integer column | Error 1283; no index metadata is added. |
+| `CREATE FULLTEXT INDEX ft_c ON t (c ASC)` | Error 1221 for explicit index order; no index metadata is added. |
 | `CREATE SPATIAL INDEX sp_g ON t (g)` | Deferred unsupported or parse-only until spatial metadata/runtime is implemented. |
 | `CREATE INDEX idx ON t (a) ALGORITHM=INPLACE LOCK=NONE` | Succeeds when ordinary index creation is supported; clauses are no-op modifiers in MyLite. |
 | `CREATE INDEX idx ON t (a) LOCK=NONE ALGORITHM=INPLACE` | Same as above; option order accepted. |

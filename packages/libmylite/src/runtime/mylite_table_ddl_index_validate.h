@@ -31,7 +31,8 @@ int mylite_table_ddl_validate_create_index_columns(
 );
 int mylite_table_ddl_validate_create_index_supported_features(
     mylite_db *database,
-    const struct mylite_index_ddl_plan *plan
+    const struct mylite_index_ddl_plan *plan,
+    const struct mylite_alter_table_model *model
 );
 int mylite_table_ddl_validate_create_unique_index_values(
     mylite_db *database,

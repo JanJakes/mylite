@@ -55,6 +55,7 @@ int mylite_table_ddl_copy_create_index_statement(
     plan->index = (struct mylite_create_table_index){
         .algorithm = MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
         .is_unique = statement->index_class == MYLITE_SQL_AST_INDEX_CLASS_UNIQUE,
+        .is_fulltext = statement->index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT,
         .is_visible = true,
         .explicit_name = true,
     };

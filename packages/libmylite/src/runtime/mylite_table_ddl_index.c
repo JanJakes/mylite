@@ -49,7 +49,7 @@ int mylite_table_ddl_execute_create_index_statement(
         status = mylite_table_ddl_validate_create_index_columns(database, &model, &plan->index);
     }
     if (status == MYLITE_OK) {
-        status = mylite_table_ddl_validate_create_index_supported_features(database, plan);
+        status = mylite_table_ddl_validate_create_index_supported_features(database, plan, &model);
     }
     if (status == MYLITE_OK && plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_UNIQUE) {
         status =

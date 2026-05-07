@@ -26,7 +26,7 @@ int mylite_table_ddl_validate_alter_table_added_index(
     const char *index_name,
     bool is_primary
 ) {
-    if (index->has_with_parser) {
+    if (index->has_with_parser && !index->is_fulltext) {
         (void)mylite_diagnostics_set_error_message(
             database,
             "WITH PARSER is only supported for FULLTEXT indexes"

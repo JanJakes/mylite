@@ -31,8 +31,9 @@ int mylite_table_ddl_insert_create_table_index_catalog_rows(
         "INSERT INTO %s("
         "table_catalog, table_schema, table_name, non_unique, index_schema, index_name, "
         "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
-        "index_type, display_index_type, comment, index_comment, is_visible, expression)"
-        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, ?, ?, ?, '', ?, ?, NULL)",
+        "index_type, display_index_type, parser_name, comment, index_comment, is_visible, "
+        "expression)"
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, ?, ?, ?, ?, '', ?, ?, NULL)",
         mylite_catalog_index_catalog_name(plan->temporary)
     );
     int rc = SQLITE_OK;
@@ -93,14 +94,15 @@ static int insert_index_catalog_part(
         bind_nullable = 10,
         bind_index_type = 11,
         bind_display_index_type = 12,
-        bind_index_comment = 13,
-        bind_is_visible = 14,
+        bind_parser_name = 13,
+        bind_index_comment = 14,
+        bind_is_visible = 15,
     };
     const struct mylite_create_table_column *column =
         mylite_table_ddl_find_create_table_column(plan, part->column_name);
     int non_unique = 1;
     const char *nullable = "";
-    const char *index_type = "BTREE";
+    const char *index_type = index->is_fulltext ? "FULLTEXT" : "BTREE";
     const char *is_visible = "NO";
     int rc = SQLITE_OK;
 
@@ -129,14 +131,18 @@ static int insert_index_catalog_part(
         -1,
         sqlite_transient_destructor()
     );
-    sqlite3_bind_text(
-        insert,
-        bind_collation,
-        mylite_table_ddl_index_collation_for_order(part->order),
-        -1,
-        SQLITE_STATIC
-    );
-    if (part->has_prefix_length) {
+    if (index->is_fulltext) {
+        sqlite3_bind_null(insert, bind_collation);
+    } else {
+        sqlite3_bind_text(
+            insert,
+            bind_collation,
+            mylite_table_ddl_index_collation_for_order(part->order),
+            -1,
+            SQLITE_STATIC
+        );
+    }
+    if (part->has_prefix_length && !index->is_fulltext) {
         sqlite3_bind_int64(insert, bind_sub_part, (sqlite3_int64)part->prefix_length);
     } else {
         sqlite3_bind_null(insert, bind_sub_part);
@@ -144,6 +150,13 @@ static int insert_index_catalog_part(
     sqlite3_bind_text(insert, bind_nullable, nullable, -1, SQLITE_STATIC);
     sqlite3_bind_text(insert, bind_index_type, index_type, -1, SQLITE_STATIC);
     sqlite3_bind_int(insert, bind_display_index_type, index->display_index_type ? 1 : 0);
+    sqlite3_bind_text(
+        insert,
+        bind_parser_name,
+        index->parser_name == NULL ? "" : index->parser_name,
+        -1,
+        sqlite_transient_destructor()
+    );
     sqlite3_bind_text(
         insert,
         bind_index_comment,

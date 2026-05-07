@@ -628,10 +628,12 @@ static int clone_like_index_catalog_rows(
         "INSERT INTO %s("
         "table_catalog, table_schema, table_name, non_unique, index_schema, index_name, "
         "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
-        "index_type, display_index_type, comment, index_comment, is_visible, expression)"
+        "index_type, display_index_type, parser_name, comment, index_comment, is_visible, "
+        "expression)"
         " SELECT 'def', ?, ?, non_unique, ?, index_name, seq_in_index, column_name, collation, "
-        "0, sub_part, packed, nullable, index_type, display_index_type, comment, index_comment, "
-        "is_visible, expression FROM %s WHERE table_schema = ? AND table_name = ? ORDER BY rowid",
+        "0, sub_part, packed, nullable, index_type, display_index_type, parser_name, comment, "
+        "index_comment, is_visible, expression FROM %s WHERE table_schema = ? AND table_name = ? "
+        "ORDER BY rowid",
         mylite_catalog_index_catalog_name(plan->temporary),
         mylite_catalog_index_catalog_name(source_temporary)
     );

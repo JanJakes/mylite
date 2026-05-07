@@ -332,7 +332,8 @@ static int load_alter_table_indexes(mylite_db *database, struct mylite_alter_tab
     sqlite3_stmt *select = NULL;
     char *sql = sqlite3_mprintf(
         "SELECT non_unique, index_schema, index_name, seq_in_index, column_name, collation, "
-        "sub_part, nullable, index_type, comment, index_comment, is_visible, display_index_type "
+        "sub_part, nullable, index_type, comment, index_comment, is_visible, display_index_type, "
+        "parser_name "
         "FROM %s WHERE table_schema = ? AND table_name = ? ORDER BY rowid",
         mylite_catalog_index_catalog_name(model->temporary)
     );
@@ -427,6 +428,13 @@ static int add_alter_table_index_part(
                 select,
                 MYLITE_ALTER_TABLE_INDEX_CATALOG_VISIBLE,
                 &model->indexes[index].is_visible
+            );
+        }
+        if (status == MYLITE_OK) {
+            status = copy_sqlite_text_column(
+                select,
+                MYLITE_ALTER_TABLE_INDEX_CATALOG_PARSER_NAME,
+                &model->indexes[index].parser_name
             );
         }
         if (status != MYLITE_OK) {

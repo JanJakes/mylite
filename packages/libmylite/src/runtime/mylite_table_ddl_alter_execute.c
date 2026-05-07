@@ -2690,7 +2690,8 @@ static bool alter_table_index_supports_foreign_key(
     const struct mylite_alter_table_index *index,
     const struct mylite_create_table_foreign_key *foreign_key
 ) {
-    if (index->part_count < foreign_key->column_count) {
+    if (mylite_ascii_case_equal(index->index_type, "FULLTEXT") ||
+        index->part_count < foreign_key->column_count) {
         return false;
     }
     for (size_t part = 0U; part < foreign_key->column_count; ++part) {

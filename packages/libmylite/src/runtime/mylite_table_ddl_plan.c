@@ -169,6 +169,7 @@ void mylite_table_ddl_alter_table_index_deinit(struct mylite_alter_table_index *
     free(index->index_type);
     free(index->comment);
     free(index->index_comment);
+    free(index->parser_name);
     free(index->is_visible);
     for (size_t part = 0U; part < index->part_count; ++part) {
         mylite_table_ddl_alter_table_index_part_deinit(&index->parts[part]);
@@ -209,6 +210,7 @@ void mylite_table_ddl_create_table_index_deinit(struct mylite_create_table_index
 
     free(index->name);
     free(index->comment);
+    free(index->parser_name);
     for (size_t part = 0U; part < index->part_count; ++part) {
         mylite_table_ddl_create_table_key_part_deinit(&index->parts[part]);
     }

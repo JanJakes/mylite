@@ -11,7 +11,14 @@
 
 static int append_index_hash_warning(mylite_db *database);
 
+static int append_fulltext_doc_id_warning(mylite_db *database);
+
 static int append_index_duplicate_warning(mylite_db *database, const char *index_name);
+
+static int maybe_append_fulltext_doc_id_warning(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+);
 
 static int maybe_append_duplicate_index_warning(
     mylite_db *database,
@@ -31,6 +38,9 @@ int mylite_table_ddl_append_create_index_warnings(
 ) {
     int status = MYLITE_OK;
 
+    if (index->is_fulltext) {
+        return maybe_append_fulltext_doc_id_warning(database, model);
+    }
     if (index->algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_HASH) {
         status = append_index_hash_warning(database);
     }
@@ -45,6 +55,14 @@ static int append_index_hash_warning(mylite_db *database) {
         database,
         MYLITE_MYSQL_ER_WARN_USING_OTHER_HANDLER,
         "This storage engine does not support HASH indexes; using BTREE instead"
+    );
+}
+
+static int append_fulltext_doc_id_warning(mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        database,
+        MYLITE_MYSQL_ER_WARN_INNODB_FT_DOC_ID,
+        "InnoDB rebuilding table to add column FTS_DOC_ID"
     );
 }
 
@@ -63,6 +81,18 @@ static int append_index_duplicate_warning(mylite_db *database, const char *index
     status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_DUP_INDEX, message);
     sqlite3_free(message);
     return status;
+}
+
+static int maybe_append_fulltext_doc_id_warning(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+) {
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        if (mylite_ascii_case_equal(model->indexes[index].index_type, "FULLTEXT")) {
+            return MYLITE_OK;
+        }
+    }
+    return append_fulltext_doc_id_warning(database);
 }
 
 static int maybe_append_duplicate_index_warning(

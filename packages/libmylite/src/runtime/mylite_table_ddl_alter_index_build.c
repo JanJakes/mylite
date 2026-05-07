@@ -14,6 +14,7 @@
 static int init_alter_table_index_part_from_key_part(
     mylite_db *database,
     const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index,
     const struct mylite_create_table_key_part *source,
     struct mylite_alter_table_index_part *out_part
 );
@@ -25,9 +26,10 @@ int mylite_table_ddl_init_alter_table_index_from_create_index(
     bool is_primary,
     struct mylite_alter_table_index *out_index
 ) {
-    const char *index_type = "BTREE";
+    const char *index_type = source->is_fulltext ? "FULLTEXT" : "BTREE";
     const char *comment = "";
     const char *index_comment = source->comment == NULL ? "" : source->comment;
+    const char *parser_name = source->parser_name == NULL ? "" : source->parser_name;
     const char *is_visible = "NO";
     int status = MYLITE_OK;
 
@@ -40,17 +42,18 @@ int mylite_table_ddl_init_alter_table_index_from_create_index(
     out_index->index_type = mylite_copy_span_text(index_type, strlen(index_type));
     out_index->comment = mylite_copy_span_text(comment, strlen(comment));
     out_index->index_comment = mylite_copy_span_text(index_comment, strlen(index_comment));
+    out_index->parser_name = mylite_copy_span_text(parser_name, strlen(parser_name));
     out_index->is_visible = mylite_copy_span_text(is_visible, strlen(is_visible));
     out_index->non_unique = 1;
     if (source->is_unique || is_primary) {
         out_index->non_unique = 0;
     }
     out_index->changed = true;
-    out_index->display_index_type =
-        source->display_index_type && source->algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE;
+    out_index->display_index_type = !source->is_fulltext && source->display_index_type &&
+                                    source->algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE;
     if (out_index->index_schema == NULL || out_index->index_type == NULL ||
         out_index->comment == NULL || out_index->index_comment == NULL ||
-        out_index->is_visible == NULL) {
+        out_index->parser_name == NULL || out_index->is_visible == NULL) {
         mylite_table_ddl_alter_table_index_deinit(out_index);
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -62,6 +65,7 @@ int mylite_table_ddl_init_alter_table_index_from_create_index(
         status = init_alter_table_index_part_from_key_part(
             database,
             model,
+            source,
             &source->parts[part],
             &table_part
         );
@@ -112,6 +116,7 @@ int mylite_table_ddl_assign_alter_table_generated_index_name(
 static int init_alter_table_index_part_from_key_part(
     mylite_db *database,
     const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index,
     const struct mylite_create_table_key_part *source,
     struct mylite_alter_table_index_part *out_part
 ) {
@@ -126,15 +131,17 @@ static int init_alter_table_index_part_from_key_part(
 
     *out_part = (struct mylite_alter_table_index_part){0};
     out_part->column_name = mylite_copy_nonempty_cstring(source->column_name);
-    out_part->collation = mylite_copy_span_text(collation, strlen(collation));
+    if (!index->is_fulltext) {
+        out_part->collation = mylite_copy_span_text(collation, strlen(collation));
+    }
     out_part->nullable = mylite_copy_span_text(nullable, strlen(nullable));
-    if (out_part->column_name == NULL || out_part->collation == NULL ||
+    if (out_part->column_name == NULL || (!index->is_fulltext && out_part->collation == NULL) ||
         out_part->nullable == NULL) {
         mylite_table_ddl_alter_table_index_part_deinit(out_part);
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    if (source->has_prefix_length) {
+    if (!index->is_fulltext && source->has_prefix_length) {
         out_part->has_sub_part = true;
         out_part->sub_part = (int64_t)source->prefix_length;
     }

@@ -51,11 +51,13 @@ struct mylite_create_table_key_part {
 struct mylite_create_table_index {
     char *name;
     char *comment;
+    char *parser_name;
     struct mylite_create_table_key_part *parts;
     size_t part_count;
     enum mylite_sql_ast_index_algorithm algorithm;
     bool is_primary;
     bool is_unique;
+    bool is_fulltext;
     bool is_visible;
     bool explicit_name;
     bool has_engine_attribute;
@@ -262,6 +264,7 @@ struct mylite_alter_table_index {
     char *index_type;
     char *comment;
     char *index_comment;
+    char *parser_name;
     char *is_visible;
     struct mylite_alter_table_index_part *parts;
     size_t part_count;
@@ -323,6 +326,7 @@ enum mylite_alter_table_index_catalog_field {
     MYLITE_ALTER_TABLE_INDEX_CATALOG_INDEX_COMMENT = 10,
     MYLITE_ALTER_TABLE_INDEX_CATALOG_VISIBLE = 11,
     MYLITE_ALTER_TABLE_INDEX_CATALOG_DISPLAY_TYPE = 12,
+    MYLITE_ALTER_TABLE_INDEX_CATALOG_PARSER_NAME = 13,
 };
 
 #endif

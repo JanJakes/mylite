@@ -32317,7 +32317,43 @@ static int test_session_information_functions_execution(void) {
         1,
         "initial found rows"
     );
+    failures += expect_select_rows(
+        fresh_database,
+        "SELECT FOUND_ROWS() AS found_rows",
+        found_rows_column,
+        1,
+        found_rows_one,
+        1,
+        "found rows after initial found rows select"
+    );
     mylite_close(fresh_database);
+    fresh_database = NULL;
+
+    failures += expect_status(
+        mylite_open_memory(&fresh_database),
+        MYLITE_OK,
+        "open non-select found rows database"
+    );
+    failures += execute_sql(fresh_database, "CREATE DATABASE fr_nonselect_db", MYLITE_DONE);
+    failures += execute_sql(fresh_database, "USE fr_nonselect_db", MYLITE_DONE);
+    failures += execute_sql(fresh_database, "CREATE TABLE fr_nonselect (id INT)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        fresh_database,
+        "INSERT INTO fr_nonselect VALUES (1),(2)",
+        2,
+        "insert non-select found rows rows"
+    );
+    failures += expect_select_rows(
+        fresh_database,
+        "SELECT FOUND_ROWS() AS found_rows",
+        found_rows_column,
+        1,
+        found_rows_zero,
+        1,
+        "found rows after only non-select statements"
+    );
+    mylite_close(fresh_database);
+    fresh_database = NULL;
 
     failures +=
         expect_status(mylite_open_memory(&database), MYLITE_OK, "open session functions database");

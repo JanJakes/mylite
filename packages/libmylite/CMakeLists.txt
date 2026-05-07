@@ -37,6 +37,10 @@ endif()
 
 add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
+  src/runtime/mylite_connection.c
+  src/runtime/mylite_diagnostics.c
+  src/runtime/mylite_result_metadata.c
+  src/runtime/mylite_statement_context.c
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
@@ -51,6 +55,7 @@ target_include_directories(mylite
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
     "$<INSTALL_INTERFACE:include>"
   PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/sql"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/storage"
     "${MYLITE_SQL_PARSE_DIR}"
@@ -102,9 +107,68 @@ if(BUILD_TESTING)
   target_link_libraries(mylite_sqlite_test PRIVATE MyLite::sqlite)
   mylite_configure_c_target(mylite_sqlite_test)
 
+  add_executable(mylite_runtime_open_memory_test
+    tests/runtime_open_memory_test.c
+  )
+  target_link_libraries(mylite_runtime_open_memory_test PRIVATE MyLite::mylite)
+  target_include_directories(mylite_runtime_open_memory_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_open_memory_test)
+
+  add_executable(mylite_runtime_sqlite_owner_test
+    tests/runtime_sqlite_owner_test.c
+  )
+  target_link_libraries(mylite_runtime_sqlite_owner_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_sqlite_owner_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_sqlite_owner_test)
+
+  add_executable(mylite_runtime_diagnostics_test
+    tests/runtime_diagnostics_test.c
+  )
+  target_link_libraries(mylite_runtime_diagnostics_test PRIVATE MyLite::mylite)
+  target_include_directories(mylite_runtime_diagnostics_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_diagnostics_test)
+
+  add_executable(mylite_runtime_statement_context_test
+    tests/runtime_statement_context_test.c
+  )
+  target_link_libraries(mylite_runtime_statement_context_test PRIVATE MyLite::mylite)
+  target_include_directories(mylite_runtime_statement_context_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_statement_context_test)
+
+  add_executable(mylite_runtime_result_metadata_test
+    tests/runtime_result_metadata_test.c
+  )
+  target_link_libraries(mylite_runtime_result_metadata_test PRIVATE MyLite::mylite)
+  target_include_directories(mylite_runtime_result_metadata_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_result_metadata_test)
+
   add_test(NAME libmylite.lexer COMMAND mylite_lexer_test)
   add_test(NAME libmylite.parser COMMAND mylite_parser_test)
   add_test(NAME libmylite.file_format COMMAND mylite_file_format_test)
+  add_test(NAME libmylite.runtime.diagnostics COMMAND mylite_runtime_diagnostics_test)
+  add_test(NAME libmylite.runtime.open_memory COMMAND mylite_runtime_open_memory_test)
+  add_test(NAME libmylite.runtime.result_metadata COMMAND mylite_runtime_result_metadata_test)
+  add_test(
+    NAME libmylite.runtime.sqlite_owner
+    COMMAND mylite_runtime_sqlite_owner_test
+  )
+  add_test(
+    NAME libmylite.runtime.statement_context
+    COMMAND mylite_runtime_statement_context_test
+  )
   add_test(NAME libmylite.sqlite COMMAND mylite_sqlite_test)
   add_test(NAME libmylite.version COMMAND mylite_version_test)
 endif()

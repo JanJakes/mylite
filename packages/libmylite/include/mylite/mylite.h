@@ -23,7 +23,21 @@
 extern "C" {
 #endif
 
+typedef struct mylite_db mylite_db;
+
+#define MYLITE_OK 0
+#define MYLITE_ERROR 1
+#define MYLITE_NOMEM 7
+#define MYLITE_MISUSE 21
+
 MYLITE_API const char *mylite_version(void);
+
+MYLITE_API int mylite_open_memory(mylite_db **out_db);
+MYLITE_API void mylite_close(mylite_db *database);
+
+MYLITE_API int mylite_errcode(const mylite_db *database);
+MYLITE_API const char *mylite_sqlstate(const mylite_db *database);
+MYLITE_API const char *mylite_errmsg(const mylite_db *database);
 
 #ifdef __cplusplus
 }

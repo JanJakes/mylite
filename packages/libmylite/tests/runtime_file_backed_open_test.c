@@ -19,6 +19,7 @@
 enum {
     test_path_capacity = 1024,
     sqlite_header_size = 16,
+    reopen_marker_value = 73,
 };
 
 static int test_open_rejects_invalid_arguments(void);
@@ -158,7 +159,7 @@ static int test_reopen_existing_file_preserves_sqlite_payload(void) {
     if (sqlite != NULL) {
         failures += query_single_int(sqlite, "SELECT value FROM reopen_marker", &stored_value);
     }
-    failures += expect_int(stored_value, 73, "reopened payload preserves row");
+    failures += expect_int(stored_value, reopen_marker_value, "reopened payload preserves row");
 
     mylite_close(database);
     remove_related_files(path);

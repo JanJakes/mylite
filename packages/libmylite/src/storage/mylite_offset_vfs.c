@@ -14,7 +14,9 @@ struct mylite_offset_file {
 };
 
 static int offset_close(sqlite3_file *file);
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): SQLite fixes this VFS ABI.
 static int offset_read(sqlite3_file *file, void *buffer, int amount, sqlite3_int64 offset);
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): SQLite fixes this VFS ABI.
 static int offset_write(sqlite3_file *file, const void *buffer, int amount, sqlite3_int64 offset);
 static int offset_truncate(sqlite3_file *file, sqlite3_int64 size);
 static int offset_sync(sqlite3_file *file, int flags);
@@ -48,6 +50,8 @@ static int offset_vfs_randomness(sqlite3_vfs *vfs, int output_size, char *output
 static int offset_vfs_sleep(sqlite3_vfs *vfs, int microseconds);
 static int offset_vfs_current_time(sqlite3_vfs *vfs, double *out_time);
 static int offset_vfs_get_last_error(sqlite3_vfs *vfs, int output_size, char *output);
+static int ensure_vfs_registered_locked(void);
+static int register_offset_vfs(sqlite3_vfs *base_vfs);
 static sqlite3_vfs *wrapped_vfs(sqlite3_vfs *vfs);
 static struct mylite_offset_file *offset_file_from_sqlite_file(sqlite3_file *file);
 static int open_inner_file(
@@ -93,17 +97,44 @@ static const sqlite3_io_methods offset_io_methods = {
 static sqlite3_vfs mylite_offset_vfs;
 
 int mylite_storage_vfs_ensure_registered(void) {
-    sqlite3_vfs *base_vfs = NULL;
+    sqlite3_mutex *mutex = NULL;
     int rc = SQLITE_OK;
 
-    if (sqlite3_vfs_find(mylite_storage_vfs_name()) != NULL) {
-        return MYLITE_OK;
+    rc = sqlite3_initialize();
+    if (rc != SQLITE_OK) {
+        return sqlite_status_to_mylite(rc);
+    }
+
+    mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_STATIC_VFS3);
+    sqlite3_mutex_enter(mutex);
+    rc = ensure_vfs_registered_locked();
+    sqlite3_mutex_leave(mutex);
+
+    return rc;
+}
+
+const char *mylite_storage_vfs_name(void) {
+    return "mylite-offset-vfs";
+}
+
+static int ensure_vfs_registered_locked(void) {
+    sqlite3_vfs *registered_vfs = sqlite3_vfs_find(mylite_storage_vfs_name());
+    sqlite3_vfs *base_vfs = NULL;
+
+    if (registered_vfs != NULL) {
+        return registered_vfs == &mylite_offset_vfs ? MYLITE_OK : MYLITE_ERROR;
     }
 
     base_vfs = sqlite3_vfs_find(NULL);
     if (base_vfs == NULL || base_vfs->szOsFile <= 0) {
         return MYLITE_ERROR;
     }
+
+    return register_offset_vfs(base_vfs);
+}
+
+static int register_offset_vfs(sqlite3_vfs *base_vfs) {
+    int rc = SQLITE_OK;
 
     memset(&mylite_offset_vfs, 0, sizeof(mylite_offset_vfs));
     mylite_offset_vfs.iVersion = 1;
@@ -129,10 +160,6 @@ int mylite_storage_vfs_ensure_registered(void) {
     return sqlite_status_to_mylite(rc);
 }
 
-const char *mylite_storage_vfs_name(void) {
-    return "mylite-offset-vfs";
-}
-
 static int offset_close(sqlite3_file *file) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
     int rc = SQLITE_OK;
@@ -149,6 +176,7 @@ static int offset_close(sqlite3_file *file) {
     return rc;
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): SQLite fixes this VFS ABI.
 static int offset_read(sqlite3_file *file, void *buffer, int amount, sqlite3_int64 offset) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
     sqlite3_int64 physical_offset = offset;
@@ -161,6 +189,7 @@ static int offset_read(sqlite3_file *file, void *buffer, int amount, sqlite3_int
         ->xRead(offset_file->inner_file, buffer, amount, physical_offset);
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): SQLite fixes this VFS ABI.
 static int offset_write(sqlite3_file *file, const void *buffer, int amount, sqlite3_int64 offset) {
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
     sqlite3_int64 physical_offset = offset;
@@ -199,8 +228,11 @@ static int offset_file_size(sqlite3_file *file, sqlite3_int64 *out_size) {
         return rc;
     }
 
-    *out_size = offset_file->shifts_offsets ? logical_size_from_physical_size(physical_size)
-                                            : physical_size;
+    if (offset_file->shifts_offsets) {
+        *out_size = logical_size_from_physical_size(physical_size);
+    } else {
+        *out_size = physical_size;
+    }
 
     return SQLITE_OK;
 }

@@ -214,7 +214,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `TEXT`. Fixed `BINARY(N)` values now right-pad shorter write values with
       `0x00` bytes while preserving `VARBINARY(N)` shorter values, and covered
       strict/non-strict/`UPDATE IGNORE` overlength paths truncate or reject
-      according to MySQL. Scalar `CAST`/`CONVERT` to `DECIMAL(M,D)` now covers
+      according to MySQL. Invalid UTF-8 byte sequences assigned to covered
+      `utf8mb4` `VARCHAR` and `TEXT` columns now reject in strict mode and
+      store the valid prefix with warning 1366 in non-strict and
+      single-table `UPDATE IGNORE` paths, while binary columns preserve raw
+      bytes. Scalar `CAST`/`CONVERT` to `DECIMAL(M,D)` now covers
       target-scale rounding, out-of-range endpoint clipping with warning 1264,
       truncated decimal strings with warning 1292 before range warning 1264,
       and non-finite decimal strings returning formatted zero with warning 1292.

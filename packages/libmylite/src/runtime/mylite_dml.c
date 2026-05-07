@@ -211,6 +211,7 @@ void mylite_dml_insert_table_column_deinit(struct mylite_insert_table_column *co
     free(column->default_text);
     free(column->data_type);
     free(column->column_type);
+    free(column->character_set_name);
     free(column->extra);
     *column = (struct mylite_insert_table_column){0};
 }

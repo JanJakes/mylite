@@ -58417,6 +58417,14 @@ static int test_string_dml_coercion_execution(void) {
         {"1", "7A0000", "3", "7A", "1", "2", "616263", "3", "616263", "3"};
     static const char *const binary_long_update_values[] =
         {"1", "777879", "3", "777879", "3", "2", "616263", "3", "616263", "3"};
+    static const char *const invalid_utf8_columns[] =
+        {"id", "v_hex", "v_len", "t_hex", "t_len", "b_hex", "b_len"};
+    static const char *const invalid_utf8_non_strict_values[] =
+        {"1", "61", "1", "61", "1", "61C362", "3"};
+    static const char *const invalid_utf8_insert_ignore_values[] =
+        {"1", "", "0", "", "0", "C3", "1"};
+    static const char *const invalid_utf8_ignore_update_values[] =
+        {"1", "", "0", "", "0", "61C362", "3"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -58676,6 +58684,113 @@ static int test_string_dml_coercion_execution(void) {
         binary_long_update_values,
         2,
         "binary update ignore clipped values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE invalid_utf8_values ("
+        "id INT PRIMARY KEY, v VARCHAR(10), t TEXT, b VARBINARY(10)) "
+        "DEFAULT CHARSET=utf8mb4",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO invalid_utf8_values VALUES (1, UNHEX('C3'), UNHEX('C3'), UNHEX('C3'))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect string value: '\\xC3' for column 'v' at row 1",
+        "strict invalid utf8 insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "strict invalid utf8 insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM invalid_utf8_values",
+        0,
+        "strict invalid utf8 no inserted row"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO invalid_utf8_values VALUES "
+        "(1, UNHEX('C3'), UNHEX('C3'), UNHEX('C3'))",
+        1,
+        "insert ignore invalid utf8"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "invalid utf8 insert ignore warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(v) AS v_hex, LENGTH(v) AS v_len, "
+        "HEX(t) AS t_hex, LENGTH(t) AS t_len, HEX(b) AS b_hex, LENGTH(b) AS b_len "
+        "FROM invalid_utf8_values",
+        invalid_utf8_columns,
+        7,
+        invalid_utf8_insert_ignore_values,
+        1,
+        "invalid utf8 insert ignore stored prefix"
+    );
+    failures += execute_sql(database, "DELETE FROM invalid_utf8_values", MYLITE_DONE);
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO invalid_utf8_values VALUES "
+        "(1, UNHEX('61C362'), UNHEX('61C362'), UNHEX('61C362'))",
+        1,
+        "non-strict invalid utf8 insert"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "invalid utf8 insert warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "invalid utf8 varchar warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value_for_field,
+        "invalid utf8 text warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(v) AS v_hex, LENGTH(v) AS v_len, "
+        "HEX(t) AS t_hex, LENGTH(t) AS t_len, HEX(b) AS b_hex, LENGTH(b) AS b_len "
+        "FROM invalid_utf8_values",
+        invalid_utf8_columns,
+        7,
+        invalid_utf8_non_strict_values,
+        1,
+        "invalid utf8 non-strict stored prefix"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE invalid_utf8_values SET v = UNHEX('C3'), t = UNHEX('C3')",
+        1,
+        "update ignore invalid utf8"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "invalid utf8 update warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(v) AS v_hex, LENGTH(v) AS v_len, "
+        "HEX(t) AS t_hex, LENGTH(t) AS t_len, HEX(b) AS b_hex, LENGTH(b) AS b_len "
+        "FROM invalid_utf8_values",
+        invalid_utf8_columns,
+        7,
+        invalid_utf8_ignore_update_values,
+        1,
+        "invalid utf8 update ignore stored prefix"
     );
 
     failures += execute_sql(

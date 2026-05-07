@@ -15,6 +15,8 @@ Implemented scope:
 - public fork APIs to read, clear, and publish the most recent fork condition
 - connection-local condition-list storage with public count and indexed read
   APIs for statements that publish more than one warning
+- top-level VDBE statement start clears the fork diagnostics area so direct
+  fork execution does not expose stale warning records
 - `OP_MyliteTypeCheck` publishes MySQL condition codes and SQLSTATE values for
   the first strict assignment failures
 - SQLite-native `NOT NULL`, `UNIQUE`, `PRIMARY KEY`, `CHECK`, and immediate
@@ -38,6 +40,9 @@ Deferred scope:
   form, condition item fields, and stacked diagnostics
 - warning demotion for `IGNORE` and non-strict SQL modes
 - exact message text for fork-collected warnings and errors
+- full diagnostics-area lifecycle exceptions for future `SHOW WARNINGS`,
+  `GET DIAGNOSTICS`, prepared-statement metadata, and compound public MyLite
+  statements
 - SQLSTATE exposure through the public MyLite API and wire protocol
 - exact MySQL message rendering for native SQLite constraints
 - structured conditions for deferred foreign-key, generated-column, parser,
@@ -111,6 +116,12 @@ work, where row-level write failures must be demoted, recorded, and execution
 must continue. The first collector stores level, MySQL errno, and SQLSTATE; exact
 condition messages and row/column metadata remain later work.
 
+Direct fork statement execution clears the diagnostics area when a top-level
+VDBE moves from ready to running. Nested SQLite work that executes while another
+VDBE is already active does not reset the area. This gives direct fork users
+MySQL-like "current statement" diagnostics for the covered scalar-warning path
+without depending on public MyLite's statement wrapper.
+
 ## Initial Semantics
 
 `OP_MyliteTypeCheck` now publishes:
@@ -152,12 +163,15 @@ The executable tests must cover:
 - direct fork warning readback after successful scalar callback evaluation
 - direct fork condition-count and indexed-read coverage for multiple warnings
   produced by one SQLite statement
+- direct fork coverage that a subsequent top-level statement clears the
+  diagnostics area and most-recent condition slot
 - existing type-coercion success and failure behavior continuing to pass
 
 ## Compatibility Status
 
 This feature is `🟡` because the first structured bridge exists for fork-owned
 type-check failures, common native constraint failures, and scalar callback
-warnings, and the fork can now collect multiple condition records. The full
-MySQL diagnostics area, warning demotion, exact message rendering, and
-wire-protocol condition metadata remain incomplete.
+warnings, and the fork can now collect multiple condition records and clear
+them at top-level direct-statement start. The full MySQL diagnostics area,
+warning demotion, exact message rendering, and wire-protocol condition metadata
+remain incomplete.

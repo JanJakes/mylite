@@ -555,10 +555,22 @@ static int test_registered_functions(void) {
             .context = "fork last condition remains the final scalar warning",
         }
     );
-    failures += expect_sqlite_ok(
-        mylite_sqlite_fork_clear_condition(database),
+    failures +=
+        expect_int64(database, "SELECT 1", 1, "next statement executes after scalar warnings");
+    failures += expect_fork_condition_count(
         database,
-        "clear multiple scalar warnings"
+        0,
+        "next top-level statement clears fork diagnostics area"
+    );
+    failures += expect_fork_condition_level(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = 0,
+            .sqlstate = "",
+            .context = "next top-level statement clears fork last condition",
+        },
+        MYLITE_SQLITE_FORK_CONDITION_NONE,
+        "none"
     );
     failures += expect_int64(
         database,

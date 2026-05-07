@@ -817,6 +817,11 @@ static int sqlite3Step(Vdbe *p){
       if( p->bIsReader ) db->nVdbeRead++;
       p->pc = 0;
       p->eVdbeState = VDBE_RUN_STATE;
+#ifdef SQLITE_ENABLE_MYLITE
+      if( db->nVdbeExec==0 && db->init.busy==0 ){
+        sqlite3MyliteClearCondition(db);
+      }
+#endif
     }else
 
     if( ALWAYS(p->eVdbeState==VDBE_HALT_STATE) ){

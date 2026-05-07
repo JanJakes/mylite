@@ -44,6 +44,7 @@ Implemented fork points:
   beginning with `IF()` condition conversion warnings
 - connection-local fork condition-list storage with count and indexed-read APIs
   for statements that publish more than one condition
+- top-level VDBE statement-start diagnostics reset for direct fork execution
 - connection-local session state backed by SQLite client data, beginning with
   the default-schema value consumed by native `DATABASE()` and `SCHEMA()`
 - connection-local VDBE completion state for native `ROW_COUNT()` and
@@ -272,13 +273,17 @@ Required fork direction:
 - scalar callbacks can publish successful-statement warnings through the fork
   diagnostics bridge; implemented first with an indexed connection-local
   condition list for statements that publish more than one warning
+- top-level VDBE statement start clears the fork diagnostics area, giving
+  direct fork execution current-statement warning visibility instead of stale
+  records
 - statement-stable functions such as `NOW()` need a VDBE statement timestamp
   or equivalent statement context. Implemented first by exposing SQLite's
   statement clock to MyLite callbacks for native current temporal functions.
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
 - future diagnostics work needs exact condition messages, row/column metadata,
-  and precise statement-lifecycle reset semantics
+  and lifecycle exceptions for `SHOW WARNINGS`, `GET DIAGNOSTICS`, and public
+  MyLite compound statements
 
 ### Statement and session completion state
 

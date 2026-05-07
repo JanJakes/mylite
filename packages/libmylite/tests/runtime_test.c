@@ -3463,14 +3463,26 @@ static int test_alter_table_check_constraint_execution(void) {
     static const char *const count_columns[] = {"c"};
     static const char *const zero_count[] = {"0"};
     static const char *const one_count[] = {"1"};
+    static const char *const two_count[] = {"2"};
     static const char *const check_columns[] = {"CONSTRAINT_NAME", "CHECK_CLAUSE"};
     static const char *const add_check_values[] = {"alter_checks_chk_1", "(`score` > 0)"};
     static const char *const enforcement_columns[] = {"CONSTRAINT_NAME", "ENFORCED"};
     static const char *const not_enforced_values[] = {"invalid_checks_chk_1", "NO"};
+    static const char *const mixed_not_enforced_values[] = {"mixed_invalid_chk_1", "NO"};
     static const char *const enforced_values[] = {"invalid_checks_chk_1", "YES"};
     static const char *const generated_values[] = {
         "generated_checks_chk_2",
         "generated_checks_chk_3",
+    };
+    static const char *const mixed_check_values[] = {
+        "bonus_positive",
+        "(`bonus` > 0)",
+        "mixed_column_checks_chk_1",
+        "(`score` > 0)",
+    };
+    static const char *const mixed_index_check_values[] = {
+        "mixed_index_checks_chk_1",
+        "(`score` > 0)",
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -3726,6 +3738,214 @@ static int test_alter_table_check_constraint_execution(void) {
         generated_values,
         2,
         "alter generated check names advance after drop"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mixed_column_checks (id INT PRIMARY KEY, score INT)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO mixed_column_checks VALUES (1, 1), (2, 2)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mixed_column_checks "
+        "ADD COLUMN bonus INT DEFAULT 1, "
+        "ADD CONSTRAINT bonus_positive CHECK (bonus > 0)",
+        2,
+        "mixed alter add column and enforced check affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM mixed_column_checks WHERE bonus = 1",
+        count_columns,
+        1,
+        two_count,
+        1,
+        "mixed alter add column backfills default"
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE mixed_column_checks SET bonus = -1 WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "bonus_positive",
+        "mixed alter added check rejects invalid update"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mixed_column_checks ADD CHECK (score > 0), AUTO_INCREMENT = 50",
+        2,
+        "mixed alter add check and auto increment option affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, CHECK_CLAUSE FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME IN ('bonus_positive', 'mixed_column_checks_chk_1') "
+        "ORDER BY CONSTRAINT_NAME",
+        check_columns,
+        2,
+        mixed_check_values,
+        2,
+        "mixed alter check metadata"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mixed_column_checks DROP CHECK bonus_positive, DROP COLUMN bonus",
+        0,
+        "mixed alter drop check and column affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_alter_check' "
+        "AND TABLE_NAME = 'mixed_column_checks' "
+        "AND COLUMN_NAME = 'bonus'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "mixed alter drop column removes metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME = 'bonus_positive'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "mixed alter drop check removes metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mixed_index_checks (id INT PRIMARY KEY, score INT)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO mixed_index_checks VALUES (1, 1), (2, 2)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mixed_index_checks ADD INDEX idx_score (score), ADD CHECK (score > 0)",
+        2,
+        "mixed alter add index and enforced check affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, CHECK_CLAUSE FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME = 'mixed_index_checks_chk_1'",
+        check_columns,
+        2,
+        mixed_index_check_values,
+        1,
+        "mixed alter add index and check metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = 'mylite_alter_check' "
+        "AND TABLE_NAME = 'mixed_index_checks' "
+        "AND INDEX_NAME = 'idx_score'",
+        count_columns,
+        1,
+        one_count,
+        1,
+        "mixed alter add index metadata"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mixed_invalid (id INT PRIMARY KEY, score INT)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO mixed_invalid VALUES (1, -1), (2, 2)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE mixed_invalid ADD COLUMN bonus INT DEFAULT 1, ADD CHECK (score > 0)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "mixed_invalid_chk_1",
+        "mixed alter enforced check rolls back invalid column add"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint,
+        "mixed alter invalid enforced check warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_alter_check' "
+        "AND TABLE_NAME = 'mixed_invalid' "
+        "AND COLUMN_NAME = 'bonus'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "mixed alter invalid check rolls back column metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'mylite_alter_check' "
+        "AND CONSTRAINT_NAME = 'mixed_invalid_chk_1'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "mixed alter invalid check rolls back check metadata"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mixed_invalid "
+        "ADD COLUMN marker INT DEFAULT 1, "
+        "ADD CHECK (score > 0) NOT ENFORCED",
+        0,
+        "mixed alter add column and not enforced check affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM mixed_invalid WHERE marker = 1",
+        count_columns,
+        1,
+        two_count,
+        1,
+        "mixed alter not enforced check preserves invalid rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT CONSTRAINT_NAME, `ENFORCED` FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+        "WHERE TABLE_SCHEMA = 'mylite_alter_check' "
+        "AND TABLE_NAME = 'mixed_invalid' "
+        "AND CONSTRAINT_NAME = 'mixed_invalid_chk_1'",
+        enforcement_columns,
+        2,
+        mixed_not_enforced_values,
+        1,
+        "mixed alter not enforced check metadata"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO mixed_invalid VALUES (3, -3, 1)",
+        1,
+        "mixed alter not enforced check allows invalid insert"
     );
 
     failures +=

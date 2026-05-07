@@ -449,6 +449,7 @@ static int copy_alter_table_add_check_action(
         constraint_name == NULL ? first_child : mylite_ast_child_at(action_node, 1U);
 
     action->kind = MYLITE_ALTER_TABLE_ACTION_ADD_CHECK;
+    action->check.generated_name = constraint_name == NULL;
     action->check.enforced =
         action_node->constraint_enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED;
     if (constraint_name != NULL) {
@@ -648,7 +649,8 @@ static int copy_alter_table_foreign_key_identifier_list(
     for (const struct mylite_sql_ast_node *node = list == NULL ? NULL : list->first_child;
          node != NULL;
          node = node->next_sibling) {
-        char **names = realloc(*out_names, (*out_count + 1U) * sizeof(**out_names));
+        char **names =
+            (char **)realloc((void *)*out_names, (*out_count + 1U) * sizeof(**out_names));
         char *name = NULL;
 
         if (names == NULL) {

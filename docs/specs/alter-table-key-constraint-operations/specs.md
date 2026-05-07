@@ -81,10 +81,10 @@ application migrations:
   rewrites, optional auxiliary SQLite indexes, warnings, diagnostics, and
   affected-row state.
 - Return deterministic unsupported diagnostics before mutation for
-  `FULLTEXT`, `SPATIAL`, mixed-action executable foreign keys, and executable
-  CHECK constraints until their dedicated catalog/runtime support lands.
-- Keep CHECK and foreign-key AST nodes source-complete so later work can add
-  catalogs and runtime behavior without changing the accepted parse tree.
+  `FULLTEXT` and `SPATIAL` until their dedicated catalog/runtime support
+  lands.
+- Keep unsupported future constraint options source-complete so later work can
+  add catalogs and runtime behavior without changing the accepted parse tree.
 
 The first slice should not use SQLite constraints or indexes as the semantic
 source of truth. SQLite indexes can be optional performance artifacts only
@@ -266,10 +266,11 @@ primary key exists.
 ### CHECK constraints
 
 `ADD CHECK` creates a named or generated CHECK constraint. Omitted names are
-generated from the table name and a per-table ordinal. MySQL requires CHECK
-constraint names to be unique per schema. Runtime probes observed duplicate
-CHECK names failing with error 3822, even on different base tables in the same
-schema.
+generated from the next available `<table>_chk_<n>` suffix among existing
+generated-pattern names; explicit CHECK names do not advance the generated
+counter. MySQL requires CHECK constraint names to be unique per schema. Runtime
+probes observed duplicate CHECK names failing with error 3822, even on
+different base tables in the same schema.
 
 An enforced CHECK constraint accepts rows for which the expression evaluates to
 `TRUE` or `UNKNOWN` and rejects rows for which it evaluates to `FALSE`.
@@ -618,7 +619,7 @@ Index drop, rename, and visibility validation:
   `NOT NULL` indexes acting as implicit primary keys
 - visibility changes update metadata only and never disable uniqueness
 
-CHECK validation, once executable:
+CHECK validation:
 
 - generate omitted names as `table_chk_N`, using MySQL-compatible numbering
 - enforce schema-level name uniqueness for CHECK constraints
@@ -631,6 +632,12 @@ CHECK validation, once executable:
 - reject duplicate CHECK names with 3822
 - reject ambiguous `DROP CONSTRAINT` or `ALTER CONSTRAINT` names when different
   constraint classes share the same symbol
+- defer CHECK catalog changes for mixed column/index/table-option ALTER
+  statements until after the shadow-table rewrite, so validation sees the final
+  candidate row shape and rollback restores all same-statement changes
+- report copied rows for mixed enforced `ADD CHECK` statements, while
+  preserving metadata-only affected rows for mixed `NOT ENFORCED` additions and
+  `DROP CHECK`
 
 Foreign-key validation, once executable:
 
@@ -700,11 +707,11 @@ and warning state.
 - coordinate with Task 35 column rewrites when key actions and column actions
   are mixed
 
-Future constraint catalogs:
+Constraint catalogs:
 
-- `__mylite_check_constraint_catalog` should store schema, table, constraint
-  name, normalized expression text, parsed expression, enforcement flag,
-  creation order, and source span or normalized source range where useful.
+- `__mylite_check_constraint_catalog` stores schema, table, constraint name,
+  expression text, enforcement flag, and creation order for supported CHECK
+  DDL.
 - `__mylite_foreign_key_catalog` stores one row per child column part,
   including schema, child table, constraint name, supporting index name,
   parent schema/table, child and referenced column names, ordinal positions,
@@ -822,7 +829,7 @@ fixtures should create and drop isolated schemas.
 
 | SQL or behavior | Expected MyLite-compatible outcome |
 | --- | --- |
-| `ALTER TABLE chk_valid ADD CHECK (a > 0)` over rows `1` and `NULL` | MySQL succeeds and generates `chk_valid_chk_1`; first MyLite slice may return unsupported until CHECK execution is implemented. |
+| `ALTER TABLE chk_valid ADD CHECK (a > 0)` over rows `1` and `NULL` | Succeeds, generates `chk_valid_chk_1`, and reports affected rows 0. |
 | adding an enforced CHECK when an existing row evaluates `FALSE` | Error 3819; no CHECK metadata is added. |
 | `ADD CONSTRAINT chk_a_pos_ne CHECK (a > 0) NOT ENFORCED` over invalid rows | Succeeds; `TABLE_CONSTRAINTS.ENFORCED='NO'`. |
 | `ALTER CHECK chk_a_pos_ne ENFORCED` while invalid rows exist | Error 3819; enforcement flag remains `NO`. |
@@ -833,6 +840,10 @@ fixtures should create and drop isolated schemas.
 | duplicate CHECK name in the same schema | Error 3822. |
 | enforced CHECK violation on `INSERT` | Error 3819; row is not inserted. |
 | enforced CHECK violation on `INSERT IGNORE` | Warning 3819; offending row is skipped. |
+| `ADD COLUMN b INT DEFAULT 1, ADD CHECK (b > 0)` over two rows | Succeeds atomically and reports affected rows 2. |
+| `ADD COLUMN b INT DEFAULT 1, ADD CHECK (a > 0)` over an invalid existing row | Error 3819; neither the column nor CHECK metadata survives. |
+| `ADD INDEX i (a), ADD CHECK (a > 0)` over two valid rows | Succeeds atomically and reports affected rows 2. |
+| `ADD CHECK (a > 0) NOT ENFORCED` mixed with an instant column action | Succeeds and reports affected rows 0 for the verified shape. |
 
 ### Foreign keys
 
@@ -854,7 +865,7 @@ fixtures should create and drop isolated schemas.
 | adding a primary key and renaming a column in one statement | Validation uses the source-order candidate model and commits column/index metadata together. |
 | dropping a column and adding an index on the dropped column in one statement | Fails before mutation with the MySQL-compatible missing-column diagnostic for the final candidate action. |
 | creating an index then renaming it in the same statement | The final metadata contains the renamed index if MySQL accepts the exact source-order shape; tests should pin the verified behavior before implementation. |
-| any unsupported `FULLTEXT`, `SPATIAL`, CHECK, or foreign-key action mixed with supported index actions | The whole statement fails before mutation; no partial index or column changes survive. |
+| any unsupported `FULLTEXT` or `SPATIAL` action mixed with supported index actions | The whole statement fails before mutation; no partial index or column changes survive. |
 | non-default `ALGORITHM` or `LOCK` in the first MyLite slice | Fails before mutation with a deterministic unsupported diagnostic. |
 
 ## Test plan
@@ -925,10 +936,10 @@ Recommended implementation order:
    and shadow-rewrite plan.
 4. Add atomic catalog mutation for add/drop/rename/visibility operations.
 5. Wire primary/unique catalog order into existing duplicate-key-sensitive DML.
-6. Add deterministic unsupported diagnostics for `FULLTEXT`, `SPATIAL`, CHECK,
-   and foreign-key execution.
+6. Add deterministic unsupported diagnostics for `FULLTEXT` and `SPATIAL`
+   execution until those runtime surfaces are implemented.
 7. Add parser and runtime comparison tests before marking any row supported.
 
-Do not mark CHECK or foreign-key behavior as supported until their catalogs,
+Keep CHECK and foreign-key rows marked only for the surfaces whose catalogs,
 runtime validation, metadata exposure, and MySQL-runtime comparison tests are
 implemented end to end.

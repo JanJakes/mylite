@@ -3,12 +3,13 @@
 ## Scope
 
 This feature covers the implemented CHECK constraint slice for supported
-`CREATE TABLE` and CHECK-only `ALTER TABLE` statements:
+`CREATE TABLE` and `ALTER TABLE` statements:
 
 - inline and table-level `CHECK` clauses already recorded in
   `__mylite_check_constraint_catalog`
 - `ALTER TABLE ... ADD CHECK`, `DROP CHECK` / `DROP CONSTRAINT`, and
-  `ALTER CHECK` / `ALTER CONSTRAINT` for CHECK-only statements
+  `ALTER CHECK` / `ALTER CONSTRAINT` for CHECK-only statements and when mixed
+  with supported column, index, and `AUTO_INCREMENT` table-option actions
 - `ENFORCED` and default-enforced constraints on supported persistent and
   temporary base tables
 - supported `INSERT`, `INSERT ... SET`, `INSERT ... ON DUPLICATE KEY UPDATE`,
@@ -17,9 +18,8 @@ This feature covers the implemented CHECK constraint slice for supported
 - `SHOW CREATE TABLE` rendering for cataloged CHECK constraints
 - warning/error code 3819 behavior for covered DML paths
 
-Mixed CHECK plus table-rebuild ALTER statements, full MySQL deterministic
-expression validation, generated-column dependencies, and broader expression
-formatting remain deferred.
+Full MySQL deterministic expression validation, generated-column dependencies,
+and broader expression formatting remain deferred.
 
 ## Sources
 
@@ -78,8 +78,16 @@ Observed behavior:
   CHECK constraints by constraint name, wraps the stored CHECK clause in
   `CHECK (...)`, and appends `/*!80016 NOT ENFORCED */` for not-enforced
   constraints
-- generated ALTER CHECK names advance from the table's recorded ordinal
-  sequence, so dropping an earlier generated check does not reuse its suffix
+- generated ALTER CHECK names use the next available `<table>_chk_<n>` suffix
+  above existing generated-pattern names; explicit CHECK names do not advance
+  the generated-name counter
+- when enforced `ADD CHECK` is mixed with supported column, index, or
+  `AUTO_INCREMENT` table-option actions, MySQL reports the table row count;
+  `NOT ENFORCED` mixed additions and mixed `DROP CHECK` over otherwise instant
+  actions report 0
+- a mixed enforced `ADD CHECK` failure over existing invalid rows rolls back
+  the whole `ALTER TABLE`, including same-statement column/index/catalog
+  changes
 
 ## MyLite Behavior
 
@@ -108,13 +116,21 @@ abort the statement atomically.
 
 CHECK-only `ALTER TABLE` statements use statement atomicity around catalog
 updates and existing-row validation. `ADD CHECK` generates `<table>_chk_<n>`
-from the table's maximum CHECK ordinal plus one, validates explicit names
-against existing CHECK names in the target schema for the chosen persistent or
+from existing generated-pattern CHECK names, validates explicit names against
+existing CHECK names in the target schema for the chosen persistent or
 temporary catalog, writes `CHECK_CONSTRAINTS` and `TABLE_CONSTRAINTS` metadata,
 and leaves `affected_rows` as 0. `ALTER CHECK ... ENFORCED` validates existing
 rows before flipping metadata to `YES`; when enforcement changes from `NO` to
 `YES`, MyLite reports the table row count as observed in MySQL 8.4.9. `DROP
 CHECK` removes the table's CHECK row and reports 0.
+
+When CHECK actions are mixed with supported column, index, or
+`AUTO_INCREMENT` table-option actions, MyLite defers CHECK catalog changes
+until after the final shadow-table rewrite. Existing-row validation therefore
+sees the final column set and copied values, and statement rollback restores
+both physical table changes and CHECK metadata. Mixed enforced `ADD CHECK`
+reports copied rows, while mixed `NOT ENFORCED` additions and mixed
+`DROP CHECK` preserve the affected-row count of the non-CHECK actions.
 
 `CREATE TABLE` validates the complete CHECK-name set before creating the table.
 Generated names follow MySQL's `CREATE TABLE` sequence for unnamed CHECK
@@ -151,6 +167,9 @@ Runtime coverage:
   affected rows at `-1`
 - generated ALTER CHECK names advance after dropping an earlier generated name
 - temporary-table ALTER CHECK rows enforce through the temporary catalog
+- mixed CHECK actions with supported column, index, and `AUTO_INCREMENT` table
+  option actions commit atomically, report MySQL 8.4.9-observed affected rows,
+  and roll back all same-statement changes on validation failure
 - `SHOW CREATE TABLE` renders create-time and ALTER-added CHECK clauses in
   MySQL-compatible constraint-name order
 
@@ -159,5 +178,4 @@ Runtime coverage:
 - CHECK expressions are evaluated through SQLite for this first slice; broader
   MySQL expression semantics, deterministic-function validation, character-set
   behavior, SQL-mode interactions, and exact coercion warnings remain deferred.
-- Mixed CHECK plus column/index/table-option ALTER statements remain
-  unsupported.
+- Generated-column dependency handling for CHECK constraints remains deferred.

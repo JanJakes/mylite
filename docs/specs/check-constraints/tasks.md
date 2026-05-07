@@ -19,7 +19,7 @@
       cleanup with MySQL-compatible missing-name diagnostics.
 - [x] Implement `ALTER TABLE ... ALTER CHECK ... ENFORCED/NOT ENFORCED`,
       including existing-row validation when enabling enforcement.
-- [ ] Support CHECK actions mixed with column/index/table-option ALTER
+- [x] Support CHECK actions mixed with column/index/table-option ALTER
       statements.
 - [ ] Validate CHECK expressions at DDL time for deterministic, row-local
       MySQL rules and reject subqueries, variables, unsupported functions,

@@ -42,9 +42,22 @@ struct alter_table_check_existing_rows_input {
     const char *check_clause;
 };
 
+struct alter_table_mixed_constraint_state {
+    bool has_add_foreign_key;
+    bool has_check;
+    int64_t foreign_key_affected_rows;
+    int64_t check_affected_rows;
+};
+
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
 
 static bool alter_table_has_only_check_actions(const mylite_stmt *stmt);
+
+static bool alter_table_has_check_action(const mylite_stmt *stmt);
+
+static bool alter_table_action_is_check_action(enum mylite_alter_table_action_kind kind);
+
+static bool alter_table_has_enforced_add_check_action(const mylite_stmt *stmt);
 
 static bool alter_table_has_only_foreign_key_actions(const mylite_stmt *stmt);
 
@@ -54,9 +67,39 @@ static int execute_alter_table_rename_statement(mylite_stmt *stmt);
 
 static int execute_alter_table_check_statement(mylite_stmt *stmt);
 
+static int execute_alter_table_mixed_check_statement(mylite_stmt *stmt);
+
 static int execute_alter_table_foreign_key_statement(mylite_stmt *stmt);
 
 static int execute_alter_table_mixed_foreign_key_statement(mylite_stmt *stmt);
+
+static int count_alter_table_mixed_foreign_key_rows(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    struct alter_table_mixed_constraint_state *state
+);
+
+static void mark_alter_table_copied_rows_for_enforced_add_check(
+    const mylite_stmt *stmt,
+    struct mylite_alter_table_model *model
+);
+
+static int apply_alter_table_mixed_check_actions_if_needed(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    struct alter_table_mixed_constraint_state *state
+);
+
+static void set_alter_table_mixed_constraint_affected_rows(
+    mylite_stmt *stmt,
+    const struct alter_table_mixed_constraint_state *state
+);
+
+static void rollback_alter_table_mixed_foreign_key_statement(
+    mylite_db *database,
+    struct mylite_statement_atomicity *atomicity,
+    const struct alter_table_mixed_constraint_state *state
+);
 
 static int add_alter_table_rename_target(mylite_stmt *stmt);
 
@@ -73,7 +116,8 @@ static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary);
 static int apply_alter_table_actions(
     mylite_stmt *stmt,
     struct mylite_alter_table_model *model,
-    bool defer_foreign_key_actions
+    bool defer_foreign_key_actions,
+    bool defer_check_actions
 );
 
 static int apply_alter_table_check_actions(
@@ -167,6 +211,18 @@ static int generated_alter_table_check_constraint_name(
     mylite_stmt *stmt,
     bool temporary,
     char **out_name
+);
+
+static int max_alter_table_generated_check_suffix(
+    mylite_stmt *stmt,
+    bool temporary,
+    int64_t *out_suffix
+);
+
+static bool alter_table_generated_check_suffix(
+    const char *table_name,
+    const char *constraint_name,
+    int64_t *out_suffix
 );
 
 static int max_alter_table_check_ordinal(mylite_stmt *stmt, bool temporary, int64_t *out_ordinal);
@@ -364,7 +420,7 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
     if (alter_table_has_table_rename_action(stmt)) {
         return execute_alter_table_rename_statement(stmt);
     }
-    if (alter_table_has_only_check_actions(stmt)) {
+    if (alter_table_has_only_check_actions(stmt) && !stmt->alter_table.has_auto_increment) {
         return execute_alter_table_check_statement(stmt);
     }
     if (alter_table_has_only_foreign_key_actions(stmt)) {
@@ -372,6 +428,9 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
     }
     if (alter_table_has_foreign_key_action(stmt)) {
         return execute_alter_table_mixed_foreign_key_statement(stmt);
+    }
+    if (alter_table_has_check_action(stmt)) {
+        return execute_alter_table_mixed_check_statement(stmt);
     }
 
     status = validate_alter_table_plan(stmt, &schema_name, &temporary);
@@ -385,7 +444,7 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
         );
     }
     if (status == MYLITE_OK) {
-        status = apply_alter_table_actions(stmt, &model, false);
+        status = apply_alter_table_actions(stmt, &model, false, false);
     }
     if (status == MYLITE_OK) {
         apply_alter_table_options(stmt, &model);
@@ -421,15 +480,40 @@ static bool alter_table_has_only_check_actions(const mylite_stmt *stmt) {
         return false;
     }
     for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
-        enum mylite_alter_table_action_kind kind = stmt->alter_table.actions[index].kind;
-
-        if (kind != MYLITE_ALTER_TABLE_ACTION_ADD_CHECK &&
-            kind != MYLITE_ALTER_TABLE_ACTION_DROP_CHECK &&
-            kind != MYLITE_ALTER_TABLE_ACTION_ALTER_CHECK) {
+        if (!alter_table_action_is_check_action(stmt->alter_table.actions[index].kind)) {
             return false;
         }
     }
     return true;
+}
+
+static bool alter_table_has_check_action(const mylite_stmt *stmt) {
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        if (alter_table_action_is_check_action(stmt->alter_table.actions[index].kind)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool alter_table_action_is_check_action(enum mylite_alter_table_action_kind kind) {
+    if (kind == MYLITE_ALTER_TABLE_ACTION_ADD_CHECK ||
+        kind == MYLITE_ALTER_TABLE_ACTION_DROP_CHECK ||
+        kind == MYLITE_ALTER_TABLE_ACTION_ALTER_CHECK) {
+        return true;
+    }
+    return false;
+}
+
+static bool alter_table_has_enforced_add_check_action(const mylite_stmt *stmt) {
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        const struct mylite_alter_table_action *action = &stmt->alter_table.actions[index];
+
+        if (action->kind == MYLITE_ALTER_TABLE_ACTION_ADD_CHECK && action->check.enforced) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool alter_table_has_only_foreign_key_actions(const mylite_stmt *stmt) {
@@ -548,6 +632,68 @@ static int execute_alter_table_check_statement(mylite_stmt *stmt) {
     return status;
 }
 
+static int execute_alter_table_mixed_check_statement(mylite_stmt *stmt) {
+    const char *schema_name = NULL;
+    struct mylite_alter_table_model model = {0};
+    struct mylite_statement_atomicity atomicity = {0};
+    bool atomicity_started = false;
+    bool temporary = false;
+    int64_t check_affected_rows = 0;
+    int status = validate_alter_table_plan(stmt, &schema_name, &temporary);
+
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_load_alter_table_model(
+            stmt->database,
+            schema_name,
+            stmt->alter_table.table_name,
+            temporary,
+            &model
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
+        atomicity_started = status == MYLITE_OK;
+    }
+    if (status == MYLITE_OK) {
+        status = apply_alter_table_actions(stmt, &model, false, true);
+    }
+    if (status == MYLITE_OK) {
+        apply_alter_table_options(stmt, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_validate_alter_table_final_model(stmt->database, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_validate_alter_table_unique_indexes(stmt->database, &model);
+    }
+    if (status == MYLITE_OK && alter_table_has_enforced_add_check_action(stmt)) {
+        model.report_copied_rows = true;
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_execute_alter_table_rebuild_in_atomicity(stmt, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = apply_alter_table_check_actions(stmt, &model, &check_affected_rows);
+    }
+    if (status == MYLITE_OK && check_affected_rows > 0) {
+        stmt->affected_rows = check_affected_rows;
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
+        if (status == MYLITE_OK) {
+            mylite_table_ddl_alter_table_model_deinit(&model);
+            return MYLITE_OK;
+        }
+    }
+
+    if (atomicity_started) {
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
+    }
+    mylite_table_ddl_alter_table_model_deinit(&model);
+    stmt->affected_rows = -1;
+    return status;
+}
+
 static int execute_alter_table_foreign_key_statement(mylite_stmt *stmt) {
     const char *schema_name = NULL;
     struct mylite_alter_table_model model = {0};
@@ -623,11 +769,13 @@ static int execute_alter_table_mixed_foreign_key_statement(mylite_stmt *stmt) {
     const char *schema_name = NULL;
     struct mylite_alter_table_model model = {0};
     struct mylite_statement_atomicity atomicity = {0};
+    struct alter_table_mixed_constraint_state constraint_state = {
+        .has_add_foreign_key = alter_table_has_add_foreign_key_action(stmt),
+        .has_check = alter_table_has_check_action(stmt),
+    };
     bool atomicity_started = false;
-    bool has_add_foreign_key = alter_table_has_add_foreign_key_action(stmt);
     bool temporary = false;
     bool index_catalog_changed = false;
-    int64_t affected_rows = 0;
     int status = validate_alter_table_plan(stmt, &schema_name, &temporary);
 
     if (status == MYLITE_OK && temporary) {
@@ -653,7 +801,7 @@ static int execute_alter_table_mixed_foreign_key_statement(mylite_stmt *stmt) {
         status = apply_alter_table_drop_foreign_key_actions(stmt);
     }
     if (status == MYLITE_OK) {
-        status = apply_alter_table_actions(stmt, &model, true);
+        status = apply_alter_table_actions(stmt, &model, true, constraint_state.has_check);
     }
     if (status == MYLITE_OK) {
         apply_alter_table_options(stmt, &model);
@@ -670,16 +818,17 @@ static int execute_alter_table_mixed_foreign_key_statement(mylite_stmt *stmt) {
     if (status == MYLITE_OK) {
         status = mylite_table_ddl_validate_alter_table_unique_indexes(stmt->database, &model);
     }
-    if (status == MYLITE_OK && has_add_foreign_key) {
-        status =
-            count_alter_table_physical_rows(stmt->database, model.physical_name, &affected_rows);
+    if (status == MYLITE_OK) {
+        status = count_alter_table_mixed_foreign_key_rows(stmt, &model, &constraint_state);
     }
+    mark_alter_table_copied_rows_for_enforced_add_check(stmt, &model);
     if (status == MYLITE_OK) {
         status = mylite_table_ddl_execute_alter_table_rebuild_in_atomicity(stmt, &model);
     }
-    if (status == MYLITE_OK && has_add_foreign_key) {
-        stmt->affected_rows = affected_rows;
+    if (status == MYLITE_OK) {
+        status = apply_alter_table_mixed_check_actions_if_needed(stmt, &model, &constraint_state);
     }
+    set_alter_table_mixed_constraint_affected_rows(stmt, &constraint_state);
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
@@ -689,12 +838,73 @@ static int execute_alter_table_mixed_foreign_key_statement(mylite_stmt *stmt) {
     }
 
     if (atomicity_started) {
-        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
-        mylite_diagnostics_clear_warnings(stmt->database);
+        rollback_alter_table_mixed_foreign_key_statement(
+            stmt->database,
+            &atomicity,
+            &constraint_state
+        );
     }
     mylite_table_ddl_alter_table_model_deinit(&model);
     stmt->affected_rows = -1;
     return status;
+}
+
+static int count_alter_table_mixed_foreign_key_rows(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    struct alter_table_mixed_constraint_state *state
+) {
+    if (!state->has_add_foreign_key) {
+        return MYLITE_OK;
+    }
+    return count_alter_table_physical_rows(
+        stmt->database,
+        model->physical_name,
+        &state->foreign_key_affected_rows
+    );
+}
+
+static void mark_alter_table_copied_rows_for_enforced_add_check(
+    const mylite_stmt *stmt,
+    struct mylite_alter_table_model *model
+) {
+    if (alter_table_has_enforced_add_check_action(stmt)) {
+        model->report_copied_rows = true;
+    }
+}
+
+static int apply_alter_table_mixed_check_actions_if_needed(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    struct alter_table_mixed_constraint_state *state
+) {
+    if (!state->has_check) {
+        return MYLITE_OK;
+    }
+    return apply_alter_table_check_actions(stmt, model, &state->check_affected_rows);
+}
+
+static void set_alter_table_mixed_constraint_affected_rows(
+    mylite_stmt *stmt,
+    const struct alter_table_mixed_constraint_state *state
+) {
+    if (state->has_add_foreign_key) {
+        stmt->affected_rows = state->foreign_key_affected_rows;
+    }
+    if (state->check_affected_rows > 0) {
+        stmt->affected_rows = state->check_affected_rows;
+    }
+}
+
+static void rollback_alter_table_mixed_foreign_key_statement(
+    mylite_db *database,
+    struct mylite_statement_atomicity *atomicity,
+    const struct alter_table_mixed_constraint_state *state
+) {
+    mylite_transaction_rollback_statement_atomicity(database, atomicity);
+    if (!state->has_check) {
+        mylite_diagnostics_clear_warnings(database);
+    }
 }
 
 static int add_alter_table_rename_target(mylite_stmt *stmt) {
@@ -841,7 +1051,8 @@ static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary) {
 static int apply_alter_table_actions(
     mylite_stmt *stmt,
     struct mylite_alter_table_model *model,
-    bool defer_foreign_key_actions
+    bool defer_foreign_key_actions,
+    bool defer_check_actions
 ) {
     const struct mylite_table_ddl_alter_callbacks alter_callbacks = {
         .user_data = stmt,
@@ -917,6 +1128,9 @@ static int apply_alter_table_actions(
         case MYLITE_ALTER_TABLE_ACTION_ADD_CHECK:
         case MYLITE_ALTER_TABLE_ACTION_DROP_CHECK:
         case MYLITE_ALTER_TABLE_ACTION_ALTER_CHECK:
+            if (defer_check_actions) {
+                break;
+            }
             status = set_alter_table_unsupported_action_error(
                 stmt->database,
                 "CHECK ALTER TABLE constraints with other actions"
@@ -961,8 +1175,12 @@ static int apply_alter_table_check_actions(
     *out_affected_rows = 0;
     for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
         struct mylite_alter_table_action *action = &stmt->alter_table.actions[index];
-        int status = apply_alter_table_check_action(stmt, model, action, out_affected_rows);
+        int status = MYLITE_OK;
 
+        if (!alter_table_action_is_check_action(action->kind)) {
+            continue;
+        }
+        status = apply_alter_table_check_action(stmt, model, action, out_affected_rows);
         if (status != MYLITE_OK) {
             return status;
         }
@@ -1398,14 +1616,14 @@ static int generated_alter_table_check_constraint_name(
     bool temporary,
     char **out_name
 ) {
-    int64_t ordinal_position = 0;
-    int status = max_alter_table_check_ordinal(stmt, temporary, &ordinal_position);
+    int64_t max_suffix = 0;
+    int status = max_alter_table_generated_check_suffix(stmt, temporary, &max_suffix);
 
     *out_name = NULL;
     if (status != MYLITE_OK) {
         return status;
     }
-    for (int64_t suffix = ordinal_position + 1; suffix > 0; ++suffix) {
+    for (int64_t suffix = max_suffix + 1; suffix > 0; ++suffix) {
         bool exists = false;
         char *candidate =
             sqlite3_mprintf("%s_chk_%lld", stmt->alter_table.table_name, (long long)suffix);
@@ -1439,6 +1657,98 @@ static int generated_alter_table_check_constraint_name(
 
     (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
     return MYLITE_NOMEM;
+}
+
+static int max_alter_table_generated_check_suffix(
+    mylite_stmt *stmt,
+    bool temporary,
+    int64_t *out_suffix
+) {
+    sqlite3_stmt *select = NULL;
+    char *sql = sqlite3_mprintf(
+        "SELECT constraint_name FROM %s WHERE table_schema = ? AND table_name = ?",
+        mylite_catalog_check_constraint_catalog_name(temporary)
+    );
+    int rc = SQLITE_OK;
+
+    *out_suffix = 0;
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(
+        stmt->database->sqlite,
+        sql,
+        -1,
+        SQLITE_PREPARE_PERSISTENT,
+        &select,
+        NULL
+    );
+    sqlite3_free(sql);
+    if (rc != SQLITE_OK) {
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    sqlite3_bind_text(select, 1, stmt->alter_table.schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, stmt->alter_table.table_name, -1, sqlite_transient_destructor());
+
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        const unsigned char *constraint_name = sqlite3_column_text(select, 0);
+        int64_t suffix = 0;
+
+        if (constraint_name != NULL &&
+            alter_table_generated_check_suffix(
+                stmt->alter_table.table_name,
+                (const char *)constraint_name,
+                &suffix
+            ) &&
+            suffix > *out_suffix) {
+            *out_suffix = suffix;
+        }
+    }
+    if (rc != SQLITE_DONE) {
+        sqlite3_finalize(select);
+        return mylite_diagnostics_set_sqlite_error(stmt->database);
+    }
+    sqlite3_finalize(select);
+    return MYLITE_OK;
+}
+
+static bool alter_table_generated_check_suffix(
+    const char *table_name,
+    const char *constraint_name,
+    int64_t *out_suffix
+) {
+    enum {
+        decimal_radix = 10,
+    };
+
+    static const char separator[] = "_chk_";
+    size_t table_name_length = strlen(table_name);
+    size_t constraint_name_length = strlen(constraint_name);
+    size_t separator_length = sizeof(separator) - 1U;
+    const char *suffix_start = constraint_name + table_name_length + separator_length;
+    int64_t suffix = 0;
+
+    *out_suffix = 0;
+    if (constraint_name_length <= table_name_length + separator_length ||
+        strncmp(constraint_name, table_name, table_name_length) != 0 ||
+        strncmp(constraint_name + table_name_length, separator, separator_length) != 0 ||
+        *suffix_start == '\0') {
+        return false;
+    }
+    for (const char *cursor = suffix_start; *cursor != '\0'; ++cursor) {
+        int digit = *cursor - '0';
+
+        if (*cursor < '0' || *cursor > '9' || suffix > (INT64_MAX - digit) / decimal_radix) {
+            return false;
+        }
+        suffix = (suffix * decimal_radix) + digit;
+    }
+    if (suffix <= 0) {
+        return false;
+    }
+    *out_suffix = suffix;
+    return true;
 }
 
 static int max_alter_table_check_ordinal(mylite_stmt *stmt, bool temporary, int64_t *out_ordinal) {

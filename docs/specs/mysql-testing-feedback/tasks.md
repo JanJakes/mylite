@@ -183,19 +183,26 @@ MySQL 8.4.9 runtime before each item is marked complete.
       paths. Covered behavior includes strict 1406 rejection, non-strict 1265
       warning truncation, and assignment/column-order warning emission for
       covered forms.
+- [x] Align first-slice `FLOAT`/`DOUBLE` target range coercion for covered DML
+      assignment paths. Covered behavior includes strict 1264 rejection,
+      non-strict and `INSERT IGNORE` clipping to finite endpoints, invalid
+      approximate text truncation diagnostics, and single-precision storage
+      rounding for `FLOAT` targets.
 - [ ] Align remaining numeric/string casts and coercions in strict and
       non-strict modes, including TEXT/BLOB limits, binary-string byte edge
-      cases, charset-specific string validation, floating-point column edge
-      cases, `BIGINT UNSIGNED` auto-increment and broad unsigned arithmetic
-      beyond signed 64-bit range, scalar `CAST`/`CONVERT` value semantics
-      beyond the covered floating-point target slice, and conversion/truncation
+      cases, charset-specific string validation, remaining floating-point
+      display and warning-order edge cases, `BIGINT UNSIGNED` auto-increment
+      and broad unsigned arithmetic beyond signed 64-bit range, scalar
+      `CAST`/`CONVERT` value semantics beyond the covered floating-point target
+      slice, and conversion/truncation
       `IGNORE` demotion beyond the currently covered `INSERT IGNORE` invalid
       integer, integer range, invalid date, and `VARCHAR` truncation slice plus
       single-table `UPDATE IGNORE` numeric, temporal, string-length, `NULL`
       not-null, duplicate-key, and foreign-key slices. Signed and unsigned
       `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`, and covered `BIGINT` range
-      clipping is covered for strict, non-strict, `INSERT IGNORE`, and
-      single-table `UPDATE IGNORE` paths. `TINYTEXT` and `TINYBLOB`
+      clipping, plus first-slice `FLOAT`/`DOUBLE` target clipping, is covered
+      for strict, non-strict, `INSERT IGNORE`, and single-table `UPDATE IGNORE`
+      paths. `TINYTEXT` and `TINYBLOB`
       255-byte write limits and plain `TEXT`/`BLOB` 65,535-byte write limits
       are now covered for strict and non-strict `INSERT ... VALUES`,
       `INSERT IGNORE`, strict single-table `UPDATE`, and single-table

@@ -564,6 +564,8 @@ static int test_temporal_dml_coercion_execution(void);
 
 static int test_numeric_dml_coercion_execution(void);
 
+static int test_floating_range_dml_coercion_execution(void);
+
 static int test_integer_range_dml_coercion_execution(void);
 
 static int test_bigint_unsigned_dml_coercion_execution(void);
@@ -1063,6 +1065,7 @@ int main(void) {
     failures += test_non_strict_not_null_coercion_execution();
     failures += test_temporal_dml_coercion_execution();
     failures += test_numeric_dml_coercion_execution();
+    failures += test_floating_range_dml_coercion_execution();
     failures += test_integer_range_dml_coercion_execution();
     failures += test_bigint_unsigned_dml_coercion_execution();
     failures += test_string_dml_coercion_execution();
@@ -55728,6 +55731,185 @@ static int test_numeric_dml_coercion_execution(void) {
         "numeric final coerced values"
     );
 
+    mylite_close(database);
+    return failures;
+}
+
+static int test_floating_range_dml_coercion_execution(void) {
+    static const char *const floating_columns[] = {"id", "f_clipped", "f_high", "d_ok"};
+    static const char *const clipped_float_values[] = {"1", "1", "1", "1"};
+    static const char *const clipped_text_columns[] = {"id", "f_clipped", "d_clipped"};
+    static const char *const clipped_text_values[] = {"2", "1", "1"};
+    static const char *const updated_columns[] = {
+        "id",
+        "f_clipped",
+        "f_low",
+        "d_clipped",
+    };
+    static const char *const updated_values[] = {"1", "1", "1", "1"};
+    static const char *const ignore_values[] = {"3", "1", "1", "1"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open floating range db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_floating_range", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_floating_range", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE floating_ranges (id INT PRIMARY KEY, f FLOAT, d DOUBLE)",
+        MYLITE_DONE
+    );
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO floating_ranges(id, f) VALUES (1, 3.5e38)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 'f' at row 1",
+        "strict float overflow insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict float overflow insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO floating_ranges(id, f) VALUES (1, 'abc')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data truncated for column 'f' at row 1",
+        "strict float incorrect text insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "strict float incorrect text insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO floating_ranges(id, f, d) VALUES (1, 3.5e38, 1.79e308)",
+        1,
+        "non-strict float overflow insert"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "non-strict float overflow warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "non-strict float overflow warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, f < 3.5e38 AS f_clipped, f > 3.4e38 AS f_high, "
+        "d = 1.79e308 AS d_ok FROM floating_ranges WHERE id = 1",
+        floating_columns,
+        4,
+        clipped_float_values,
+        1,
+        "non-strict float clipped values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO floating_ranges(id, f, d) VALUES (2, '3.5e38', '1.8e308')",
+        1,
+        "non-strict floating text overflow insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        2,
+        "non-strict floating text overflow warning count"
+    );
+    for (int warning = 0; warning < 2; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "non-strict floating text overflow warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id, f < 3.5e38 AS f_clipped, d > 1.797e308 AS d_clipped "
+        "FROM floating_ranges WHERE id = 2",
+        clipped_text_columns,
+        3,
+        clipped_text_values,
+        1,
+        "non-strict floating text clipped values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE floating_ranges SET f = -3.5e38, d = '1.8e308' WHERE id = 1",
+        1,
+        "non-strict floating overflow update"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "non-strict floating update warning count");
+    for (int warning = 0; warning < 2; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "non-strict floating update warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id, f > -3.5e38 AS f_clipped, f < -3.4e38 AS f_low, "
+        "d > 1.797e308 AS d_clipped FROM floating_ranges WHERE id = 1",
+        updated_columns,
+        4,
+        updated_values,
+        1,
+        "non-strict floating updated clipped values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO floating_ranges(id, f, d) VALUES (3, 3.5e38, 1.79e308)",
+        1,
+        "strict insert ignore floating overflow"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "insert ignore floating overflow warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "insert ignore floating overflow warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, f < 3.5e38 AS f_clipped, f > 3.4e38 AS f_high, "
+        "d = 1.79e308 AS d_ok FROM floating_ranges WHERE id = 3",
+        floating_columns,
+        4,
+        ignore_values,
+        1,
+        "insert ignore floating clipped values"
+    );
+
+    mylite_finalize(stmt);
     mylite_close(database);
     return failures;
 }

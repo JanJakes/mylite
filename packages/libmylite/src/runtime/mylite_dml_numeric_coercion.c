@@ -8,6 +8,8 @@
 #include "sqlite3.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -20,6 +22,8 @@ enum mylite_dml_numeric_kind {
     MYLITE_DML_NUMERIC_SIGNED_INTEGER,
     MYLITE_DML_NUMERIC_UNSIGNED_INTEGER,
     MYLITE_DML_NUMERIC_DECIMAL,
+    MYLITE_DML_NUMERIC_FLOAT,
+    MYLITE_DML_NUMERIC_DOUBLE,
 };
 
 enum mylite_dml_numeric_problem {
@@ -43,6 +47,7 @@ static const uint64_t mylite_dml_int64_min_magnitude = (uint64_t)INT64_MAX + UIN
 struct mylite_dml_numeric_text_parse {
     double value;
     bool saw_number;
+    bool range_error;
     bool trailing_garbage;
     bool allocation_failed;
 };
@@ -66,6 +71,7 @@ struct mylite_dml_numeric_output {
     enum mylite_insert_bound_value_kind insert_kind;
     enum mylite_expression_value_kind expression_kind;
     int64_t integer_value;
+    double real_value;
     char *text_value;
     size_t text_length;
     bool replace;
@@ -242,6 +248,17 @@ static int coerce_decimal_double(
     struct mylite_dml_numeric_output *out_output
 );
 
+static int coerce_approximate_double(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_kind kind,
+    double value,
+    enum mylite_dml_numeric_problem problem,
+    uint64_t row_number,
+    bool ignore,
+    struct mylite_dml_numeric_output *out_output
+);
+
 static int handle_numeric_problem(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -292,6 +309,8 @@ static int set_decimal_output(
     uint64_t scale,
     struct mylite_dml_numeric_output *out_output
 );
+
+static int set_approximate_output(double value, struct mylite_dml_numeric_output *out_output);
 
 static int replace_insert_numeric_value(
     const struct mylite_dml_numeric_output *output,
@@ -495,6 +514,12 @@ static enum mylite_dml_numeric_kind numeric_kind_for_column(
     if (mylite_ascii_case_equal(column->data_type, "decimal")) {
         return MYLITE_DML_NUMERIC_DECIMAL;
     }
+    if (mylite_ascii_case_equal(column->data_type, "float")) {
+        return MYLITE_DML_NUMERIC_FLOAT;
+    }
+    if (mylite_ascii_case_equal(column->data_type, "double")) {
+        return MYLITE_DML_NUMERIC_DOUBLE;
+    }
     if (column_data_type_is_signed_integer(column->data_type)) {
         return column_type_is_unsigned(column) ? MYLITE_DML_NUMERIC_UNSIGNED_INTEGER
                                                : MYLITE_DML_NUMERIC_SIGNED_INTEGER;
@@ -551,6 +576,18 @@ static int coerce_numeric_double(
             out_output
         );
     }
+    if (kind == MYLITE_DML_NUMERIC_FLOAT || kind == MYLITE_DML_NUMERIC_DOUBLE) {
+        return coerce_approximate_double(
+            database,
+            column,
+            kind,
+            value,
+            problem,
+            row_number,
+            ignore,
+            out_output
+        );
+    }
     return coerce_integer_double(
         database,
         column,
@@ -585,6 +622,38 @@ static int coerce_numeric_text(
     if (parsed.allocation_failed) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
+    }
+    if (kind == MYLITE_DML_NUMERIC_FLOAT || kind == MYLITE_DML_NUMERIC_DOUBLE) {
+        bool approximate_out_of_range = false;
+
+        if (!parsed.saw_number || parsed.trailing_garbage) {
+            problem = MYLITE_DML_NUMERIC_PROBLEM_TRUNCATED;
+        }
+        if (!parsed.saw_number) {
+            parsed.value = 0.0;
+        } else if (parsed.range_error) {
+            problem = MYLITE_DML_NUMERIC_PROBLEM_OUT_OF_RANGE;
+        }
+        approximate_out_of_range =
+            parsed.saw_number && (isinf(parsed.value) || (kind == MYLITE_DML_NUMERIC_FLOAT &&
+                                                          fabs(parsed.value) > (double)FLT_MAX));
+        if (problem == MYLITE_DML_NUMERIC_PROBLEM_TRUNCATED && approximate_out_of_range) {
+            status = handle_numeric_problem(database, column, problem, row_number, ignore);
+            if (status != MYLITE_OK) {
+                return status;
+            }
+            problem = MYLITE_DML_NUMERIC_PROBLEM_NONE;
+        }
+        return coerce_numeric_double(
+            database,
+            column,
+            kind,
+            parsed.value,
+            problem,
+            row_number,
+            ignore,
+            out_output
+        );
     }
     if (!parsed.saw_number) {
         problem = kind == MYLITE_DML_NUMERIC_DECIMAL ? MYLITE_DML_NUMERIC_PROBLEM_INCORRECT_DECIMAL
@@ -691,6 +760,7 @@ static struct mylite_dml_numeric_text_parse parse_numeric_text(const char *text,
     char *copy = mylite_copy_span_text(text == NULL ? "" : text, text == NULL ? 0U : length);
     char *start = NULL;
     char *end = NULL;
+    int parse_errno = 0;
 
     if (copy == NULL) {
         parsed.allocation_failed = true;
@@ -700,8 +770,11 @@ static struct mylite_dml_numeric_text_parse parse_numeric_text(const char *text,
     while (*start != '\0' && isspace((unsigned char)*start)) {
         ++start;
     }
+    errno = 0;
     parsed.value = strtod(start, &end);
+    parse_errno = errno;
     parsed.saw_number = end != start;
+    parsed.range_error = parsed.saw_number && parse_errno == ERANGE && isinf(parsed.value);
     while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
         ++end;
     }
@@ -1156,6 +1229,39 @@ static int coerce_decimal_double(
     return set_decimal_output(rounded, scale, out_output);
 }
 
+static int coerce_approximate_double(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_kind kind,
+    double value,
+    enum mylite_dml_numeric_problem problem,
+    uint64_t row_number,
+    bool ignore,
+    struct mylite_dml_numeric_output *out_output
+) {
+    double maximum = kind == MYLITE_DML_NUMERIC_FLOAT ? (double)FLT_MAX : DBL_MAX;
+    bool negative = signbit(value) != 0;
+    bool out_of_range = isinf(value) || fabs(value) > maximum;
+    int status = handle_numeric_problem(
+        database,
+        column,
+        out_of_range ? MYLITE_DML_NUMERIC_PROBLEM_OUT_OF_RANGE : problem,
+        row_number,
+        ignore
+    );
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (out_of_range) {
+        value = negative ? -maximum : maximum;
+    }
+    if (kind == MYLITE_DML_NUMERIC_FLOAT) {
+        value = (double)(float)value;
+    }
+    return set_approximate_output(value, out_output);
+}
+
 static int handle_numeric_problem(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -1352,6 +1458,16 @@ static int set_decimal_output(
     return MYLITE_OK;
 }
 
+static int set_approximate_output(double value, struct mylite_dml_numeric_output *out_output) {
+    *out_output = (struct mylite_dml_numeric_output){
+        .insert_kind = MYLITE_INSERT_BOUND_REAL,
+        .expression_kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = value,
+        .replace = true,
+    };
+    return MYLITE_OK;
+}
+
 static int replace_insert_numeric_value(
     const struct mylite_dml_numeric_output *output,
     struct mylite_insert_bound_value *value
@@ -1366,6 +1482,7 @@ static int replace_insert_numeric_value(
     }
     value->kind = output->insert_kind;
     value->integer_value = output->integer_value;
+    value->real_value = output->real_value;
     return MYLITE_OK;
 }
 
@@ -1383,6 +1500,7 @@ static int replace_update_numeric_value(
     }
     value->kind = output->expression_kind;
     value->int64_value = output->integer_value;
+    value->real_value = output->real_value;
     return MYLITE_OK;
 }
 

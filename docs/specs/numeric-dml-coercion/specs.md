@@ -13,10 +13,11 @@ decimal columns across these DML paths:
 - joined `UPDATE`
 
 This slice now includes signed and unsigned range clipping for `TINYINT`,
-`SMALLINT`, `MEDIUMINT`, `INT`, and `BIGINT` write paths. It also stores exact
-`BIGINT UNSIGNED` assignment values above signed 64-bit range for covered DML
-paths. String length truncation, floating-point column edge cases, `LOAD DATA`,
-and protocol SQLSTATE details remain separate tasks.
+`SMALLINT`, `MEDIUMINT`, `INT`, and `BIGINT` write paths, plus `FLOAT` and
+`DOUBLE` target range clipping for covered assignment paths. It also stores
+exact `BIGINT UNSIGNED` assignment values above signed 64-bit range for covered
+DML paths. String length truncation, `LOAD DATA`, and protocol SQLSTATE details
+remain separate tasks.
 
 ## Sources
 
@@ -76,6 +77,14 @@ For `DECIMAL(5,2)`, numeric or string `4.567` stores as `4.57` and records note
 stores as `0.00` with warning 1366 in non-strict mode and rejects with error
 1366 in strict mode.
 
+For approximate numeric columns, strict mode rejects values outside the target
+column range with error 1264. Non-strict mode and `INSERT IGNORE` clip to the
+nearest endpoint with warning 1264. Verified endpoints are the single-precision
+`FLOAT` maximum shown by MySQL as `3.40282e38` and the double-precision maximum
+shown as `1.7976931348623157e308`. Invalid approximate text such as `'abc'`
+stores as zero with warning 1265 in non-strict mode and rejects with error 1265
+in strict mode.
+
 ## MyLite Design
 
 MyLite coerces numeric DML values after scalar evaluation and before SQLite
@@ -111,11 +120,21 @@ For decimal columns, MyLite:
 - treats trailing garbage after a numeric prefix as strict error 1366 or
   non-strict 1265 note behavior
 
+For approximate numeric columns, MyLite:
+
+- stores `FLOAT` targets through single-precision rounding
+- stores `DOUBLE` targets as double-precision values
+- rejects out-of-range `FLOAT`/`DOUBLE` assignments in strict mode with 1264
+- clips out-of-range assignments to the nearest finite endpoint in non-strict
+  and `IGNORE` paths with warning 1264
+- treats missing numeric prefixes as data truncation 1265, storing zero in
+  non-strict mode
+
 This slice intentionally does not claim full fixed-point precision. It improves
 observable storage, warnings, and strict/non-strict control for common
-application writes while keeping full decimal arithmetic, floating-point column
-range behavior, `BIGINT UNSIGNED` auto-increment beyond signed 64-bit range,
-and broad unsigned arithmetic tracked separately.
+application writes while keeping full decimal arithmetic, `BIGINT UNSIGNED`
+auto-increment beyond signed 64-bit range, broad unsigned arithmetic, and
+exhaustive approximate-number display formatting tracked separately.
 
 ## Test Expectations
 
@@ -131,6 +150,9 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
   numeric literals, quoted values, and `CAST(... AS UNSIGNED)` assignments
 - exact signed `BIGINT` minimum storage, underflow diagnostics, non-strict
   clipping, and trailing-character precedence for direct and quoted values
+- strict rejection, non-strict clipping, and `INSERT IGNORE` warning demotion
+  for out-of-range `FLOAT` and `DOUBLE` target values
+- invalid approximate-numeric text diagnostics for `FLOAT`/`DOUBLE` targets
 - decimal scale rounding and stored text shape
 - strict rejection and non-strict note coercion for decimal strings with
   trailing characters

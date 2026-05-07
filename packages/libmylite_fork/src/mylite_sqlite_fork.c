@@ -108,6 +108,8 @@ static void mysql_database(sqlite3_context *context, int argument_count, sqlite3
 
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
+static void mysql_strcmp(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
+
 static void mysql_nullsafe_eq(
     sqlite3_context *context,
     int argument_count,
@@ -203,11 +205,25 @@ static bool compare_values_as_mysql_text(
     bool *out_equal
 );
 
+static bool compare_values_as_mysql_text_order(
+    sqlite3_value *left,
+    sqlite3_value *right,
+    int *out_result
+);
+
 static bool compare_values_as_mysql_binary(
     sqlite3_value *left,
     sqlite3_value *right,
     bool *out_equal
 );
+
+static bool compare_values_as_mysql_binary_order(
+    sqlite3_value *left,
+    sqlite3_value *right,
+    int *out_result
+);
+
+static int normalize_compare_result(int result);
 
 static void publish_truncated_wrong_value_warning(sqlite3_context *context);
 
@@ -389,6 +405,9 @@ static int register_mysql_functions(sqlite3 *database) {
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "ISNULL", 1, mysql_isnull);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function(database, "STRCMP", 2, mysql_strcmp);
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "_mylite_nullsafe_eq", 2, mysql_nullsafe_eq);
@@ -647,6 +666,28 @@ static void mysql_database(
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {
     (void)argument_count;
     sqlite3_result_int(context, sqlite3_value_type(arguments[0]) == SQLITE_NULL);
+}
+
+static void mysql_strcmp(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {
+    int result = 0;
+
+    (void)argument_count;
+    if (sqlite3_value_type(arguments[0]) == SQLITE_NULL ||
+        sqlite3_value_type(arguments[1]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(arguments[0]) == SQLITE_BLOB ||
+        sqlite3_value_type(arguments[1]) == SQLITE_BLOB) {
+        if (!compare_values_as_mysql_binary_order(arguments[0], arguments[1], &result)) {
+            sqlite3_result_error_nomem(context);
+            return;
+        }
+    } else if (!compare_values_as_mysql_text_order(arguments[0], arguments[1], &result)) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    sqlite3_result_int(context, result);
 }
 
 static void mysql_nullsafe_eq(
@@ -1239,6 +1280,20 @@ static bool compare_values_as_mysql_text(
     sqlite3_value *right,
     bool *out_equal
 ) {
+    int result = 0;
+
+    if (!compare_values_as_mysql_text_order(left, right, &result)) {
+        return false;
+    }
+    *out_equal = result == 0;
+    return true;
+}
+
+static bool compare_values_as_mysql_text_order(
+    sqlite3_value *left,
+    sqlite3_value *right,
+    int *out_result
+) {
     static const unsigned char empty[] = "";
     const unsigned char *left_text = sqlite3_value_text(left);
     int left_length = sqlite3_value_bytes(left);
@@ -1264,7 +1319,9 @@ static bool compare_values_as_mysql_text(
         .length = right_length,
         .flags = mylite_sqlite_collation_pad_space,
     });
-    *out_equal = compare_ascii_ci_bytes(left_text, left_length, right_text, right_length) == 0;
+    *out_result = normalize_compare_result(
+        compare_ascii_ci_bytes(left_text, left_length, right_text, right_length)
+    );
     return true;
 }
 
@@ -1272,6 +1329,20 @@ static bool compare_values_as_mysql_binary(
     sqlite3_value *left,
     sqlite3_value *right,
     bool *out_equal
+) {
+    int result = 0;
+
+    if (!compare_values_as_mysql_binary_order(left, right, &result)) {
+        return false;
+    }
+    *out_equal = result == 0;
+    return true;
+}
+
+static bool compare_values_as_mysql_binary_order(
+    sqlite3_value *left,
+    sqlite3_value *right,
+    int *out_result
 ) {
     static const unsigned char empty[] = "";
     const unsigned char *left_value = sqlite3_value_blob(left);
@@ -1288,8 +1359,14 @@ static bool compare_values_as_mysql_binary(
     if (right_value == NULL) {
         right_value = empty;
     }
-    *out_equal = compare_binary_bytes(left_value, left_length, right_value, right_length) == 0;
+    *out_result = normalize_compare_result(
+        compare_binary_bytes(left_value, left_length, right_value, right_length)
+    );
     return true;
+}
+
+static int normalize_compare_result(int result) {
+    return (result > 0) - (result < 0);
 }
 
 static void publish_truncated_wrong_value_warning(sqlite3_context *context) {

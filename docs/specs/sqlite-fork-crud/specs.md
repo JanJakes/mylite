@@ -276,15 +276,18 @@ specs should guide implementation. Function descriptors need:
 
 The current executable slice registers compact callbacks for `CONCAT`,
 `CONCAT_WS`, `IF`, `BIT_LENGTH`, `BIT_COUNT`, `DATABASE`, `SCHEMA`, `ISNULL`,
-`LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`, and `CHARACTER_LENGTH`. `IF()` also
-proves the first successful-statement scalar warning path by publishing MySQL
-warning 1292 for truncated numeric condition conversion. `DATABASE()` and
-`SCHEMA()` prove a connection-local session-state path using SQLite client
-data. `ISNULL()` proves the first narrow parser admission hook for a MySQL
-function name that SQLite otherwise tokenizes as syntax before function lookup.
-Broader function families stay in public SQLite scalar callbacks until they
-need parser, broader statement-state, multi-warning diagnostics, or storage
-hooks that SQLite's public function API cannot provide.
+`STRCMP`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`, and `CHARACTER_LENGTH`.
+`IF()` also proves the first successful-statement scalar warning path by
+publishing MySQL warning 1292 for truncated numeric condition conversion.
+`DATABASE()` and `SCHEMA()` prove a connection-local session-state path using
+SQLite client data. `ISNULL()` proves the first narrow parser admission hook
+for a MySQL function name that SQLite otherwise tokenizes as syntax before
+function lookup. `STRCMP()` proves a native comparison callback where the first
+slice can reuse MyLite's current ASCII case-insensitive PAD SPACE text
+comparison and bytewise binary-string comparison. Broader function families
+stay in public SQLite scalar callbacks until they need parser, broader
+statement-state, multi-warning diagnostics, or storage hooks that SQLite's
+public function API cannot provide.
 
 ### Operators
 

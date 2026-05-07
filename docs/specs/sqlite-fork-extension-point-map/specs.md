@@ -151,6 +151,11 @@ Use existing SQLite APIs for:
   sufficient while the state is read by callbacks and owned by the connection;
   statement-completion state, warning lists, and row-identity allocation still
   need fork points where SQLite completes VDBE execution.
+- Pure comparison helpers such as the first native `STRCMP()` slice when the
+  result can be computed from the argument values plus the current supported
+  collation subset. Broader collation coercibility, Unicode weights, and
+  connection-collation selection need MyLite expression metadata rather than a
+  bare callback alone.
 - VFS or pager wrappers for opening MyLite files, temporary databases, and
   controlled file-system behavior when the on-disk SQLite database still starts
   at SQLite page 1.
@@ -251,6 +256,10 @@ Required fork direction:
 - scalar callbacks can publish a single successful-statement warning through
   the fork condition slot; a statement-owned multi-warning collector is still
   needed for complete MySQL diagnostics
+- statement-stable functions such as `NOW()` need a VDBE statement timestamp
+  or equivalent statement context. A plain public scalar callback can compute a
+  time value, but it cannot by itself guarantee all invocations in one
+  statement share the same MySQL-visible timestamp.
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
 

@@ -475,6 +475,25 @@ static int test_registered_functions(void) {
     failures += expect_int64(database, "SELECT ISNULL(NULL)", 1, "ISNULL returns 1 for NULL");
     failures +=
         expect_int64(database, "SELECT ISNULL(0)", 0, "ISNULL returns 0 for non-NULL values");
+    failures += expect_int64(database, "SELECT STRCMP('a', 'b')", -1, "STRCMP orders lesser text");
+    failures += expect_int64(database, "SELECT STRCMP('b', 'a')", 1, "STRCMP orders greater text");
+    failures += expect_int64(database, "SELECT STRCMP('a', 'A')", 0, "STRCMP folds ASCII case");
+    failures += expect_int64(
+        database,
+        "SELECT STRCMP('a', 'a ')",
+        0,
+        "STRCMP uses PAD SPACE text comparison"
+    );
+    failures +=
+        expect_int64(database, "SELECT STRCMP(NULL, 'a') IS NULL", 1, "STRCMP propagates NULL");
+    failures += expect_int64(
+        database,
+        "SELECT STRCMP(X'61', X'41')",
+        1,
+        "STRCMP compares binary strings bytewise"
+    );
+    failures +=
+        expect_int64(database, "SELECT STRCMP(10, '2')", -1, "STRCMP compares numeric text forms");
     failures += expect_int64(database, "SELECT 1 <=> 1", 1, "<=> returns 1 for equal numbers");
     failures += expect_int64(database, "SELECT 1 <=> 2", 0, "<=> returns 0 for unequal numbers");
     failures += expect_int64(database, "SELECT NULL <=> NULL", 1, "<=> returns 1 for two NULLs");

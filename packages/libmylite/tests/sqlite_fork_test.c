@@ -3392,6 +3392,20 @@ static int test_wordpress_like_crud(void) {
     );
     failures += exec_sql(
         database,
+        "INSERT IGNORE INTO wp_options_like (option_name, option_value) "
+        "VALUES ('siteurl', 'ignored duplicate')",
+        "ignore duplicate option through direct INSERT IGNORE"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(COUNT(*), ':', ROW_COUNT()) FROM wp_options_like",
+            .expected = "1:0",
+            .context = "direct INSERT IGNORE skips duplicate unique rows",
+        }
+    );
+    failures += exec_sql(
+        database,
         "CREATE TABLE inline_index_forms ("
         "id INTEGER PRIMARY KEY,"
         "name TEXT,"

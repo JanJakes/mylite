@@ -1189,6 +1189,7 @@ returning ::= .
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
+insert_cmd(A) ::= INSERT IGNORE.      {A = OE_Ignore;}
 insert_cmd(A) ::= REPLACE.            {A = OE_Replace;}
 
 %type idlist_opt {IdList*}

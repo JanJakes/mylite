@@ -39,6 +39,9 @@ slices:
   promote matching integer-affinity single-column primary keys, including
   `BIGINT UNSIGNED ... AUTO_INCREMENT, PRIMARY KEY(id)`, onto SQLite rowid
   autoincrement storage
+- admit MySQL `INSERT IGNORE` in the direct fork parser and lower it to
+  SQLite's native conflict-ignore insert mode for duplicate unique-key rows in
+  the current CRUD subset
 - execute the MySQL-runtime-verified WordPress-like CRUD fixture through
   MyLite's public SQL API
 
@@ -447,6 +450,10 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
     `BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, PRIMARY KEY(id)` declarations to
     use native SQLite rowid autoincrement storage. Full unsigned overflow
     behavior remains deferred.
+15. Admit MySQL `INSERT IGNORE` syntax in the direct parser. Implemented by
+    lowering to SQLite's existing conflict-ignore insert mode for the current
+    direct DML subset, with broader MySQL warning demotion still owned by the
+    MyLite diagnostics/type-coercion path.
 
 ## Lemon Grammar Direction
 
@@ -458,6 +465,8 @@ compatibility intent clear:
 cmd ::= TRUNCATE opt_table nm.
 opt_table ::= .
 opt_table ::= TABLE.
+
+insert_cmd ::= INSERT IGNORE.
 
 column_constraint ::= AUTO_INCREMENT.
 column_constraint ::= COMMENT string_literal.

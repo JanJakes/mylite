@@ -75,6 +75,8 @@ Implemented fork points:
 - direct SQLite parser and schema-builder admission for MySQL column-level
   `AUTO_INCREMENT`, including table-level primary-key promotion to native
   rowid autoincrement storage for integer-affinity single-column keys
+- direct SQLite parser admission for MySQL `INSERT IGNORE`, lowered to
+  SQLite's native conflict-ignore insert mode for the current direct DML subset
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before

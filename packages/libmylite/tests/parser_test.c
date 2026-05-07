@@ -12770,6 +12770,28 @@ static int test_select_table_core_syntax(void) {
     failures += expect_span_text(child_at(from_table, 1U), "alias", "index hint alias");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT 1 FOR UPDATE;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1 FROM DUAL LOCK IN SHARE MODE;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t FOR UPDATE;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t FOR SHARE OF t NOWAIT;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT a FROM t ORDER BY a LIMIT 1 FOR UPDATE SKIP LOCKED;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT a FROM t FOR nope;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT a, * FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

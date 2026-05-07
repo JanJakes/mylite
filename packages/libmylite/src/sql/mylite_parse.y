@@ -27,6 +27,15 @@
 %type index_hint { struct mylite_sql_token }
 %type index_hint_index_or_key { struct mylite_sql_token }
 %type opt_index_hint_scope { struct mylite_sql_token }
+%type opt_locking_clause { struct mylite_sql_token }
+%type locking_clause { struct mylite_sql_token }
+%type opt_locking_of_table_list { struct mylite_sql_token }
+%type opt_locking_wait { struct mylite_sql_token }
+%type share_keyword { struct mylite_sql_token }
+%type mode_keyword { struct mylite_sql_token }
+%type nowait_keyword { struct mylite_sql_token }
+%type skip_keyword { struct mylite_sql_token }
+%type locked_keyword { struct mylite_sql_token }
 %type nonreserved_identifier_keyword { struct mylite_sql_token }
 %type select_modifiers { struct mylite_sql_parser_select_duplicate_mode }
 %type select_duplicate_mode { struct mylite_sql_parser_select_duplicate_mode }
@@ -3944,40 +3953,109 @@ opt_default ::= DEFAULT.
 opt_equal ::= .
 opt_equal ::= EQ.
 
-select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) opt_window_clause(W). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) opt_window_clause(W)
+        opt_locking_clause. {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, NULL, NULL, NULL, NULL, W, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D)
-        opt_where_clause(E) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J). {
+        opt_where_clause(E) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J)
+        opt_locking_clause. {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), E, NULL, NULL, W, I, J);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F)
         table_references(C)
         opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_window_clause(W)
-        opt_order_by_clause(I) opt_limit_clause(J). {
+        opt_order_by_clause(I) opt_limit_clause(J) opt_locking_clause. {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, W, I,
         J);
 }
-select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) opt_window_clause(W). {
+select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) opt_window_clause(W)
+        opt_locking_clause. {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
         W, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D)
-        opt_where_clause(E) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J). {
+        opt_where_clause(E) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J)
+        opt_locking_clause. {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D), E, NULL, NULL, W, I, J);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) table_references(C)
         opt_where_clause(E) opt_group_by_clause(G) opt_having_clause(H) opt_window_clause(W)
-        opt_order_by_clause(I) opt_limit_clause(J). {
+        opt_order_by_clause(I) opt_limit_clause(J) opt_locking_clause. {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_table_references(state, F, C), E, G, H, W, I, J);
+}
+
+opt_locking_clause(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_locking_clause(A) ::= locking_clause(B). {
+    A = B;
+}
+
+locking_clause(A) ::= FOR(T) UPDATE opt_locking_of_table_list opt_locking_wait. {
+    A = T;
+}
+locking_clause(A) ::= FOR(T) share_keyword opt_locking_of_table_list opt_locking_wait. {
+    A = T;
+}
+locking_clause(A) ::= LOCK(T) IN share_keyword mode_keyword. {
+    A = T;
+}
+
+opt_locking_of_table_list(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_locking_of_table_list(A) ::= OF(T) maintenance_table_name_list. {
+    A = T;
+}
+
+opt_locking_wait(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+opt_locking_wait(A) ::= nowait_keyword(T). {
+    A = T;
+}
+opt_locking_wait(A) ::= skip_keyword(T) locked_keyword. {
+    A = T;
+}
+
+share_keyword(A) ::= IDENTIFIER(T). {
+    if (!mylite_sql_parser_token_equals(&T, "SHARE")) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_IDENTIFIER, T);
+    }
+    A = T;
+}
+mode_keyword(A) ::= IDENTIFIER(T). {
+    if (!mylite_sql_parser_token_equals(&T, "MODE")) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_IDENTIFIER, T);
+    }
+    A = T;
+}
+nowait_keyword(A) ::= IDENTIFIER(T). {
+    if (!mylite_sql_parser_token_equals(&T, "NOWAIT")) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_IDENTIFIER, T);
+    }
+    A = T;
+}
+skip_keyword(A) ::= IDENTIFIER(T). {
+    if (!mylite_sql_parser_token_equals(&T, "SKIP")) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_IDENTIFIER, T);
+    }
+    A = T;
+}
+locked_keyword(A) ::= IDENTIFIER(T). {
+    if (!mylite_sql_parser_token_equals(&T, "LOCKED")) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_IDENTIFIER, T);
+    }
+    A = T;
 }
 
 union_query_expression(A) ::= query_expression_with_set_op(B) opt_order_by_clause(C) opt_limit_clause(D). {

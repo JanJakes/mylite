@@ -8224,6 +8224,7 @@ static bool lookup_keyword_parser_token(
         {"OFFSET", MYLITE_SQL_PARSE_OFFSET},
         {"NUMERIC", MYLITE_SQL_PARSE_NUMERIC},
         {"OFF", MYLITE_SQL_PARSE_OFF},
+        {"OF", MYLITE_SQL_PARSE_OF},
         {"ON", MYLITE_SQL_PARSE_ON},
         {"ONLY", MYLITE_SQL_PARSE_ONLY},
         {"OPTIMIZE", MYLITE_SQL_PARSE_OPTIMIZE},

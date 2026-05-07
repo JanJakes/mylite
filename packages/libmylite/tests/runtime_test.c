@@ -62254,8 +62254,11 @@ static int test_foreign_key_alter_column_dependency_execution(void) {
 static int test_select_table_core_execution(void) {
     static const char *const visible_columns[] = {"a", "b", "CamelCase"};
     static const char *const visible_values[] = {"1", "one", "7", "2", "two", "8"};
+    static const char *const visible_first_values[] = {"1", "one", "7"};
     static const char *const hidden_columns[] = {"hidden"};
     static const char *const hidden_values[] = {"99", "88"};
+    static const char *const scalar_locking_columns[] = {"1"};
+    static const char *const scalar_locking_values[] = {"1"};
     static const char *const qualified_columns[] = {"a", "b"};
     static const char *const qualified_values[] = {"1", "one", "2", "two"};
     static const char *const alias_columns[] = {"x", "label b", "hidden alias", "cc"};
@@ -62343,6 +62346,42 @@ static int test_select_table_core_execution(void) {
         visible_values,
         2,
         "selected schema select"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT * FROM t FOR UPDATE",
+        visible_columns,
+        3,
+        visible_values,
+        2,
+        "select FOR UPDATE no-op"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT * FROM t FOR SHARE OF t NOWAIT",
+        visible_columns,
+        3,
+        visible_values,
+        2,
+        "select FOR SHARE no-op"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT * FROM t ORDER BY a LIMIT 1 FOR UPDATE SKIP LOCKED",
+        visible_columns,
+        3,
+        visible_first_values,
+        1,
+        "select locking wait no-op"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT 1 FROM DUAL LOCK IN SHARE MODE",
+        scalar_locking_columns,
+        1,
+        scalar_locking_values,
+        1,
+        "dual LOCK IN SHARE MODE no-op"
     );
     failures += expect_select_rows(
         database,

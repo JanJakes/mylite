@@ -54,6 +54,24 @@ int mylite_statement_prepare_with_callbacks(
     mylite_stmt **out_stmt,
     const struct mylite_statement_prepare_callbacks *callbacks
 ) {
+    return mylite_statement_prepare_with_callbacks_and_modes(
+        database,
+        sql,
+        length,
+        out_stmt,
+        callbacks,
+        connection_parse_modes(database)
+    );
+}
+
+int mylite_statement_prepare_with_callbacks_and_modes(
+    mylite_db *database,
+    const char *sql,
+    size_t length,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks,
+    unsigned int modes
+) {
     struct mylite_sql_parse_result parse_result;
     enum mylite_sql_parse_status parse_status = MYLITE_SQL_PARSE_OK;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -78,7 +96,7 @@ int mylite_statement_prepare_with_callbacks(
         (struct mylite_sql_parse_config){
             .input = sql,
             .length = length,
-            .modes = connection_parse_modes(database),
+            .modes = modes,
         },
         &parse_result
     );

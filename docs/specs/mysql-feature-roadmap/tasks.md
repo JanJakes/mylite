@@ -356,9 +356,11 @@ level application surfaces.
        parameter markers, metadata, and diagnostics. The first
        [SQL prepared statements](../sql-prepared-statements/specs.md) slice
        implements SQL-level prepare/execute/deallocate over literals and user
-       variables, parameter-marker substitution from user variables, delegated
-       result metadata after execution, and MySQL-compatible diagnostics for the
-       covered paths; binary protocol prepared statements remain unfinished.
+       variables, parameter-marker substitution from user variables,
+       prepare-time lexical SQL-mode capture for `ANSI_QUOTES` and
+       `NO_BACKSLASH_ESCAPES`, delegated result metadata after execution, and
+       MySQL-compatible diagnostics for the covered paths; binary protocol
+       prepared statements remain unfinished.
 43. [x] `CREATE TABLE ... LIKE`: metadata cloning, indexes, defaults, generated
        columns, temporary tables, and atomicity.
 44. [ ] `CREATE TABLE ... SELECT` and `INSERT ... SELECT`: type inference,

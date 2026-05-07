@@ -32130,6 +32130,7 @@ static int test_user_variable_foundation_execution(void) {
 static int test_sql_prepared_statements_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const id_name_columns[] = {"id", "name"};
+    static const char *const nbe_columns[] = {"h", "l"};
     static const char *const inserted_row_values[] = {"4", "can't"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -32199,6 +32200,68 @@ static int test_sql_prepared_statements_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "quoted execute row");
     failures += expect_string(mylite_column_text(stmt, 0), "3", "quoted execute value");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "quoted execute done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "PREPARE mode_default FROM 'SELECT \"name\" AS v'", MYLITE_DONE);
+    failures += execute_sql(database, "SET SESSION sql_mode = 'ANSI_QUOTES'", MYLITE_DONE);
+    failures += prepare_sql(database, "EXECUTE mode_default", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "default-mode prepared row");
+    failures += expect_column_names(stmt, (const char *const[]){"v"}, 1, "default-mode columns");
+    failures += expect_string(mylite_column_text(stmt, 0), "name", "default-mode value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "default-mode prepared done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT \"name\" FROM prepared_statement_rows WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "ansi quoted identifier row");
+    failures += expect_column_names(
+        stmt,
+        (const char *const[]){"name"},
+        1,
+        "ansi quoted identifier columns"
+    );
+    failures += expect_string(mylite_column_text(stmt, 0), "alpha", "ansi quoted identifier value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "ansi quoted identifier done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "PREPARE mode_ansi FROM "
+        "'SELECT \"name\" FROM prepared_statement_rows WHERE id = 1'",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += prepare_sql(database, "EXECUTE mode_ansi", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "ansi-mode prepared row");
+    failures += expect_column_names(stmt, (const char *const[]){"name"}, 1, "ansi-mode columns");
+    failures += expect_string(mylite_column_text(stmt, 0), "alpha", "ansi-mode value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "ansi-mode prepared done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "PREPARE mode_nbe FROM "
+        "'SELECT HEX(''a\\0b'') AS h, LENGTH(''a\\0b'') AS l'",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += prepare_sql(database, "EXECUTE mode_nbe", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "nbe prepared row");
+    failures += expect_column_names(stmt, nbe_columns, 2, "nbe columns");
+    failures += expect_string(mylite_column_text(stmt, 0), "615C3062", "nbe hex value");
+    failures += expect_string(mylite_column_text(stmt, 1), "4", "nbe length value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "nbe prepared done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -32328,6 +32391,9 @@ static int test_sql_prepared_statements_execution(void) {
     failures += execute_sql(database, "DEALLOCATE PREPARE from_var", MYLITE_DONE);
     failures += execute_sql(database, "DEALLOCATE PREPARE mixedname", MYLITE_DONE);
     failures += execute_sql(database, "DEALLOCATE PREPARE `select`", MYLITE_DONE);
+    failures += execute_sql(database, "DEALLOCATE PREPARE mode_default", MYLITE_DONE);
+    failures += execute_sql(database, "DEALLOCATE PREPARE mode_ansi", MYLITE_DONE);
+    failures += execute_sql(database, "DEALLOCATE PREPARE mode_nbe", MYLITE_DONE);
     failures += execute_sql(database, "DEALLOCATE PREPARE ins", MYLITE_DONE);
     failures += execute_sql(database, "DEALLOCATE PREPARE mismatch", MYLITE_DONE);
 

@@ -24,6 +24,14 @@ int mylite_statement_prepare_with_callbacks(
     mylite_stmt **out_stmt,
     const struct mylite_statement_prepare_callbacks *callbacks
 );
+int mylite_statement_prepare_with_callbacks_and_modes(
+    mylite_db *database,
+    const char *sql,
+    size_t length,
+    mylite_stmt **out_stmt,
+    const struct mylite_statement_prepare_callbacks *callbacks,
+    unsigned int modes
+);
 int mylite_statement_map_parse_status(mylite_db *database, enum mylite_sql_parse_status status);
 int mylite_statement_map_translate_status(
     mylite_db *database,

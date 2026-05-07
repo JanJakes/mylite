@@ -12,6 +12,8 @@ This slice implements SQL-level prepared statements:
 - `?` parameter markers inside prepared SQL text
 - result metadata, affected rows, last insert id, and diagnostics delegated from
   the executed inner statement
+- lexical SQL modes active at `PREPARE` time for marker scanning and later
+  `EXECUTE` parsing
 
 Binary protocol prepared statements, public C bind APIs, automatic
 repreparation, prepared-statement status counters, and stored-program scope
@@ -51,6 +53,11 @@ an unknown prepared statement returns error 1243. Supplying the wrong marker
 count to `EXECUTE` returns error 1210. Preparing nested `PREPARE`, `EXECUTE`, or
 `DEALLOCATE PREPARE` statements returns error 1295.
 
+`PREPARE` parses the SQL text using the lexical SQL mode that is active when
+the statement is prepared. Later `sql_mode` changes do not reinterpret
+double-quoted strings/identifiers or backslash escape handling when the
+prepared statement is executed.
+
 Observed MySQL 8.4.9 behavior:
 
 ```sql
@@ -68,9 +75,9 @@ EXECUTE p;
 ## MyLite Design
 
 Each `mylite_db` owns a prepared-statement registry keyed by normalized
-ASCII-lowercase statement names. Registry entries store the original SQL text
-and the number of parameter markers found by MyLite's lexer outside strings and
-comments.
+ASCII-lowercase statement names. Registry entries store the original SQL text,
+the lexical SQL mode flags active at `PREPARE` time, and the number of
+parameter markers found by MyLite's lexer outside strings and comments.
 
 `PREPARE` execution:
 
@@ -79,20 +86,23 @@ comments.
 3. Resolve the SQL source from a literal or user variable. Non-text and `NULL`
    user-variable values are converted to their textual SQL value before parsing,
    matching MySQL's parse-error behavior for `NULL` or `123`.
-4. Count parameter markers.
+4. Capture the current lexical SQL modes and count parameter markers with
+   those modes.
 5. Validate the SQL by replacing markers with a neutral numeric literal and
    preparing the resulting single statement through the ordinary MyLite prepare
-   pipeline. This preserves expression and `LIMIT ?` parse acceptance while
-   still rejecting identifier/table-name marker placement.
+   pipeline using the captured lexical modes. This preserves expression and
+   `LIMIT ?` parse acceptance while still rejecting identifier/table-name
+   marker placement.
 6. Reject nested SQL prepared-statement commands with MySQL error 1295.
 7. Store the original text and marker count on success.
 
 `EXECUTE` execution substitutes each marker with a SQL literal serialized from
 the corresponding user-variable value, prepares that concrete SQL through the
-ordinary pipeline, and then delegates stepping, result metadata, values,
-affected rows, found rows, and last insert id to the inner statement. This keeps
-SQL-level prepared statements independent from the public C prepare API while
-using the existing runtime semantics for the executed statement.
+ordinary pipeline using the lexical modes captured by `PREPARE`, and then
+delegates stepping, result metadata, values, affected rows, found rows, and
+last insert id to the inner statement. This keeps SQL-level prepared statements
+independent from the public C prepare API while using the existing runtime
+semantics for the executed statement.
 
 This substitution design is a first slice. It is correct for data-value markers
 in currently supported SQL and preserves marker boundaries by using the lexer,
@@ -148,6 +158,8 @@ Runtime tests cover:
 - `EXECUTE ... USING` with values and `NULL`
 - result metadata delegation
 - affected rows and last insert id delegation for prepared DML
+- `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES` lexical mode capture at `PREPARE`
+  time
 - marker count mismatch
 - implicit deallocation on failed re-prepare
 - `DROP PREPARE` synonym

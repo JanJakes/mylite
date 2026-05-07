@@ -9,6 +9,7 @@ struct mylite_prepared_statement_entry {
     char *name;
     char *sql_text;
     size_t parameter_count;
+    unsigned int parse_modes;
 };
 
 struct mylite_prepared_statement_store {

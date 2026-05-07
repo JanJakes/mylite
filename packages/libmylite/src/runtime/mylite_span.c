@@ -106,7 +106,7 @@ char *mylite_copy_identifier_span(const struct mylite_sql_ast_node *node) {
     if (text == NULL) {
         return NULL;
     }
-    if (length < 2U || text[0] != '`' || text[length - 1U] != '`') {
+    if (length < 2U || (text[0] != '`' && text[0] != '"') || text[length - 1U] != text[0]) {
         return mylite_copy_span_text(text, length);
     }
 
@@ -116,8 +116,8 @@ char *mylite_copy_identifier_span(const struct mylite_sql_ast_node *node) {
     }
 
     for (size_t index = 1U; index + 1U < length; ++index) {
-        if (text[index] == '`' && index + 2U < length && text[index + 1U] == '`') {
-            copy[output++] = '`';
+        if (text[index] == text[0] && index + 2U < length && text[index + 1U] == text[0]) {
+            copy[output++] = text[0];
             ++index;
         } else {
             copy[output++] = text[index];

@@ -1,7 +1,9 @@
 #include "mylite_prepared_statements.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
+#include "mylite_select_context.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
 #include "mylite_statement_ast.h"
@@ -16,6 +18,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+struct prepared_statement_metadata {
+    size_t parameter_count;
+    unsigned int parse_modes;
+};
 
 static int copy_prepare_statement_plan(
     const struct mylite_sql_ast_node *statement,
@@ -51,6 +58,7 @@ static int validate_prepared_statement_sql(
     mylite_db *database,
     const char *sql,
     size_t sql_length,
+    unsigned int parse_modes,
     size_t *out_parameter_count
 );
 
@@ -58,6 +66,7 @@ static int substitute_parameter_markers(
     mylite_db *database,
     const char *sql,
     size_t sql_length,
+    unsigned int parse_modes,
     char **replacements,
     size_t replacement_count,
     char **out_sql,
@@ -78,7 +87,7 @@ static int store_prepared_statement(
     mylite_db *database,
     const char *name,
     const char *sql,
-    size_t parameter_count
+    struct prepared_statement_metadata metadata
 );
 
 static const struct mylite_prepared_statement_entry *find_prepared_statement_entry(
@@ -121,6 +130,8 @@ static int copy_sql_literal_from_value(
 static int copy_quoted_sql_text_literal(const char *text, size_t text_length, char **out_literal);
 
 static int copy_static_text(const char *text, char **out_text);
+
+static unsigned int connection_parse_modes(const mylite_db *database);
 
 int mylite_prepared_statement_prepare_prepare_statement(
     mylite_db *database,
@@ -223,6 +234,7 @@ int mylite_prepared_statement_execute_prepare(mylite_stmt *stmt) {
         stmt == NULL ? NULL : &stmt->prepare_statement;
     char *source_sql = NULL;
     size_t parameter_count = 0U;
+    unsigned int parse_modes = 0U;
     int status = MYLITE_OK;
 
     if (stmt == NULL || stmt->database == NULL || plan == NULL || plan->name == NULL) {
@@ -230,6 +242,7 @@ int mylite_prepared_statement_execute_prepare(mylite_stmt *stmt) {
     }
 
     (void)remove_prepared_statement(&stmt->database->prepared_statements, plan->name);
+    parse_modes = connection_parse_modes(stmt->database);
 
     status = copy_prepare_source_sql(stmt->database, plan->source, &source_sql);
     if (status != MYLITE_OK) {
@@ -242,10 +255,19 @@ int mylite_prepared_statement_execute_prepare(mylite_stmt *stmt) {
         stmt->database,
         source_sql,
         strlen(source_sql),
+        parse_modes,
         &parameter_count
     );
     if (status == MYLITE_OK) {
-        status = store_prepared_statement(stmt->database, plan->name, source_sql, parameter_count);
+        status = store_prepared_statement(
+            stmt->database,
+            plan->name,
+            source_sql,
+            (struct prepared_statement_metadata){
+                .parameter_count = parameter_count,
+                .parse_modes = parse_modes,
+            }
+        );
     }
     free(source_sql);
     if (status != MYLITE_OK) {
@@ -281,11 +303,13 @@ int mylite_prepared_statement_execute_execute(mylite_stmt *stmt) {
             free(execute_sql);
             return status;
         }
-        status = mylite_prepare(
+        status = mylite_statement_prepare_with_callbacks_and_modes(
             stmt->database,
             execute_sql,
             strlen(execute_sql),
-            &stmt->prepared_execute_stmt
+            &stmt->prepared_execute_stmt,
+            mylite_select_context_statement_prepare_callbacks(),
+            entry->parse_modes
         );
         free(execute_sql);
         if (status != MYLITE_OK) {
@@ -512,6 +536,7 @@ static int validate_prepared_statement_sql(
     mylite_db *database,
     const char *sql,
     size_t sql_length,
+    unsigned int parse_modes,
     size_t *out_parameter_count
 ) {
     struct mylite_sql_parse_result parse_result = {0};
@@ -522,6 +547,7 @@ static int validate_prepared_statement_sql(
         database,
         sql,
         sql_length,
+        parse_modes,
         NULL,
         0U,
         &validation_sql,
@@ -537,7 +563,7 @@ static int validate_prepared_statement_sql(
         (struct mylite_sql_parse_config){
             .input = validation_sql,
             .length = strlen(validation_sql),
-            .modes = 0U,
+            .modes = parse_modes,
         },
         &parse_result
     );
@@ -574,6 +600,7 @@ static int substitute_parameter_markers(
     mylite_db *database,
     const char *sql,
     size_t sql_length,
+    unsigned int parse_modes,
     char **replacements,
     size_t replacement_count,
     char **out_sql,
@@ -595,7 +622,7 @@ static int substitute_parameter_markers(
         (struct mylite_sql_lexer_config){
             .input = sql,
             .length = sql_length,
-            .modes = 0U,
+            .modes = parse_modes,
         }
     );
 
@@ -729,7 +756,7 @@ static int store_prepared_statement(
     mylite_db *database,
     const char *name,
     const char *sql,
-    size_t parameter_count
+    struct prepared_statement_metadata metadata
 ) {
     struct mylite_prepared_statement_entry *items = realloc(
         database->prepared_statements.items,
@@ -753,7 +780,8 @@ static int store_prepared_statement(
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    entry->parameter_count = parameter_count;
+    entry->parameter_count = metadata.parameter_count;
+    entry->parse_modes = metadata.parse_modes;
     return MYLITE_OK;
 }
 
@@ -869,6 +897,7 @@ static int materialize_execute_sql(
         stmt->database,
         entry->sql_text,
         strlen(entry->sql_text),
+        entry->parse_modes,
         literals,
         entry->parameter_count,
         out_sql,
@@ -993,4 +1022,16 @@ static int copy_quoted_sql_text_literal(const char *text, size_t text_length, ch
 static int copy_static_text(const char *text, char **out_text) {
     *out_text = mylite_copy_span_text(text, strlen(text));
     return *out_text == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static unsigned int connection_parse_modes(const mylite_db *database) {
+    unsigned int modes = 0U;
+
+    if (mylite_connection_sql_mode_has_ansi_quotes(database)) {
+        modes |= MYLITE_SQL_MODE_ANSI_QUOTES;
+    }
+    if (mylite_connection_sql_mode_has_no_backslash_escapes(database)) {
+        modes |= MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES;
+    }
+    return modes;
 }

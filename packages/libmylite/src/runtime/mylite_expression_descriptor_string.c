@@ -40,9 +40,34 @@ static int infer_space_function_descriptor(
     struct mylite_field_descriptor *out_descriptor
 );
 
+static int infer_slice_string_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static int infer_concat_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static int infer_source_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static bool infer_padding_repeat_long_blob_descriptor(
     mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool binary_result,
     struct mylite_field_descriptor *out_descriptor
 );
 
@@ -110,6 +135,7 @@ static uint64_t slice_string_function_result_length(
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_value *value,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
@@ -124,6 +150,7 @@ static uint64_t padding_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
@@ -131,6 +158,7 @@ static uint64_t left_right_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
@@ -138,6 +166,7 @@ static uint64_t replace_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
@@ -145,6 +174,7 @@ static uint64_t substring_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
@@ -191,10 +221,13 @@ static uint64_t replace_function_replacement_multiplier(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *replacement,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
 static uint64_t replace_function_text_multiplier(uint64_t length, uint64_t max_bytes_per_character);
+
+static bool field_descriptor_is_binary_string(const struct mylite_field_descriptor *descriptor);
 
 static uint64_t replace_function_numeric_multiplier(
     const struct mylite_field_descriptor *descriptor
@@ -229,6 +262,8 @@ int mylite_expression_descriptor_infer_slice_string_function(
     bool *out_matched
 ) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    bool binary_result = false;
+    int status = MYLITE_OK;
 
     if (callbacks == NULL || callbacks->infer_expression_descriptor == NULL ||
         out_matched == NULL) {
@@ -240,7 +275,7 @@ int mylite_expression_descriptor_infer_slice_string_function(
         return MYLITE_OK;
     }
     if (mylite_function_name_is_elt(name)) {
-        int status =
+        status =
             infer_elt_function_descriptor(database, plan, expression, out_descriptor, callbacks);
 
         if (status != MYLITE_UNSUPPORTED) {
@@ -263,25 +298,113 @@ int mylite_expression_descriptor_infer_slice_string_function(
         (void)nullable;
         return infer_space_function_descriptor(database, expression, value, out_descriptor);
     }
-    if (infer_padding_repeat_long_blob_descriptor(database, expression, out_descriptor)) {
+    status =
+        infer_slice_string_binary_result(database, plan, expression, &binary_result, callbacks);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (infer_padding_repeat_long_blob_descriptor(
+            database,
+            expression,
+            binary_result,
+            out_descriptor
+        )) {
         return MYLITE_OK;
     }
 
     *out_descriptor = (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
-        .flags = 0U,
-        .length = slice_string_function_result_length(database, plan, expression, value, callbacks),
+        .flags = binary_result ? MYLITE_FIELD_FLAG_BINARY : 0U,
+        .length = slice_string_function_result_length(
+            database,
+            plan,
+            expression,
+            value,
+            binary_result,
+            callbacks
+        ),
         .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .charset_id = binary_result ? mylite_mysql_binary_charset_id
+                                    : mylite_expression_descriptor_connection_charset_id(database),
         .nullable = true,
     };
     mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
+static int infer_slice_string_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+
+    if (out_binary == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_binary = false;
+    if (mylite_function_name_is_make_set(name) || mylite_function_name_is_elt(name) ||
+        mylite_function_name_is_quote(name) || function_name_is_space(name)) {
+        return MYLITE_OK;
+    }
+    if (mylite_function_name_is_concat_ws(name)) {
+        return infer_concat_binary_result(database, plan, arguments, out_binary, callbacks);
+    }
+    return infer_source_binary_result(database, plan, arguments, out_binary, callbacks);
+}
+
+static int infer_concat_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    for (const struct mylite_sql_ast_node *argument = arguments == NULL ? NULL
+                                                                        : arguments->first_child;
+         argument != NULL;
+         argument = argument->next_sibling) {
+        struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
+        int status =
+            callbacks->infer_expression_descriptor(database, plan, argument, NULL, &descriptor);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (field_descriptor_is_binary_string(&descriptor)) {
+            *out_binary = true;
+            return MYLITE_OK;
+        }
+    }
+    *out_binary = false;
+    return MYLITE_OK;
+}
+
+static int infer_source_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
+    struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
+    int status = callbacks->infer_expression_descriptor(database, plan, source, NULL, &descriptor);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *out_binary = field_descriptor_is_binary_string(&descriptor);
+    return MYLITE_OK;
+}
+
 static bool infer_padding_repeat_long_blob_descriptor(
     mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool binary_result,
     struct mylite_field_descriptor *out_descriptor
 ) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
@@ -299,12 +422,26 @@ static bool infer_padding_repeat_long_blob_descriptor(
     }
     if (integer_constant_value(count, &count_value) && !count_value.is_unsigned &&
         count_value.signed_value < 0) {
-        *out_descriptor =
-            space_function_descriptor(database, space_function_constant_max_length(database), true);
+        uint64_t descriptor_length = binary_result ? mylite_mysql_medium_text_length + 1U
+                                                   : space_function_constant_max_length(database);
+
+        *out_descriptor = space_function_descriptor(database, descriptor_length, true);
+        if (binary_result) {
+            out_descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
+            out_descriptor->charset_id = mylite_mysql_binary_charset_id;
+        }
         return true;
     }
-    *out_descriptor =
-        space_function_descriptor(database, space_function_dynamic_length(database), true);
+    *out_descriptor = space_function_descriptor(
+        database,
+        binary_result ? mylite_mysql_medium_text_length + 1U
+                      : space_function_dynamic_length(database),
+        true
+    );
+    if (binary_result) {
+        out_descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
+        out_descriptor->charset_id = mylite_mysql_binary_charset_id;
+    }
     return true;
 }
 
@@ -320,6 +457,8 @@ int mylite_expression_descriptor_infer_concat_function(
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     uint64_t length = 0U;
+    bool binary_result = false;
+    int status = MYLITE_OK;
 
     if (callbacks == NULL || callbacks->infer_expression_descriptor == NULL ||
         out_matched == NULL) {
@@ -332,15 +471,21 @@ int mylite_expression_descriptor_infer_concat_function(
     }
 
     length = concat_function_result_length(database, plan, arguments, callbacks);
+    status = infer_concat_binary_result(database, plan, arguments, &binary_result, callbacks);
+    if (status != MYLITE_OK) {
+        return status;
+    }
     *out_descriptor = (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
-        .flags = 0U,
+        .flags = binary_result ? MYLITE_FIELD_FLAG_BINARY : 0U,
         .length = length,
         .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
-        .nullable = nullable,
+        .charset_id = binary_result ? mylite_mysql_binary_charset_id
+                                    : mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
     };
-    mylite_field_descriptor_set_nullable(out_descriptor, nullable);
+    (void)nullable;
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 
@@ -650,6 +795,9 @@ static uint64_t elt_argument_result_length(
         if (descriptor.type == MYLITE_FIELD_TYPE_NULL) {
             return 0U;
         }
+        if (field_descriptor_is_binary_string(&descriptor)) {
+            return descriptor.length;
+        }
         if (descriptor.charset_id == mylite_mysql_binary_charset_id) {
             uint64_t max_bytes_per_character =
                 mylite_expression_descriptor_connection_character_max_length(database);
@@ -704,6 +852,7 @@ static uint64_t slice_string_function_result_length(
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
     const struct mylite_expression_value *value,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 ) {
     const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
@@ -729,16 +878,28 @@ static uint64_t slice_string_function_result_length(
         return repeat_function_result_length(database, plan, arguments, callbacks);
     }
     if (function_name_is_padding(name)) {
-        return padding_function_result_length(database, plan, arguments, callbacks);
+        return padding_function_result_length(database, plan, arguments, binary_result, callbacks);
     }
     if (function_name_is_left_right(name)) {
-        return left_right_function_result_length(database, plan, arguments, callbacks);
+        return left_right_function_result_length(
+            database,
+            plan,
+            arguments,
+            binary_result,
+            callbacks
+        );
     }
     if (function_name_is_replace(name)) {
-        return replace_function_result_length(database, plan, arguments, callbacks);
+        return replace_function_result_length(database, plan, arguments, binary_result, callbacks);
     }
     if (function_name_is_substring(name)) {
-        return substring_function_result_length(database, plan, arguments, callbacks);
+        return substring_function_result_length(
+            database,
+            plan,
+            arguments,
+            binary_result,
+            callbacks
+        );
     }
     if (!mylite_function_name_uses_source_length(name) && value != NULL &&
         value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
@@ -776,13 +937,14 @@ static uint64_t padding_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 ) {
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     const struct mylite_sql_ast_node *target = mylite_ast_child_at(arguments, 1U);
     uint64_t target_characters = 0U;
     uint64_t max_bytes_per_character =
-        mylite_expression_descriptor_connection_character_max_length(database);
+        binary_result ? 1U : mylite_expression_descriptor_connection_character_max_length(database);
 
     if (!nonnegative_integer_constant(target, &target_characters)) {
         return expression_text_display_length(database, plan, source, callbacks);
@@ -794,6 +956,7 @@ static uint64_t left_right_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 ) {
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
@@ -801,7 +964,7 @@ static uint64_t left_right_function_result_length(
     struct integer_constant_value target_characters = {0};
     uint64_t source_length = expression_text_display_length(database, plan, source, callbacks);
     uint64_t max_bytes_per_character =
-        mylite_expression_descriptor_connection_character_max_length(database);
+        binary_result ? 1U : mylite_expression_descriptor_connection_character_max_length(database);
     uint64_t target_length = 0U;
 
     if (!integer_constant_value(target, &target_characters)) {
@@ -822,13 +985,19 @@ static uint64_t replace_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 ) {
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     const struct mylite_sql_ast_node *replacement = mylite_ast_child_at(arguments, 2U);
     uint64_t source_length = expression_text_display_length(database, plan, source, callbacks);
-    uint64_t multiplier =
-        replace_function_replacement_multiplier(database, plan, replacement, callbacks);
+    uint64_t multiplier = replace_function_replacement_multiplier(
+        database,
+        plan,
+        replacement,
+        binary_result,
+        callbacks
+    );
 
     return multiply_text_display_length(source_length, multiplier);
 }
@@ -837,6 +1006,7 @@ static uint64_t substring_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 ) {
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
@@ -844,7 +1014,7 @@ static uint64_t substring_function_result_length(
     const struct mylite_sql_ast_node *length = mylite_ast_child_at(arguments, 2U);
     struct integer_constant_value length_value = {0};
     uint64_t max_bytes_per_character =
-        mylite_expression_descriptor_connection_character_max_length(database);
+        binary_result ? 1U : mylite_expression_descriptor_connection_character_max_length(database);
     uint64_t source_length = expression_text_display_length(database, plan, source, callbacks);
     uint64_t source_characters = string_character_capacity(source_length, max_bytes_per_character);
     uint64_t remaining_characters = substring_remaining_characters(source_characters, position);
@@ -1025,6 +1195,7 @@ static uint64_t replace_function_replacement_multiplier(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *replacement,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 ) {
     struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
@@ -1037,14 +1208,28 @@ static uint64_t replace_function_replacement_multiplier(
         descriptor.type == MYLITE_FIELD_TYPE_NULL) {
         return 1U;
     }
+    if (field_descriptor_is_binary_string(&descriptor)) {
+        return descriptor.length > 1U ? descriptor.length - 1U : 1U;
+    }
     if (mylite_expression_descriptor_has_text_result(&descriptor) ||
         descriptor.type == MYLITE_FIELD_TYPE_BLOB) {
+        if (binary_result) {
+            return descriptor.length > 1U ? descriptor.length - 1U : 1U;
+        }
         return replace_function_text_multiplier(descriptor.length, max_bytes_per_character);
     }
     if (mylite_expression_descriptor_has_numeric_result(&descriptor)) {
         return replace_function_numeric_multiplier(&descriptor);
     }
     return 1U;
+}
+
+static bool field_descriptor_is_binary_string(const struct mylite_field_descriptor *descriptor) {
+    return descriptor != NULL &&
+           ((descriptor->flags & MYLITE_FIELD_FLAG_BINARY) != 0U ||
+            descriptor->charset_id == mylite_mysql_binary_charset_id) &&
+           (mylite_expression_descriptor_has_text_result(descriptor) ||
+            descriptor->type == MYLITE_FIELD_TYPE_BLOB);
 }
 
 static uint64_t replace_function_text_multiplier(

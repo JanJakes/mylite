@@ -332,6 +332,13 @@ MySQL 8.4.9 runtime before each item is marked complete.
       now infer MySQL-shaped connection-character-set string widths, while
       dynamic, `NULL`, and negative target/count expressions infer the
       MySQL-observed nullable `LONG_BLOB` descriptors.
+      Supported string functions over `VARBINARY` sources, including
+      `CONCAT()`, `CONCAT_WS()`, `LEFT()` / `RIGHT()`, `SUBSTRING()` /
+      `SUBSTR()` / `MID()`, `SUBSTRING_INDEX()`, `TRIM()` / `LTRIM()` /
+      `RTRIM()`, `REVERSE()`, `LPAD()` / `RPAD()`, `REPEAT()`, `REPLACE()`,
+      and `INSERT()`, now infer MySQL-shaped binary `VAR_STRING` descriptors
+      with byte-counted lengths, collation id 63, decimals 31, and the
+      `BINARY` flag.
       `FOUND_ROWS()` now reports MySQL-shaped signed `LONGLONG` flags while
       neighboring session integer functions retain their verified signedness.
       Remaining expression and other SQLite-backed result metadata gaps are

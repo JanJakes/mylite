@@ -12,11 +12,11 @@ built-ins: no-table `SELECT`, current table-backed projection, `WHERE`,
 
 Out of scope:
 
-- binary-string-specific result typing and display behavior
+- binary-string runtime behavior beyond the current value model
 - `max_allowed_packet` result-size enforcement
 - full collation aggregation and coercibility
 - SQL-mode-dependent stored or loadable function name resolution
-- exact metadata parity for every `NULL` and binary argument combination
+- exact metadata parity for every `NULL` argument combination
 
 ## Sources
 
@@ -108,7 +108,9 @@ Wrong arity is a syntax error in MySQL 8.4.9:
 
 For the supported text-string path, `INSERT()` returns `VAR_STRING` with the
 current connection collation, MySQL's not-fixed decimals marker (`31`),
-nullable metadata, and no numeric/binary flags.
+nullable metadata, and no numeric/binary flags. Binary-source table-backed
+`INSERT()` results use binary collation id `63`, byte-counted source and
+replacement widths, and the `BINARY` flag.
 
 Constant result metadata was verified:
 
@@ -117,6 +119,7 @@ Constant result metadata was verified:
 | `INSERT('Quadratic',3,4,'What')` | `utf8mb4` | `VAR_STRING` | `255` | `52` | `31` | none |
 | `INSERT('abc',NULL,1,'x')` | `utf8mb4` | `VAR_STRING` | `255` | `16` | `31` | none |
 | `INSERT('Quadratic',3,4,'What')` | `latin1` | `VAR_STRING` | `8` | `13` | `31` | none |
+| `INSERT(varbinary_col,2,2,'-')` | `utf8mb4` | `VAR_STRING` | `63` | source octet length + 4 | `31` | `BINARY` |
 
 Observed display length for ordinary constant and table-column text arguments
 is based on the maximum source text length plus maximum replacement text
@@ -195,6 +198,6 @@ Add C tests for:
 
 After implementation and verification, the `INSERT()` row in
 `COMPATIBILITY.md` should move to partial support. The status remains partial
-because binary-string-specific typing, `max_allowed_packet`, full
+because binary-string runtime behavior, `max_allowed_packet`, full
 collation/coercibility, exact all-`NULL` metadata, and full MySQL diagnostic
 fidelity are deferred.

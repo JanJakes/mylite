@@ -16,7 +16,7 @@ scalar built-ins: no-table `SELECT`, current table-backed projection, `WHERE`,
 
 Out of scope:
 
-- binary-string-specific result typing and display behavior
+- binary-string runtime behavior beyond the current value model
 - `max_allowed_packet` result-size enforcement
 - full collation aggregation and coercibility
 - exact warning promotion parity for every string-to-integer coercion path
@@ -159,9 +159,11 @@ Wrong-arity `LPAD()` and `RPAD()` calls raise MySQL error 1582.
 
 ## Result metadata
 
-The implemented functions return `VAR_STRING` with the current connection
-collation, MySQL's not-fixed decimals marker (`31`), nullable metadata, and no
-numeric/binary flags for the supported paths.
+The implemented functions return `VAR_STRING` with MySQL's not-fixed decimals
+marker (`31`) and nullable metadata. Text-source results use the current
+connection collation and no numeric/binary flags. Binary-source `REVERSE()`,
+`LPAD()`, `RPAD()`, and `REPEAT()` results use binary collation id `63`,
+byte-counted lengths, and the `BINARY` flag.
 
 Constant result metadata was verified:
 
@@ -196,9 +198,23 @@ Table-backed constant-width metadata was also verified for `utf8mb4`:
 | `RPAD(s,-1,'.')` | `LONG_BLOB` | `255` | `67108864` | `31` | none |
 | `REPEAT(s,-1)` | `LONG_BLOB` | `255` | `67108864` | `31` | none |
 
-Variable or `NULL` target/count metadata uses MySQL's dynamic `LONG_BLOB`
-width. Negative literal target/count metadata uses the same connection
-character-set multiplier as the maximum constant-width padding path.
+For text sources, variable or `NULL` target/count metadata uses MySQL's dynamic
+`LONG_BLOB` width, and negative literal target/count metadata uses the same
+connection-character-set multiplier as the maximum constant-width padding path.
+For binary sources, variable, `NULL`, and negative target/count metadata uses
+the binary `LONG_BLOB` width `16777216`.
+
+Verified table-backed binary-source metadata over `vb VARBINARY(12)` with
+`SET NAMES utf8mb4`:
+
+| Expression | Type | Collation id | Length | Decimals | Flags |
+| --- | --- | ---: | ---: | ---: | --- |
+| `REVERSE(vb)` | `VAR_STRING` | `63` | `12` | `31` | `BINARY` |
+| `LPAD(vb,7,'.')` | `VAR_STRING` | `63` | `7` | `31` | `BINARY` |
+| `RPAD(vb,7,'.')` | `VAR_STRING` | `63` | `7` | `31` | `BINARY` |
+| `REPEAT(vb,3)` | `VAR_STRING` | `63` | `36` | `31` | `BINARY` |
+| `LPAD(vb,n,'.')` | `LONG_BLOB` | `63` | `16777216` | `31` | `BINARY` |
+| `REPEAT(vb,n)` | `LONG_BLOB` | `63` | `16777216` | `31` | `BINARY` |
 
 ## Parser and AST design
 
@@ -263,6 +279,6 @@ Add C tests for:
 
 After implementation and verification, the `REPEAT()`, `SPACE()`,
 `REVERSE()`, `LPAD()`, and `RPAD()` rows in `COMPATIBILITY.md` should move to
-partial support. The status remains partial because binary-string-specific
-typing, `max_allowed_packet`, complete collation/coercibility behavior, and
+partial support. The status remains partial because binary-string runtime
+behavior, `max_allowed_packet`, complete collation/coercibility behavior, and
 full MySQL diagnostic fidelity are deferred.

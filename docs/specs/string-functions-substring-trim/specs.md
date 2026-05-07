@@ -23,8 +23,7 @@ Out of scope:
   `docs/specs/substring-index-function/specs.md` slice
 - `LOCATE()`, `POSITION()`, and `INSTR()`
 - `LPAD()`, `RPAD()`, `REPEAT()`, `REVERSE()`, `HEX()`, and `UNHEX()`
-- binary-string-specific metadata and display behavior beyond the current
-  MyLite text value model
+- binary-string runtime behavior beyond the current MyLite value model
 - full collation coercibility and character-set aggregation
 - exact numeric error-code exposure for MyLite's current unsupported-function
   prepare errors, except where the parser naturally rejects syntax
@@ -164,6 +163,9 @@ available. The trim family uses the source string's declared length, which
 matches observed constant metadata. `LOWER` / `LCASE` and `UPPER` / `UCASE`
 derive table-backed string metadata from the argument descriptor, preserving
 source declared length and binary charset/flags for binary strings.
+Binary-source `CONCAT_WS()`, `SUBSTRING()`, `SUBSTR()`, `MID()`, `TRIM()`,
+`LTRIM()`, and `RTRIM()` expressions use binary collation id `63`,
+byte-counted lengths, and the `BINARY` flag.
 
 Verified constant metadata with `SET NAMES utf8mb4`:
 
@@ -188,6 +190,15 @@ Verified table-backed `SUBSTRING()` metadata over `s VARCHAR(12)` and
 | `SUBSTRING(s,2,3)` | `VAR_STRING` | `255` | `12` | `31` | none |
 | `SUBSTR(s,n,3)` | `VAR_STRING` | `255` | `12` | `31` | none |
 | `MID(s,2,n)` | `VAR_STRING` | `255` | `44` | `31` | none |
+
+Verified table-backed binary-source metadata over `vb VARBINARY(12)` with
+`SET NAMES utf8mb4`:
+
+| Expression | Type | Collation id | Length | Decimals | Flags |
+| --- | --- | ---: | ---: | ---: | --- |
+| `CONCAT_WS('.', vb, s)` | `VAR_STRING` | `63` | `64` | `31` | `BINARY` |
+| `SUBSTRING(vb,2,3)` | `VAR_STRING` | `63` | `3` | `31` | `BINARY` |
+| `TRIM(vb)` | `VAR_STRING` | `63` | `12` | `31` | `BINARY` |
 | `SUBSTRING(s,n,n)` | `VAR_STRING` | `255` | `48` | `31` | none |
 | `SUBSTRING(s,-2,n)` | `VAR_STRING` | `255` | `8` | `31` | none |
 | `SUBSTRING(s,2)` | `VAR_STRING` | `255` | `44` | `31` | none |
@@ -282,5 +293,5 @@ Add C tests for:
 After implementation and verification, the `CONCAT_WS()`, `SUBSTRING()`,
 `SUBSTR()`, `MID()`, `TRIM()`, `LTRIM()`, and `RTRIM()` rows in
 `COMPATIBILITY.md` should move to MyLite's reduced-fidelity implemented status,
-with notes about current text-function call sites and deferred binary,
-collation/coercibility, and exact native error-code surfaces.
+with notes about current text-function call sites and deferred binary runtime
+behavior, collation/coercibility, and exact native error-code surfaces.

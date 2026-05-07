@@ -593,6 +593,9 @@ resolvetype(A) ::= REPLACE.                  {A = OE_Replace;}
 cmd ::= DROP TABLE ifexists(E) fullname(X). {
   sqlite3DropTable(pParse, X, 0, E);
 }
+cmd ::= DROP TEMP TABLE ifexists(E) fullname(X). {
+  myliteDropTemporaryTable(pParse, X, E);
+}
 %type ifexists {int}
 ifexists(A) ::= IF EXISTS.   {A = 1;}
 ifexists(A) ::= .            {A = 0;}
@@ -1361,6 +1364,18 @@ idlist(A) ::= nm(Y).
       return;
     }
     sqlite3Insert(pParse, pTabList, pSelect, pColumns, onError, pUpsert);
+  }
+
+  static void myliteDropTemporaryTable(Parse *pParse, SrcList *pName, int noErr){
+    sqlite3 *db = pParse->db;
+    if( pName && pName->nSrc==1 && pName->a[0].u4.zDatabase==0 ){
+      pName->a[0].u4.zDatabase = sqlite3DbStrDup(db, "temp");
+      if( db->mallocFailed ){
+        sqlite3SrcListDelete(db, pName);
+        return;
+      }
+    }
+    sqlite3DropTable(pParse, pName, 0, noErr);
   }
 
 }

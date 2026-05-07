@@ -48,6 +48,8 @@ slices:
 - admit MySQL `UPDATE IGNORE` in the direct fork parser and lower it to
   SQLite's native conflict-ignore update mode for duplicate unique-key rows in
   the current CRUD subset
+- admit MySQL `DROP TEMPORARY TABLE` in the direct fork parser and route
+  unqualified targets to SQLite's `temp` schema so base tables are preserved
 - admit MySQL `ON DUPLICATE KEY UPDATE` in the direct fork parser and lower it
   to SQLite's native UPSERT update path for duplicate unique-key rows in the
   current CRUD subset, including direct `VALUES(column)` assignment references
@@ -500,6 +502,11 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
     prefix-key shape. Broader collation propagation, expression key parts,
     functional key parts, and standalone `CREATE INDEX` prefix syntax remain
     deferred.
+21. Admit MySQL `DROP TEMPORARY TABLE` syntax in the direct parser.
+    Implemented by forcing unqualified targets through SQLite's `temp` schema
+    before calling the native drop-table path, preserving MySQL's critical
+    safety property that `DROP TEMPORARY TABLE name` does not remove a
+    persistent base table with the same name.
 
 ## Lemon Grammar Direction
 
@@ -511,6 +518,7 @@ compatibility intent clear:
 cmd ::= TRUNCATE opt_table nm.
 opt_table ::= .
 opt_table ::= TABLE.
+cmd ::= DROP TEMPORARY TABLE ifexists table_name.
 
 insert_cmd ::= INSERT IGNORE.
 orconf ::= IGNORE.

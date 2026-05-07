@@ -3550,6 +3550,52 @@ static int test_wordpress_like_crud(void) {
             .context = "direct UPDATE IGNORE skips duplicate unique rows",
         }
     );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE drop_temp_shadow (id INTEGER PRIMARY KEY)",
+        "create base table shadowed by temporary table"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO main.drop_temp_shadow (id) VALUES (1)",
+        "insert base table shadow row"
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TEMPORARY TABLE drop_temp_shadow (id INTEGER PRIMARY KEY)",
+        "create temporary shadow table"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO temp.drop_temp_shadow (id) VALUES (2)",
+        "insert temporary shadow row"
+    );
+    failures += exec_sql(
+        database,
+        "DROP TEMPORARY TABLE drop_temp_shadow",
+        "drop only temporary shadow table"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(COUNT(*), ':', MIN(id)) FROM main.drop_temp_shadow",
+            .expected = "1:1",
+            .context = "direct DROP TEMPORARY TABLE preserves base table",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "SELECT * FROM temp.drop_temp_shadow",
+            .message_fragment = "no such table",
+            .context = "direct DROP TEMPORARY TABLE removes temp table",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "DROP TABLE drop_temp_shadow",
+        "drop base table after temporary shadow test"
+    );
     failures += expect_sqlite_exec_error(
         database,
         (struct expected_sqlite_error){

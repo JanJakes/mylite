@@ -1198,6 +1198,17 @@ update_statement(A) ::= UPDATE(T) joined_update_table_references(B) SET update_a
         NULL,
         NULL);
 }
+update_statement(A) ::= UPDATE(T) IGNORE(I) joined_update_table_references(B) SET
+        update_assignment_list(C) opt_where_clause(D). {
+    A = mylite_sql_parser_make_update_statement(
+        state,
+        (struct mylite_sql_parser_update_tokens){.update = T, .ignore = I},
+        mylite_sql_parser_make_from_table_references(state, T, B),
+        C,
+        D,
+        NULL,
+        NULL);
+}
 
 single_update_target(A) ::= table_name(B) opt_table_alias(C) opt_index_hint_list. {
     A = mylite_sql_parser_make_update_target(state, B, C);

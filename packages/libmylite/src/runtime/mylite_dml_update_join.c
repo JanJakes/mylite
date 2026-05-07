@@ -149,7 +149,8 @@ static int execute_joined_update_transaction(
     mylite_stmt *stmt,
     mylite_stmt *joined_stmt,
     struct mylite_joined_update_target *targets,
-    size_t target_count
+    size_t target_count,
+    bool ignore
 );
 
 static int execute_joined_update_result_row(
@@ -157,14 +158,16 @@ static int execute_joined_update_result_row(
     mylite_stmt *joined_stmt,
     const struct mylite_table_select_row *joined_row,
     struct mylite_joined_update_target *targets,
-    size_t target_count
+    size_t target_count,
+    bool ignore
 );
 
 static int execute_joined_update_target_row(
     mylite_db *database,
     mylite_stmt *joined_stmt,
     const struct mylite_table_select_row *joined_row,
-    struct mylite_joined_update_target *target
+    struct mylite_joined_update_target *target,
+    bool ignore
 );
 
 static bool joined_update_target_row_is_present(
@@ -197,6 +200,7 @@ static int apply_joined_update_assignments(
     mylite_stmt *joined_stmt,
     const struct mylite_table_select_row *joined_row,
     const struct mylite_joined_update_target *target,
+    bool ignore,
     struct mylite_update_row *candidate
 );
 
@@ -206,6 +210,7 @@ static int evaluate_joined_update_assignment(
     const struct mylite_table_select_row *joined_row,
     const struct mylite_joined_update_target *target,
     const struct mylite_joined_update_assignment *assignment,
+    bool ignore,
     struct mylite_expression_value *out_value
 );
 
@@ -262,7 +267,13 @@ int mylite_dml_execute_joined_update_statement(
         );
     }
     if (status == MYLITE_OK) {
-        status = execute_joined_update_transaction(stmt, &joined_stmt, targets, target_count);
+        status = execute_joined_update_transaction(
+            stmt,
+            &joined_stmt,
+            targets,
+            target_count,
+            stmt->update.ignore
+        );
     }
     if (status == MYLITE_OK) {
         for (size_t index = 0U; index < target_count; ++index) {
@@ -743,7 +754,8 @@ static int execute_joined_update_transaction(
     mylite_stmt *stmt,
     mylite_stmt *joined_stmt,
     struct mylite_joined_update_target *targets,
-    size_t target_count
+    size_t target_count,
+    bool ignore
 ) {
     struct mylite_statement_atomicity atomicity = {0};
     int status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
@@ -760,7 +772,8 @@ static int execute_joined_update_transaction(
             joined_stmt,
             &joined_stmt->select_result.rows[row_index],
             targets,
-            target_count
+            target_count,
+            ignore
         );
     }
     if (status == MYLITE_OK) {
@@ -782,11 +795,17 @@ static int execute_joined_update_result_row(
     mylite_stmt *joined_stmt,
     const struct mylite_table_select_row *joined_row,
     struct mylite_joined_update_target *targets,
-    size_t target_count
+    size_t target_count,
+    bool ignore
 ) {
     for (size_t index = 0U; index < target_count; ++index) {
-        int status =
-            execute_joined_update_target_row(database, joined_stmt, joined_row, &targets[index]);
+        int status = execute_joined_update_target_row(
+            database,
+            joined_stmt,
+            joined_row,
+            &targets[index],
+            ignore
+        );
 
         if (status != MYLITE_OK) {
             return status;
@@ -799,7 +818,8 @@ static int execute_joined_update_target_row(
     mylite_db *database,
     mylite_stmt *joined_stmt,
     const struct mylite_table_select_row *joined_row,
-    struct mylite_joined_update_target *target
+    struct mylite_joined_update_target *target,
+    bool ignore
 ) {
     struct mylite_update_row stored = {0};
     struct mylite_update_row candidate = {0};
@@ -823,8 +843,14 @@ static int execute_joined_update_target_row(
         status = mylite_dml_copy_update_candidate_values(database, &stored, &candidate);
     }
     if (status == MYLITE_OK) {
-        status =
-            apply_joined_update_assignments(database, joined_stmt, joined_row, target, &candidate);
+        status = apply_joined_update_assignments(
+            database,
+            joined_stmt,
+            joined_row,
+            target,
+            ignore,
+            &candidate
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_dml_apply_update_on_update_current_timestamps(
@@ -844,7 +870,7 @@ static int execute_joined_update_target_row(
             target->table,
             &target->write_table,
             &candidate,
-            false,
+            ignore,
             &ignored
         );
     }
@@ -859,9 +885,14 @@ static int execute_joined_update_target_row(
             target->table,
             &target->write_table,
             &candidate,
-            false,
+            ignore,
             &ignored
         );
+    }
+    if (status == MYLITE_OK && ignored) {
+        mylite_dml_update_row_deinit(&candidate);
+        mylite_dml_update_row_deinit(&stored);
+        return MYLITE_OK;
     }
     if (status == MYLITE_OK && row_changed) {
         status = mylite_dml_validate_update_child_foreign_keys(
@@ -870,9 +901,14 @@ static int execute_joined_update_target_row(
             &target->write_table,
             &stored,
             &candidate,
-            false,
+            ignore,
             &ignored
         );
+    }
+    if (status == MYLITE_OK && ignored) {
+        mylite_dml_update_row_deinit(&candidate);
+        mylite_dml_update_row_deinit(&stored);
+        return MYLITE_OK;
     }
     if (status == MYLITE_OK && row_changed) {
         status = mylite_dml_validate_parent_update_foreign_keys(
@@ -880,9 +916,14 @@ static int execute_joined_update_target_row(
             target->table,
             &stored,
             &candidate,
-            false,
+            ignore,
             &ignored
         );
+    }
+    if (status == MYLITE_OK && ignored) {
+        mylite_dml_update_row_deinit(&candidate);
+        mylite_dml_update_row_deinit(&stored);
+        return MYLITE_OK;
     }
     if (status == MYLITE_OK && row_changed) {
         status = mylite_dml_apply_parent_update_foreign_key_actions(
@@ -984,6 +1025,7 @@ static int apply_joined_update_assignments(
     mylite_stmt *joined_stmt,
     const struct mylite_table_select_row *joined_row,
     const struct mylite_joined_update_target *target,
+    bool ignore,
     struct mylite_update_row *candidate
 ) {
     for (size_t index = 0U; index < target->assignment_count; ++index) {
@@ -1002,6 +1044,7 @@ static int apply_joined_update_assignments(
             joined_row,
             target,
             assignment,
+            ignore,
             &value
         );
         if (status != MYLITE_OK) {
@@ -1022,6 +1065,7 @@ static int evaluate_joined_update_assignment(
     const struct mylite_table_select_row *joined_row,
     const struct mylite_joined_update_target *target,
     const struct mylite_joined_update_assignment *assignment,
+    bool ignore,
     struct mylite_expression_value *out_value
 ) {
     const struct mylite_insert_table_column *column =
@@ -1039,7 +1083,7 @@ static int evaluate_joined_update_assignment(
             database,
             column,
             assignment->value,
-            false,
+            ignore,
             out_value
         );
     } else {
@@ -1071,7 +1115,7 @@ static int evaluate_joined_update_assignment(
         }
     }
     if (status == MYLITE_OK) {
-        status = mylite_dml_validate_update_assignment_value(database, column, false, out_value);
+        status = mylite_dml_validate_update_assignment_value(database, column, ignore, out_value);
     }
     return status;
 }

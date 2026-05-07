@@ -3,15 +3,16 @@
 ## Scope
 
 This feature specifies the first MyLite slice of MySQL-compatible
-`UPDATE IGNORE` behavior for the single-table `UPDATE` surface that MyLite
-already executes.
+`UPDATE IGNORE` behavior for the single-table and joined `UPDATE` surfaces that
+MyLite already executes.
 
 In scope:
 
 - parsing and AST/runtime plan storage for `UPDATE IGNORE table_name SET ...`
+  and `UPDATE IGNORE ... JOIN ... SET ...`
 - duplicate primary-key and unique-key row skipping with warning 1062
 - data-conversion, temporal, string-truncation, and explicit `NULL`
-  not-null assignment demotion for single-table updates
+  not-null assignment demotion for single-table and joined updates
 - child foreign-key update row skipping with warning 1452
 - parent foreign-key `RESTRICT`, `NO ACTION`, and InnoDB-style `SET DEFAULT`
   row skipping with warning 1451
@@ -21,7 +22,6 @@ In scope:
 
 Out of scope for this slice:
 
-- joined or multi-table `UPDATE IGNORE`
 - `LOW_PRIORITY`, CTEs, partition selection, and unsupported `LIMIT` forms
 - range-clipping and conversion-demotion behavior beyond the covered numeric,
   temporal, string-length, and explicit `NULL` not-null assignment cases
@@ -50,7 +50,8 @@ or implementation sources.
 
 `IGNORE` appears after the optional `LOW_PRIORITY` modifier and before the table
 reference list. MySQL accepts it for both single-table and multiple-table
-updates. The first MyLite slice accepts only the no-priority single-table form:
+updates. MyLite accepts the no-priority single-table form and the supported
+joined-update table-reference form:
 
 ```lemon
 update_statement ::= UPDATE single_update_target SET update_assignment_list
@@ -58,6 +59,9 @@ update_statement ::= UPDATE single_update_target SET update_assignment_list
 
 update_statement ::= UPDATE IGNORE single_update_target SET update_assignment_list
     opt_where_clause opt_order_by_clause opt_update_limit_clause.
+
+update_statement ::= UPDATE IGNORE joined_update_table_references SET
+    update_assignment_list opt_where_clause.
 ```
 
 For duplicate-key conflicts, MySQL does not update the conflicting row, records
@@ -73,6 +77,23 @@ INSERT INTO dup_t VALUES (1,1,10),(2,2,20),(3,3,30);
 UPDATE IGNORE dup_t
 SET u = CASE id WHEN 2 THEN 1 ELSE 30 END
 WHERE id IN (2,3) ORDER BY id;
+```
+
+MySQL changes row `id=3`, skips row `id=2`, reports affected rows `1`, and
+records one warning 1062.
+
+The same duplicate-key demotion applies to the supported joined-update surface.
+Verified joined duplicate-key probe:
+
+```sql
+CREATE TABLE join_dup(id INT PRIMARY KEY, u INT UNIQUE, v INT);
+CREATE TABLE join_src(id INT PRIMARY KEY, keep INT);
+INSERT INTO join_dup VALUES (1,1,10),(2,2,20),(3,3,30);
+INSERT INTO join_src VALUES (2,1),(3,1);
+UPDATE IGNORE join_dup JOIN join_src ON join_dup.id = join_src.id
+SET join_dup.u = CASE join_dup.id WHEN 2 THEN 1 ELSE 30 END,
+    join_dup.v = join_dup.v + 1
+WHERE join_src.keep = 1;
 ```
 
 MySQL changes row `id=3`, skips row `id=2`, reports affected rows `1`, and
@@ -109,19 +130,49 @@ reports one affected row, and records warnings 1366, 1265, and 1265 in
 assignment order. Explicit `NULL` assignments to `NOT NULL` columns coerce to
 implicit defaults with warning 1048 per column.
 
+The joined-update form uses the same assignment coercions. Verified joined
+coercion probe:
+
+```sql
+CREATE TABLE join_coerce(
+  id INT PRIMARY KEY,
+  i INT NOT NULL,
+  d DATE NOT NULL,
+  v VARCHAR(3) NOT NULL
+);
+CREATE TABLE join_source(id INT PRIMARY KEY, marker INT);
+INSERT INTO join_coerce VALUES
+  (1,1,'2024-01-01','abc'),
+  (2,2,'2024-01-02','def');
+INSERT INTO join_source VALUES (1,1),(2,1);
+UPDATE IGNORE join_coerce
+JOIN join_source ON join_coerce.id = join_source.id
+SET join_coerce.i = 'bad',
+    join_coerce.d = '2022-31-01',
+    join_coerce.v = 'abcdef'
+WHERE join_coerce.id = 1;
+```
+
+MySQL changes row `id=1` to `i = 0`, `d = '0000-00-00'`, and `v = 'abc'`,
+reports one affected row, and records warnings 1366, 1265, and 1265.
+The joined explicit-`NULL` probe reports one affected row, stores implicit
+defaults, and records three warning 1048 entries in assignment order.
+
 `UPDATE IGNORE` does not make parse errors, unknown target tables, unknown
 assignment columns, unsupported expressions, allocation failures, or SQLite I/O
 failures ignorable.
 
 ## MyLite Design
 
-The parser records an `update_ignore` flag on single-table update AST nodes.
+The parser records an `update_ignore` flag on single-table and joined update
+AST nodes.
 The DML copy layer carries that flag into `struct mylite_update_plan`.
 
-Single-table update execution remains row-oriented:
+Update execution remains row-oriented:
 
 1. Materialize the matched rowset using the existing `WHERE`, `ORDER BY`, and
-   `LIMIT` logic.
+   `LIMIT` logic for single-table updates, or the joined rowset for joined
+   updates.
 2. Evaluate assignments into a candidate row.
 3. Validate unique indexes, child foreign keys, and parent foreign keys.
 4. If assignment validation reports an ignorable conversion or `NOT NULL`
@@ -146,9 +197,9 @@ skipped inside an otherwise successful statement.
 
 Runtime tests must cover:
 
-- parser acceptance and `update_ignore` AST flag for single-table updates
-- parser rejection for `UPDATE LOW_PRIORITY ...` and current joined
-  `UPDATE IGNORE ... JOIN ...` gap
+- parser acceptance and `update_ignore` AST flag for single-table and joined
+  updates
+- parser rejection for `UPDATE LOW_PRIORITY ...`
 - duplicate-key row skipping, warning code 1062, affected rows, and unchanged
   skipped rows
 - duplicate-key mixed valid/skipped rows where non-key assignments on the
@@ -156,12 +207,14 @@ Runtime tests must cover:
 - invalid integer, invalid date, string truncation, and explicit `NULL`
   `NOT NULL` assignment coercion with MySQL warning codes, affected rows, and
   stored values
+- joined `UPDATE IGNORE` duplicate-key skipping, invalid-assignment coercion,
+  and explicit `NULL` `NOT NULL` assignment coercion
 - child FK row skipping, warning code 1452, affected rows, and unchanged
   skipped rows
 - parent FK row skipping, warning code 1451, affected rows, and updates to
   unreferenced rows
 - `foreign_key_checks = 0` allowing the otherwise violating child update
 
-Compatibility matrix and feedback task updates must keep joined
-`UPDATE IGNORE`, insert-path conversion demotion, and range-clipping edge cases
-listed as deferred until implemented.
+Compatibility matrix and feedback task updates must keep remaining insert-path
+conversion demotion and range-clipping edge cases listed as deferred until
+implemented.

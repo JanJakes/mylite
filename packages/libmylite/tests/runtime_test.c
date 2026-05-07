@@ -59159,6 +59159,101 @@ static int test_update_ignore_execution(void) {
 
     failures += execute_sql(
         database,
+        "CREATE TABLE upd_ignore_join_coerce("
+        "id INT PRIMARY KEY, i INT NOT NULL, d DATE NOT NULL, v VARCHAR(3) NOT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE upd_ignore_join_source(id INT PRIMARY KEY, marker INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO upd_ignore_join_coerce "
+        "VALUES (1,1,'2024-01-01','abc'),(2,2,'2024-01-02','def')",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO upd_ignore_join_source VALUES (1,1),(2,1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE upd_ignore_join_coerce "
+        "JOIN upd_ignore_join_source "
+        "ON upd_ignore_join_coerce.id = upd_ignore_join_source.id "
+        "SET upd_ignore_join_coerce.i = 'bad', "
+        "upd_ignore_join_coerce.d = '2022-31-01', "
+        "upd_ignore_join_coerce.v = 'abcdef' "
+        "WHERE upd_ignore_join_coerce.id = 1",
+        1,
+        "joined update ignore conversion affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "joined update ignore conversion warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "joined update ignore incorrect integer warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "joined update ignore invalid date warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_data_truncated,
+        "joined update ignore string truncation warning"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, i, d, v FROM upd_ignore_join_coerce ORDER BY id",
+        coerce_columns,
+        4,
+        coerce_values,
+        2,
+        "joined update ignore coerces invalid assignments"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE upd_ignore_join_coerce "
+        "JOIN upd_ignore_join_source "
+        "ON upd_ignore_join_coerce.id = upd_ignore_join_source.id "
+        "SET upd_ignore_join_coerce.i = NULL, "
+        "upd_ignore_join_coerce.d = NULL, "
+        "upd_ignore_join_coerce.v = NULL "
+        "WHERE upd_ignore_join_coerce.id = 2",
+        1,
+        "joined update ignore null coercion affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 3, "joined update ignore null warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_bad_null,
+        "joined update ignore null integer warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_bad_null,
+        "joined update ignore null date warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_bad_null,
+        "joined update ignore null string warning"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, i, d, v FROM upd_ignore_join_coerce ORDER BY id",
+        coerce_columns,
+        4,
+        null_coerce_values,
+        2,
+        "joined update ignore coerces null not-null assignments"
+    );
+
+    failures += execute_sql(
+        database,
         "CREATE TABLE upd_ignore_dup(id INT PRIMARY KEY, u INT UNIQUE, v INT)",
         MYLITE_DONE
     );
@@ -59190,6 +59285,58 @@ static int test_update_ignore_execution(void) {
         duplicate_values,
         3,
         "update ignore duplicate skips full row"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE upd_ignore_join_dup(id INT PRIMARY KEY, u INT UNIQUE, v INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE upd_ignore_join_dup_source(id INT PRIMARY KEY, keep INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO upd_ignore_join_dup VALUES (1,1,10),(2,2,20),(3,3,30)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO upd_ignore_join_dup_source VALUES (2,1),(3,1)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE upd_ignore_join_dup "
+        "JOIN upd_ignore_join_dup_source "
+        "ON upd_ignore_join_dup.id = upd_ignore_join_dup_source.id "
+        "SET upd_ignore_join_dup.u = "
+        "CASE upd_ignore_join_dup.id WHEN 2 THEN 1 ELSE 30 END, "
+        "upd_ignore_join_dup.v = upd_ignore_join_dup.v + 1 "
+        "WHERE upd_ignore_join_dup_source.keep = 1",
+        1,
+        "joined update ignore duplicate affected rows"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "joined update ignore duplicate warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_entry,
+        "joined update ignore duplicate warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, u, v FROM upd_ignore_join_dup ORDER BY id",
+        duplicate_columns,
+        3,
+        duplicate_values,
+        3,
+        "joined update ignore duplicate skips full row"
     );
 
     failures +=

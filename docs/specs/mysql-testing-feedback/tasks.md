@@ -212,8 +212,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `IGNORE` demotion beyond the currently covered `INSERT IGNORE` invalid
       integer, integer range, invalid date, and `VARCHAR` truncation slice plus
       single-table `UPDATE IGNORE` numeric, temporal, string-length, `NULL`
-      not-null, duplicate-key, and foreign-key slices. Signed and unsigned
-      `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`, and covered `BIGINT` range
+      not-null, duplicate-key, and foreign-key slices plus joined
+      `UPDATE IGNORE` assignment coercion, explicit `NULL` not-null coercion,
+      and duplicate-key slices. Signed and unsigned `TINYINT`, `SMALLINT`,
+      `MEDIUMINT`, `INT`, and covered `BIGINT` range
       clipping, plus first-slice `FLOAT`/`DOUBLE` target clipping, is covered
       for strict, non-strict, `INSERT IGNORE`, and single-table `UPDATE IGNORE`
       paths. `TINYTEXT` and `TINYBLOB`

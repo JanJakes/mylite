@@ -7822,8 +7822,25 @@ static int test_update_single_table_syntax(void) {
 
     failures += parse_sql(
         "UPDATE IGNORE t JOIN u ON t.id = u.id SET t.a = u.a",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = child_at(result.root, 0U);
+    if (statement == NULL || !statement->update_ignore) {
+        fprintf(stderr, "Expected joined UPDATE IGNORE flag\n");
+        ++failures;
+    }
+    from_clause = child_at(statement, 0U);
+    assignments = child_at(statement, 1U);
+    failures += expect_node(
+        from_clause,
+        MYLITE_SQL_AST_FROM_TABLE_REFERENCES,
+        "joined update ignore from clause"
+    );
+    failures += expect_span_text(
+        child_at(child_at(assignments, 0U), 0U),
+        "t.a",
+        "joined update ignore target"
     );
     mylite_sql_parse_result_deinit(&result);
 

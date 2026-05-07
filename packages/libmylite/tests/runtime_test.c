@@ -13021,6 +13021,60 @@ static int test_hex_bit_literal_execution(void) {
     static const char *const binary_cast_values[] =
         {"610062", "3", "610062", "3", "610062", "3", "6100", "2", "610062", "3"};
     static const unsigned char odd_width_bit_literal[] = {0x00U, 0x01U};
+    static const struct expected_result_metadata literal_metadata[] = {
+        {"prefixed_hex",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         2U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM,
+         0},
+        {"empty_hex",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         0U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM,
+         0},
+        {"prefixed_bit",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         2U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         0},
+        {"odd_bit",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         2U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         0},
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -13095,6 +13149,31 @@ static int test_hex_bit_literal_execution(void) {
         "odd-width bit literal raw bytes"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "odd-width bit literal done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE DATABASE literal_metadata_db", MYLITE_DONE);
+    failures += execute_sql(database, "USE literal_metadata_db", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE literal_metadata_empty (id INT)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT 0x417a AS prefixed_hex, "
+        "x'' AS empty_hex, "
+        "0b0100000101111010 AS prefixed_bit, "
+        "0b000000001 AS odd_bit "
+        "FROM literal_metadata_empty WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        literal_metadata,
+        (int)(sizeof(literal_metadata) / sizeof(literal_metadata[0])),
+        "hex bit literal zero-row metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hex bit literal zero-row done");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "hex bit literal zero-row warning count");
     mylite_finalize(stmt);
 
     mylite_close(database);

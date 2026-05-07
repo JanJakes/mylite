@@ -17,6 +17,20 @@ static struct mylite_field_descriptor temporal_literal_descriptor(
     enum mylite_field_type type
 );
 
+static struct mylite_field_descriptor hex_literal_descriptor(
+    const struct mylite_sql_ast_node *expression
+);
+
+static struct mylite_field_descriptor bit_literal_descriptor(
+    const struct mylite_sql_ast_node *expression
+);
+
+static uint64_t hex_literal_byte_length(const struct mylite_sql_ast_node *expression);
+
+static uint64_t bit_literal_byte_length(const struct mylite_sql_ast_node *expression);
+
+static size_t literal_digit_count(const struct mylite_sql_ast_node *expression);
+
 static unsigned int temporal_literal_fraction_digits(const struct mylite_sql_ast_node *expression);
 
 int mylite_expression_descriptor_infer_literal(
@@ -55,7 +69,11 @@ int mylite_expression_descriptor_infer_literal(
         mylite_field_descriptor_set_not_null(&descriptor, true);
         break;
     case MYLITE_SQL_AST_LITERAL_HEX:
+        descriptor = hex_literal_descriptor(expression);
+        break;
     case MYLITE_SQL_AST_LITERAL_BIT:
+        descriptor = bit_literal_descriptor(expression);
+        break;
     case MYLITE_SQL_AST_LITERAL_NONE:
         descriptor = mylite_expression_descriptor_from_value(value);
         break;
@@ -72,6 +90,57 @@ int mylite_expression_descriptor_infer_literal(
 
     *out_descriptor = descriptor;
     return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor hex_literal_descriptor(
+    const struct mylite_sql_ast_node *expression
+) {
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY,
+        .length = hex_literal_byte_length(expression),
+        .decimals = 0U,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = false,
+    };
+}
+
+static struct mylite_field_descriptor bit_literal_descriptor(
+    const struct mylite_sql_ast_node *expression
+) {
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+        .length = bit_literal_byte_length(expression),
+        .decimals = 0U,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = false,
+    };
+}
+
+static uint64_t hex_literal_byte_length(const struct mylite_sql_ast_node *expression) {
+    size_t digits = literal_digit_count(expression);
+
+    return (uint64_t)((digits + 1U) / 2U);
+}
+
+static uint64_t bit_literal_byte_length(const struct mylite_sql_ast_node *expression) {
+    size_t digits = literal_digit_count(expression);
+
+    return (uint64_t)((digits + 7U) / 8U);
+}
+
+static size_t literal_digit_count(const struct mylite_sql_ast_node *expression) {
+    const char *text = expression == NULL ? NULL : expression->span.text;
+    size_t length = expression == NULL ? 0U : expression->span.length;
+
+    if (text == NULL) {
+        return 0U;
+    }
+    if (length >= 3U && text[1] == '\'' && text[length - 1U] == '\'') {
+        return length - 3U;
+    }
+    return length < 2U ? 0U : length - 2U;
 }
 
 static struct mylite_field_descriptor temporal_literal_descriptor(

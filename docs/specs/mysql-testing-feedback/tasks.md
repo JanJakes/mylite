@@ -221,8 +221,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `SHOW CREATE DATABASE`, and `SHOW CREATE TABLE` target result sets are
       covered as well. Conditional scalar functions `IF`, `IFNULL`, `NULLIF`,
       and `COALESCE` now infer MySQL-shaped result descriptors for the covered
-      scalar domains. Remaining expression and other SQLite-backed result
-      metadata gaps are still tracked here.
+      scalar domains, and hex/bit literals now infer MySQL-shaped binary
+      descriptors for zero-row table-backed results. Remaining expression and
+      other SQLite-backed result metadata gaps are still tracked here.
 
 ## Test harness classification
 

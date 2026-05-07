@@ -16,7 +16,8 @@ Out of scope:
 
 - `BIT` column storage semantics
 - bit-literal numeric coercion in every MySQL type-conversion context
-- exact literal metadata for every prepared-statement and protocol surface
+- broader prepared-statement and protocol metadata outside the current result
+  column descriptor path
 - character-set introducer and SQL-mode interactions outside existing string
   literal handling
 
@@ -62,6 +63,18 @@ Representative results:
 | `LENGTH(0b000000001)` | `2` |
 | `HEX(0b000000001)` | `0001` |
 
+## Metadata
+
+MySQL reports hex and bit literals as binary `VAR_STRING` result columns even
+when a table-backed query returns zero rows:
+
+| Expression | Type | Length | Decimals | Charset | Flags |
+| --- | --- | --- | --- | --- | --- |
+| `0x417a` | `VAR_STRING` | `2` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY` |
+| `x''` | `VAR_STRING` | `0` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY` |
+| `0b0100000101111010` | `VAR_STRING` | `2` | `0` | `binary` | `NOT_NULL BINARY` |
+| `0b000000001` | `VAR_STRING` | `2` | `0` | `binary` | `NOT_NULL BINARY` |
+
 ## Runtime Design
 
 The parser continues to produce `MYLITE_SQL_AST_LITERAL_HEX` and
@@ -78,6 +91,9 @@ The evaluator:
   embedded NUL bytes survive nested functions such as `HEX()` and `LENGTH()`
 - exposes the byte length through `mylite_column_bytes()` so clients can read
   binary strings that begin with `0x00`
+- derives result-column metadata from the literal spelling so zero-row
+  table-backed result sets do not need a runtime value to expose the MySQL
+  binary-string descriptor
 
 No storage or file-format changes are required.
 

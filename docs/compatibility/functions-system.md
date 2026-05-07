@@ -6,7 +6,7 @@ miscellaneous system helpers.
 | Function | Status | Notes |
 | --- | --- | --- |
 | `BENCHMARK()` | ❌ | Repeatedly execute an expression |
-| `CONNECTION_ID()` | ❌ | Return connection ID (thread ID) for the connection |
+| `CONNECTION_ID()` | 🟡 | Limited one-row scalar `SELECT CONNECTION_ID()` with optional `FROM DUAL`; returns a MyLite process-local nonzero handle id; no server thread, process-list, Performance Schema, `pseudo_thread_id`, aliases, table-backed evaluation, or protocol metadata |
 | `CURRENT_ROLE()` | ❌ | Return current active roles |
 | `CURRENT_USER(), CURRENT_USER` | 🟡 | Limited one-row scalar select returns MyLite's embedded current identity `root@%`; no accounts, definers, roles, privileges, or table-backed evaluation |
 | `DATABASE()` | 🟡 | Limited one-row scalar `SELECT DATABASE()` with optional `FROM DUAL`; returns selected MyLite catalog schema or `NULL`; no aliases, table-backed evaluation, clauses, or general expression support |

@@ -10,6 +10,7 @@ static int test_select_expression_list(void);
 static int test_current_database_functions(void);
 static int test_current_user_identity_functions(void);
 static int test_version_function(void);
+static int test_connection_id_function(void);
 static int test_row_count_function(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
@@ -88,6 +89,7 @@ int main(void) {
     failures += test_current_database_functions();
     failures += test_current_user_identity_functions();
     failures += test_version_function();
+    failures += test_connection_id_function();
     failures += test_row_count_function();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
@@ -565,6 +567,147 @@ static int test_version_function(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT VERSION() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_connection_id_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CONNECTION_ID(), Connection_Id(), connection_id() FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONNECTION_ID_FUNCTION,
+        "connection id function"
+    );
+    failures += expect_span_text(first_expression, "CONNECTION_ID()", "connection id span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_CONNECTION_ID_FUNCTION,
+        "mixed-case connection id function"
+    );
+    failures +=
+        expect_span_text(second_expression, "Connection_Id()", "mixed-case connection id span");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_CONNECTION_ID_FUNCTION,
+        "lower connection id function"
+    );
+    failures += expect_span_text(third_expression, "connection_id()", "lower connection id span");
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "connection id from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT CONNECTION_ID (), CONNECTION_ID/**/(), CONNECTION_ID(/* inside */), "
+        "(CONNECTION_ID());",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONNECTION_ID_FUNCTION,
+        "spaced connection id function"
+    );
+    failures += expect_span_text(first_expression, "CONNECTION_ID ()", "spaced connection id span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_CONNECTION_ID_FUNCTION,
+        "comment-before-paren connection id function"
+    );
+    failures += expect_span_text(
+        second_expression,
+        "CONNECTION_ID/**/()",
+        "comment-before-paren connection id span"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_CONNECTION_ID_FUNCTION,
+        "commented connection id function"
+    );
+    failures += expect_span_text(
+        third_expression,
+        "CONNECTION_ID(/* inside */)",
+        "commented connection id span"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 3U), 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized connection id function"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT CONNECTION_ID(1), CONNECTION_ID(NULL), CONNECTION_ID(1, 2);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR,
+        "connection id integer argument error"
+    );
+    arguments = child_at(first_expression, 0U);
+    failures += expect_child_count(arguments, 1U, "connection id one argument count");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR,
+        "connection id null argument error"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR,
+        "connection id multiple argument error"
+    );
+    arguments = child_at(third_expression, 0U);
+    failures += expect_child_count(arguments, 2U, "connection id multiple argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE connection_id (connection_id INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(
+        select,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "connection id identifier table"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONNECTION_ID;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare connection id identifier");
+    failures += expect_span_text(first_expression, "CONNECTION_ID", "bare connection id span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT CONNECTION_ID() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

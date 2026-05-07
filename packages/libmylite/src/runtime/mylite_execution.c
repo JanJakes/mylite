@@ -44,7 +44,6 @@ enum {
     decimal_base = 10,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
-    ast_scan_initial_capacity = 16,
 };
 
 struct table_name_resolution {
@@ -382,21 +381,10 @@ static int execute_session_scalar_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static int select_statement_has_version_argument_count_error(
-    const struct mylite_sql_ast_node *statement,
-    bool *out_has_error
+static const char *select_statement_argument_count_error_function(
+    const struct mylite_sql_ast_node *statement
 );
-static int ast_node_contains_kind(
-    const struct mylite_sql_ast_node *node,
-    enum mylite_sql_ast_node_kind kind,
-    bool *out_contains
-);
-static int ast_scan_push_node(
-    const struct mylite_sql_ast_node ***stack,
-    size_t *count,
-    size_t *capacity,
-    const struct mylite_sql_ast_node *node
-);
+static const char *argument_count_error_function_name(const struct mylite_sql_ast_node *expression);
 static int session_scalar_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1036,6 +1024,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+    case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
@@ -1380,19 +1370,12 @@ static int execute_select_statement(
     mylite_result **out_result
 ) {
     struct planned_select plan = {0};
-    bool has_version_argument_count_error = false;
+    const char *argument_count_error_function = NULL;
     int rc = MYLITE_OK;
 
-    rc = select_statement_has_version_argument_count_error(
-        statement,
-        &has_version_argument_count_error
-    );
-    if (rc != MYLITE_OK) {
-        set_nomem_error(database);
-        return rc;
-    }
-    if (has_version_argument_count_error) {
-        set_native_function_parameter_count_error(database, "VERSION");
+    argument_count_error_function = select_statement_argument_count_error_function(statement);
+    if (argument_count_error_function != NULL) {
+        set_native_function_parameter_count_error(database, argument_count_error_function);
         return MYLITE_ERROR;
     }
     if (select_statement_is_session_scalar(statement)) {
@@ -1572,6 +1555,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+    case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
@@ -2721,108 +2706,46 @@ static int execute_session_scalar_select_statement(
     return finish_successful_result(database, result, out_result);
 }
 
-static int select_statement_has_version_argument_count_error(
-    const struct mylite_sql_ast_node *statement,
-    bool *out_has_error
+static const char *select_statement_argument_count_error_function(
+    const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *select_item = NULL;
-    int rc = MYLITE_OK;
-
-    if (out_has_error == NULL) {
-        return MYLITE_ERROR;
-    }
-    *out_has_error = false;
+    const char *function_name = NULL;
 
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
-        return MYLITE_OK;
+        return NULL;
     }
 
     select_item = child_at(select_list, 0U);
-    while (rc == MYLITE_OK && select_item != NULL && !*out_has_error) {
+    while (select_item != NULL) {
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
 
-        if (expression != NULL && expression->kind == MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR) {
-            *out_has_error = true;
-            break;
-        }
-        if (expression != NULL && expression->first_child != NULL) {
-            rc = ast_node_contains_kind(
-                expression,
-                MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR,
-                out_has_error
-            );
+        expression = unwrap_parenthesized_expression(expression);
+        function_name = argument_count_error_function_name(expression);
+        if (function_name != NULL) {
+            return function_name;
         }
         select_item = select_item->next_sibling;
     }
 
-    return rc;
+    return NULL;
 }
 
-static int ast_node_contains_kind(
-    const struct mylite_sql_ast_node *node,
-    enum mylite_sql_ast_node_kind kind,
-    bool *out_contains
+static const char *argument_count_error_function_name(
+    const struct mylite_sql_ast_node *expression
 ) {
-    const struct mylite_sql_ast_node **stack = NULL;
-    size_t count = 0U;
-    size_t capacity = 0U;
-    const struct mylite_sql_ast_node *child = NULL;
-    int rc = MYLITE_OK;
-
-    if (out_contains == NULL) {
-        return MYLITE_ERROR;
+    if (expression == NULL) {
+        return NULL;
     }
-    *out_contains = false;
-
-    rc = ast_scan_push_node(&stack, &count, &capacity, node);
-    while (rc == MYLITE_OK && count != 0U) {
-        const struct mylite_sql_ast_node *current = stack[--count];
-
-        if (current == NULL) {
-            continue;
-        }
-        if (current->kind == kind) {
-            *out_contains = true;
-            break;
-        }
-
-        child = current->first_child;
-        while (rc == MYLITE_OK && child != NULL) {
-            rc = ast_scan_push_node(&stack, &count, &capacity, child);
-            child = child->next_sibling;
-        }
+    if (expression->kind == MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR) {
+        return "CONNECTION_ID";
+    }
+    if (expression->kind == MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR) {
+        return "VERSION";
     }
 
-    free((void *)stack);
-    return rc;
-}
-
-static int ast_scan_push_node(
-    const struct mylite_sql_ast_node ***stack,
-    size_t *count,
-    size_t *capacity,
-    const struct mylite_sql_ast_node *node
-) {
-    if (*count == *capacity) {
-        size_t new_capacity = *capacity == 0U ? ast_scan_initial_capacity : *capacity * 2U;
-        const struct mylite_sql_ast_node **new_stack = NULL;
-
-        if (new_capacity < *capacity || new_capacity > SIZE_MAX / sizeof(**stack)) {
-            return MYLITE_NOMEM;
-        }
-        new_stack = (const struct mylite_sql_ast_node **)
-            realloc((void *)*stack, new_capacity * sizeof(**stack));
-        if (new_stack == NULL) {
-            return MYLITE_NOMEM;
-        }
-        *stack = new_stack;
-        *capacity = new_capacity;
-    }
-
-    (*stack)[*count] = node;
-    *count += 1U;
-    return MYLITE_OK;
+    return NULL;
 }
 
 static int session_scalar_value(
@@ -2854,6 +2777,20 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
         out_cell->value = database->session.current_user_identity;
         return MYLITE_OK;
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION: {
+        int written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRIu64,
+            database->session.connection_id
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            set_runtime_error(database, "failed to format CONNECTION_ID() value");
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    }
     case MYLITE_SQL_AST_VERSION_FUNCTION:
         out_cell->value = mylite_version();
         return MYLITE_OK;
@@ -2898,6 +2835,9 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CONNECTION_ID_FUNCTION) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_VERSION_FUNCTION) {

@@ -341,6 +341,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"CONCURRENT", 0U},
         {"CONDITION", MYLITE_SQL_KEYWORD_RESERVED},
         {"CONNECTION", 0U},
+        {"CONNECTION_ID", 0U},
         {"CONSISTENT", 0U},
         {"CONSTRAINT", MYLITE_SQL_KEYWORD_RESERVED},
         {"CONSTRAINT_CATALOG", 0U},

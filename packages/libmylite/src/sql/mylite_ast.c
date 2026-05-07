@@ -309,6 +309,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "session_user_function";
     case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
         return "system_user_function";
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+        return "connection_id_function";
+    case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
+        return "connection_id_argument_count_error";
     }
 
     return "unknown";

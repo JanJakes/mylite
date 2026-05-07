@@ -430,6 +430,7 @@ tests.
 | --- | :-: | --- | --- |
 | `DATABASE()` | 🟡 | Limited one-row scalar `SELECT DATABASE()` with optional `FROM DUAL`; returns connection-local selected schema or `NULL`. | [system functions](docs/compatibility/functions-system.md) |
 | `SCHEMA()` | 🟡 | Limited synonym for `DATABASE()` in the same scalar-select slice. | [system functions](docs/compatibility/functions-system.md) |
+| `CONNECTION_ID()` | 🟡 | Limited one-row scalar select returns a MyLite process-local nonzero handle id; no server thread, process-list, Performance Schema, or `pseudo_thread_id` semantics. | [system functions](docs/compatibility/functions-system.md) |
 | `FOUND_ROWS()` | ❌ | Rows before LIMIT. | [system functions](docs/compatibility/functions-system.md) |
 | `CURRENT_USER()` / `CURRENT_USER` | 🟡 | Limited one-row scalar select returns MyLite's embedded current identity `root@%`; no account or definer semantics. | [system functions](docs/compatibility/functions-system.md) |
 | `LAST_INSERT_ID()` | ❌ | Last auto-increment value. | [system functions](docs/compatibility/functions-system.md) |

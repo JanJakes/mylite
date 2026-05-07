@@ -3,6 +3,7 @@
 #include "mylite_file_open.h"
 #include "sqlite3.h"
 
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +16,7 @@ static int initialize_file_backed_catalog(struct mylite_db *database);
 static void destroy_database_handle(struct mylite_db *database);
 static int sqlite_status_to_mylite(int sqlite_status);
 static void initialize_session_state(struct mylite_session_state *session);
+static uint64_t allocate_session_connection_id(void);
 static void copy_session_text(char *destination, size_t destination_size, const char *source);
 
 int mylite_open_memory(mylite_db **out_db) {
@@ -303,9 +305,16 @@ static void initialize_session_state(struct mylite_session_state *session) {
     );
     session->character_set_state_is_placeholder = true;
     session->system_variables_are_placeholder = true;
+    session->connection_id = allocate_session_connection_id();
     session->previous_row_count = -1;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
+}
+
+static uint64_t allocate_session_connection_id(void) {
+    static atomic_uint_fast64_t next_connection_id = 1U;
+
+    return (uint64_t)atomic_fetch_add_explicit(&next_connection_id, 1U, memory_order_relaxed);
 }
 
 static void copy_session_text(char *destination, size_t destination_size, const char *source) {

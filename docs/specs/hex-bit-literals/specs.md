@@ -15,7 +15,8 @@ the MyLite lexer and parser already accept:
 Out of scope:
 
 - `BIT` column storage semantics
-- bit-literal numeric coercion in every MySQL type-conversion context
+- hex/bit literal numeric coercion outside explicit signed and unsigned
+  integer `CAST` / `CONVERT` targets
 - broader prepared-statement and protocol metadata outside the current result
   column descriptor path
 - character-set introducer and SQL-mode interactions outside existing string
@@ -62,6 +63,10 @@ Representative results:
 | `HEX(0b00000001)` | `01` |
 | `LENGTH(0b000000001)` | `2` |
 | `HEX(0b000000001)` | `0001` |
+| `CAST(0x3132 AS SIGNED)` | `12594` |
+| `CAST(X'3132' AS UNSIGNED)` | `12594` |
+| `CAST(0b1010 AS SIGNED)` | `10` |
+| `CAST(B'1010' AS UNSIGNED)` | `10` |
 
 ## Metadata
 
@@ -94,12 +99,16 @@ The evaluator:
 - derives result-column metadata from the literal spelling so zero-row
   table-backed result sets do not need a runtime value to expose the MySQL
   binary-string descriptor
+- uses the original literal AST for explicit signed and unsigned integer casts
+  so those targets receive the literal's numeric value rather than the decoded
+  binary string bytes
 
 No storage or file-format changes are required.
 
 ## Compatibility Status
 
 Hex and bit literal runtime evaluation is supported for the current shared
-scalar expression contexts. The status remains partial until MyLite implements
-full MySQL numeric/string coercion, `BIT` columns, and exact binary-string
-metadata across all protocol and prepared-statement surfaces.
+scalar expression contexts, including explicit signed and unsigned integer
+casts. The status remains partial until MyLite implements full MySQL
+numeric/string coercion, `BIT` columns, and exact binary-string metadata across
+all protocol and prepared-statement surfaces.

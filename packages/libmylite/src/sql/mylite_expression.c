@@ -856,6 +856,21 @@ static int eval_unsigned_cast(
     struct mylite_expression_value *out_value
 );
 
+static bool cast_literal_unsigned_integer_value(
+    const struct mylite_sql_ast_node *source,
+    uint64_t *out_integer
+);
+
+static bool cast_hex_literal_unsigned_integer_value(
+    const struct mylite_sql_ast_node *source,
+    uint64_t *out_integer
+);
+
+static bool cast_bit_literal_unsigned_integer_value(
+    const struct mylite_sql_ast_node *source,
+    uint64_t *out_integer
+);
+
 static int eval_decimal_cast(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *target,
@@ -5393,9 +5408,17 @@ static int eval_signed_cast(
 ) {
     int64_t integer = 0;
     int status = 0;
+    uint64_t literal_integer = 0U;
 
     if (value->kind == MYLITE_EXPRESSION_VALUE_REAL && value->real_value < (double)INT64_MIN) {
         return append_integer_cast_out_of_range_error(warnings, source);
+    }
+    if (cast_literal_unsigned_integer_value(source, &literal_integer)) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = signed_integer_from_uint64(literal_integer)
+        };
+        return 0;
     }
     status = cast_value_to_signed_integer(value, warnings, &integer);
     if (status != 0) {
@@ -5420,6 +5443,13 @@ static int eval_unsigned_cast(
     if (value->kind == MYLITE_EXPRESSION_VALUE_REAL && value->real_value < (double)INT64_MIN) {
         return append_integer_cast_out_of_range_error(warnings, source);
     }
+    if (cast_literal_unsigned_integer_value(source, &integer)) {
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+            .uint64_value = integer
+        };
+        return 0;
+    }
     status = cast_value_to_unsigned_integer(value, warnings, &integer);
     if (status != 0) {
         return status;
@@ -5429,6 +5459,75 @@ static int eval_unsigned_cast(
         .uint64_value = integer
     };
     return 0;
+}
+
+static bool cast_literal_unsigned_integer_value(
+    const struct mylite_sql_ast_node *source,
+    uint64_t *out_integer
+) {
+    source = mylite_sql_ast_unwrap_parenthesized_expression(source);
+    if (source == NULL || source->kind != MYLITE_SQL_AST_LITERAL || out_integer == NULL) {
+        return false;
+    }
+    if (source->literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        return cast_hex_literal_unsigned_integer_value(source, out_integer);
+    }
+    if (source->literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        return cast_bit_literal_unsigned_integer_value(source, out_integer);
+    }
+    return false;
+}
+
+static bool cast_hex_literal_unsigned_integer_value(
+    const struct mylite_sql_ast_node *source,
+    uint64_t *out_integer
+) {
+    const char *digits = NULL;
+    size_t digit_count = 0U;
+    uint64_t integer = 0U;
+
+    if (!hex_literal_digits(source, &digits, &digit_count)) {
+        return false;
+    }
+    for (size_t index = 0U; index < digit_count; ++index) {
+        int digit = hex_digit_value((unsigned char)digits[index]);
+
+        if (digit < 0) {
+            return false;
+        }
+        if (integer > (UINT64_MAX - (uint64_t)digit) / 16U) {
+            integer = UINT64_MAX;
+            continue;
+        }
+        integer = (integer * 16U) + (uint64_t)digit;
+    }
+    *out_integer = integer;
+    return true;
+}
+
+static bool cast_bit_literal_unsigned_integer_value(
+    const struct mylite_sql_ast_node *source,
+    uint64_t *out_integer
+) {
+    const char *digits = NULL;
+    size_t digit_count = 0U;
+    uint64_t integer = 0U;
+
+    if (!bit_literal_digits(source, &digits, &digit_count)) {
+        return false;
+    }
+    for (size_t index = 0U; index < digit_count; ++index) {
+        if (digits[index] != '0' && digits[index] != '1') {
+            return false;
+        }
+        if (integer > (UINT64_MAX >> 1U)) {
+            integer = UINT64_MAX;
+            continue;
+        }
+        integer = (integer << 1U) | (uint64_t)(digits[index] == '1' ? 1U : 0U);
+    }
+    *out_integer = integer;
+    return true;
 }
 
 static int eval_decimal_cast(

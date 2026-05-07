@@ -34624,6 +34624,22 @@ static int test_cast_expression_execution(void) {
         "char_value",
         "binary_value",
     };
+    static const char *const literal_integer_columns[] = {
+        "hex_signed",
+        "xhex_unsigned",
+        "bit_signed",
+        "bbit_unsigned",
+        "convert_hex_signed",
+        "convert_bit_unsigned",
+    };
+    static const char *const literal_integer_values[] = {
+        "12594",
+        "12594",
+        "10",
+        "10",
+        "12594",
+        "10",
+    };
     static const struct expected_result_metadata metadata[] = {
         {"signed_value",
          NULL,
@@ -35026,6 +35042,26 @@ static int test_cast_expression_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST rowless done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT CAST(0x3132 AS SIGNED) AS hex_signed, "
+        "CAST(X'3132' AS UNSIGNED) AS xhex_unsigned, "
+        "CAST(0b1010 AS SIGNED) AS bit_signed, "
+        "CAST(B'1010' AS UNSIGNED) AS bbit_unsigned, "
+        "CONVERT(0x3132, SIGNED) AS convert_hex_signed, "
+        "CONVERT(0b1010, UNSIGNED) AS convert_bit_unsigned",
+        literal_integer_columns,
+        (int)(sizeof(literal_integer_columns) / sizeof(literal_integer_columns[0])),
+        literal_integer_values,
+        1,
+        "CAST hex and bit literal integer values"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        0,
+        "CAST hex and bit literal integer warning count"
+    );
 
     failures += prepare_sql(
         database,

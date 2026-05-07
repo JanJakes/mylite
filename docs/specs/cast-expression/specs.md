@@ -95,6 +95,8 @@ prefix returns `0` with warning 1292.
 | `CAST(-1e20 AS SIGNED)` | error | 1690 out of range |
 | `CAST('12.5' AS SIGNED)` | `12` | 1292 truncated integer |
 | `CAST('x' AS SIGNED)` | `0` | 1292 truncated integer |
+| `CAST(0x3132 AS SIGNED)` | `12594` | none |
+| `CAST(0b1010 AS SIGNED)` | `10` | none |
 
 Unsigned integer casts produce unsigned 64-bit integer results. Negative numeric
 inputs wrap to the corresponding two's-complement unsigned value without a
@@ -108,6 +110,8 @@ warning. Negative string inputs wrap and also emit warning 1105.
 | `CAST('-1' AS UNSIGNED)` | `18446744073709551615` | 1105 negative-to-unsigned |
 | `CAST('-1.5' AS UNSIGNED)` | `18446744073709551615` | 1292 truncated integer, 1105 negative-to-unsigned |
 | `CAST('x' AS UNSIGNED)` | `0` | 1292 truncated integer |
+| `CAST(X'3132' AS UNSIGNED)` | `12594` | none |
+| `CAST(B'1010' AS UNSIGNED)` | `10` | none |
 
 Decimal casts default to precision 10 and scale 0. `DECIMAL(M)` uses scale 0,
 and `DECIMAL(M,D)` uses the supplied scale. Values are rounded to the target
@@ -303,6 +307,8 @@ the result is `NULL` without conversion warnings.
   the current MyLite numeric conversion behavior until full range diagnostics
   land
 - real inputs round halves away from zero
+- hex and bit literal inputs use the literal's unsigned integer value, not the
+  decoded binary string bytes
 - string inputs parse an optional sign and decimal integer prefix
 - string suffixes, decimal fractions, and missing digits emit warning 1292
   using `Truncated incorrect INTEGER value: '<value>'`
@@ -311,6 +317,8 @@ the result is `NULL` without conversion warnings.
 
 - integer and real inputs convert to the unsigned 64-bit representation
 - real inputs round halves away from zero before conversion
+- hex and bit literal inputs use the literal's unsigned integer value, not the
+  decoded binary string bytes
 - string inputs follow signed string parsing first
 - negative string inputs emit warning 1105 with
   `Cast to unsigned converted negative integer to its positive complement`

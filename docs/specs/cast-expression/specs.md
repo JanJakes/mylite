@@ -96,6 +96,7 @@ prefix returns `0` with warning 1292.
 | `CAST('12.5' AS SIGNED)` | `12` | 1292 truncated integer |
 | `CAST('x' AS SIGNED)` | `0` | 1292 truncated integer |
 | `CAST('12\\03' AS SIGNED)` | `12` | 1292 truncated integer |
+| `CAST('18446744073709551616' AS SIGNED)` | `-1` | 1292 truncated integer, 1105 positive-to-signed-complement |
 | `CAST(0x3132 AS SIGNED)` | `12594` | none |
 | `CAST(0b1010 AS SIGNED)` | `10` | none |
 

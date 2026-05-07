@@ -20,7 +20,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW CREATE TRIGGER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE USER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE VIEW` | ❌ | Result shape, filters, privileges |
-| `SHOW DATABASES` | ❌ | Result shape, filters, privileges |
+| `SHOW DATABASES` / `SHOW SCHEMAS` | 🟡 | Limited descriptor-driven catalog schema listing; no `LIKE`, `WHERE`, system schemas, or privileges |
 | `SHOW ENGINE` | ❌ | Subcommands and result shape |
 | `SHOW ENGINE LOGS` | ❌ | Result shape, filters, privileges |
 | `SHOW ENGINE MUTEX` | ❌ | Result shape, filters, privileges |

@@ -71,6 +71,10 @@ typedef int (*mylite_catalog_table_callback)(
     const struct mylite_catalog_table_descriptor *table,
     void *user_data
 );
+typedef int (*mylite_catalog_schema_callback)(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
 typedef int (*mylite_catalog_column_callback)(
     const struct mylite_catalog_column_descriptor *column,
     void *user_data
@@ -129,6 +133,11 @@ int mylite_catalog_delete_table_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t table_id
 );
+int mylite_catalog_delete_schema_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t schema_id
+);
 int mylite_catalog_update_table_identity_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -136,6 +145,11 @@ int mylite_catalog_update_table_identity_in_mutation(
     int64_t schema_id,
     const char *name,
     struct mylite_catalog_table_descriptor *out_table
+);
+int mylite_catalog_for_each_schema(
+    struct mylite_db *database,
+    mylite_catalog_schema_callback callback,
+    void *user_data
 );
 int mylite_catalog_for_each_table_in_schema(
     struct mylite_db *database,

@@ -158,6 +158,7 @@ static int validate_active_mutation(const struct mylite_catalog_mutation *mutati
 static int validate_positive_id(int64_t id);
 static int validate_positive_ordinal(int64_t ordinal_position);
 static int validate_generation(uint64_t generation);
+static int validate_schema_callback(mylite_catalog_schema_callback callback);
 static int validate_callback(mylite_catalog_table_callback callback);
 static int validate_column_callback(mylite_catalog_column_callback callback);
 static int u64_to_i64(uint64_t value, int64_t *out_value);
@@ -593,6 +594,77 @@ int mylite_catalog_delete_table_in_mutation(
     return finalize_statement(statement, rc);
 }
 
+int mylite_catalog_delete_schema_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t schema_id
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(schema_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "DELETE FROM _mylite_catalog_columns "
+        "WHERE table_id IN ("
+        "SELECT table_id FROM _mylite_catalog_tables WHERE schema_id = ?1"
+        ")",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_tables WHERE schema_id = ?1",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    rc = finalize_statement(statement, rc);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "DELETE FROM _mylite_catalog_schemas WHERE schema_id = ?1",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
 int mylite_catalog_update_table_identity_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,
@@ -670,6 +742,50 @@ int mylite_catalog_update_table_identity_in_mutation(
     }
 
     return MYLITE_OK;
+}
+
+int mylite_catalog_for_each_schema(
+    struct mylite_db *database,
+    mylite_catalog_schema_callback callback,
+    void *user_data
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_schema_callback(callback);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "SELECT schema_id, name, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation FROM _mylite_catalog_schemas ORDER BY name",
+        &statement
+    );
+    while (rc == MYLITE_OK) {
+        struct mylite_catalog_schema_descriptor schema = {0};
+
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            break;
+        }
+        if (sqlite_rc != SQLITE_ROW) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            break;
+        }
+
+        rc = materialize_schema(statement, &schema);
+        if (rc == MYLITE_OK) {
+            rc = callback(&schema, user_data);
+        }
+    }
+
+    return finalize_statement(statement, rc);
 }
 
 int mylite_catalog_for_each_table_in_schema(
@@ -2291,6 +2407,14 @@ static int validate_generation(uint64_t generation) {
     }
 
     return u64_to_i64(generation, &signed_generation);
+}
+
+static int validate_schema_callback(mylite_catalog_schema_callback callback) {
+    if (callback == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_callback(mylite_catalog_table_callback callback) {

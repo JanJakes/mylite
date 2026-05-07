@@ -24,8 +24,8 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| Dynamic current database | ❌ | Set and observe current database name. | [SQL schemas](docs/compatibility/sql-schemas.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md), [system functions](docs/compatibility/functions-system.md) |
-| Database listing baseline | ❌ | Lists current database and `INFORMATION_SCHEMA`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
+| Dynamic current database | 🟡 | `USE` selects catalog schemas and dropping the selected schema clears the selection; `DATABASE()` remains unsupported. | [SQL schemas](docs/compatibility/sql-schemas.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md), [system functions](docs/compatibility/functions-system.md) |
+| Database listing baseline | 🟡 | Descriptor-driven `SHOW DATABASES` / `SHOW SCHEMAS` for MyLite catalog schemas only; no system schemas, filters, or privileges. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
 | Current user identity | ❌ | Exposes `root@%`. | [SQL users, roles, and privileges](docs/compatibility/sql-users-privileges.md), [system functions](docs/compatibility/functions-system.md) |
 | SQLSTATE values | ❌ | MySQL-compatible SQLSTATEs. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
 | Error numbers | ❌ | MySQL-compatible error codes. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
@@ -543,7 +543,7 @@ tests.
 | `SHOW COLUMNS` | ❌ | Column metadata result. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW FIELDS` | ❌ | Alias for `SHOW COLUMNS`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW CREATE TABLE` | ❌ | MySQL-style table DDL. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
-| `SHOW DATABASES` | ❌ | Current database and information schema. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW DATABASES` | 🟡 | Limited descriptor-driven catalog schema listing; no system schemas, filters, or privileges. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW TABLES` | ❌ | Table listing. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW TABLE STATUS` | ❌ | Table metadata result. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `DESCRIBE` | ❌ | Table and column description. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |

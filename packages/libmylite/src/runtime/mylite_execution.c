@@ -21,6 +21,8 @@
 enum {
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
+    mysql_error_database_exists = 1007,
+    mysql_error_cant_drop_database = 1008,
     mysql_error_unknown_database = 1049,
     mysql_error_table_exists = 1050,
     mysql_error_unknown_column = 1054,
@@ -69,6 +71,17 @@ struct planned_rename_table {
 struct planned_truncate_table {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
+};
+
+struct planned_drop_schema_table {
+    char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+};
+
+struct planned_drop_schema {
+    struct mylite_catalog_schema_descriptor schema;
+    struct planned_drop_schema_table *tables;
+    size_t table_count;
+    size_t table_capacity;
 };
 
 struct planned_value {
@@ -173,6 +186,15 @@ struct show_tables_context {
     mylite_result *result;
 };
 
+struct show_databases_context {
+    mylite_result *result;
+};
+
+struct collect_drop_schema_tables_context {
+    struct mylite_db *database;
+    struct planned_drop_schema *plan;
+};
+
 static int execute_parsed_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -189,7 +211,17 @@ static int execute_create_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_create_schema_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_drop_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_drop_schema_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -229,6 +261,11 @@ static int execute_show_tables_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_show_databases_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int finish_successful_result(
     struct mylite_db *database,
     mylite_result *result,
@@ -259,6 +296,30 @@ static int execute_physical_create_table(
     const char *physical_name
 );
 static int execute_physical_drop_table(struct mylite_db *database, const char *physical_name);
+
+static int create_schema_from_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result *result
+);
+static int plan_drop_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_catalog_mutation *mutation,
+    struct planned_drop_schema *out_plan
+);
+static void planned_drop_schema_deinit(struct planned_drop_schema *plan);
+static int collect_drop_schema_table(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
+static int reserve_drop_schema_tables(struct planned_drop_schema *plan, size_t required_capacity);
+static int drop_schema_from_plan(
+    struct mylite_db *database,
+    struct mylite_catalog_mutation *mutation,
+    const struct planned_drop_schema *plan,
+    mylite_result *result
+);
 
 static int plan_truncate_table(
     struct mylite_db *database,
@@ -612,6 +673,10 @@ static int is_unqualified_identifier_select_item(
 );
 
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data);
+static int append_show_database(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+);
 
 static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size);
 static int build_create_table_sql(
@@ -718,6 +783,8 @@ static void set_parse_error(
 );
 static void set_unsupported_error(struct mylite_db *database, const char *message);
 static void set_no_database_error(struct mylite_db *database);
+static void set_database_exists_error(struct mylite_db *database, const char *schema_name);
+static void set_cant_drop_database_error(struct mylite_db *database, const char *schema_name);
 static void set_unknown_database_error(struct mylite_db *database, const char *schema_name);
 static void set_table_exists_error(struct mylite_db *database, const char *table_name);
 static void set_unknown_column_error(struct mylite_db *database, const char *column_name);
@@ -853,6 +920,10 @@ static int execute_parsed_statement(
     switch (statement->kind) {
     case MYLITE_SQL_AST_USE_STATEMENT:
         return execute_use_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
+        return execute_create_schema_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
+        return execute_drop_schema_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
         return execute_create_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
@@ -871,6 +942,8 @@ static int execute_parsed_statement(
         return execute_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
         return execute_show_tables_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
+        return execute_show_databases_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SCRIPT:
     case MYLITE_SQL_AST_SELECT_LIST:
     case MYLITE_SQL_AST_SELECT_ITEM:
@@ -990,6 +1063,28 @@ static int execute_create_table_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_create_schema_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = create_schema_from_statement(database, statement, result);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_drop_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1042,6 +1137,37 @@ static int execute_drop_table_statement(
     }
 
     ++database->session.sqlite_schema_generation;
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_drop_schema_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_drop_schema plan = {0};
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_drop_schema(database, statement, &mutation, &plan);
+    if (rc == MYLITE_OK) {
+        rc = drop_schema_from_plan(database, &mutation, &plan, result);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_catalog_rollback_mutation(database, &mutation);
+    }
+    planned_drop_schema_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
 
     return finish_successful_result(database, result, out_result);
 }
@@ -1261,6 +1387,42 @@ static int execute_show_tables_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_databases_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct show_databases_context context = {0};
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    (void)statement;
+
+    rc = mylite_result_create(&result);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column(result, "Database");
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        context.result = result;
+        rc = mylite_catalog_for_each_schema(database, append_show_database, &context);
+        if (rc != MYLITE_OK) {
+            set_runtime_error(database, "failed to build SHOW DATABASES result");
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int finish_successful_result(
     struct mylite_db *database,
     mylite_result *result,
@@ -1451,6 +1613,193 @@ static int execute_physical_drop_table(struct mylite_db *database, const char *p
     free(sql);
 
     return rc;
+}
+
+static int create_schema_from_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result *result
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct mylite_catalog_schema_descriptor existing_schema = {0};
+    int rc =
+        copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
+
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
+        set_reserved_name_error(database, "database", schema_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK &&
+        mylite_catalog_read_schema_by_name(database, schema_name, &existing_schema) == MYLITE_OK) {
+        set_database_exists_error(database, schema_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_create_schema(database, schema_name, NULL);
+    }
+    if (rc == MYLITE_OK) {
+        mylite_result_set_affected_rows(result, 1);
+    }
+
+    return rc;
+}
+
+static int plan_drop_schema(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_catalog_mutation *mutation,
+    struct planned_drop_schema *out_plan
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct collect_drop_schema_tables_context context = {0};
+    int rc =
+        copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
+
+    *out_plan = (struct planned_drop_schema){0};
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
+        set_reserved_name_error(database, "database", schema_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_begin_mutation(database, mutation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_schema_by_name(database, schema_name, &out_plan->schema);
+        if (rc != MYLITE_OK) {
+            set_cant_drop_database_error(database, schema_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        context.database = database;
+        context.plan = out_plan;
+        rc = mylite_catalog_for_each_table_in_schema(
+            database,
+            out_plan->schema.schema_id,
+            collect_drop_schema_table,
+            &context
+        );
+        if (rc != MYLITE_OK) {
+            planned_drop_schema_deinit(out_plan);
+            if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == 0) {
+                set_runtime_error(database, "failed to plan DROP DATABASE");
+            }
+        }
+    }
+
+    return rc;
+}
+
+static void planned_drop_schema_deinit(struct planned_drop_schema *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->tables);
+    *plan = (struct planned_drop_schema){0};
+}
+
+static int collect_drop_schema_table(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct collect_drop_schema_tables_context *context = user_data;
+    struct planned_drop_schema *plan = NULL;
+    int rc = MYLITE_OK;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            context->database,
+            "DROP DATABASE supports only persistent base tables"
+        );
+        return MYLITE_ERROR;
+    }
+
+    plan = context->plan;
+    rc = reserve_drop_schema_tables(plan, plan->table_count + 1U);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(context->database);
+        return rc;
+    }
+
+    memcpy(
+        plan->tables[plan->table_count].physical_name,
+        table->physical_name,
+        sizeof(plan->tables[plan->table_count].physical_name)
+    );
+    ++plan->table_count;
+
+    return MYLITE_OK;
+}
+
+static int reserve_drop_schema_tables(struct planned_drop_schema *plan, size_t required_capacity) {
+    enum { initial_table_capacity = 4 };
+
+    struct planned_drop_schema_table *tables = NULL;
+    size_t capacity = 0U;
+
+    if (plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (required_capacity <= plan->table_capacity) {
+        return MYLITE_OK;
+    }
+
+    capacity = plan->table_capacity == 0U ? initial_table_capacity : plan->table_capacity;
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*tables)) {
+        return MYLITE_NOMEM;
+    }
+
+    tables = (struct planned_drop_schema_table *)realloc(plan->tables, capacity * sizeof(*tables));
+    if (tables == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    plan->tables = tables;
+    plan->table_capacity = capacity;
+
+    return MYLITE_OK;
+}
+
+static int drop_schema_from_plan(
+    struct mylite_db *database,
+    struct mylite_catalog_mutation *mutation,
+    const struct planned_drop_schema *plan,
+    mylite_result *result
+) {
+    int rc = mylite_catalog_delete_schema_in_mutation(database, mutation, plan->schema.schema_id);
+
+    for (size_t table_index = 0U; rc == MYLITE_OK && table_index < plan->table_count;
+         ++table_index) {
+        rc = execute_physical_drop_table(database, plan->tables[table_index].physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, mutation);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (plan->table_count > 0U) {
+        ++database->session.sqlite_schema_generation;
+    }
+    if (database->session.has_selected_schema &&
+        strcmp(database->session.selected_schema, plan->schema.name) == 0) {
+        database->session.has_selected_schema = false;
+        database->session.selected_schema[0] = '\0';
+    }
+    mylite_result_set_affected_rows(result, (int64_t)plan->table_count);
+
+    return MYLITE_OK;
 }
 
 static int plan_truncate_table(
@@ -3886,6 +4235,22 @@ static int append_show_table(const struct mylite_catalog_table_descriptor *table
     return mylite_result_append_text_row(context->result, values);
 }
 
+static int append_show_database(
+    const struct mylite_catalog_schema_descriptor *schema,
+    void *user_data
+) {
+    struct show_databases_context *context = user_data;
+    const char *values[1] = {NULL};
+
+    if (schema == NULL || context == NULL || context->result == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    values[0] = schema->name;
+
+    return mylite_result_append_text_row(context->result, values);
+}
+
 static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size) {
     int written = snprintf(destination, destination_size, "_mylite_user_table_%" PRId64, table_id);
 
@@ -4989,6 +5354,46 @@ static void set_no_database_error(struct mylite_db *database) {
         mysql_error_no_database_selected,
         "3D000",
         "No database selected"
+    );
+}
+
+static void set_database_exists_error(struct mylite_db *database, const char *schema_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Can't create database '%s'; database exists",
+        schema_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_database_exists,
+        "HY000",
+        message
+    );
+}
+
+static void set_cant_drop_database_error(struct mylite_db *database, const char *schema_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Can't drop database '%s'; database doesn't exist",
+        schema_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_cant_drop_database,
+        "HY000",
+        message
     );
 }
 

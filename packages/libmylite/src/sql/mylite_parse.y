@@ -59,13 +59,22 @@ statement(A) ::= use_statement(B). {
 statement(A) ::= create_table_statement(B). {
     A = B;
 }
+statement(A) ::= create_schema_statement(B). {
+    A = B;
+}
 statement(A) ::= drop_table_statement(B). {
+    A = B;
+}
+statement(A) ::= drop_schema_statement(B). {
     A = B;
 }
 statement(A) ::= truncate_table_statement(B). {
     A = B;
 }
 statement(A) ::= show_tables_statement(B). {
+    A = B;
+}
+statement(A) ::= show_databases_statement(B). {
     A = B;
 }
 statement(A) ::= rename_table_statement(B). {
@@ -89,8 +98,22 @@ create_table_statement(A) ::= CREATE(C) TABLE table_name(T) LPAREN column_defini
     A = mylite_sql_parser_make_create_table_statement(state, C, T, L, R);
 }
 
+create_schema_statement(A) ::= CREATE(C) DATABASE identifier(S). {
+    A = mylite_sql_parser_make_create_schema_statement(state, C, S);
+}
+create_schema_statement(A) ::= CREATE(C) SCHEMA identifier(S). {
+    A = mylite_sql_parser_make_create_schema_statement(state, C, S);
+}
+
 drop_table_statement(A) ::= DROP(D) TABLE table_name(T). {
     A = mylite_sql_parser_make_drop_table_statement(state, D, T);
+}
+
+drop_schema_statement(A) ::= DROP(D) DATABASE identifier(S). {
+    A = mylite_sql_parser_make_drop_schema_statement(state, D, S);
+}
+drop_schema_statement(A) ::= DROP(D) SCHEMA identifier(S). {
+    A = mylite_sql_parser_make_drop_schema_statement(state, D, S);
 }
 
 truncate_table_statement(A) ::= TRUNCATE(T) table_name(N). {
@@ -108,6 +131,13 @@ show_tables_statement(A) ::= SHOW(S) TABLES(T) FROM identifier(D). {
 }
 show_tables_statement(A) ::= SHOW(S) TABLES(T) IN identifier(D). {
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, D);
+}
+
+show_databases_statement(A) ::= SHOW(S) DATABASES(D). {
+    A = mylite_sql_parser_make_show_databases_statement(state, S, D);
+}
+show_databases_statement(A) ::= SHOW(S) SCHEMAS(D). {
+    A = mylite_sql_parser_make_show_databases_statement(state, S, D);
 }
 
 rename_table_statement(A) ::= RENAME(R) TABLE table_name(S) TO table_name(T). {

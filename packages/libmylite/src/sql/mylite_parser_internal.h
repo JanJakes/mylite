@@ -56,15 +56,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *schema_name
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token drop_token,
     struct mylite_sql_ast_node *table_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *schema_name
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_truncate_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token truncate_token,
     struct mylite_sql_ast_node *table_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_databases_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token databases_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_parser_state *state,

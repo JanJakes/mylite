@@ -10,6 +10,7 @@ static int test_select_expression_list(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
+static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
@@ -83,6 +84,7 @@ int main(void) {
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
+    failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
@@ -524,6 +526,49 @@ static int test_table_lifecycle_statements(void) {
     return failures;
 }
 
+static int test_schema_lifecycle_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("CREATE DATABASE app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, "create database");
+    failures += expect_span_text(child_at(statement, 0U), "app", "create database name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE SCHEMA `select`;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, "create schema");
+    failures += expect_span_text(child_at(statement, 0U), "`select`", "create schema name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP DATABASE app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT, "drop database");
+    failures += expect_span_text(child_at(statement, 0U), "app", "drop database name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP SCHEMA app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT, "drop schema");
+    failures += expect_span_text(child_at(statement, 0U), "app", "drop schema name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW DATABASES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT, "show databases");
+    failures += expect_child_count(statement, 0U, "show databases child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW SCHEMAS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT, "show schemas");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_select_where_predicates(void) {
     static const struct {
         const char *sql;
@@ -904,6 +949,33 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT 1, * FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE DATABASE IF NOT EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE DATABASE app DEFAULT CHARACTER SET utf8mb4;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE DATABASE a.b;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP DATABASE IF EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW DATABASES LIKE 'app%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW DATABASES WHERE Database = 'app';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL DATABASES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE TABLE t ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

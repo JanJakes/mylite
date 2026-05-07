@@ -20,11 +20,12 @@
 #include <stdlib.h>
 
 enum mylite_table_maintenance_operation {
-    MYLITE_TABLE_MAINTENANCE_CHECK = 0,
-    MYLITE_TABLE_MAINTENANCE_CHECKSUM = 1,
-    MYLITE_TABLE_MAINTENANCE_CHECKSUM_QUICK = 2,
-    MYLITE_TABLE_MAINTENANCE_OPTIMIZE = 3,
-    MYLITE_TABLE_MAINTENANCE_REPAIR = 4,
+    MYLITE_TABLE_MAINTENANCE_ANALYZE = 0,
+    MYLITE_TABLE_MAINTENANCE_CHECK = 1,
+    MYLITE_TABLE_MAINTENANCE_CHECKSUM = 2,
+    MYLITE_TABLE_MAINTENANCE_CHECKSUM_QUICK = 3,
+    MYLITE_TABLE_MAINTENANCE_OPTIMIZE = 4,
+    MYLITE_TABLE_MAINTENANCE_REPAIR = 5,
 };
 
 enum mylite_table_maintenance_target_status {
@@ -321,6 +322,9 @@ static int operation_from_statement(
     enum mylite_table_maintenance_operation *out_operation
 ) {
     switch (statement->placeholder_statement_kind) {
+    case MYLITE_SQL_AST_PLACEHOLDER_ANALYZE_TABLE:
+        *out_operation = MYLITE_TABLE_MAINTENANCE_ANALYZE;
+        return MYLITE_OK;
     case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
         *out_operation = MYLITE_TABLE_MAINTENANCE_CHECK;
         return MYLITE_OK;
@@ -454,6 +458,9 @@ static int classify_maintenance_target(
     int status = MYLITE_OK;
 
     if (mylite_ascii_case_equal(target->schema_name, "information_schema")) {
+        if (operation == MYLITE_TABLE_MAINTENANCE_ANALYZE) {
+            return mylite_diagnostics_set_schema_access_denied_error(database, target->schema_name);
+        }
         if (operation_is_checksum(operation) &&
             mylite_information_schema_has_table(target->table_name)) {
             *out_status = MYLITE_TABLE_MAINTENANCE_TARGET_NON_BASE_TABLE;
@@ -543,6 +550,7 @@ static int append_existing_target_rows(
     const char *operation_text = operation_name(operation);
 
     switch (operation) {
+    case MYLITE_TABLE_MAINTENANCE_ANALYZE:
     case MYLITE_TABLE_MAINTENANCE_CHECK:
         append_result_row(sql, first, display_name, operation_text, "status", "OK");
         break;
@@ -732,6 +740,8 @@ static bool operation_is_checksum(enum mylite_table_maintenance_operation operat
 
 static const char *operation_name(enum mylite_table_maintenance_operation operation) {
     switch (operation) {
+    case MYLITE_TABLE_MAINTENANCE_ANALYZE:
+        return "analyze";
     case MYLITE_TABLE_MAINTENANCE_CHECK:
         return "check";
     case MYLITE_TABLE_MAINTENANCE_CHECKSUM:

@@ -107,6 +107,7 @@ enum {
     simple_create_amount_precision = 10,
     simple_create_column_count = 6,
     simple_create_statistics_count = 3,
+    mysql_warning_dbaccess_denied = 1044,
     mysql_warning_no_database = 1046,
     mysql_warning_bad_null = 1048,
     mysql_warning_bad_db = 1049,
@@ -42516,6 +42517,12 @@ static int test_table_maintenance_execution(void) {
         "status",
         "OK",
     };
+    static const char *const analyze_no_default_values[] = {
+        "mylite_table_maintenance_no_default.q",
+        "analyze",
+        "status",
+        "OK",
+    };
     static const char *const checksum_no_default_values[] = {
         "mylite_table_maintenance_no_default.q",
         "0",
@@ -42538,6 +42545,24 @@ static int test_table_maintenance_execution(void) {
         "status",
         "Operation failed",
     };
+    static const char *const analyze_values[] = {
+        "mylite_table_maintenance.t",
+        "analyze",
+        "status",
+        "OK",
+        "mylite_table_maintenance.temp_t",
+        "analyze",
+        "status",
+        "OK",
+        "mylite_table_maintenance.missing_t",
+        "analyze",
+        "Error",
+        "Table 'mylite_table_maintenance.missing_t' doesn't exist",
+        "mylite_table_maintenance.missing_t",
+        "analyze",
+        "status",
+        "Operation failed",
+    };
     static const char *const unknown_schema_values[] = {
         "missing_maintenance.t",
         "check",
@@ -42545,6 +42570,16 @@ static int test_table_maintenance_execution(void) {
         "Unknown database 'missing_maintenance'",
         "missing_maintenance.t",
         "check",
+        "error",
+        "Corrupt",
+    };
+    static const char *const analyze_unknown_schema_values[] = {
+        "missing_maintenance.t",
+        "analyze",
+        "Error",
+        "Unknown database 'missing_maintenance'",
+        "missing_maintenance.t",
+        "analyze",
         "error",
         "Corrupt",
     };
@@ -42631,6 +42666,13 @@ static int test_table_maintenance_execution(void) {
         expect_status(mylite_open_memory(&database), MYLITE_OK, "open table maintenance database");
     failures += expect_prepare_error(
         database,
+        "ANALYZE TABLE t",
+        MYLITE_EXEC_ERROR,
+        "No database selected",
+        "analyze table requires selected schema"
+    );
+    failures += expect_prepare_error(
+        database,
         "CHECK TABLE t",
         MYLITE_EXEC_ERROR,
         "No database selected",
@@ -42665,6 +42707,18 @@ static int test_table_maintenance_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(database, "ANALYZE TABLE t", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        (int)(sizeof(metadata) / sizeof(metadata[0])),
+        "analyze table metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "analyze table metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "analyze table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += prepare_sql(database, "CHECKSUM TABLE t", MYLITE_OK, &stmt);
     failures += expect_result_metadata(
         stmt,
@@ -42686,6 +42740,36 @@ static int test_table_maintenance_execution(void) {
         check_values,
         4,
         "check table selected schema targets"
+    );
+    failures += expect_select_rows(
+        database,
+        "ANALYZE NO_WRITE_TO_BINLOG TABLE t, temp_t, missing_t",
+        columns,
+        4,
+        analyze_values,
+        4,
+        "analyze table selected schema targets"
+    );
+    failures += expect_select_rows(
+        database,
+        "ANALYZE TABLE missing_maintenance.t",
+        columns,
+        4,
+        analyze_unknown_schema_values,
+        2,
+        "analyze table unknown schema"
+    );
+    failures += expect_prepare_error(
+        database,
+        "ANALYZE TABLE information_schema.TABLES",
+        MYLITE_EXEC_ERROR,
+        "Access denied",
+        "analyze table information schema"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_dbaccess_denied,
+        "analyze information schema warning code"
     );
     failures += expect_select_rows(
         database,
@@ -42847,6 +42931,15 @@ static int test_table_maintenance_execution(void) {
         no_default_values,
         1,
         "check qualified table without selected schema"
+    );
+    failures += expect_select_rows(
+        no_default_database,
+        "ANALYZE LOCAL TABLE mylite_table_maintenance_no_default.q",
+        columns,
+        4,
+        analyze_no_default_values,
+        1,
+        "analyze qualified table without selected schema"
     );
     failures += expect_select_rows(
         no_default_database,

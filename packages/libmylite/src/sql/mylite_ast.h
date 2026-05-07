@@ -202,6 +202,7 @@ enum mylite_sql_ast_placeholder_statement_kind {
     MYLITE_SQL_AST_PLACEHOLDER_UNLOCK_TABLES = 30,
     MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE = 31,
     MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE_QUICK = 32,
+    MYLITE_SQL_AST_PLACEHOLDER_ANALYZE_TABLE = 33,
 };
 
 enum mylite_sql_ast_delete_form {

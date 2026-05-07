@@ -4974,17 +4974,20 @@ static int test_truncate_table_syntax(void) {
 static int test_table_maintenance_syntax(void) {
     // NOLINTBEGIN(readability-magic-numbers)
     enum {
-        check_simple_index = 0,
-        check_options_index = 1,
-        checksum_index = 2,
-        checksum_quick_index = 3,
-        checksum_extended_index = 4,
-        optimize_index = 5,
-        optimize_local_index = 6,
-        optimize_no_write_index = 7,
-        repair_options_index = 8,
-        repair_local_index = 9,
-        statement_count = 10,
+        analyze_index = 0,
+        analyze_local_index = 1,
+        analyze_no_write_index = 2,
+        check_simple_index = 3,
+        check_options_index = 4,
+        checksum_index = 5,
+        checksum_quick_index = 6,
+        checksum_extended_index = 7,
+        optimize_index = 8,
+        optimize_local_index = 9,
+        optimize_no_write_index = 10,
+        repair_options_index = 11,
+        repair_local_index = 12,
+        statement_count = 13,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -4993,6 +4996,9 @@ static int test_table_maintenance_syntax(void) {
     int failures = 0;
 
     failures += parse_sql(
+        "ANALYZE TABLE t, app.u; "
+        "ANALYZE LOCAL TABLE t; "
+        "ANALYZE NO_WRITE_TO_BINLOG TABLE app.t; "
         "CHECK TABLE t; "
         "CHECK TABLE app.t, u QUICK FAST MEDIUM EXTENDED CHANGED FOR UPGRADE; "
         "CHECKSUM TABLE t, app.u; "
@@ -5007,6 +5013,34 @@ static int test_table_maintenance_syntax(void) {
         &result
     );
     failures += expect_child_count(result.root, statement_count, "maintenance script count");
+
+    statement = child_at(result.root, analyze_index);
+    failures += expect_placeholder_statement(
+        statement,
+        MYLITE_SQL_AST_PLACEHOLDER_ANALYZE_TABLE,
+        "analyze table placeholder"
+    );
+    failures += expect_child_count(statement, 1U, "analyze table child count");
+    table_list = child_at(statement, 0U);
+    failures += expect_node(table_list, MYLITE_SQL_AST_TABLE_NAME_LIST, "analyze table name list");
+    failures += expect_child_count(table_list, 2U, "analyze table target count");
+    failures += expect_span_text(child_at(table_list, 0U), "t", "analyze first target");
+    table_name = child_at(table_list, 1U);
+    failures +=
+        expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "analyze qualified target");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "analyze target schema");
+    failures += expect_span_text(child_at(table_name, 1U), "u", "analyze target table");
+
+    failures += expect_placeholder_statement(
+        child_at(result.root, analyze_local_index),
+        MYLITE_SQL_AST_PLACEHOLDER_ANALYZE_TABLE,
+        "analyze local placeholder"
+    );
+    failures += expect_placeholder_statement(
+        child_at(result.root, analyze_no_write_index),
+        MYLITE_SQL_AST_PLACEHOLDER_ANALYZE_TABLE,
+        "analyze no-write placeholder"
+    );
 
     statement = child_at(result.root, check_simple_index);
     failures += expect_placeholder_statement(
@@ -5096,6 +5130,15 @@ static int test_table_maintenance_syntax(void) {
         MYLITE_SQL_AST_PLACEHOLDER_REPAIR_TABLE,
         "repair local placeholder"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ANALYZE TABLE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ANALYZE t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ANALYZE TABLE t FAST;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CHECK TABLE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

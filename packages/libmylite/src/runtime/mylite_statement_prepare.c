@@ -512,6 +512,7 @@ static bool placeholder_statement_is_table_maintenance(
     const struct mylite_sql_ast_node *statement
 ) {
     switch (statement->placeholder_statement_kind) {
+    case MYLITE_SQL_AST_PLACEHOLDER_ANALYZE_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE_QUICK:
@@ -583,6 +584,7 @@ static enum mylite_stmt_kind placeholder_statement_kind(
         return MYLITE_STMT_LOCK_TABLES_PLACEHOLDER;
     case MYLITE_SQL_AST_PLACEHOLDER_UNLOCK_TABLES:
         return MYLITE_STMT_UNLOCK_TABLES_PLACEHOLDER;
+    case MYLITE_SQL_AST_PLACEHOLDER_ANALYZE_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE:
     case MYLITE_SQL_AST_PLACEHOLDER_CHECKSUM_TABLE_QUICK:

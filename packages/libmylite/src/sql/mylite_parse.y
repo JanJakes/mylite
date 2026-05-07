@@ -832,6 +832,10 @@ rename_table_pair(A) ::= table_name(O) TO(T) table_name(N). {
     A = mylite_sql_parser_make_rename_table_pair(state, O, T, N);
 }
 
+table_maintenance_statement(A) ::= ANALYZE(T) opt_write_to_binlog TABLE maintenance_table_name_list(B). {
+    A = mylite_sql_parser_make_placeholder_statement_with_child(
+        state, MYLITE_SQL_AST_PLACEHOLDER_ANALYZE_TABLE, T, B);
+}
 table_maintenance_statement(A) ::= CHECK(T) TABLE maintenance_table_name_list(B) check_table_option_list. {
     A = mylite_sql_parser_make_placeholder_statement_with_child(
         state, MYLITE_SQL_AST_PLACEHOLDER_CHECK_TABLE, T, B);

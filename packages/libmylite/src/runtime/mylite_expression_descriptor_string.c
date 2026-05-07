@@ -121,6 +121,13 @@ static uint64_t left_right_function_result_length(
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
+static uint64_t replace_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static uint64_t add_text_display_lengths(uint64_t left, uint64_t right);
 
 static uint64_t multiply_text_display_length(uint64_t length, uint64_t factor);
@@ -130,6 +137,21 @@ static uint64_t minimum_text_display_length(uint64_t left, uint64_t right);
 static bool function_name_is_padding(const struct mylite_sql_ast_node *name);
 
 static bool function_name_is_left_right(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_replace(const struct mylite_sql_ast_node *name);
+
+static uint64_t replace_function_replacement_multiplier(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *replacement,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static uint64_t replace_function_text_multiplier(uint64_t length, uint64_t max_bytes_per_character);
+
+static uint64_t replace_function_numeric_multiplier(
+    const struct mylite_field_descriptor *descriptor
+);
 
 static bool nonnegative_integer_constant(
     const struct mylite_sql_ast_node *expression,
@@ -603,6 +625,9 @@ static uint64_t slice_string_function_result_length(
     if (function_name_is_left_right(name)) {
         return left_right_function_result_length(database, plan, arguments, callbacks);
     }
+    if (function_name_is_replace(name)) {
+        return replace_function_result_length(database, plan, arguments, callbacks);
+    }
     if (!mylite_function_name_uses_source_length(name) && value != NULL &&
         value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return mylite_expression_descriptor_string_length(database, value, NULL);
@@ -681,6 +706,21 @@ static uint64_t left_right_function_result_length(
     return minimum_text_display_length(source_length, target_length);
 }
 
+static uint64_t replace_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *replacement = mylite_ast_child_at(arguments, 2U);
+    uint64_t source_length = expression_text_display_length(database, plan, source, callbacks);
+    uint64_t multiplier =
+        replace_function_replacement_multiplier(database, plan, replacement, callbacks);
+
+    return multiply_text_display_length(source_length, multiplier);
+}
+
 static uint64_t add_text_display_lengths(uint64_t left, uint64_t right) {
     if (left > UINT64_MAX - right) {
         return mylite_mysql_long_text_length;
@@ -707,6 +747,61 @@ static bool function_name_is_padding(const struct mylite_sql_ast_node *name) {
 static bool function_name_is_left_right(const struct mylite_sql_ast_node *name) {
     return name != NULL &&
            (mylite_span_equal_ci(name->span, "LEFT") || mylite_span_equal_ci(name->span, "RIGHT"));
+}
+
+static bool function_name_is_replace(const struct mylite_sql_ast_node *name) {
+    return name != NULL && mylite_span_equal_ci(name->span, "REPLACE");
+}
+
+static uint64_t replace_function_replacement_multiplier(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *replacement,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (replacement == NULL ||
+        callbacks->infer_expression_descriptor(database, plan, replacement, NULL, &descriptor) !=
+            MYLITE_OK ||
+        descriptor.type == MYLITE_FIELD_TYPE_NULL) {
+        return 1U;
+    }
+    if (mylite_expression_descriptor_has_text_result(&descriptor) ||
+        descriptor.type == MYLITE_FIELD_TYPE_BLOB) {
+        return replace_function_text_multiplier(descriptor.length, max_bytes_per_character);
+    }
+    if (mylite_expression_descriptor_has_numeric_result(&descriptor)) {
+        return replace_function_numeric_multiplier(&descriptor);
+    }
+    return 1U;
+}
+
+static uint64_t replace_function_text_multiplier(
+    uint64_t length,
+    uint64_t max_bytes_per_character
+) {
+    uint64_t characters = 0U;
+
+    if (length == 0U || max_bytes_per_character == 0U) {
+        return 1U;
+    }
+    characters = (length + max_bytes_per_character - 1U) / max_bytes_per_character;
+    return characters > 1U ? characters - 1U : 1U;
+}
+
+static uint64_t replace_function_numeric_multiplier(
+    const struct mylite_field_descriptor *descriptor
+) {
+    if (descriptor == NULL || descriptor->length == 0U) {
+        return 1U;
+    }
+    if ((descriptor->flags & MYLITE_FIELD_FLAG_UNSIGNED) == 0U && descriptor->length > 1U) {
+        return descriptor->length - 1U;
+    }
+    return descriptor->length;
 }
 
 static bool nonnegative_integer_constant(

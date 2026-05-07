@@ -9,7 +9,6 @@ bool mylite_function_name_has_text_result(const struct mylite_sql_ast_node *name
         "LCASE",
         "UPPER",
         "UCASE",
-        "REPLACE",
         "IF",
         "IFNULL",
         "NULLIF",
@@ -22,27 +21,11 @@ bool mylite_function_name_has_text_result(const struct mylite_sql_ast_node *name
 }
 
 bool mylite_function_name_has_slice_string_result(const struct mylite_sql_ast_node *name) {
-    static const char *const names[] = {
-        "CONCAT_WS",
-        "LEFT",
-        "RIGHT",
-        "SUBSTRING",
-        "SUBSTR",
-        "MID",
-        "SUBSTRING_INDEX",
-        "TRIM",
-        "LTRIM",
-        "RTRIM",
-        "INSERT",
-        "QUOTE",
-        "REPEAT",
-        "SPACE",
-        "REVERSE",
-        "LPAD",
-        "RPAD",
-        "ELT",
-        "MAKE_SET"
-    };
+    static const char *const names[] = {"CONCAT_WS", "LEFT",   "RIGHT", "REPLACE",
+                                        "SUBSTRING", "SUBSTR", "MID",   "SUBSTRING_INDEX",
+                                        "TRIM",      "LTRIM",  "RTRIM", "INSERT",
+                                        "QUOTE",     "REPEAT", "SPACE", "REVERSE",
+                                        "LPAD",      "RPAD",   "ELT",   "MAKE_SET"};
 
     return mylite_function_name_matches_any(name, names, sizeof(names) / sizeof(names[0]));
 }

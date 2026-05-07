@@ -308,6 +308,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       counts now infer MySQL-shaped connection-character-set widths capped at
       the source width, negative literal counts infer length 0, and dynamic or
       `NULL` counts use the source width.
+      Table-backed `REPLACE()` expressions now infer MySQL-shaped string
+      widths from the source expression and replacement expression, including
+      same-width text replacements, widened text replacements, dynamic text
+      replacements, and `NULL` replacements.
       Table-backed `LPAD()` / `RPAD()` expressions with nonnegative literal
       target lengths and `REPEAT()` expressions with nonnegative literal counts
       now infer MySQL-shaped connection-character-set string widths.

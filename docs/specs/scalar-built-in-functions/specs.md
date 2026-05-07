@@ -698,6 +698,10 @@ Verified `mysql --column-type-info -vvv` examples:
 | `RIGHT(varchar_col,20) AS right_wide` | `VAR_STRING` | source octet length when requested length exceeds the source width | `31` | connection collation | none |
 | `LEFT(varchar_col,-1) AS left_negative` | `VAR_STRING` | `0` | `31` | connection collation | none |
 | `RIGHT(char_col,int_col) AS right_dynamic` | `VAR_STRING` | source octet length for dynamic or `NULL` count expressions | `31` | connection collation | none |
+| `REPLACE(varchar_col,'a','b') AS replace_same` | `VAR_STRING` | source octet length | `31` | connection collation | none |
+| `REPLACE(varchar_col,'a','xyz') AS replace_wide` | `VAR_STRING` | source octet length times the MySQL-observed text replacement multiplier | `31` | connection collation | none |
+| `REPLACE(varchar_col,'a',char_col) AS replace_dynamic` | `VAR_STRING` | source octet length times the replacement expression's text multiplier | `31` | connection collation | none |
+| `REPLACE(varchar_col,'a',NULL) AS replace_null` | `VAR_STRING` | source octet length | `31` | connection collation | none |
 | `SUBSTRING('abcdef',2,3) AS substr_value` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `SUBSTRING_INDEX('www.mysql.com','.',2) AS substring_index_value` | `VAR_STRING` | `52` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `ABS(-12.5) AS abs_decimal` | `NEWDECIMAL` | `5` | `1` | `binary` | `NOT_NULL BINARY NUM` |

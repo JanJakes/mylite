@@ -150,6 +150,14 @@ struct planned_select {
     struct planned_select_limit limit;
 };
 
+struct planned_count {
+    bool has_source;
+    const struct mylite_sql_ast_node *expression;
+    struct table_name_resolution source;
+    struct mylite_catalog_table_descriptor table;
+    struct planned_select_predicate predicate;
+};
+
 struct planned_delete {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -375,6 +383,52 @@ static int execute_select_from_plan(
     const struct planned_select *plan,
     mylite_result **out_result
 );
+static bool select_statement_has_count_star(const struct mylite_sql_ast_node *statement);
+static int plan_count(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_count *out_plan
+);
+static int execute_count_from_plan(
+    struct mylite_db *database,
+    const struct planned_count *plan,
+    mylite_result **out_result
+);
+static int append_count_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_count *plan
+);
+static int copy_count_result_column_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char **out_text
+);
+static size_t count_label_extra_spaces_after_block_comments(
+    const struct mylite_sql_source_span *span
+);
+static void copy_count_label_with_spacing(
+    const struct mylite_sql_source_span *span,
+    char *destination
+);
+static int read_count_from_source(
+    struct mylite_db *database,
+    const struct planned_count *plan,
+    int64_t *out_count
+);
+static int step_count_statement(sqlite3_stmt *statement, int64_t *out_count);
+static int format_count_value(
+    struct mylite_db *database,
+    int64_t count_value,
+    char *buffer,
+    size_t buffer_size
+);
+static int append_count_value_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *count_text
+);
+static int count_execution_error(struct mylite_db *database, int rc);
 static bool select_statement_is_session_scalar(const struct mylite_sql_ast_node *statement);
 static int execute_session_scalar_select_statement(
     struct mylite_db *database,
@@ -728,6 +782,7 @@ static int append_insert_column_names(
 static int append_insert_parameters(struct dynamic_string *string, size_t column_count);
 static int append_numbered_parameter(struct dynamic_string *string, size_t parameter_index);
 static int build_select_sql(const struct planned_select *plan, char **out_sql);
+static int build_count_sql(const struct planned_count *plan, char **out_sql);
 static int append_select_predicate_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
@@ -772,6 +827,7 @@ static int finalize_sqlite_statement(sqlite3_stmt *statement, int rc);
 static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert *plan, size_t row);
 static int step_insert_row(sqlite3_stmt *statement);
 static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan);
+static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan);
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan);
 static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan);
 static int bind_update_matched_parameters(
@@ -1030,6 +1086,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
         break;
     }
 
@@ -1370,6 +1427,7 @@ static int execute_select_statement(
     mylite_result **out_result
 ) {
     struct planned_select plan = {0};
+    struct planned_count count_plan = {false};
     const char *argument_count_error_function = NULL;
     int rc = MYLITE_OK;
 
@@ -1380,6 +1438,13 @@ static int execute_select_statement(
     }
     if (select_statement_is_session_scalar(statement)) {
         return execute_session_scalar_select_statement(database, statement, out_result);
+    }
+    if (select_statement_has_count_star(statement)) {
+        rc = plan_count(database, statement, &count_plan);
+        if (rc == MYLITE_OK) {
+            rc = execute_count_from_plan(database, &count_plan, out_result);
+        }
+        return rc;
     }
 
     rc = plan_select(database, statement, &plan);
@@ -1561,6 +1626,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
         break;
     }
 
@@ -2600,6 +2666,354 @@ static int execute_select_from_plan(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static bool select_statement_has_count_star(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    while (select_item != NULL) {
+        const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+
+        expression = unwrap_parenthesized_expression(expression);
+        if (expression != NULL && expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
+            return true;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return false;
+}
+
+static int plan_count(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_count *out_plan
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    struct mylite_catalog_column_descriptor *table_columns = NULL;
+    size_t table_column_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_count){false};
+    if (mylite_sql_ast_node_child_count(select_list) != 1U) {
+        set_unsupported_error(database, "COUNT(*) supports exactly one aggregate select item");
+        return MYLITE_ERROR;
+    }
+
+    expression = child_at(select_item, 0U);
+    out_plan->expression = expression;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
+        set_unsupported_error(database, "COUNT(*) supports exactly one aggregate select item");
+        return MYLITE_ERROR;
+    }
+
+    optional_clause = child_at(statement, 2U);
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "COUNT(*) supports only WHERE");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+
+    if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
+        if (where_clause != NULL) {
+            set_unsupported_error(database, "COUNT(*) WHERE requires a descriptor-backed table");
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+    if (from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(database, "COUNT(*) supports only descriptor-backed table reads");
+        return MYLITE_ERROR;
+    }
+
+    out_plan->has_source = true;
+    rc = resolve_table_name(database, child_at(from_clause, 0U), &out_plan->source);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->source.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
+    }
+    if (rc == MYLITE_OK && where_clause != NULL) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &table_columns,
+            &table_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_predicate(
+            database,
+            where_clause,
+            table_columns,
+            table_column_count,
+            &out_plan->predicate
+        );
+    }
+
+    free(table_columns);
+    return rc;
+}
+
+static int execute_count_from_plan(
+    struct mylite_db *database,
+    const struct planned_count *plan,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    char count_text[integer_text_capacity];
+    int64_t count_value = 1;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = append_count_result_column(database, result, plan);
+    if (rc == MYLITE_OK && plan->has_source) {
+        rc = read_count_from_source(database, plan, &count_value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = format_count_value(database, count_value, count_text, sizeof(count_text));
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_count_value_row(database, result, count_text);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return count_execution_error(database, rc);
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int append_count_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_count *plan
+) {
+    char *column_name = NULL;
+    int rc = copy_count_result_column_name(database, &plan->expression->span, &column_name);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column(result, column_name);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    free(column_name);
+    return rc;
+}
+
+static int copy_count_result_column_name(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    char **out_text
+) {
+    char *text = NULL;
+    size_t extra_spaces = 0U;
+
+    if (out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    if (span == NULL || span->text == NULL || span->length == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (span->length == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    extra_spaces = count_label_extra_spaces_after_block_comments(span);
+    if (extra_spaces > SIZE_MAX - span->length - 1U) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    text = (char *)malloc(span->length + extra_spaces + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    copy_count_label_with_spacing(span, text);
+    *out_text = text;
+
+    return MYLITE_OK;
+}
+
+static size_t count_label_extra_spaces_after_block_comments(
+    const struct mylite_sql_source_span *span
+) {
+    size_t extra_spaces = 0U;
+    size_t source_index = 0U;
+
+    while (source_index + 1U < span->length) {
+        if (span->text[source_index] == '/' && span->text[source_index + 1U] == '*') {
+            source_index += 2U;
+            while (source_index + 1U < span->length &&
+                   (span->text[source_index] != '*' || span->text[source_index + 1U] != '/')) {
+                ++source_index;
+            }
+            if (source_index + 1U < span->length) {
+                source_index += 2U;
+                if (source_index < span->length && span->text[source_index] == '*') {
+                    ++extra_spaces;
+                }
+            }
+        } else {
+            ++source_index;
+        }
+    }
+
+    return extra_spaces;
+}
+
+static void copy_count_label_with_spacing(
+    const struct mylite_sql_source_span *span,
+    char *destination
+) {
+    size_t destination_index = 0U;
+    size_t source_index = 0U;
+
+    while (source_index < span->length) {
+        if (source_index + 1U < span->length && span->text[source_index] == '/' &&
+            span->text[source_index + 1U] == '*') {
+            destination[destination_index] = span->text[source_index];
+            destination[destination_index + 1U] = span->text[source_index + 1U];
+            destination_index += 2U;
+            source_index += 2U;
+            while (source_index + 1U < span->length &&
+                   (span->text[source_index] != '*' || span->text[source_index + 1U] != '/')) {
+                destination[destination_index] = span->text[source_index];
+                ++destination_index;
+                ++source_index;
+            }
+            if (source_index + 1U < span->length) {
+                destination[destination_index] = span->text[source_index];
+                destination[destination_index + 1U] = span->text[source_index + 1U];
+                destination_index += 2U;
+                source_index += 2U;
+                if (source_index < span->length && span->text[source_index] == '*') {
+                    destination[destination_index] = ' ';
+                    ++destination_index;
+                }
+            }
+        } else {
+            destination[destination_index] = span->text[source_index];
+            ++destination_index;
+            ++source_index;
+        }
+    }
+
+    destination[destination_index] = '\0';
+}
+
+static int read_count_from_source(
+    struct mylite_db *database,
+    const struct planned_count *plan,
+    int64_t *out_count
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int rc = build_count_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_count_parameters(statement, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_count_statement(statement, out_count);
+    }
+
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    return rc;
+}
+
+static int step_count_statement(sqlite3_stmt *statement, int64_t *out_count) {
+    int sqlite_rc = sqlite3_step(statement);
+
+    if (sqlite_rc != SQLITE_ROW) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    *out_count = sqlite3_column_int64(statement, 0);
+    sqlite_rc = sqlite3_step(statement);
+    if (sqlite_rc != SQLITE_DONE) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int format_count_value(
+    struct mylite_db *database,
+    int64_t count_value,
+    char *buffer,
+    size_t buffer_size
+) {
+    int written = snprintf(buffer, buffer_size, "%" PRId64, count_value);
+
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format COUNT(*) value");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_count_value_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *count_text
+) {
+    const char *values[] = {count_text};
+    int rc = mylite_result_append_text_row(result, values);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+
+    return rc;
+}
+
+static int count_execution_error(struct mylite_db *database, int rc) {
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
+        return rc;
+    }
+
+    set_physical_sqlite_row_error(database);
+    return MYLITE_ERROR;
 }
 
 static bool select_statement_is_session_scalar(const struct mylite_sql_ast_node *statement) {
@@ -4919,6 +5333,33 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
     return rc;
 }
 
+static int build_count_sql(const struct planned_count *plan, char **out_sql) {
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
 static int append_select_predicate_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
@@ -5398,6 +5839,14 @@ static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_
     }
 
     return rc;
+}
+
+static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan) {
+    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+        return bind_int64_parameter(statement, 1, plan->predicate.value.integer);
+    }
+
+    return MYLITE_OK;
 }
 
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan) {

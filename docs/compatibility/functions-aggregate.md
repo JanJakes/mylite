@@ -9,7 +9,7 @@ Aggregate functions and grouping helpers.
 | `BIT_AND()` | ❌ | Return bitwise AND |
 | `BIT_OR()` | ❌ | Return bitwise OR |
 | `BIT_XOR()` | ❌ | Return bitwise XOR |
-| `COUNT()` | ❌ | Return a count of the number of rows returned |
+| `COUNT()` | 🟡 | Limited `COUNT(*)` in one-item `SELECT` with no source, `FROM DUAL`, or one descriptor-backed persistent base table with optional baseline `WHERE`; no `COUNT(expr)`, `DISTINCT`, grouping, aliases, ordering, limiting, or window forms |
 | `COUNT(DISTINCT)` | ❌ | Return count of a number of different values |
 | `GROUP_CONCAT()` | ❌ | Return a concatenated string |
 | `GROUPING()` | ❌ | Distinguish super-aggregate ROLLUP rows from regular rows |

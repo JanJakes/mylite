@@ -58,6 +58,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SYSTEM_USER_FUNCTION = 49,
     MYLITE_SQL_AST_CONNECTION_ID_FUNCTION = 50,
     MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR = 51,
+    MYLITE_SQL_AST_COUNT_STAR_FUNCTION = 52,
 };
 
 enum mylite_sql_ast_literal_kind {

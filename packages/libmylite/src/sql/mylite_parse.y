@@ -437,6 +437,10 @@ expression(A) ::= CONNECTION_ID(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR, B, R);
 }
+expression(A) ::= COUNT(T) LPAREN(L) STAR RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_COUNT_STAR_FUNCTION, R);
+}
 expression(A) ::= VERSION(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_VERSION_FUNCTION, R);
@@ -542,6 +546,9 @@ identifier(A) ::= SYSTEM_USER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CONNECTION_ID(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COUNT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= VERSION(T). {

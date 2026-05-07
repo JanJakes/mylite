@@ -251,8 +251,8 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `SELECT` | 🟡 | Descriptor-driven single persistent base-table `SELECT *` or unqualified column-list reads with optional limited `WHERE`, single-column `ORDER BY`, and `LIMIT`/`OFFSET`; no joins, grouping, aliases, expression projection, or locking clauses. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
-| Projection list | 🟡 | Wildcard uses catalog ordinal order; explicit projections resolve unqualified descriptor column names only, with duplicate projected columns allowed and no aliases or table-qualified references. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
+| `SELECT` | 🟡 | Descriptor-driven single persistent base-table `SELECT *` or unqualified column-list reads with optional limited `WHERE`, single-column `ORDER BY`, and `LIMIT`/`OFFSET`, plus limited one-item `COUNT(*)`; no joins, grouping, aliases, general expression projection, or locking clauses. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
+| Projection list | 🟡 | Wildcard uses catalog ordinal order; explicit projections resolve unqualified descriptor column names only; limited one-item `COUNT(*)` is supported; duplicate projected columns are allowed, with no aliases or table-qualified references. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `WHERE` | 🟡 | One unqualified descriptor column predicate on supported integer/`NULL` columns for filtered table `SELECT`, `DELETE`, and `UPDATE`; no boolean composition, literal-left comparisons, table-qualified columns, or general expression predicates. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `ORDER BY` | 🟡 | One unqualified descriptor column for supported base-table `SELECT`, `DELETE`, and `UPDATE`; optional `ASC`/`DESC`, MySQL-compatible `NULL` placement, and no tie-order guarantee without additional keys. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `LIMIT` / `OFFSET` | 🟡 | Supported base-table `SELECT` forms are `LIMIT row_count`, `LIMIT row_count OFFSET offset`, and `LIMIT offset, row_count`; supported single-table `DELETE`/`UPDATE` admits `LIMIT row_count` only, with unsigned decimal literals in signed 64-bit range. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
@@ -281,7 +281,7 @@ tests.
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
 | `AVG()` | ❌ | Average value. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
-| `COUNT()` | ❌ | Row count. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
+| `COUNT()` | 🟡 | Limited `COUNT(*)` in one-item `SELECT` with no source, `FROM DUAL`, or one descriptor-backed persistent base table with optional baseline `WHERE`; no `COUNT(expr)`, `DISTINCT`, grouping, aliases, ordering, limiting, or window forms. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
 | `COUNT(DISTINCT)` | ❌ | Count distinct values. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
 | `GROUP_CONCAT()` | ❌ | Concatenated aggregate string. | [aggregate functions](docs/compatibility/functions-aggregate.md) |
 | `MAX()` | ❌ | Maximum value. | [aggregate functions](docs/compatibility/functions-aggregate.md) |

@@ -1766,6 +1766,78 @@ static int test_core_metadata_catalog(void) {
         "SQL_PATH",
         "DEFAULT_ENCRYPTION",
     };
+    static const struct expected_result_metadata schemata_metadata[] = {
+        {.name = "CATALOG_NAME",
+         .schema_name = "information_schema",
+         .table_name = "SCHEMATA",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "SCHEMATA",
+         .origin_column_name = "CATALOG_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                      MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "SCHEMA_NAME",
+         .schema_name = "information_schema",
+         .table_name = "SCHEMATA",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "SCHEMATA",
+         .origin_column_name = "SCHEMA_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY},
+        {.name = "DEFAULT_CHARACTER_SET_NAME",
+         .schema_name = "information_schema",
+         .table_name = "SCHEMATA",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "SCHEMATA",
+         .origin_column_name = "DEFAULT_CHARACTER_SET_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+         .flags_clear = MYLITE_FIELD_FLAG_BINARY},
+        {.name = "DEFAULT_COLLATION_NAME",
+         .schema_name = "information_schema",
+         .table_name = "SCHEMATA",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "SCHEMATA",
+         .origin_column_name = "DEFAULT_COLLATION_NAME",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+         .flags_clear = MYLITE_FIELD_FLAG_BINARY},
+        {.name = "SQL_PATH",
+         .schema_name = "",
+         .table_name = "SCHEMATA",
+         .origin_schema_name = "",
+         .origin_table_name = "SCHEMATA",
+         .origin_column_name = "SQL_PATH",
+         .declared_length = 0U,
+         .field_type = MYLITE_FIELD_TYPE_NULL,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "DEFAULT_ENCRYPTION",
+         .schema_name = "information_schema",
+         .table_name = "SCHEMATA",
+         .origin_schema_name = "information_schema",
+         .origin_table_name = "SCHEMATA",
+         .origin_column_name = "DEFAULT_ENCRYPTION",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_ENUM | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+    };
     static const char *const tables_columns[] = {
         "TABLE_CATALOG",   "TABLE_SCHEMA", "TABLE_NAME",      "TABLE_TYPE",     "ENGINE",
         "VERSION",         "ROW_FORMAT",   "TABLE_ROWS",      "AVG_ROW_LENGTH", "DATA_LENGTH",
@@ -2085,6 +2157,8 @@ static int test_core_metadata_catalog(void) {
     failures +=
         prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.SCHEMATA", MYLITE_OK, &stmt);
     failures += expect_column_names(stmt, schemata_columns, schemata_column_count, "schemata");
+    failures +=
+        expect_result_metadata(stmt, schemata_metadata, schemata_column_count, "schemata metadata");
     mylite_finalize(stmt);
     stmt = NULL;
 

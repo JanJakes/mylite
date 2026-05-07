@@ -43,6 +43,10 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
     const char *name
 );
 
+static struct mylite_field_descriptor information_schema_schemata_column_descriptor(
+    const char *name
+);
+
 static struct mylite_field_descriptor information_schema_tables_column_descriptor(const char *name);
 
 static struct mylite_field_descriptor information_schema_table_constraints_column_descriptor(
@@ -245,6 +249,9 @@ static const char *information_schema_column_origin_schema(
         mylite_ascii_case_equal(name, "CONSTRAINT_NAME")) {
         return "";
     }
+    if (table == MYLITE_INFORMATION_SCHEMA_SCHEMATA && mylite_ascii_case_equal(name, "SQL_PATH")) {
+        return "";
+    }
     return "information_schema";
 }
 
@@ -253,6 +260,8 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
     const char *name
 ) {
     switch (table) {
+    case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
+        return information_schema_schemata_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_TABLES:
         return information_schema_tables_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS:
@@ -273,11 +282,59 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
         return information_schema_collation_character_set_applicability_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
         return information_schema_keywords_column_descriptor(name);
-    case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         break;
+    }
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_INVALID,
+    };
+}
+
+static struct mylite_field_descriptor information_schema_schemata_column_descriptor(
+    const char *name
+) {
+    const unsigned int not_null_key_flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                                            MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                                            MYLITE_FIELD_FLAG_PART_KEY;
+
+    if (mylite_ascii_case_equal(name, "CATALOG_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            not_null_key_flags | MYLITE_FIELD_FLAG_UNIQUE_KEY,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "SCHEMA_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            not_null_key_flags,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "DEFAULT_CHARACTER_SET_NAME") ||
+        mylite_ascii_case_equal(name, "DEFAULT_COLLATION_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "SQL_PATH")) {
+        return (struct mylite_field_descriptor){
+            .type = MYLITE_FIELD_TYPE_NULL,
+            .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+    }
+    if (mylite_ascii_case_equal(name, "DEFAULT_ENCRYPTION")) {
+        return information_schema_enum_descriptor(information_schema_yes_no_length);
     }
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_INVALID,

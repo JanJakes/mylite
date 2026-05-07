@@ -308,6 +308,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `CONSTRAINT_NAME`, and `CHECK_CLAUSE`;
       `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` now reports
       MySQL-shaped descriptors for `COLLATION_NAME` and `CHARACTER_SET_NAME`;
+      `INFORMATION_SCHEMA.SCHEMATA` now reports MySQL-shaped descriptors for
+      `CATALOG_NAME`, `SCHEMA_NAME`, default charset/collation,
+      `SQL_PATH`, and `DEFAULT_ENCRYPTION`;
       `INFORMATION_SCHEMA.KEYWORDS` now reports MySQL-shaped `WORD` and
       `RESERVED` result descriptors;
       `SHOW DATABASES`, `SHOW TABLES`, `SHOW TABLE STATUS`, and table

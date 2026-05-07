@@ -10,6 +10,8 @@ In scope:
 
 - parsing and AST/runtime plan storage for `UPDATE IGNORE table_name SET ...`
 - duplicate primary-key and unique-key row skipping with warning 1062
+- data-conversion, temporal, string-truncation, and explicit `NULL`
+  not-null assignment demotion for single-table updates
 - child foreign-key update row skipping with warning 1452
 - parent foreign-key `RESTRICT`, `NO ACTION`, and InnoDB-style `SET DEFAULT`
   row skipping with warning 1451
@@ -21,8 +23,8 @@ Out of scope for this slice:
 
 - joined or multi-table `UPDATE IGNORE`
 - `LOW_PRIORITY`, CTEs, partition selection, and unsupported `LIMIT` forms
-- data-conversion, range-clipping, truncation, and temporal coercion demotion
-  caused specifically by `IGNORE`
+- range-clipping and conversion-demotion behavior beyond the covered numeric,
+  temporal, string-length, and explicit `NULL` not-null assignment cases
 - replication-safety warnings, protocol OK-packet text, triggers, privileges,
   views, and storage engines other than MyLite's InnoDB-compatible behavior
 
@@ -85,6 +87,28 @@ For parent foreign-key `RESTRICT`, `NO ACTION`, and observed InnoDB
 1451, and continues updating other parent rows. If `foreign_key_checks = 0`,
 the same update is allowed without warnings.
 
+For invalid assignment values, `UPDATE IGNORE` applies the same practical
+coercions as non-strict updates rather than skipping the row. Observed MySQL
+8.4.9 behavior:
+
+```sql
+CREATE TABLE coerce_t(
+  id INT PRIMARY KEY,
+  i INT NOT NULL,
+  d DATE NOT NULL,
+  v VARCHAR(3) NOT NULL
+);
+INSERT INTO coerce_t VALUES (1,1,'2024-01-01','abc');
+UPDATE IGNORE coerce_t
+SET i = 'bad', d = '2022-31-01', v = 'abcdef'
+WHERE id = 1;
+```
+
+MySQL changes the row to `i = 0`, `d = '0000-00-00'`, and `v = 'abc'`,
+reports one affected row, and records warnings 1366, 1265, and 1265 in
+assignment order. Explicit `NULL` assignments to `NOT NULL` columns coerce to
+implicit defaults with warning 1048 per column.
+
 `UPDATE IGNORE` does not make parse errors, unknown target tables, unknown
 assignment columns, unsupported expressions, allocation failures, or SQLite I/O
 failures ignorable.
@@ -100,9 +124,12 @@ Single-table update execution remains row-oriented:
    `LIMIT` logic.
 2. Evaluate assignments into a candidate row.
 3. Validate unique indexes, child foreign keys, and parent foreign keys.
-4. If validation reports an ignorable conflict and the plan has `ignore = true`,
+4. If assignment validation reports an ignorable conversion or `NOT NULL`
+   condition and the plan has `ignore = true`, keep the coerced candidate value,
+   append the MySQL warning, and continue validating the row.
+5. If validation reports an ignorable conflict and the plan has `ignore = true`,
    append the MySQL warning, leave the stored row unchanged, and continue.
-5. If the row changed and no ignorable conflict occurred, apply parent update
+6. If the row changed and no ignorable conflict occurred, apply parent update
    referential actions and write the candidate row.
 
 Warnings use the same diagnostics area as `INSERT IGNORE`. Error text is
@@ -126,11 +153,15 @@ Runtime tests must cover:
   skipped rows
 - duplicate-key mixed valid/skipped rows where non-key assignments on the
   skipped row do not apply
+- invalid integer, invalid date, string truncation, and explicit `NULL`
+  `NOT NULL` assignment coercion with MySQL warning codes, affected rows, and
+  stored values
 - child FK row skipping, warning code 1452, affected rows, and unchanged
   skipped rows
 - parent FK row skipping, warning code 1451, affected rows, and updates to
   unreferenced rows
 - `foreign_key_checks = 0` allowing the otherwise violating child update
 
-Compatibility matrix and feedback task updates must keep conversion-error
-demotion and joined `UPDATE IGNORE` listed as deferred until implemented.
+Compatibility matrix and feedback task updates must keep joined
+`UPDATE IGNORE`, insert-path conversion demotion, and range-clipping edge cases
+listed as deferred until implemented.

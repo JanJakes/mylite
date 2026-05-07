@@ -501,23 +501,27 @@ int mylite_dml_coerce_update_temporal_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 );
 int mylite_dml_coerce_update_numeric_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 );
 int mylite_dml_coerce_update_string_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 );
 int mylite_dml_validate_update_assignment_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
+    bool ignore,
     struct mylite_expression_value *value
 );
 int mylite_dml_advance_update_auto_increment(

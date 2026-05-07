@@ -163,6 +163,7 @@ int mylite_dml_copy_insert_bound_value_to_expression(
 int mylite_dml_validate_update_assignment_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
+    bool ignore,
     struct mylite_expression_value *value
 ) {
     int64_t integer_value = 0;
@@ -171,7 +172,7 @@ int mylite_dml_validate_update_assignment_value(
         if (column->nullable) {
             return MYLITE_OK;
         }
-        if (!mylite_connection_sql_mode_is_strict(database)) {
+        if (ignore || !mylite_connection_sql_mode_is_strict(database)) {
             int status = mylite_dml_insert_append_null_warning(database, column->name);
 
             if (status != MYLITE_OK) {
@@ -181,16 +182,16 @@ int mylite_dml_validate_update_assignment_value(
         }
         return mylite_dml_set_not_null_column_error(database, column->name);
     }
-    int status = mylite_dml_coerce_update_temporal_value(database, column, 1U, value);
+    int status = mylite_dml_coerce_update_temporal_value(database, column, 1U, ignore, value);
 
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_dml_coerce_update_numeric_value(database, column, 1U, value);
+    status = mylite_dml_coerce_update_numeric_value(database, column, 1U, ignore, value);
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_dml_coerce_update_string_value(database, column, 1U, value);
+    status = mylite_dml_coerce_update_string_value(database, column, 1U, ignore, value);
     if (status != MYLITE_OK) {
         return status;
     }

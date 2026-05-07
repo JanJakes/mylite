@@ -49,6 +49,7 @@ static int coerce_temporal_text_value(
     const char *text,
     size_t text_length,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_temporal_output *out_output
 );
 
@@ -167,6 +168,7 @@ int mylite_dml_coerce_insert_temporal_value(
         value->text_value,
         value->text_length,
         row_number,
+        false,
         &output
     );
     if (status != MYLITE_OK || !output.replace) {
@@ -179,6 +181,7 @@ int mylite_dml_coerce_update_temporal_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 ) {
     enum mylite_dml_temporal_kind kind = temporal_kind_for_column(column);
@@ -198,6 +201,7 @@ int mylite_dml_coerce_update_temporal_value(
         value->text_value,
         value->text_length,
         row_number,
+        ignore,
         &output
     );
     if (status != MYLITE_OK || !output.replace) {
@@ -213,6 +217,7 @@ static int coerce_temporal_text_value(
     const char *text,
     size_t text_length,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_temporal_output *out_output
 ) {
     struct mylite_dml_temporal_parts parts = {0};
@@ -230,7 +235,7 @@ static int coerce_temporal_text_value(
     }
 
     if (problem != MYLITE_DML_TEMPORAL_PROBLEM_NONE) {
-        if (mylite_connection_sql_mode_is_strict(database)) {
+        if (!ignore && mylite_connection_sql_mode_is_strict(database)) {
             return set_temporal_error(database, column, kind, text, text_length, row_number);
         }
         int status = append_temporal_warning(database, column, problem, row_number);

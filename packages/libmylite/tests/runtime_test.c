@@ -50062,6 +50062,27 @@ static int test_update_ignore_execution(void) {
         "30",
         "31",
     };
+    static const char *const coerce_columns[] = {"id", "i", "d", "v"};
+    static const char *const coerce_values[] = {
+        "1",
+        "0",
+        "0000-00-00",
+        "abc",
+        "2",
+        "2",
+        "2024-01-02",
+        "def",
+    };
+    static const char *const null_coerce_values[] = {
+        "1",
+        "0",
+        "0000-00-00",
+        "abc",
+        "2",
+        "0",
+        "0000-00-00",
+        "",
+    };
     static const char *const child_columns[] = {"id", "parent_id", "payload"};
     static const char *const child_after_ignore_values[] = {
         "1",
@@ -50097,6 +50118,82 @@ static int test_update_ignore_execution(void) {
         expect_status(mylite_open_memory(&database), MYLITE_OK, "open update ignore database");
     failures += execute_sql(database, "CREATE DATABASE upd_ignore_runtime", MYLITE_DONE);
     failures += execute_sql(database, "USE upd_ignore_runtime", MYLITE_DONE);
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE upd_ignore_coerce("
+        "id INT PRIMARY KEY, i INT NOT NULL, d DATE NOT NULL, v VARCHAR(3) NOT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO upd_ignore_coerce "
+        "VALUES (1,1,'2024-01-01','abc'),(2,2,'2024-01-02','def')",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE upd_ignore_coerce "
+        "SET i = 'bad', d = '2022-31-01', v = 'abcdef' WHERE id = 1",
+        1,
+        "update ignore conversion affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 3, "update ignore conversion warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "update ignore incorrect integer warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "update ignore invalid date warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_data_truncated,
+        "update ignore string truncation warning"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, i, d, v FROM upd_ignore_coerce ORDER BY id",
+        coerce_columns,
+        4,
+        coerce_values,
+        2,
+        "update ignore coerces invalid assignments"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE upd_ignore_coerce SET i = NULL, d = NULL, v = NULL WHERE id = 2",
+        1,
+        "update ignore null coercion affected rows"
+    );
+    failures += expect_int(mylite_warning_count(database), 3, "update ignore null warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_bad_null,
+        "update ignore null integer warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_bad_null,
+        "update ignore null date warning"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_bad_null,
+        "update ignore null string warning"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, i, d, v FROM upd_ignore_coerce ORDER BY id",
+        coerce_columns,
+        4,
+        null_coerce_values,
+        2,
+        "update ignore coerces null not-null assignments"
+    );
 
     failures += execute_sql(
         database,

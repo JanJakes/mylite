@@ -34,6 +34,7 @@ static int apply_update_assignments(
     mylite_db *database,
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
+    bool ignore,
     const struct mylite_update_bound_assignment *assignments,
     size_t assignment_count,
     const struct mylite_dml_expression_callbacks *callbacks,
@@ -45,6 +46,7 @@ static int evaluate_update_assignment_value(
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
     const struct mylite_update_row *candidate,
+    bool ignore,
     size_t target_column,
     const struct mylite_sql_ast_node *expression,
     const struct mylite_dml_expression_callbacks *callbacks,
@@ -170,6 +172,7 @@ static int execute_update_row(
             database,
             table,
             write_table,
+            ignore,
             assignments,
             assignment_count,
             callbacks,
@@ -296,6 +299,7 @@ static int apply_update_assignments(
     mylite_db *database,
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
+    bool ignore,
     const struct mylite_update_bound_assignment *assignments,
     size_t assignment_count,
     const struct mylite_dml_expression_callbacks *callbacks,
@@ -316,6 +320,7 @@ static int apply_update_assignments(
             table,
             write_table,
             candidate,
+            ignore,
             column_index,
             assignments[index].value,
             callbacks,
@@ -339,6 +344,7 @@ static int evaluate_update_assignment_value(
     const struct mylite_select_table *table,
     const struct mylite_insert_table *write_table,
     const struct mylite_update_row *candidate,
+    bool ignore,
     size_t target_column,
     const struct mylite_sql_ast_node *expression,
     const struct mylite_dml_expression_callbacks *callbacks,
@@ -388,7 +394,7 @@ static int evaluate_update_assignment_value(
         }
     }
     if (status == MYLITE_OK) {
-        status = mylite_dml_validate_update_assignment_value(database, column, out_value);
+        status = mylite_dml_validate_update_assignment_value(database, column, ignore, out_value);
     }
     return status;
 }

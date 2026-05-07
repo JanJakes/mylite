@@ -59,6 +59,7 @@ static int coerce_update_numeric_value(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_numeric_kind kind,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 );
 
@@ -77,6 +78,7 @@ static int coerce_numeric_double(
     double value,
     enum mylite_dml_numeric_problem problem,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_numeric_output *out_output
 );
 
@@ -87,6 +89,7 @@ static int coerce_numeric_text(
     const char *text,
     size_t text_length,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_numeric_output *out_output
 );
 
@@ -99,6 +102,7 @@ static int coerce_integer_double(
     double value,
     enum mylite_dml_numeric_problem problem,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_numeric_output *out_output
 );
 
@@ -108,6 +112,7 @@ static int coerce_decimal_double(
     double value,
     enum mylite_dml_numeric_problem problem,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_numeric_output *out_output
 );
 
@@ -115,7 +120,8 @@ static int handle_numeric_problem(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     enum mylite_dml_numeric_problem problem,
-    uint64_t row_number
+    uint64_t row_number,
+    bool ignore
 );
 
 static int set_numeric_problem_error(
@@ -194,6 +200,7 @@ int mylite_dml_coerce_update_numeric_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 ) {
     enum mylite_dml_numeric_kind kind = numeric_kind_for_column(column);
@@ -204,7 +211,7 @@ int mylite_dml_coerce_update_numeric_value(
     if (kind == MYLITE_DML_NUMERIC_NONE || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
         return MYLITE_OK;
     }
-    return coerce_update_numeric_value(database, column, kind, row_number, value);
+    return coerce_update_numeric_value(database, column, kind, row_number, ignore, value);
 }
 
 static int coerce_insert_numeric_value(
@@ -226,6 +233,7 @@ static int coerce_insert_numeric_value(
             (double)value->integer_value,
             MYLITE_DML_NUMERIC_PROBLEM_NONE,
             row_number,
+            false,
             &output
         );
         break;
@@ -237,6 +245,7 @@ static int coerce_insert_numeric_value(
             value->real_value,
             MYLITE_DML_NUMERIC_PROBLEM_NONE,
             row_number,
+            false,
             &output
         );
         break;
@@ -248,6 +257,7 @@ static int coerce_insert_numeric_value(
             value->text_value,
             value->text_length,
             row_number,
+            false,
             &output
         );
         break;
@@ -266,6 +276,7 @@ static int coerce_update_numeric_value(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_numeric_kind kind,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 ) {
     struct mylite_dml_numeric_output output = {0};
@@ -280,6 +291,7 @@ static int coerce_update_numeric_value(
             (double)value->int64_value,
             MYLITE_DML_NUMERIC_PROBLEM_NONE,
             row_number,
+            ignore,
             &output
         );
         break;
@@ -295,6 +307,7 @@ static int coerce_update_numeric_value(
                                                       : (double)value->uint64_value,
             MYLITE_DML_NUMERIC_PROBLEM_NONE,
             row_number,
+            ignore,
             &output
         );
         break;
@@ -306,6 +319,7 @@ static int coerce_update_numeric_value(
             value->real_value,
             MYLITE_DML_NUMERIC_PROBLEM_NONE,
             row_number,
+            ignore,
             &output
         );
         break;
@@ -317,6 +331,7 @@ static int coerce_update_numeric_value(
             value->text_value,
             value->text_length,
             row_number,
+            ignore,
             &output
         );
         break;
@@ -381,12 +396,30 @@ static int coerce_numeric_double(
     double value,
     enum mylite_dml_numeric_problem problem,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_numeric_output *out_output
 ) {
     if (kind == MYLITE_DML_NUMERIC_DECIMAL) {
-        return coerce_decimal_double(database, column, value, problem, row_number, out_output);
+        return coerce_decimal_double(
+            database,
+            column,
+            value,
+            problem,
+            row_number,
+            ignore,
+            out_output
+        );
     }
-    return coerce_integer_double(database, column, kind, value, problem, row_number, out_output);
+    return coerce_integer_double(
+        database,
+        column,
+        kind,
+        value,
+        problem,
+        row_number,
+        ignore,
+        out_output
+    );
 }
 
 static int coerce_numeric_text(
@@ -396,6 +429,7 @@ static int coerce_numeric_text(
     const char *text,
     size_t text_length,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_numeric_output *out_output
 ) {
     struct mylite_dml_numeric_text_parse parsed = parse_numeric_text(text, text_length);
@@ -419,6 +453,7 @@ static int coerce_numeric_text(
         parsed.value,
         problem,
         row_number,
+        ignore,
         out_output
     );
 }
@@ -454,9 +489,10 @@ static int coerce_integer_double(
     double value,
     enum mylite_dml_numeric_problem problem,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_numeric_output *out_output
 ) {
-    int status = handle_numeric_problem(database, column, problem, row_number);
+    int status = handle_numeric_problem(database, column, problem, row_number, ignore);
     int64_t rounded = 0;
 
     if (status != MYLITE_OK) {
@@ -468,7 +504,8 @@ static int coerce_integer_double(
             database,
             column,
             MYLITE_DML_NUMERIC_PROBLEM_OUT_OF_RANGE,
-            row_number
+            row_number,
+            ignore
         );
         if (status != MYLITE_OK) {
             return status;
@@ -490,11 +527,12 @@ static int coerce_decimal_double(
     double value,
     enum mylite_dml_numeric_problem problem,
     uint64_t row_number,
+    bool ignore,
     struct mylite_dml_numeric_output *out_output
 ) {
     uint64_t scale = decimal_scale_for_column(column);
     double rounded = round_decimal_to_scale(value, scale);
-    int status = handle_numeric_problem(database, column, problem, row_number);
+    int status = handle_numeric_problem(database, column, problem, row_number, ignore);
 
     if (status != MYLITE_OK) {
         return status;
@@ -512,12 +550,13 @@ static int handle_numeric_problem(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     enum mylite_dml_numeric_problem problem,
-    uint64_t row_number
+    uint64_t row_number,
+    bool ignore
 ) {
     if (problem == MYLITE_DML_NUMERIC_PROBLEM_NONE) {
         return MYLITE_OK;
     }
-    if (mylite_connection_sql_mode_is_strict(database)) {
+    if (!ignore && mylite_connection_sql_mode_is_strict(database)) {
         return set_numeric_problem_error(database, column, problem, row_number);
     }
     return append_numeric_problem_warning(database, column, problem, row_number);

@@ -43,6 +43,7 @@ static int coerce_update_string_value(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 );
 
@@ -69,6 +70,7 @@ static int coerce_string_text(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
+    bool ignore,
     const struct mylite_dml_string_text *text,
     struct mylite_dml_string_output *out_output
 );
@@ -90,7 +92,8 @@ static size_t utf8_prefix_byte_length(const char *text, size_t length, uint64_t 
 static int handle_string_truncation(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
-    uint64_t row_number
+    uint64_t row_number,
+    bool ignore
 );
 
 static int set_string_too_long_error(
@@ -146,6 +149,7 @@ int mylite_dml_coerce_update_string_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 ) {
     enum mylite_dml_string_kind kind = string_kind_for_column(column);
@@ -156,7 +160,7 @@ int mylite_dml_coerce_update_string_value(
     if (kind == MYLITE_DML_STRING_NONE || value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
         return MYLITE_OK;
     }
-    return coerce_update_string_value(database, column, kind, row_number, value);
+    return coerce_update_string_value(database, column, kind, row_number, ignore, value);
 }
 
 static int coerce_insert_string_value(
@@ -171,7 +175,7 @@ static int coerce_insert_string_value(
     int status = insert_value_to_string_text(value, &text);
 
     if (status == MYLITE_OK) {
-        status = coerce_string_text(database, column, kind, row_number, &text, &output);
+        status = coerce_string_text(database, column, kind, row_number, false, &text, &output);
     }
     if (status == MYLITE_OK && output.replace) {
         status = replace_insert_string_value(&output, value);
@@ -186,6 +190,7 @@ static int coerce_update_string_value(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
+    bool ignore,
     struct mylite_expression_value *value
 ) {
     struct mylite_dml_string_text text = {0};
@@ -193,7 +198,7 @@ static int coerce_update_string_value(
     int status = expression_value_to_string_text(value, &text);
 
     if (status == MYLITE_OK) {
-        status = coerce_string_text(database, column, kind, row_number, &text, &output);
+        status = coerce_string_text(database, column, kind, row_number, ignore, &text, &output);
     }
     if (status == MYLITE_OK && output.replace) {
         status = replace_update_string_value(&output, value);
@@ -288,6 +293,7 @@ static int coerce_string_text(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
+    bool ignore,
     const struct mylite_dml_string_text *text,
     struct mylite_dml_string_output *out_output
 ) {
@@ -297,7 +303,7 @@ static int coerce_string_text(
     if (!string_text_exceeds_column_length(kind, text, column->character_maximum_length)) {
         return MYLITE_OK;
     }
-    status = handle_string_truncation(database, column, row_number);
+    status = handle_string_truncation(database, column, row_number, ignore);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -364,9 +370,10 @@ static size_t utf8_prefix_byte_length(const char *text, size_t length, uint64_t 
 static int handle_string_truncation(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
-    uint64_t row_number
+    uint64_t row_number,
+    bool ignore
 ) {
-    if (mylite_connection_sql_mode_is_strict(database)) {
+    if (!ignore && mylite_connection_sql_mode_is_strict(database)) {
         return set_string_too_long_error(database, column, row_number);
     }
     return append_string_truncation_warning(database, column, row_number);

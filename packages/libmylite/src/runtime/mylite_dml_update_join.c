@@ -911,7 +911,7 @@ static int evaluate_joined_update_assignment(
         }
     }
     if (status == MYLITE_OK) {
-        status = mylite_dml_validate_update_assignment_value(database, column, out_value);
+        status = mylite_dml_validate_update_assignment_value(database, column, false, out_value);
     }
     return status;
 }

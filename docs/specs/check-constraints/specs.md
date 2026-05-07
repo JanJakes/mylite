@@ -14,11 +14,11 @@ This feature covers the implemented CHECK constraint slice for supported
 - supported `INSERT`, `INSERT ... SET`, `INSERT ... ON DUPLICATE KEY UPDATE`,
   `INSERT IGNORE`, `REPLACE`, single-table `UPDATE`, `UPDATE IGNORE`, and
   joined `UPDATE`
+- `SHOW CREATE TABLE` rendering for cataloged CHECK constraints
 - warning/error code 3819 behavior for covered DML paths
 
 Mixed CHECK plus table-rebuild ALTER statements, full MySQL deterministic
-expression validation, `CREATE TABLE` schema-level duplicate CHECK-name
-validation, generated-column dependencies, and `SHOW CREATE TABLE` CHECK
+expression validation, generated-column dependencies, and broader expression
 formatting remain deferred.
 
 ## Sources
@@ -50,7 +50,10 @@ CREATE TABLE checks_runtime (
 
 Observed behavior:
 
-- unnamed CHECK constraints are generated as `<table>_chk_<n>`
+- unnamed CHECK constraints are generated as `<table>_chk_<n>`; in
+  `CREATE TABLE`, the counter advances only for earlier unnamed CHECK
+  constraints, so an explicit `<table>_chk_1` followed by the first unnamed
+  CHECK fails with duplicate-name error 3822
 - `CHECK (score > 0)` rejects `score = -1` with error 3819 and message
   `Check constraint '<name>' is violated.`
 - `score = NULL` is accepted because CHECK accepts `UNKNOWN`
@@ -71,6 +74,10 @@ Observed behavior:
   the table row count when enabling enforcement; `NOT ENFORCED` reports 0
 - `ALTER TABLE ... DROP CHECK missing_name` fails with error 3821
 - duplicate explicit CHECK names in a schema fail with error 3822
+- `SHOW CREATE TABLE` renders foreign keys before CHECK constraints, orders
+  CHECK constraints by constraint name, wraps the stored CHECK clause in
+  `CHECK (...)`, and appends `/*!80016 NOT ENFORCED */` for not-enforced
+  constraints
 - generated ALTER CHECK names advance from the table's recorded ordinal
   sequence, so dropping an earlier generated check does not reuse its suffix
 
@@ -109,6 +116,17 @@ rows before flipping metadata to `YES`; when enforcement changes from `NO` to
 `YES`, MyLite reports the table row count as observed in MySQL 8.4.9. `DROP
 CHECK` removes the table's CHECK row and reports 0.
 
+`CREATE TABLE` validates the complete CHECK-name set before creating the table.
+Generated names follow MySQL's `CREATE TABLE` sequence for unnamed CHECK
+constraints rather than counting explicit CHECK constraints. Duplicate names
+return error 3822, leave no table behind, and set statement affected rows to
+`-1`.
+
+`SHOW CREATE TABLE` reads CHECK metadata from the persistent or temporary CHECK
+catalog after column, index, and foreign-key formatting. CHECK rows are sorted
+by constraint name, rendered as table constraints, and preserve
+`/*!80016 NOT ENFORCED */` for not-enforced metadata.
+
 ## Tests
 
 Runtime coverage:
@@ -129,8 +147,12 @@ Runtime coverage:
   ... NOT ENFORCED` toggle metadata and DML behavior
 - `DROP CHECK` removes metadata and missing names use MySQL error 3821
 - duplicate explicit ALTER CHECK names use MySQL error 3822
+- duplicate generated `CREATE TABLE` CHECK names use MySQL error 3822 and leave
+  affected rows at `-1`
 - generated ALTER CHECK names advance after dropping an earlier generated name
 - temporary-table ALTER CHECK rows enforce through the temporary catalog
+- `SHOW CREATE TABLE` renders create-time and ALTER-added CHECK clauses in
+  MySQL-compatible constraint-name order
 
 ## Known Gaps
 
@@ -139,6 +161,3 @@ Runtime coverage:
   behavior, SQL-mode interactions, and exact coercion warnings remain deferred.
 - Mixed CHECK plus column/index/table-option ALTER statements remain
   unsupported.
-- `SHOW CREATE TABLE` does not yet render CHECK clauses.
-- Schema-level duplicate CHECK-name validation is still incomplete for
-  `CREATE TABLE`.

@@ -24,6 +24,6 @@
 - [ ] Validate CHECK expressions at DDL time for deterministic, row-local
       MySQL rules and reject subqueries, variables, unsupported functions,
       references to other tables, and invalid `AUTO_INCREMENT` references.
-- [ ] Render CHECK clauses in `SHOW CREATE TABLE` with MySQL-compatible
+- [x] Render CHECK clauses in `SHOW CREATE TABLE` with MySQL-compatible
       formatting and `/*!80016 NOT ENFORCED */`.
-- [ ] Enforce schema-level CHECK constraint name uniqueness for `CREATE TABLE`.
+- [x] Enforce schema-level CHECK constraint name uniqueness for `CREATE TABLE`.

@@ -3,6 +3,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_show_create_common.h"
+#include "mylite_show_create_table_checks.h"
 #include "mylite_show_create_table_columns.h"
 #include "mylite_show_create_table_foreign_keys.h"
 #include "mylite_show_create_table_indexes.h"
@@ -69,10 +70,11 @@ static int show_create_table_sql(
         return MYLITE_NOMEM;
     }
 
-    sqlite3_str_appendall(
-        create_sql,
-        target->temporary ? "CREATE TEMPORARY TABLE " : "CREATE TABLE "
-    );
+    if (target->temporary) {
+        sqlite3_str_appendall(create_sql, "CREATE TEMPORARY TABLE ");
+    } else {
+        sqlite3_str_appendall(create_sql, "CREATE TABLE ");
+    }
     mylite_show_create_append_identifier(create_sql, target->table_name);
     sqlite3_str_appendall(create_sql, " (\n");
     status =
@@ -83,6 +85,9 @@ static int show_create_table_sql(
     if (status == MYLITE_OK) {
         status =
             mylite_show_create_table_append_foreign_keys(database, create_sql, target, &first_line);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_show_create_table_append_checks(database, create_sql, target, &first_line);
     }
     if (status == MYLITE_OK) {
         sqlite3_str_appendall(create_sql, "\n)");

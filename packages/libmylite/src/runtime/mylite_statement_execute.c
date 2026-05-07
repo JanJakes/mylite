@@ -123,7 +123,9 @@ int mylite_statement_execute_custom_with_callbacks(
             &stmt->create_table,
             stmt->if_not_exists
         );
-        if (status == MYLITE_OK && stmt->create_table.select) {
+        if (status != MYLITE_OK) {
+            stmt->affected_rows = -1;
+        } else if (stmt->create_table.select) {
             stmt->affected_rows = stmt->create_table.selected_row_count;
         }
         break;

@@ -66,6 +66,7 @@ struct mylite_create_table_check {
     char *name;
     char *clause;
     bool enforced;
+    bool generated_name;
 };
 
 struct mylite_create_table_foreign_key {

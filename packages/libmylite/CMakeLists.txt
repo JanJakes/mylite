@@ -220,6 +220,7 @@ add_library(mylite STATIC
   src/runtime/mylite_show_create_common.c
   src/runtime/mylite_show_create_table.c
   src/runtime/mylite_show_create_table_body.c
+  src/runtime/mylite_show_create_table_checks.c
   src/runtime/mylite_show_create_table_columns.c
   src/runtime/mylite_show_create_table_foreign_keys.c
   src/runtime/mylite_show_create_table_info.c

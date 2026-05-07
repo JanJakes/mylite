@@ -25,6 +25,11 @@ static bool validate_create_table_indexes(
     const struct mylite_create_table_plan *plan
 );
 
+static int validate_create_table_checks(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+);
+
 static bool validate_create_table_foreign_keys(
     mylite_db *database,
     const char *schema_name,
@@ -43,6 +48,14 @@ static bool create_table_foreign_key_name_exists(
     const char *name,
     size_t before_index
 );
+
+static bool create_table_check_name_exists(
+    const struct mylite_create_table_plan *plan,
+    const char *name,
+    size_t before_index
+);
+
+static int set_create_table_duplicate_check_error(mylite_db *database, const char *constraint_name);
 
 static bool create_table_foreign_key_columns_exist(
     mylite_db *database,
@@ -70,6 +83,8 @@ static int referenced_unique_candidate_matches(
     const struct mylite_create_table_foreign_key *foreign_key,
     bool *out_matches
 );
+
+static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 static int append_create_table_exists_note(mylite_db *database, const char *table_name);
 
@@ -165,6 +180,10 @@ int mylite_table_ddl_validate_create_table_plan(
     if (!validate_create_table_indexes(database, plan)) {
         return MYLITE_EXEC_ERROR;
     }
+    status = validate_create_table_checks(database, plan);
+    if (status != MYLITE_OK) {
+        return status;
+    }
     if (!validate_create_table_foreign_keys(database, schema_name, plan)) {
         return MYLITE_EXEC_ERROR;
     }
@@ -243,6 +262,54 @@ static bool validate_create_table_indexes(
         }
     }
     return true;
+}
+
+static int validate_create_table_checks(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+) {
+    for (size_t index = 0U; index < plan->check_count; ++index) {
+        if (create_table_check_name_exists(plan, plan->checks[index].name, index)) {
+            return set_create_table_duplicate_check_error(database, plan->checks[index].name);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool create_table_check_name_exists(
+    const struct mylite_create_table_plan *plan,
+    const char *name,
+    size_t before_index
+) {
+    for (size_t index = 0U; index < before_index; ++index) {
+        if (mylite_ascii_case_equal(plan->checks[index].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int set_create_table_duplicate_check_error(
+    mylite_db *database,
+    const char *constraint_name
+) {
+    char *message = sqlite3_mprintf("Duplicate check constraint name '%q'.", constraint_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_CHECK_CONSTRAINT_DUP_NAME,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static bool validate_create_table_foreign_keys(
@@ -454,22 +521,37 @@ static int resolve_referenced_unique_constraint(
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, foreign_key->referenced_schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 2, foreign_key->referenced_table_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(
+        select,
+        1,
+        foreign_key->referenced_schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        select,
+        2,
+        foreign_key->referenced_table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
 
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         const char *candidate_name = (const char *)sqlite3_column_text(select, 0);
         bool matches = false;
         int status = MYLITE_OK;
 
-        if (candidate_name != NULL && (status = referenced_unique_candidate_matches(
-                                           database,
-                                           candidate_name,
-                                           foreign_key,
-                                           &matches
-                                       )) != MYLITE_OK) {
-            sqlite3_finalize(select);
-            return status;
+        if (candidate_name != NULL) {
+            status = referenced_unique_candidate_matches(
+                database,
+                candidate_name,
+                foreign_key,
+                &matches
+            );
+            if (status != MYLITE_OK) {
+                sqlite3_finalize(select);
+                return status;
+            }
         }
         if (candidate_name != NULL && matches) {
             *out_constraint_name = mylite_copy_span_text(candidate_name, strlen(candidate_name));
@@ -505,9 +587,21 @@ static int referenced_unique_candidate_matches(
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, foreign_key->referenced_schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 2, foreign_key->referenced_table_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 3, candidate_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(
+        select,
+        1,
+        foreign_key->referenced_schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        select,
+        2,
+        foreign_key->referenced_table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(select, 3, candidate_name, -1, sqlite_transient_destructor());
 
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         const char *column_name = (const char *)sqlite3_column_text(select, 0);
@@ -527,6 +621,10 @@ static int referenced_unique_candidate_matches(
     *out_matches = matched == foreign_key->referenced_column_count;
     sqlite3_finalize(select);
     return MYLITE_OK;
+}
+
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
+    return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }
 
 static int append_create_table_exists_note(mylite_db *database, const char *table_name) {

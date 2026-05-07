@@ -32,7 +32,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Align `CREATE TABLE ... AUTO_INCREMENT=100` metadata and status
       reporting with MySQL next-value expectations.
 - [x] Align `SHOW CREATE TABLE` formatting and metadata, including index
-      spacing, text-column defaults, comments, and `USING BTREE`.
+      spacing, text-column defaults, comments, `USING BTREE`, foreign keys, and
+      CHECK constraints.
 - [x] Align `SHOW CREATE TABLE missing_table` diagnostics with MySQL.
 - [x] Verify and complete `DESCRIBE` / `SHOW COLUMNS` for generated schemas.
       Stored, virtual, and default-virtual generated-column metadata now

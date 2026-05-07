@@ -379,13 +379,13 @@ static int copy_create_table_elements(
                                                                                       : NULL;
             const struct mylite_sql_ast_node *expression =
                 constraint_name == NULL ? first_child : mylite_ast_child_at(element, 1U);
+            const struct mylite_create_table_check_ast input = {
+                .constraint_name = constraint_name,
+                .expression = expression,
+                .enforcement = element->constraint_enforcement,
+            };
 
-            status = mylite_table_ddl_add_create_table_check(
-                plan,
-                constraint_name,
-                expression,
-                element->constraint_enforcement
-            );
+            status = mylite_table_ddl_add_create_table_check(plan, &input);
         } else if (
             element->kind == MYLITE_SQL_AST_ALTER_TABLE_ACTION &&
             element->alter_table_action == MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY

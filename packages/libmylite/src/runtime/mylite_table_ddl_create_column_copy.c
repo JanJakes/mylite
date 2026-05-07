@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+static const size_t generated_check_constraint_suffix_digits = 20U;
+static const size_t binary_check_expression_text_overhead = 5U;
+
 static int copy_create_table_column_type(
     const struct mylite_sql_ast_node *type_node,
     struct mylite_create_table_column_type *type
@@ -18,16 +21,18 @@ static int copy_create_table_column_attributes(
     struct mylite_create_table_plan *plan
 );
 
-static char *copy_expression_text(const struct mylite_sql_ast_node *node);
-static const struct mylite_sql_ast_node *check_constraint_expression_node(
-    const struct mylite_sql_ast_node *constraint_name,
-    const struct mylite_sql_ast_node *first_child
+static int copy_create_table_column_check_attribute(
+    const struct mylite_sql_ast_node *attribute,
+    struct mylite_create_table_plan *plan
 );
+
+static char *copy_expression_text(const struct mylite_sql_ast_node *node);
 static char *copy_check_constraint_name(
     const struct mylite_create_table_plan *plan,
     const struct mylite_sql_ast_node *constraint_name
 );
 static char *copy_generated_check_constraint_name(const struct mylite_create_table_plan *plan);
+static size_t generated_check_constraint_count(const struct mylite_create_table_plan *plan);
 static char *copy_check_binary_expression_text(const struct mylite_sql_ast_node *expression);
 static char *copy_check_operand_text(const struct mylite_sql_ast_node *expression);
 static char *copy_check_identifier_text(const struct mylite_sql_ast_node *expression);
@@ -76,20 +81,19 @@ int mylite_table_ddl_copy_create_table_column(
 
 int mylite_table_ddl_add_create_table_check(
     struct mylite_create_table_plan *plan,
-    const struct mylite_sql_ast_node *constraint_name,
-    const struct mylite_sql_ast_node *expression,
-    enum mylite_sql_ast_constraint_enforcement enforcement
+    const struct mylite_create_table_check_ast *input
 ) {
     struct mylite_create_table_check check = {
-        .enforced = enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED,
+        .enforced = input->enforcement != MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED,
+        .generated_name = input->constraint_name == NULL,
     };
     struct mylite_create_table_check *checks = NULL;
 
-    check.name = copy_check_constraint_name(plan, constraint_name);
+    check.name = copy_check_constraint_name(plan, input->constraint_name);
     if (check.name == NULL) {
         return MYLITE_NOMEM;
     }
-    check.clause = mylite_table_ddl_copy_check_clause_text(expression);
+    check.clause = mylite_table_ddl_copy_check_clause_text(input->expression);
     if (check.clause == NULL) {
         free(check.name);
         return MYLITE_NOMEM;
@@ -224,19 +228,8 @@ static int copy_create_table_column_attributes(
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_REFERENCES:
             /* MySQL accepts inline REFERENCES in CREATE TABLE but does not create FK metadata. */
             break;
-        case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK: {
-            const struct mylite_sql_ast_node *first_child = mylite_ast_child_at(attribute, 0U);
-            const struct mylite_sql_ast_node *constraint_name =
-                first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER ? first_child
-                                                                                      : NULL;
-
-            return mylite_table_ddl_add_create_table_check(
-                plan,
-                constraint_name,
-                check_constraint_expression_node(constraint_name, first_child),
-                attribute->constraint_enforcement
-            );
-        }
+        case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK:
+            return copy_create_table_column_check_attribute(attribute, plan);
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED:
             copy = copy_expression_text(mylite_ast_child_at(attribute, 0U));
             if (copy == NULL) {
@@ -255,14 +248,22 @@ static int copy_create_table_column_attributes(
     return MYLITE_OK;
 }
 
-static const struct mylite_sql_ast_node *check_constraint_expression_node(
-    const struct mylite_sql_ast_node *constraint_name,
-    const struct mylite_sql_ast_node *first_child
+static int copy_create_table_column_check_attribute(
+    const struct mylite_sql_ast_node *attribute,
+    struct mylite_create_table_plan *plan
 ) {
-    if (constraint_name == NULL) {
-        return first_child;
-    }
-    return constraint_name->next_sibling;
+    const struct mylite_sql_ast_node *first_child = mylite_ast_child_at(attribute, 0U);
+    const struct mylite_sql_ast_node *constraint_name =
+        first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER ? first_child : NULL;
+    const struct mylite_sql_ast_node *expression =
+        constraint_name == NULL ? first_child : constraint_name->next_sibling;
+    const struct mylite_create_table_check_ast input = {
+        .constraint_name = constraint_name,
+        .expression = expression,
+        .enforcement = attribute->constraint_enforcement,
+    };
+
+    return mylite_table_ddl_add_create_table_check(plan, &input);
 }
 
 static char *copy_check_constraint_name(
@@ -277,14 +278,31 @@ static char *copy_check_constraint_name(
 
 static char *copy_generated_check_constraint_name(const struct mylite_create_table_plan *plan) {
     size_t table_name_length = strlen(plan->table_name);
-    size_t length = table_name_length + strlen("_chk_") + 20U;
+    size_t length = table_name_length + strlen("_chk_") + generated_check_constraint_suffix_digits;
     char *name = malloc(length + 1U);
 
     if (name == NULL) {
         return NULL;
     }
-    (void)snprintf(name, length + 1U, "%s_chk_%zu", plan->table_name, plan->check_count + 1U);
+    (void)snprintf(
+        name,
+        length + 1U,
+        "%s_chk_%zu",
+        plan->table_name,
+        generated_check_constraint_count(plan) + 1U
+    );
     return name;
+}
+
+static size_t generated_check_constraint_count(const struct mylite_create_table_plan *plan) {
+    size_t count = 0U;
+
+    for (size_t index = 0U; index < plan->check_count; ++index) {
+        if (plan->checks[index].generated_name) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 char *mylite_table_ddl_copy_check_clause_text(const struct mylite_sql_ast_node *expression) {
@@ -318,7 +336,8 @@ static char *copy_check_binary_expression_text(const struct mylite_sql_ast_node 
         return NULL;
     }
 
-    length = strlen(left_text) + strlen(operator_text) + strlen(right_text) + 5U;
+    length = strlen(left_text) + strlen(operator_text) + strlen(right_text) +
+             binary_check_expression_text_overhead;
     text = malloc(length + 1U);
     if (text != NULL) {
         (void)snprintf(text, length + 1U, "(%s %s %s)", left_text, operator_text, right_text);

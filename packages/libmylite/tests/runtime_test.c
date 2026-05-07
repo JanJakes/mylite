@@ -3429,6 +3429,29 @@ static int test_check_constraint_enforcement_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE dupcheck ("
+        "id INT, "
+        "CONSTRAINT dupcheck_chk_1 CHECK (id > 0), "
+        "CHECK (id < 10))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate check",
+        "create duplicate generated check name"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_check_constraint_duplicate_name,
+        "create duplicate generated check warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     mylite_close(database);
     mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
@@ -45172,6 +45195,31 @@ static int test_show_create_table_execution(void) {
         "child_cross_fk",
         show_create_fk_cross_schema_create
     };
+    static const char show_create_checks_create[] =
+        "CREATE TABLE `show_checks` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `score` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  CONSTRAINT `score_positive` CHECK ((`score` > 0)),\n"
+        "  CONSTRAINT `show_checks_chk_1` CHECK ((`id` > 0)) /*!80016 NOT ENFORCED */\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const show_create_checks_values[] = {
+        "show_checks",
+        show_create_checks_create
+    };
+    static const char show_create_checks_altered_create[] =
+        "CREATE TABLE `show_checks` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `score` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  CONSTRAINT `score_bound` CHECK ((`score` < 100)) /*!80016 NOT ENFORCED */,\n"
+        "  CONSTRAINT `score_positive` CHECK ((`score` > 0)),\n"
+        "  CONSTRAINT `show_checks_chk_1` CHECK ((`id` > 0)) /*!80016 NOT ENFORCED */\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const show_create_checks_altered_values[] = {
+        "show_checks",
+        show_create_checks_altered_create
+    };
     static const char qualified_create[] = "CREATE TABLE `qualified` (\n"
                                            "  `code` int DEFAULT NULL\n"
                                            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 "
@@ -45327,6 +45375,38 @@ static int test_show_create_table_execution(void) {
         show_create_fk_cross_schema_values,
         1,
         "show create table cross-schema foreign key metadata"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE show_checks ("
+        "id INT PRIMARY KEY, "
+        "score INT, "
+        "CONSTRAINT score_positive CHECK (score > 0), "
+        "CHECK (id > 0) NOT ENFORCED)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE show_checks",
+        columns,
+        2,
+        show_create_checks_values,
+        1,
+        "show create table check constraints"
+    );
+    failures += execute_sql(
+        database,
+        "ALTER TABLE show_checks ADD CONSTRAINT score_bound CHECK (score < 100) NOT ENFORCED",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE show_checks",
+        columns,
+        2,
+        show_create_checks_altered_values,
+        1,
+        "show create table alter check constraints"
     );
 
     failures += execute_sql(

@@ -345,6 +345,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `BINARY` flag.
       `FOUND_ROWS()` now reports MySQL-shaped signed `LONGLONG` flags while
       neighboring session integer functions retain their verified signedness.
+      `RAND()` / `RAND(seed)` now report MySQL-shaped `DOUBLE` metadata with
+      seed-nullability-aware `NOT_NULL` flags.
       Remaining expression and other SQLite-backed result metadata gaps are
       still tracked here.
 

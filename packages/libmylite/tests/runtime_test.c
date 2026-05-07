@@ -22338,7 +22338,75 @@ static int test_rand_function_execution(void) {
         "4",
         "0.15522042769493574",
     };
+    static const struct expected_result_metadata metadata[] = {
+        {"no_seed",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"literal_seed",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"null_seed",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"nullable_seed",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"notnull_seed",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+    };
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open RAND database");
@@ -22435,6 +22503,22 @@ static int test_rand_function_execution(void) {
         "(1, 1, '1'), (2, 2, '2'), (3, 1, '1'), (4, NULL, NULL)",
         MYLITE_DONE
     );
+    failures += prepare_sql(
+        database,
+        "SELECT RAND() AS no_seed, RAND(7) AS literal_seed, "
+        "RAND(NULL) AS null_seed, RAND(seed) AS nullable_seed, "
+        "RAND(id) AS notnull_seed FROM rand_seed_source",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        (int)(sizeof(metadata) / sizeof(metadata[0])),
+        "RAND metadata"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SELECT id, RAND(seed) AS r "
@@ -49884,7 +49968,8 @@ static int test_show_status_execution(void) {
     );
     failures += expect_select_rows(
         database,
-        "SHOW STATUS WHERE Value = '1'",
+        "SHOW STATUS WHERE Value = '1' AND Variable_name <> 'Uptime' "
+        "AND Variable_name <> 'Uptime_since_flush_status'",
         columns,
         2,
         one_status_values,

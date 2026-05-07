@@ -8,6 +8,10 @@ expression contexts.
 ## Behavior
 
 - The result is a non-NULL `DOUBLE` in `[0, 1)`.
+- Result metadata uses MySQL's `DOUBLE` shape: length 23, decimals 31, binary
+  numeric collation, and `NOT_NULL` only when no seed is present or the seed
+  expression is statically non-null. `RAND(NULL)` and nullable seed expressions
+  report nullable metadata even though the runtime value is non-NULL.
 - `RAND()` uses statement-local pseudo-random state initialized from current
   time and connection-specific data.
 - `RAND(seed)` uses deterministic per-expression state. The seed initializes

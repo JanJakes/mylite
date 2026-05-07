@@ -229,7 +229,7 @@ int mylite_expression_descriptor_infer_scalar_numeric_function(
         );
     }
     if (name != NULL && mylite_span_equal_ci(name->span, "RAND")) {
-        *out_descriptor = mylite_expression_descriptor_numeric_double_function(false);
+        *out_descriptor = mylite_expression_descriptor_numeric_double_function(result_nullable);
         return MYLITE_OK;
     }
     if (!function_name_is_abs(name) && !function_name_is_floor_or_ceil(name) &&

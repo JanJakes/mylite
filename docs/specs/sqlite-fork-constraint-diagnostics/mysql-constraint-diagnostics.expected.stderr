@@ -4,3 +4,5 @@ ERROR 1062 (23000) at line 16: Duplicate entry 'home' for key 'wp_constraint_lik
 ERROR 1048 (23000) at line 28: Column 'slug' cannot be null
 ERROR 1062 (23000) at line 29: Duplicate entry 'home' for key 'constraint_update_like.slug'
 ERROR 1062 (23000) at line 30: Duplicate entry '1' for key 'constraint_update_like.PRIMARY'
+ERROR 3819 (HY000) at line 41: Check constraint 'qty_positive' is violated.
+ERROR 3819 (HY000) at line 42: Check constraint 'qty_positive' is violated.

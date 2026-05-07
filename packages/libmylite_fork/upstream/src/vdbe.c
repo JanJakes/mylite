@@ -783,6 +783,7 @@ static int myliteBitValueFits(u64 value, u8 nBits);
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
 
 static void myliteSetConstraintCondition(sqlite3 *db, int rc, u8 eConstraint){
+  const char *zSqlState = "23000";
   u32 iMyErrno = 0;
 
   if( (rc & 0xff)!=SQLITE_CONSTRAINT ) return;
@@ -793,10 +794,14 @@ static void myliteSetConstraintCondition(sqlite3 *db, int rc, u8 eConstraint){
     case P5_ConstraintUnique:
       iMyErrno = 1062;
       break;
+    case P5_ConstraintCheck:
+      iMyErrno = 3819;
+      zSqlState = "HY000";
+      break;
     default:
       return;
   }
-  sqlite3MyliteSetCondition(db, MYLITE_CONDITION_ERROR, iMyErrno, "23000");
+  sqlite3MyliteSetCondition(db, MYLITE_CONDITION_ERROR, iMyErrno, zSqlState);
 }
 
 static int myliteApplyColumnType(

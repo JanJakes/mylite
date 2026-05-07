@@ -3,9 +3,9 @@
 ## Status
 
 Implemented for the first native constraint diagnostics slice. The initial
-scope maps SQLite-native `NOT NULL`, `UNIQUE`, and `PRIMARY KEY` constraint
-failures into MySQL condition metadata exposed through the existing fork
-diagnostics bridge.
+scope maps SQLite-native `NOT NULL`, `UNIQUE`, `PRIMARY KEY`, and `CHECK`
+constraint failures into MySQL condition metadata exposed through the existing
+fork diagnostics bridge.
 
 ## References
 
@@ -40,6 +40,7 @@ This slice covers the first common native constraint conditions:
 - `NOT NULL` violations report MySQL error `1048`, SQLSTATE `23000`;
 - `UNIQUE` violations report MySQL error `1062`, SQLSTATE `23000`;
 - `PRIMARY KEY` violations report MySQL error `1062`, SQLSTATE `23000`;
+- `CHECK` violations report MySQL error `3819`, SQLSTATE `HY000`;
 - `INSERT` and `UPDATE` direct SQLite execution through the fork publish the
   same condition metadata when the native VDBE constraint halt executes;
 - public MyLite error mapping can consume those conditions through the existing
@@ -49,10 +50,10 @@ Out of scope for this slice:
 
 - exact MySQL duplicate-entry and not-null message text;
 - warning demotion for `IGNORE` and non-strict modes;
-- `CHECK` diagnostics, which require MySQL error `3819` and exact constraint
-  naming policy;
 - foreign-key diagnostics, where insert/update/delete need different MySQL
   error numbers and parent/child context;
+- exact `CHECK` message naming policy where SQLite's native constraint label
+  differs from MySQL's generated constraint name;
 - generated-column diagnostics and dependency-specific messages;
 - direct MySQL parser support inside SQLite.
 
@@ -88,6 +89,7 @@ Observed strict-mode behavior:
   `ERROR 1048 (23000)`;
 - duplicate primary-key and duplicate unique-key writes fail with
   `ERROR 1062 (23000)`;
+- `CHECK` constraint false results fail with `ERROR 3819 (HY000)`;
 - failed rows do not change the stored result set.
 
 The fixture was verified with:
@@ -110,7 +112,8 @@ constraint halts:
 - when the halt tag identifies `UNIQUE`, publish condition `1062 / 23000`;
 - primary-key uniqueness uses SQLite's primary-key extended result code but the
   same unique halt tag, so it maps to the same MySQL duplicate-entry condition;
-- leave `CHECK` and foreign-key halt tags untouched until their exact MySQL
+- `CHECK` halt tags map to MySQL's check-constraint violation condition;
+- leave foreign-key halt tags untouched until operation-specific parent/child
   mapping is specified.
 
 No grammar changes are required. This is a VDBE/runtime fork point.
@@ -123,6 +126,7 @@ For direct SQLite execution through the configured MyLite fork:
   error, MySQL errno `1048`, and SQLSTATE `23000`;
 - native `UNIQUE` and `PRIMARY KEY` failures set error, MySQL errno `1062`,
   and SQLSTATE `23000`;
+- native `CHECK` failures set error, MySQL errno `3819`, and SQLSTATE `HY000`;
 - successful statements do not publish these conditions;
 - callers that inspect `sqlite3_errmsg()` still see SQLite's current message
   text in this slice;
@@ -133,6 +137,6 @@ For direct SQLite execution through the configured MyLite fork:
 ## Compatibility Status
 
 MyLite now has fork-level MySQL condition metadata for native `NOT NULL`,
-`UNIQUE`, and `PRIMARY KEY` constraint failures. Exact MySQL message rendering,
-warning demotion, `CHECK`, foreign-key, generated-column, and broader
+`UNIQUE`, `PRIMARY KEY`, and `CHECK` constraint failures. Exact MySQL message
+rendering, warning demotion, foreign-key, generated-column, and broader
 constraint/affected-row mapping remain deferred.

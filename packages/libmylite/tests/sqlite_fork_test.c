@@ -356,6 +356,7 @@ static int test_native_constraint_diagnostics(void) {
     enum {
         not_null_error = 1048,
         duplicate_error = 1062,
+        check_error = 3819,
     };
 
     sqlite3 *database = NULL;
@@ -512,6 +513,60 @@ static int test_native_constraint_diagnostics(void) {
         "SELECT COUNT(*) FROM constraint_diag",
         2,
         "failed native constraint writes preserve stored rows"
+    );
+    failures += exec_sql(
+        database,
+        "CREATE TABLE check_diag("
+        "id INT PRIMARY KEY,"
+        "qty INT,"
+        "CONSTRAINT qty_positive CHECK(qty > 0)"
+        ")",
+        "create direct CHECK diagnostics fixture"
+    );
+    failures +=
+        exec_sql(database, "INSERT INTO check_diag VALUES (1, 1)", "insert direct CHECK seed");
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO check_diag VALUES (2, 0)",
+            .message_fragment = "CHECK constraint failed",
+            .context = "direct CHECK constraint fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = check_error,
+            .sqlstate = "HY000",
+            .context = "direct CHECK constraint publishes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear CHECK constraint condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "UPDATE check_diag SET qty = -1 WHERE id = 1",
+            .message_fragment = "CHECK constraint failed",
+            .context = "direct update CHECK constraint fails",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = check_error,
+            .sqlstate = "HY000",
+            .context = "direct update CHECK publishes MySQL condition",
+        }
+    );
+    failures += expect_int64(
+        database,
+        "SELECT COUNT(*) FROM check_diag WHERE qty = 1",
+        1,
+        "failed native CHECK writes preserve stored rows"
     );
 
     sqlite3_close(database);

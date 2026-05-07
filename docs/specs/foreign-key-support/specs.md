@@ -238,6 +238,7 @@ Table-level `CREATE TABLE ... FOREIGN KEY` should:
   when present, then the optional `FOREIGN KEY index_name`, then a generated
   name based on the first child column
 - validate child columns
+- reject duplicate child constraint names in the same schema with error 1826
 - validate the parent table and referenced columns when `foreign_key_checks`
   is enabled
 - record metadata atomically with the table, columns, and indexes

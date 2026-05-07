@@ -171,6 +171,7 @@ enum {
     mysql_warning_unknown_locale = 1649,
     mysql_warning_out_of_range = 1690,
     mysql_warning_innodb_ft_limit = 1795,
+    mysql_warning_duplicate_foreign_key = 1826,
     mysql_warning_foreign_key_column_drop = 1828,
     mysql_warning_foreign_key_parent_column_drop = 1829,
     mysql_warning_duplicate_index = 1831,
@@ -38044,6 +38045,32 @@ static int test_create_table_base_execution(void) {
         2,
         "create table foreign key key column usage rows"
     );
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE duplicate_fk_name_child ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_parent FOREIGN KEY (parent_id) REFERENCES parent(id))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create table duplicate schema foreign key name"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Duplicate foreign key constraint name 'fk_parent'",
+        "create table duplicate schema foreign key name error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_foreign_key,
+        "create table duplicate schema foreign key name code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "duplicate_fk_name_child");
     failures += execute_sql(
         database,
         "CREATE TABLE multi_foreign_key ("
@@ -60834,6 +60861,46 @@ static int test_alter_table_foreign_key_execution(void) {
         index_values,
         1,
         "alter foreign key supporting index"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE duplicate_fk_name_alter (id INT PRIMARY KEY, parent_id INT)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE duplicate_fk_name_alter ADD CONSTRAINT fk_parent "
+        "FOREIGN KEY (parent_id) REFERENCES parent_fk(id)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "alter foreign key duplicate schema name"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Duplicate foreign key constraint name 'fk_parent'",
+        "alter foreign key duplicate schema name error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_foreign_key,
+        "alter foreign key duplicate schema name code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = "
+        "'duplicate_fk_name_alter'",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "alter foreign key duplicate schema name leaves no metadata"
     );
     failures += prepare_sql(database, "INSERT INTO child_fk VALUES (3,99)", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "alter foreign key enforces");

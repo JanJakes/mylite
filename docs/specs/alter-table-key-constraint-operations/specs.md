@@ -776,6 +776,7 @@ deferred surfaces:
 | dropping index needed by a foreign key | 1553 / `HY000` |
 | non-text column in a full-text index | 1283 / `HY000` |
 | multiple full-text index creations in one ALTER | 1795 / `HY000` |
+| duplicate foreign-key constraint name | 1826 / `HY000` |
 | invisible explicit or implicit primary key | 3522 / `HY000` |
 | CHECK violation | 3819 / `HY000` |
 | missing CHECK constraint | 3821 / `HY000` |

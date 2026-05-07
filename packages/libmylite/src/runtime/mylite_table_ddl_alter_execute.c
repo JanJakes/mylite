@@ -2983,6 +2983,13 @@ static int set_alter_table_duplicate_foreign_key_error(
         "'"
     );
 
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_FK_DUP_NAME,
+            mylite_error_message(database)
+        );
+    }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 

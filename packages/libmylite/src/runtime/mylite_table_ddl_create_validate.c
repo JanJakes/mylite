@@ -4,6 +4,7 @@
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
+#include "mylite_foreign_key_catalog.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl.h"
 #include "mylite_table_ddl_check_validate.h"
@@ -70,6 +71,11 @@ static bool set_create_table_duplicate_key_error(mylite_db *database, const char
 static bool set_create_table_multiple_primary_key_error(mylite_db *database);
 
 static int set_create_table_duplicate_check_error(mylite_db *database, const char *constraint_name);
+
+static int set_create_table_duplicate_foreign_key_error(
+    mylite_db *database,
+    const char *constraint_name
+);
 
 static bool create_table_foreign_key_columns_exist(
     mylite_db *database,
@@ -424,16 +430,33 @@ static bool validate_create_table_foreign_keys(
         return false;
     }
     for (size_t index = 0U; index < plan->foreign_key_count; ++index) {
+        bool catalog_name_exists = false;
+        int status = MYLITE_OK;
+
         if (create_table_foreign_key_name_exists(
                 plan,
                 plan->foreign_keys[index].constraint_name,
                 index
             )) {
-            (void)mylite_diagnostics_set_error_message_parts(
+            (void)set_create_table_duplicate_foreign_key_error(
                 database,
-                "Duplicate foreign key constraint name '",
-                plan->foreign_keys[index].constraint_name,
-                "'"
+                plan->foreign_keys[index].constraint_name
+            );
+            return false;
+        }
+        status = mylite_foreign_key_catalog_child_constraint_exists(
+            database,
+            schema_name,
+            plan->foreign_keys[index].constraint_name,
+            &catalog_name_exists
+        );
+        if (status != MYLITE_OK) {
+            return false;
+        }
+        if (catalog_name_exists) {
+            (void)set_create_table_duplicate_foreign_key_error(
+                database,
+                plan->foreign_keys[index].constraint_name
             );
             return false;
         }
@@ -447,6 +470,27 @@ static bool validate_create_table_foreign_keys(
         }
     }
     return true;
+}
+
+static int set_create_table_duplicate_foreign_key_error(
+    mylite_db *database,
+    const char *constraint_name
+) {
+    int status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Duplicate foreign key constraint name '",
+        constraint_name,
+        "'"
+    );
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_FK_DUP_NAME,
+            mylite_error_message(database)
+        );
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static bool validate_create_table_foreign_key(

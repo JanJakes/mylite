@@ -548,7 +548,7 @@ tests.
 | `SHOW FIELDS` | ❌ | Alias for `SHOW COLUMNS`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW CREATE TABLE` | ❌ | MySQL-style table DDL. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW DATABASES` | 🟡 | Limited descriptor-driven catalog schema listing; no system schemas, filters, or privileges. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
-| `SHOW TABLES` | ❌ | Table listing. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW TABLES` | 🟡 | Limited descriptor-driven table listing with optional `FROM`/`IN` schema; no `FULL`, `EXTENDED`, `LIKE`, `WHERE`, views, privileges, or temporary tables. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW TABLE STATUS` | ❌ | Table metadata result. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `DESCRIBE` | ❌ | Table and column description. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
 | `DESC` | ❌ | Alias for `DESCRIBE`. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |

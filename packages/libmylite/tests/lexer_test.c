@@ -84,6 +84,8 @@ static int test_keywords(void) {
 
     failures += expect_keyword("select", MYLITE_SQL_KEYWORD_RESERVED);
     failures += expect_keyword("version", 0U);
+    failures += expect_keyword("session_user", 0U);
+    failures += expect_keyword("system_user", 0U);
     failures += expect_keyword("BEGIN", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL);
     failures += expect_keyword("event", MYLITE_SQL_KEYWORD_RESTRICTED_ROLE);
     failures += expect_keyword(

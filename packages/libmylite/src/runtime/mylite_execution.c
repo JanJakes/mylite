@@ -1033,6 +1033,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
@@ -1567,6 +1569,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
@@ -2843,6 +2847,8 @@ static int session_scalar_value(
         }
         return MYLITE_OK;
     case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
         out_cell->value = database->session.client_user_identity;
         return MYLITE_OK;
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
@@ -2883,6 +2889,12 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_USER_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_SESSION_USER_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_SYSTEM_USER_FUNCTION) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION) {

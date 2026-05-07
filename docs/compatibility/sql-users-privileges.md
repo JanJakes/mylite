@@ -4,7 +4,7 @@ Account, role, password, privilege grant, and active-role statement surface.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Embedded current identity | 🟡 | Limited scalar `USER()`, `CURRENT_USER()`, and bare `CURRENT_USER` expose `root@%`; no account storage, authentication, roles, privileges, or definer behavior |
+| Embedded current identity | 🟡 | Limited scalar `USER()`, `SESSION_USER()`, `SYSTEM_USER()`, `CURRENT_USER()`, and bare `CURRENT_USER` expose `root@%`; no account storage, authentication, roles, privileges, definer behavior, `IGNORE_SPACE`, or stored-function resolution |
 | `ALTER USER` | ❌ | Auth, TLS, resources, roles |
 | `CREATE USER` | ❌ | Auth factors, TLS, resources |
 | `CREATE ROLE` | ❌ | Role creation syntax and metadata |

@@ -14,6 +14,7 @@ enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     mysql_error_parse = 1064,
+    mixed_identity_alias_column_count = 6,
 };
 
 struct expected_sql_error {
@@ -62,13 +63,28 @@ int main(void) {
 static int test_current_user_identity_values(void) {
     static const char *const identity_columns[] = {"USER()", "CURRENT_USER()", "CURRENT_USER"};
     static const char *const identity_values[] = {"root@%", "root@%", "root@%"};
+    static const char *const alias_columns[] = {"SESSION_USER()", "SYSTEM_USER()"};
+    static const char *const alias_values[] = {"root@%", "root@%"};
     static const char *const lower_columns[] = {"user()", "current_user"};
     static const char *const lower_values[] = {"root@%", "root@%"};
+    static const char *const lower_alias_columns[] = {"session_user()", "system_user()"};
+    static const char *const commented_alias_columns[] = {
+        "SESSION_USER(/* inside */)",
+        "SYSTEM_USER(/* inside */)"
+    };
     static const char *const spaced_columns[] = {"USER ()", "CURRENT_USER ()"};
     static const char *const parenthesized_columns[] = {"(USER())", "(CURRENT_USER)"};
+    static const char *const parenthesized_alias_columns[] = {
+        "(SESSION_USER())",
+        "(System_User())"
+    };
     static const char *const mixed_columns[] = {"USER()", "CURRENT_USER", "DATABASE()"};
     static const char *const mixed_app_values[] = {"root@%", "root@%", "app"};
     static const char *const mixed_no_schema_values[] = {"root@%", "root@%", NULL};
+    static const char *const mixed_alias_columns[] =
+        {"ROW_COUNT()", "SESSION_USER()", "SYSTEM_USER()", "USER()", "CURRENT_USER", "VERSION()"};
+    static const char *const mixed_alias_values[] =
+        {"0", "root@%", "root@%", "root@%", "root@%", MYLITE_VERSION_STRING};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -94,6 +110,19 @@ static int test_current_user_identity_values(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(database, "SELECT SESSION_USER(), SYSTEM_USER()", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = alias_columns,
+            .values = alias_values,
+            .count = 2U,
+            .context = "identity alias values",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_ok(database, "SELECT user(), current_user FROM DUAL", &result);
     failures += expect_scalar_result(
         result,
@@ -102,6 +131,36 @@ static int test_current_user_identity_values(void) {
             .values = lower_values,
             .count = 2U,
             .context = "lower identity values",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT session_user(), system_user() FROM DUAL", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = lower_alias_columns,
+            .values = alias_values,
+            .count = 2U,
+            .context = "lower identity alias values",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT SESSION_USER(/* inside */), SYSTEM_USER(/* inside */)",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = commented_alias_columns,
+            .values = alias_values,
+            .count = 2U,
+            .context = "commented identity alias values",
         }
     );
     mylite_result_free(result);
@@ -133,10 +192,40 @@ static int test_current_user_identity_values(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(database, "SELECT (SESSION_USER()), (System_User())", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = parenthesized_alias_columns,
+            .values = alias_values,
+            .count = 2U,
+            .context = "parenthesized identity alias values",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT ROW_COUNT(), SESSION_USER(), SYSTEM_USER(), USER(), CURRENT_USER, VERSION()",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = mixed_alias_columns,
+            .values = mixed_alias_values,
+            .count = mixed_identity_alias_column_count,
+            .context = "mixed identity alias scalar values",
+        }
+    );
     mylite_result_free(result);
     result = NULL;
 
@@ -173,13 +262,15 @@ static int test_current_user_identity_values(void) {
     database = NULL;
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen values file");
-    failures += execute_ok(database, "SELECT USER(), CURRENT_USER", &result);
+    failures +=
+        execute_ok(database, "SELECT USER(), CURRENT_USER, SESSION_USER(), SYSTEM_USER()", &result);
     failures += expect_scalar_result(
         result,
         (struct expected_scalar_result){
-            .columns = (const char *const[]){"USER()", "CURRENT_USER"},
-            .values = lower_values,
-            .count = 2U,
+            .columns =
+                (const char *const[]){"USER()", "CURRENT_USER", "SESSION_USER()", "SYSTEM_USER()"},
+            .values = (const char *const[]){"root@%", "root@%", "root@%", "root@%"},
+            .count = 4U,
             .context = "identity after reopen",
         }
     );
@@ -192,8 +283,9 @@ static int test_current_user_identity_values(void) {
 }
 
 static int test_current_user_identity_independent_handles(void) {
-    static const char *const identity_columns[] = {"USER()", "CURRENT_USER"};
-    static const char *const identity_values[] = {"root@%", "root@%"};
+    static const char *const identity_columns[] =
+        {"USER()", "CURRENT_USER", "SESSION_USER()", "SYSTEM_USER()"};
+    static const char *const identity_values[] = {"root@%", "root@%", "root@%", "root@%"};
     char path[test_path_capacity];
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -208,26 +300,28 @@ static int test_current_user_identity_independent_handles(void) {
     failures += expect_int(mylite_open(path, &first), MYLITE_OK, "open first handle");
     failures += expect_int(mylite_open(path, &second), MYLITE_OK, "open second handle");
 
-    failures += execute_ok(first, "SELECT USER(), CURRENT_USER", &result);
+    failures +=
+        execute_ok(first, "SELECT USER(), CURRENT_USER, SESSION_USER(), SYSTEM_USER()", &result);
     failures += expect_scalar_result(
         result,
         (struct expected_scalar_result){
             .columns = identity_columns,
             .values = identity_values,
-            .count = 2U,
+            .count = 4U,
             .context = "first handle identity",
         }
     );
     mylite_result_free(result);
     result = NULL;
 
-    failures += execute_ok(second, "SELECT USER(), CURRENT_USER", &result);
+    failures +=
+        execute_ok(second, "SELECT USER(), CURRENT_USER, SESSION_USER(), SYSTEM_USER()", &result);
     failures += expect_scalar_result(
         result,
         (struct expected_scalar_result){
             .columns = identity_columns,
             .values = identity_values,
-            .count = 2U,
+            .count = 4U,
             .context = "second handle identity",
         }
     );
@@ -282,7 +376,79 @@ static int test_current_user_identity_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SELECT SESSION_USER(1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SYSTEM_USER(1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SESSION_USER ()",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SYSTEM_USER ()",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SESSION_USER/**/()",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SYSTEM_USER/**/()",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT USER",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor-backed table reads",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SESSION_USER",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor-backed table reads",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SYSTEM_USER",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -314,6 +480,33 @@ static int test_current_user_identity_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SELECT supports only descriptor-backed table reads",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SESSION_USER() LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SESSION_USER(), 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor-backed table reads",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SESSION_USER() FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only unqualified table columns",
         }
     );
     failures += execute_error(

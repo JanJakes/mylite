@@ -270,6 +270,7 @@ static int test_current_user_identity_functions(void) {
     const struct mylite_sql_ast_node *first_expression = NULL;
     const struct mylite_sql_ast_node *second_expression = NULL;
     const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *fourth_expression = NULL;
     int failures = 0;
 
     failures +=
@@ -311,6 +312,71 @@ static int test_current_user_identity_functions(void) {
     failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "identity from dual");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT SESSION_USER(), SYSTEM_USER(), session_user(), system_user() FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SESSION_USER_FUNCTION,
+        "session user function"
+    );
+    failures += expect_span_text(first_expression, "SESSION_USER()", "session user span");
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_SYSTEM_USER_FUNCTION, "system user function");
+    failures += expect_span_text(second_expression, "SYSTEM_USER()", "system user span");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_SESSION_USER_FUNCTION,
+        "lower session user function"
+    );
+    failures += expect_span_text(third_expression, "session_user()", "lower session user span");
+    failures += expect_node(
+        fourth_expression,
+        MYLITE_SQL_AST_SYSTEM_USER_FUNCTION,
+        "lower system user function"
+    );
+    failures += expect_span_text(fourth_expression, "system_user()", "lower system user span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "alias from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT SESSION_USER(/* inside */), SYSTEM_USER(/* inside */);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SESSION_USER_FUNCTION,
+        "commented session user function"
+    );
+    failures += expect_span_text(
+        first_expression,
+        "SESSION_USER(/* inside */)",
+        "commented session user span"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_SYSTEM_USER_FUNCTION,
+        "commented system user function"
+    );
+    failures += expect_span_text(
+        second_expression,
+        "SYSTEM_USER(/* inside */)",
+        "commented system user span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT USER (), (CURRENT_USER);", MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     first_expression = child_at(child_at(select_list, 0U), 0U);
@@ -329,9 +395,50 @@ static int test_current_user_identity_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("SELECT (SESSION_USER()), (System_User());", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized session user"
+    );
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_SESSION_USER_FUNCTION,
+        "wrapped session user"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized system user"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_SYSTEM_USER_FUNCTION,
+        "wrapped system user"
+    );
+    failures += expect_span_text(second_expression, "(System_User())", "wrapped system user span");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("CREATE TABLE user (user INT);", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
     failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "user identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE session_user (system_user INT, session_user INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_node(
+        select,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "identity alias identifier table"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT USER;", MYLITE_SQL_PARSE_OK, &result);
@@ -339,6 +446,18 @@ static int test_current_user_identity_functions(void) {
     first_expression = child_at(child_at(select_list, 0U), 0U);
     failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare user identifier");
     failures += expect_span_text(first_expression, "USER", "bare user span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SESSION_USER, SYSTEM_USER;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare session user identifier");
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare system user identifier");
+    failures += expect_span_text(first_expression, "SESSION_USER", "bare session user span");
+    failures += expect_span_text(second_expression, "SYSTEM_USER", "bare system user span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -1299,6 +1418,24 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CURRENT_USER(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SESSION_USER(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SYSTEM_USER(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SESSION_USER ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SYSTEM_USER ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SESSION_USER/**/();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT SYSTEM_USER/**/();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT DATABASE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

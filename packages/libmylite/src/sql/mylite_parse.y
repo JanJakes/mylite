@@ -414,6 +414,14 @@ expression(A) ::= USER(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_USER_FUNCTION, R);
 }
+expression(A) ::= SESSION_USER(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_SESSION_USER_FUNCTION, R);
+}
+expression(A) ::= SYSTEM_USER(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_SYSTEM_USER_FUNCTION, R);
+}
 expression(A) ::= CURRENT_USER(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_CURRENT_USER_FUNCTION, R);
@@ -517,6 +525,12 @@ identifier(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= USER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SESSION_USER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SYSTEM_USER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= VERSION(T). {

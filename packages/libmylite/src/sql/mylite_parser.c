@@ -1022,6 +1022,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_zero_argument_function(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_zero_argument_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_token right_paren
+) {
+    if (left_paren.offset != function_token.offset + function_token.length) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
+        return NULL;
+    }
+
+    return mylite_sql_parser_make_zero_argument_function(
+        state,
+        function_token,
+        function_kind,
+        right_paren
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_count_error(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -1436,6 +1456,7 @@ static bool map_keyword_token(
         {"TABLES", MYLITE_SQL_PARSE_TABLES},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
         {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},
+        {"SESSION_USER", MYLITE_SQL_PARSE_SESSION_USER},
         {"RENAME", MYLITE_SQL_PARSE_RENAME},
         {"INSERT", MYLITE_SQL_PARSE_INSERT},
         {"INTO", MYLITE_SQL_PARSE_INTO},
@@ -1458,6 +1479,7 @@ static bool map_keyword_token(
         {"USER", MYLITE_SQL_PARSE_USER},
         {"VERSION", MYLITE_SQL_PARSE_VERSION},
         {"ROW_COUNT", MYLITE_SQL_PARSE_ROW_COUNT},
+        {"SYSTEM_USER", MYLITE_SQL_PARSE_SYSTEM_USER},
     };
 
     if (previous_token_was_dot) {

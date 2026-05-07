@@ -25,9 +25,9 @@ miscellaneous system helpers.
 | `RELEASE_LOCK()` | ❌ | Release the named lock |
 | `ROW_COUNT()` | 🟡 | Limited one-row scalar `SELECT ROW_COUNT()` with optional `FROM DUAL`; returns connection-local row-count state for supported baseline statements; no protocol OK-packet parity, `CLIENT_FOUND_ROWS`, aliases, table-backed evaluation, or general diagnostics area support |
 | `SCHEMA()` | 🟡 | Limited synonym for `DATABASE()` in the same scalar-select slice |
-| `SESSION_USER()` | ❌ | Synonym for USER() |
+| `SESSION_USER()` | 🟡 | Limited no-whitespace one-row scalar select returns MyLite's embedded client identity `root@%` as a `USER()` synonym; no `IGNORE_SPACE`, stored-function resolution, authentication, host matching, privileges, or table-backed evaluation |
 | `SLEEP()` | ❌ | Sleep for a number of seconds |
-| `SYSTEM_USER()` | ❌ | Synonym for USER() |
+| `SYSTEM_USER()` | 🟡 | Limited no-whitespace one-row scalar select returns MyLite's embedded client identity `root@%` as a `USER()` synonym; no `SYSTEM_USER` privilege semantics, authentication, host matching, privileges, or table-backed evaluation |
 | `UpdateXML()` | ❌ | Return replaced XML fragment |
 | `USER()` | 🟡 | Limited one-row scalar select returns MyLite's embedded client identity `root@%`; no authentication, host matching, privileges, or table-backed evaluation |
 | `VERSION()` | 🟡 | Limited one-row scalar `SELECT VERSION()` with optional `FROM DUAL`; returns MyLite's engine version string, not an impersonated MySQL server version; no `@@version`, aliases, table-backed evaluation, clauses, or protocol handshake version reporting |

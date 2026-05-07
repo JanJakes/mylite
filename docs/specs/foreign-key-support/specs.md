@@ -88,6 +88,12 @@ Observed rule and error details:
   but later unmatched child inserts fail with 1452.
 - Dropping a foreign key reports affected rows `0` and leaves the supporting
   child index in place.
+- Mixed `ALTER TABLE` statements combining supported column/index actions with
+  foreign-key actions are executable. Observed MySQL 8.4.9 cases include
+  `ADD COLUMN ..., ADD CONSTRAINT ... FOREIGN KEY ...` reporting the child row
+  count, `ADD INDEX ..., ADD CONSTRAINT ... FOREIGN KEY ...` reusing the added
+  index and reporting the child row count, and `DROP FOREIGN KEY ..., ADD/DROP
+  COLUMN ...` reporting `0`.
 - Dropping a child supporting index, a referenced parent `PRIMARY` index, or a
   referenced parent unique index while the foreign key exists fails with error
   1553, including when `foreign_key_checks=0`; an `AUTO_INCREMENT` primary key
@@ -188,8 +194,13 @@ child supporting indexes and parent primary/unique indexes required by foreign
 keys with error 1553, even while `foreign_key_checks=0`. `RENAME TABLE` and
 `ALTER TABLE ... RENAME` rewrite foreign-key catalog metadata for child and
 parent tables, including cross-schema moves and MySQL-style regenerated
-`old_table_ibfk_N` child constraint names. Executable mixed-action ALTER FK
-operations and exact parent-update optimizer ordering remain follow-up slices.
+`old_table_ibfk_N` child constraint names. Mixed FK actions with supported
+column/index actions participate in the same statement-atomic shadow-table
+ALTER rebuild: FK drops are applied before dependent column/index drops are
+validated, non-FK actions update the in-memory final table model, FK adds are
+validated against that final model, and the catalog rewrite plus physical swap
+commit or roll back together. Exact parent-update optimizer ordering remains a
+follow-up slice.
 `DROP TABLE`
 rejects parent tables referenced by surviving child tables while
 `foreign_key_checks=1`, permits multi-table drops that remove the parent and
@@ -212,10 +223,13 @@ FK-only `ALTER TABLE ... ADD FOREIGN KEY` additionally validates existing child
 rows when `foreign_key_checks` is enabled, skips that scan when checks are
 disabled, and reports the child table row count as affected rows for supported
 metadata-only shapes.
-Mixed FK actions with supported column/index actions are rejected before
-mutation, so no partial column, index, or foreign-key metadata changes survive.
-Executable mixed FK actions remain deferred until FK catalog rewrites
-participate in the shadow-table ALTER model.
+Mixed `ALTER TABLE` FK actions share statement atomicity with supported
+column/index actions. FK drops run before dependent final-model validation so
+`DROP FOREIGN KEY fk, DROP COLUMN fk_column` and `DROP FOREIGN KEY fk, DROP
+INDEX supporting_idx` can succeed. FK adds run after non-FK actions have built
+the final in-memory model, so the added constraint can reuse indexes added in
+the same statement and validates existing child rows before the shadow-table
+swap commits.
 
 `ALTER TABLE ... DROP FOREIGN KEY` removes only the foreign-key catalog rows.
 It must not remove the supporting child index.

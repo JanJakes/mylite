@@ -97,6 +97,8 @@ static bool alter_table_foreign_key_column_shapes_compatible(
 
 static bool nullable_ascii_case_equal(const char *left, const char *right);
 
+static sqlite3_destructor_type sqlite_transient_destructor(void);
+
 static int set_alter_table_drop_child_foreign_key_column_error(
     mylite_db *database,
     const char *column_name,
@@ -307,8 +309,8 @@ static int validate_alter_table_child_foreign_key_columns(
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, model->schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 2, model->table_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(select, 1, model->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, model->table_name, -1, sqlite_transient_destructor());
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         const char *constraint_name = (const char *)sqlite3_column_text(select, 0);
         const char *child_source_name = (const char *)sqlite3_column_text(select, 1);
@@ -398,8 +400,8 @@ static int validate_alter_table_parent_foreign_key_columns(
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, model->schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 2, model->table_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(select, 1, model->schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, model->table_name, -1, sqlite_transient_destructor());
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         const char *constraint_name = (const char *)sqlite3_column_text(select, 0);
         const char *child_schema_name = (const char *)sqlite3_column_text(select, 1);
@@ -484,6 +486,10 @@ static const struct mylite_alter_table_column *find_alter_table_column_by_source
             mylite_ascii_case_equal(column_source_name, source_name)) {
             return &model->columns[index];
         }
+        if (column_source_name == NULL &&
+            mylite_ascii_case_equal(model->columns[index].name, source_name)) {
+            return &model->columns[index];
+        }
     }
     return NULL;
 }
@@ -511,9 +517,9 @@ static int load_alter_table_catalog_column_shape(
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 2, table_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 3, column_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(select, 1, schema_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 2, table_name, -1, sqlite_transient_destructor());
+    sqlite3_bind_text(select, 3, column_name, -1, sqlite_transient_destructor());
     rc = sqlite3_step(select);
     if (rc == SQLITE_ROW) {
         status = copy_shape_column(select, 0, &shape->owned_name);
@@ -588,9 +594,13 @@ static bool alter_table_foreign_key_column_shapes_compatible(
     const struct mylite_alter_table_foreign_key_column_shape *child,
     const struct mylite_alter_table_foreign_key_column_shape *parent
 ) {
-    return nullable_ascii_case_equal(child->column_type, parent->column_type) &&
-           nullable_ascii_case_equal(child->character_set_name, parent->character_set_name) &&
-           nullable_ascii_case_equal(child->collation_name, parent->collation_name);
+    if (!nullable_ascii_case_equal(child->column_type, parent->column_type)) {
+        return false;
+    }
+    if (!nullable_ascii_case_equal(child->character_set_name, parent->character_set_name)) {
+        return false;
+    }
+    return nullable_ascii_case_equal(child->collation_name, parent->collation_name);
 }
 
 static bool nullable_ascii_case_equal(const char *left, const char *right) {
@@ -718,4 +728,8 @@ static int set_alter_table_invalid_null_error(mylite_db *database) {
         mylite_error_message(database)
     );
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
+    return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

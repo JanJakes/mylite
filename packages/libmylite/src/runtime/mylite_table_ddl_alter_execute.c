@@ -33,6 +33,7 @@
 struct alter_table_foreign_key_existing_rows_sql_input {
     const char *child_physical_name;
     const char *parent_physical_name;
+    const struct mylite_alter_table_model *model;
     const struct mylite_create_table_foreign_key *foreign_key;
 };
 
@@ -40,9 +41,13 @@ static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
 
 static bool alter_table_has_only_foreign_key_actions(const mylite_stmt *stmt);
 
+static bool alter_table_has_foreign_key_action(const mylite_stmt *stmt);
+
 static int execute_alter_table_rename_statement(mylite_stmt *stmt);
 
 static int execute_alter_table_foreign_key_statement(mylite_stmt *stmt);
+
+static int execute_alter_table_mixed_foreign_key_statement(mylite_stmt *stmt);
 
 static int add_alter_table_rename_target(mylite_stmt *stmt);
 
@@ -56,7 +61,25 @@ static int resolve_alter_table_schema(mylite_stmt *stmt);
 
 static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary);
 
-static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model);
+static int apply_alter_table_actions(
+    mylite_stmt *stmt,
+    struct mylite_alter_table_model *model,
+    bool defer_foreign_key_actions
+);
+
+static int apply_alter_table_foreign_key_actions(
+    mylite_stmt *stmt,
+    struct mylite_alter_table_model *model,
+    bool *out_index_catalog_changed
+);
+
+static int apply_alter_table_drop_foreign_key_actions(mylite_stmt *stmt);
+
+static int apply_alter_table_add_foreign_key_actions(
+    mylite_stmt *stmt,
+    struct mylite_alter_table_model *model,
+    bool *out_index_catalog_changed
+);
 
 static int apply_alter_table_foreign_key_action(
     mylite_stmt *stmt,
@@ -177,6 +200,14 @@ static char *build_alter_table_foreign_key_existing_rows_sql(
     const struct alter_table_foreign_key_existing_rows_sql_input *input
 );
 
+static int append_alter_table_foreign_key_child_value_sql(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_alter_table_model *model,
+    const char *column_name,
+    bool *out_skip_check
+);
+
 static int insert_alter_table_foreign_key_catalog_rows(
     mylite_stmt *stmt,
     const struct mylite_create_table_foreign_key *foreign_key
@@ -228,6 +259,9 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
     if (alter_table_has_only_foreign_key_actions(stmt)) {
         return execute_alter_table_foreign_key_statement(stmt);
     }
+    if (alter_table_has_foreign_key_action(stmt)) {
+        return execute_alter_table_mixed_foreign_key_statement(stmt);
+    }
 
     status = validate_alter_table_plan(stmt, &schema_name, &temporary);
     if (status == MYLITE_OK) {
@@ -240,7 +274,7 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
         );
     }
     if (status == MYLITE_OK) {
-        status = apply_alter_table_actions(stmt, &model);
+        status = apply_alter_table_actions(stmt, &model, false);
     }
     if (status == MYLITE_OK) {
         apply_alter_table_options(stmt, &model);
@@ -284,6 +318,18 @@ static bool alter_table_has_only_foreign_key_actions(const mylite_stmt *stmt) {
         }
     }
     return true;
+}
+
+static bool alter_table_has_foreign_key_action(const mylite_stmt *stmt) {
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        enum mylite_alter_table_action_kind kind = stmt->alter_table.actions[index].kind;
+
+        if (kind == MYLITE_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY ||
+            kind == MYLITE_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int execute_alter_table_rename_statement(mylite_stmt *stmt) {
@@ -363,14 +409,8 @@ static int execute_alter_table_foreign_key_statement(mylite_stmt *stmt) {
         status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
         atomicity_started = status == MYLITE_OK;
     }
-    for (size_t index = 0U; status == MYLITE_OK && index < stmt->alter_table.action_count;
-         ++index) {
-        status = apply_alter_table_foreign_key_action(
-            stmt,
-            &model,
-            &stmt->alter_table.actions[index],
-            &index_catalog_changed
-        );
+    if (status == MYLITE_OK) {
+        status = apply_alter_table_foreign_key_actions(stmt, &model, &index_catalog_changed);
     }
     if (status == MYLITE_OK && index_catalog_changed) {
         status = mylite_table_ddl_rewrite_alter_table_catalog(
@@ -395,6 +435,84 @@ static int execute_alter_table_foreign_key_statement(mylite_stmt *stmt) {
 
     if (atomicity_started) {
         mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
+    }
+    mylite_table_ddl_alter_table_model_deinit(&model);
+    stmt->affected_rows = -1;
+    return status;
+}
+
+static int execute_alter_table_mixed_foreign_key_statement(mylite_stmt *stmt) {
+    const char *schema_name = NULL;
+    struct mylite_alter_table_model model = {0};
+    struct mylite_statement_atomicity atomicity = {0};
+    bool atomicity_started = false;
+    bool has_add_foreign_key = alter_table_has_add_foreign_key_action(stmt);
+    bool temporary = false;
+    bool index_catalog_changed = false;
+    int64_t affected_rows = 0;
+    int status = validate_alter_table_plan(stmt, &schema_name, &temporary);
+
+    if (status == MYLITE_OK && temporary) {
+        status = set_alter_table_unsupported_action_error(
+            stmt->database,
+            "FOREIGN KEY ALTER TABLE constraints on temporary tables"
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_load_alter_table_model(
+            stmt->database,
+            schema_name,
+            stmt->alter_table.table_name,
+            temporary,
+            &model
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
+        atomicity_started = status == MYLITE_OK;
+    }
+    if (status == MYLITE_OK) {
+        status = apply_alter_table_drop_foreign_key_actions(stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = apply_alter_table_actions(stmt, &model, true);
+    }
+    if (status == MYLITE_OK) {
+        apply_alter_table_options(stmt, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = apply_alter_table_add_foreign_key_actions(stmt, &model, &index_catalog_changed);
+    }
+    if (status == MYLITE_OK && index_catalog_changed) {
+        status = mylite_table_ddl_refresh_alter_table_index_metadata(stmt->database, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_validate_alter_table_final_model(stmt->database, &model);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_validate_alter_table_unique_indexes(stmt->database, &model);
+    }
+    if (status == MYLITE_OK && has_add_foreign_key) {
+        status =
+            count_alter_table_physical_rows(stmt->database, model.physical_name, &affected_rows);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_execute_alter_table_rebuild_in_atomicity(stmt, &model);
+    }
+    if (status == MYLITE_OK && has_add_foreign_key) {
+        stmt->affected_rows = affected_rows;
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
+        if (status == MYLITE_OK) {
+            mylite_table_ddl_alter_table_model_deinit(&model);
+            return MYLITE_OK;
+        }
+    }
+
+    if (atomicity_started) {
+        mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
+        mylite_diagnostics_clear_warnings(stmt->database);
     }
     mylite_table_ddl_alter_table_model_deinit(&model);
     stmt->affected_rows = -1;
@@ -542,7 +660,11 @@ static int validate_alter_table_target(mylite_stmt *stmt, bool *out_temporary) {
     return MYLITE_OK;
 }
 
-static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_table_model *model) {
+static int apply_alter_table_actions(
+    mylite_stmt *stmt,
+    struct mylite_alter_table_model *model,
+    bool defer_foreign_key_actions
+) {
     const struct mylite_table_ddl_alter_callbacks alter_callbacks = {
         .user_data = stmt,
         .validate_primary_key_part_not_null = validate_alter_table_primary_key_part_not_null,
@@ -622,6 +744,9 @@ static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_tabl
             break;
         case MYLITE_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY:
         case MYLITE_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY:
+            if (defer_foreign_key_actions) {
+                break;
+            }
             status = set_alter_table_unsupported_action_error(
                 stmt->database,
                 "FOREIGN KEY ALTER TABLE constraints with other actions"
@@ -640,6 +765,70 @@ static int apply_alter_table_actions(mylite_stmt *stmt, struct mylite_alter_tabl
     }
 
     return mylite_table_ddl_refresh_alter_table_index_metadata(stmt->database, model);
+}
+
+static int apply_alter_table_foreign_key_actions(
+    mylite_stmt *stmt,
+    struct mylite_alter_table_model *model,
+    bool *out_index_catalog_changed
+) {
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        struct mylite_alter_table_action *action = &stmt->alter_table.actions[index];
+
+        if (action->kind == MYLITE_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY ||
+            action->kind == MYLITE_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY) {
+            int status = apply_alter_table_foreign_key_action(
+                stmt,
+                model,
+                action,
+                out_index_catalog_changed
+            );
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int apply_alter_table_drop_foreign_key_actions(mylite_stmt *stmt) {
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        const struct mylite_alter_table_action *action = &stmt->alter_table.actions[index];
+
+        if (action->kind == MYLITE_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY) {
+            int status = apply_alter_table_drop_foreign_key_action(stmt, action);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int apply_alter_table_add_foreign_key_actions(
+    mylite_stmt *stmt,
+    struct mylite_alter_table_model *model,
+    bool *out_index_catalog_changed
+) {
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        struct mylite_alter_table_action *action = &stmt->alter_table.actions[index];
+
+        if (action->kind == MYLITE_ALTER_TABLE_ACTION_ADD_FOREIGN_KEY) {
+            int status = apply_alter_table_add_foreign_key_action(
+                stmt,
+                model,
+                &action->foreign_key,
+                out_index_catalog_changed
+            );
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int apply_alter_table_foreign_key_action(
@@ -1243,18 +1432,23 @@ static int add_alter_table_foreign_key_supporting_index(
     for (size_t index = 0U; index < foreign_key->column_count; ++index) {
         struct mylite_create_table_key_part *parts =
             realloc(action.index.parts, (action.index.part_count + 1U) * sizeof(*parts));
-        struct mylite_create_table_key_part part = {
-            .column_name = mylite_copy_nonempty_cstring(foreign_key->column_names[index]),
-            .order = MYLITE_SQL_AST_KEY_PART_ORDER_NONE,
-        };
+        struct mylite_create_table_key_part part = {0};
 
-        if (parts == NULL || part.column_name == NULL) {
-            free(part.column_name);
+        if (parts == NULL) {
             mylite_table_ddl_alter_table_action_deinit(&action);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
         action.index.parts = parts;
+        part = (struct mylite_create_table_key_part){
+            .column_name = mylite_copy_nonempty_cstring(foreign_key->column_names[index]),
+            .order = MYLITE_SQL_AST_KEY_PART_ORDER_NONE,
+        };
+        if (part.column_name == NULL) {
+            mylite_table_ddl_alter_table_action_deinit(&action);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
         action.index.parts[action.index.part_count++] = part;
     }
 
@@ -1290,6 +1484,7 @@ static int validate_alter_table_foreign_key_existing_rows(
     const struct alter_table_foreign_key_existing_rows_sql_input input = {
         .child_physical_name = model->physical_name,
         .parent_physical_name = parent_physical_name,
+        .model = model,
         .foreign_key = foreign_key,
     };
     sql = build_alter_table_foreign_key_existing_rows_sql(stmt->database, &input);
@@ -1330,16 +1525,30 @@ static char *build_alter_table_foreign_key_existing_rows_sql(
 ) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     const struct mylite_create_table_foreign_key *foreign_key = input->foreign_key;
+    bool skip_check = false;
 
     if (sql == NULL) {
         return NULL;
     }
     sqlite3_str_appendf(sql, "SELECT 1 FROM \"%w\" AS child WHERE ", input->child_physical_name);
     for (size_t index = 0U; index < foreign_key->column_count; ++index) {
+        int status = MYLITE_OK;
+
         if (index != 0U) {
             sqlite3_str_appendall(sql, " AND ");
         }
-        sqlite3_str_appendf(sql, "child.\"%w\" IS NOT NULL", foreign_key->column_names[index]);
+        status = append_alter_table_foreign_key_child_value_sql(
+            database,
+            sql,
+            input->model,
+            foreign_key->column_names[index],
+            &skip_check
+        );
+        if (status != MYLITE_OK || skip_check) {
+            sqlite3_free(sqlite3_str_finish(sql));
+            return status == MYLITE_OK ? sqlite3_mprintf("SELECT 1 WHERE 0") : NULL;
+        }
+        sqlite3_str_appendall(sql, " IS NOT NULL");
     }
     sqlite3_str_appendf(
         sql,
@@ -1347,18 +1556,77 @@ static char *build_alter_table_foreign_key_existing_rows_sql(
         input->parent_physical_name
     );
     for (size_t index = 0U; index < foreign_key->column_count; ++index) {
+        int status = MYLITE_OK;
+
         if (index != 0U) {
             sqlite3_str_appendall(sql, " AND ");
         }
-        sqlite3_str_appendf(
+        sqlite3_str_appendf(sql, "parent.\"%w\" = ", foreign_key->referenced_column_names[index]);
+        status = append_alter_table_foreign_key_child_value_sql(
+            database,
             sql,
-            "parent.\"%w\" = child.\"%w\"",
-            foreign_key->referenced_column_names[index],
-            foreign_key->column_names[index]
+            input->model,
+            foreign_key->column_names[index],
+            &skip_check
         );
+        if (status != MYLITE_OK || skip_check) {
+            sqlite3_free(sqlite3_str_finish(sql));
+            return status == MYLITE_OK ? sqlite3_mprintf("SELECT 1 WHERE 0") : NULL;
+        }
     }
     sqlite3_str_appendall(sql, ") LIMIT 1");
     return sqlite3_str_finish(sql);
+}
+
+static int append_alter_table_foreign_key_child_value_sql(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_alter_table_model *model,
+    const char *column_name,
+    bool *out_skip_check
+) {
+    const struct mylite_alter_table_column *column =
+        mylite_table_ddl_find_alter_table_column(model, column_name);
+    struct mylite_insert_bound_value value = {0};
+    int status = MYLITE_OK;
+
+    *out_skip_check = false;
+    if (column == NULL) {
+        return mylite_table_ddl_set_alter_table_unknown_column_error(
+            database,
+            model->table_name,
+            column_name
+        );
+    }
+    if (column->source_name != NULL) {
+        sqlite3_str_appendf(sql, "child.\"%w\"", column->source_name);
+        return sqlite3_str_errcode(sql) == SQLITE_OK ? MYLITE_OK : MYLITE_NOMEM;
+    }
+
+    status = mylite_table_ddl_resolve_alter_table_added_column_value(database, column, &value);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    switch (value.kind) {
+    case MYLITE_INSERT_BOUND_NULL:
+        *out_skip_check = true;
+        break;
+    case MYLITE_INSERT_BOUND_INTEGER:
+        sqlite3_str_appendf(sql, "%lld", (long long)value.integer_value);
+        break;
+    case MYLITE_INSERT_BOUND_REAL:
+        sqlite3_str_appendf(sql, "%!.17g", value.real_value);
+        break;
+    case MYLITE_INSERT_BOUND_TEXT:
+        sqlite3_str_appendf(sql, "%Q", value.text_value == NULL ? "" : value.text_value);
+        break;
+    }
+    mylite_dml_insert_bound_value_deinit(&value);
+    if (sqlite3_str_errcode(sql) != SQLITE_OK) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
 }
 
 static int insert_alter_table_foreign_key_catalog_rows(

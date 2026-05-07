@@ -52218,6 +52218,8 @@ static int test_alter_table_foreign_key_execution(void) {
     static const char *const one_count_values[] = {"1"};
     static const char *const index_columns[] = {"INDEX_NAME"};
     static const char *const index_values[] = {"fk_parent"};
+    static const char *const mixed_child_columns[] = {"id", "parent_id", "added"};
+    static const char *const mixed_child_values[] = {"1", "1", NULL, "2", NULL, NULL};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -52393,57 +52395,159 @@ static int test_alter_table_foreign_key_execution(void) {
 
     failures +=
         execute_sql(database, "CREATE TABLE mixed_fk_parent (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO mixed_fk_parent VALUES (1),(2)", MYLITE_DONE);
     failures += execute_sql(
         database,
         "CREATE TABLE mixed_fk_child (id INT PRIMARY KEY, parent_id INT)",
         MYLITE_DONE
     );
-    failures += prepare_sql(
+    failures +=
+        execute_sql(database, "INSERT INTO mixed_fk_child VALUES (1,1),(2,NULL)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
         database,
         "ALTER TABLE mixed_fk_child ADD COLUMN added INT, "
         "ADD CONSTRAINT fk_mixed_add FOREIGN KEY (parent_id) REFERENCES mixed_fk_parent(id)",
-        MYLITE_OK,
-        &stmt
+        2,
+        "mixed alter add column foreign key affected rows"
     );
-    failures += expect_status(
-        mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "mixed alter add column foreign key rejected"
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id, added FROM mixed_fk_child ORDER BY id",
+        mixed_child_columns,
+        3,
+        mixed_child_values,
+        2,
+        "mixed alter add column foreign key preserves rows"
     );
-    failures += expect_contains(
-        mylite_error_message(database),
-        "FOREIGN KEY ALTER TABLE constraints with other actions",
-        "mixed alter add column foreign key error"
-    );
-    mylite_finalize(stmt);
-    stmt = NULL;
-    failures += expect_no_information_schema_column_row(database, "mixed_fk_child", "added");
     failures += expect_select_rows(
         database,
         "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
-        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'mixed_fk_child'",
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'mixed_fk_child' "
+        "AND CONSTRAINT_NAME = 'fk_mixed_add'",
         count_columns,
         1,
-        zero_count_values,
+        one_count_values,
         1,
-        "mixed alter add column foreign key leaves no metadata"
+        "mixed alter add column foreign key metadata"
     );
     failures += prepare_sql(
         database,
-        "ALTER TABLE mixed_fk_child ADD INDEX idx_parent (parent_id), "
-        "ADD CONSTRAINT fk_mixed_index FOREIGN KEY (parent_id) REFERENCES mixed_fk_parent(id)",
+        "INSERT INTO mixed_fk_child (id, parent_id) VALUES (3,99)",
         MYLITE_OK,
         &stmt
     );
     failures += expect_status(
         mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "mixed alter add index foreign key rejected"
+        MYLITE_EXEC_ERROR,
+        "mixed alter add column foreign key enforces"
     );
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mixed_fk_index_child (id INT PRIMARY KEY, parent_id INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO mixed_fk_index_child VALUES (1,1),(2,NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mixed_fk_index_child ADD INDEX idx_parent (parent_id), "
+        "ADD CONSTRAINT fk_mixed_index FOREIGN KEY (parent_id) REFERENCES mixed_fk_parent(id)",
+        2,
+        "mixed alter add index foreign key affected rows"
+    );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "mixed_fk_index_child",
+            .index_name = "idx_parent",
+            .seq_in_index = 1,
+            .column_name = "parent_id",
+            .non_unique = 1,
+            .collation = "A",
+            .sub_part = NULL,
+            .index_comment = "",
+            .visible = "YES",
+        }
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'mixed_fk_index_child' "
+        "AND CONSTRAINT_NAME = 'fk_mixed_index'",
+        count_columns,
+        1,
+        one_count_values,
+        1,
+        "mixed alter add index foreign key metadata"
+    );
     failures +=
-        expect_no_information_schema_statistics_index_row(database, "mixed_fk_child", "idx_parent");
+        prepare_sql(database, "INSERT INTO mixed_fk_index_child VALUES (3,99)", MYLITE_OK, &stmt);
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "mixed alter add index foreign key enforces"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mixed_fk_added_column_child (id INT PRIMARY KEY)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mixed_fk_added_column_child "
+        "ADD CONSTRAINT fk_added_column FOREIGN KEY (parent_id) REFERENCES mixed_fk_parent(id), "
+        "ADD COLUMN parent_id INT",
+        0,
+        "mixed alter add foreign key before add column affected rows"
+    );
+    failures += expect_information_schema_column_row(
+        database,
+        &(const struct expected_columns_row){
+            .table_name = "mixed_fk_added_column_child",
+            .column_name = "parent_id",
+            .ordinal_position = 2,
+            .column_default = NULL,
+            .is_nullable = "YES",
+            .data_type = "int",
+            .column_type = "int",
+            .column_key = "MUL",
+            .extra = "",
+        }
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' "
+        "AND TABLE_NAME = 'mixed_fk_added_column_child' "
+        "AND CONSTRAINT_NAME = 'fk_added_column'",
+        count_columns,
+        1,
+        one_count_values,
+        1,
+        "mixed alter add foreign key before add column metadata"
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO mixed_fk_added_column_child VALUES (1,1)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO mixed_fk_added_column_child VALUES (2,99)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "mixed alter add foreign key before add column enforces"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += execute_sql(
         database,
         "CREATE TABLE mixed_fk_drop_child ("
@@ -52451,21 +52555,28 @@ static int test_alter_table_foreign_key_execution(void) {
         "CONSTRAINT fk_mixed_drop FOREIGN KEY (parent_id) REFERENCES mixed_fk_parent(id))",
         MYLITE_DONE
     );
-    failures += prepare_sql(
+    failures += execute_sql(database, "INSERT INTO mixed_fk_drop_child VALUES (1,1)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
         database,
         "ALTER TABLE mixed_fk_drop_child DROP FOREIGN KEY fk_mixed_drop, "
         "ADD COLUMN added INT",
-        MYLITE_OK,
-        &stmt
+        0,
+        "mixed alter drop foreign key add column affected rows"
     );
-    failures += expect_status(
-        mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "mixed alter drop foreign key column rejected"
+    failures += expect_information_schema_column_row(
+        database,
+        &(const struct expected_columns_row){
+            .table_name = "mixed_fk_drop_child",
+            .column_name = "added",
+            .ordinal_position = 3,
+            .column_default = NULL,
+            .is_nullable = "YES",
+            .data_type = "int",
+            .column_type = "int",
+            .column_key = "",
+            .extra = "",
+        }
     );
-    mylite_finalize(stmt);
-    stmt = NULL;
-    failures += expect_no_information_schema_column_row(database, "mixed_fk_drop_child", "added");
     failures += expect_select_rows(
         database,
         "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
@@ -52473,9 +52584,78 @@ static int test_alter_table_foreign_key_execution(void) {
         "AND CONSTRAINT_NAME = 'fk_mixed_drop'",
         count_columns,
         1,
-        one_count_values,
+        zero_count_values,
         1,
-        "mixed alter drop foreign key leaves metadata"
+        "mixed alter drop foreign key removes metadata"
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO mixed_fk_drop_child (id, parent_id) VALUES (2,99)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mixed_fk_drop_column_child ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_mixed_drop_column FOREIGN KEY (parent_id) REFERENCES mixed_fk_parent(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE mixed_fk_drop_column_child DROP FOREIGN KEY fk_mixed_drop_column, "
+        "DROP COLUMN parent_id",
+        0,
+        "mixed alter drop foreign key drop column affected rows"
+    );
+    failures += expect_no_information_schema_column_row(
+        database,
+        "mixed_fk_drop_column_child",
+        "parent_id"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' "
+        "AND TABLE_NAME = 'mixed_fk_drop_column_child'",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "mixed alter drop foreign key drop column removes metadata"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE mixed_fk_invalid_child (id INT PRIMARY KEY, parent_id INT)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO mixed_fk_invalid_child VALUES (1,99)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE mixed_fk_invalid_child ADD COLUMN added INT, "
+        "ADD CONSTRAINT fk_mixed_invalid FOREIGN KEY (parent_id) REFERENCES mixed_fk_parent(id)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Cannot add or update a child row",
+        "mixed alter foreign key invalid existing row rejected"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_column_row(database, "mixed_fk_invalid_child", "added");
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = 'alter_fk_runtime' AND TABLE_NAME = 'mixed_fk_invalid_child'",
+        count_columns,
+        1,
+        zero_count_values,
+        1,
+        "mixed alter foreign key invalid existing row leaves no metadata"
     );
 
     mylite_close(database);

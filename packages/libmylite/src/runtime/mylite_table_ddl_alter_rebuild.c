@@ -111,6 +111,28 @@ int mylite_table_ddl_execute_alter_table_rebuild(
     struct mylite_alter_table_model *model
 ) {
     struct mylite_statement_atomicity atomicity = {0};
+    int status = MYLITE_OK;
+
+    status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_execute_alter_table_rebuild_in_atomicity(stmt, model);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
+        if (status == MYLITE_OK) {
+            return MYLITE_OK;
+        }
+    }
+
+    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
+    mylite_diagnostics_clear_warnings(stmt->database);
+    return status;
+}
+
+int mylite_table_ddl_execute_alter_table_rebuild_in_atomicity(
+    mylite_stmt *stmt,
+    struct mylite_alter_table_model *model
+) {
     char *shadow_name = alter_table_shadow_physical_name(stmt->database, model->physical_name);
     int64_t copied_rows = 0;
     int status = MYLITE_OK;
@@ -120,10 +142,7 @@ int mylite_table_ddl_execute_alter_table_rebuild(
         return MYLITE_NOMEM;
     }
 
-    status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
-    if (status == MYLITE_OK) {
-        status = create_alter_table_shadow_table(stmt, model, shadow_name);
-    }
+    status = create_alter_table_shadow_table(stmt, model, shadow_name);
     if (status == MYLITE_OK) {
         status = copy_alter_table_rows(stmt, model, shadow_name, &copied_rows);
     }
@@ -142,20 +161,13 @@ int mylite_table_ddl_execute_alter_table_rebuild(
         status = mylite_table_ddl_append_alter_table_warnings(stmt->database, model);
     }
     if (status == MYLITE_OK) {
-        status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
-        if (status == MYLITE_OK) {
-            if (model->report_copied_rows) {
-                stmt->affected_rows = copied_rows;
-            } else {
-                stmt->affected_rows = 0;
-            }
-            sqlite3_free(shadow_name);
-            return MYLITE_OK;
+        if (model->report_copied_rows) {
+            stmt->affected_rows = copied_rows;
+        } else {
+            stmt->affected_rows = 0;
         }
     }
 
-    mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
-    mylite_diagnostics_clear_warnings(stmt->database);
     sqlite3_free(shadow_name);
     return status;
 }
@@ -330,7 +342,10 @@ static int validate_alter_table_existing_column_value(
     int byte_count = 0;
 
     if (sqlite3_column_type(select, 0) == SQLITE_NULL) {
-        return column->nullable ? MYLITE_OK : set_alter_table_invalid_null_error(database);
+        if (column->nullable) {
+            return MYLITE_OK;
+        }
+        return set_alter_table_invalid_null_error(database);
     }
 
     text = sqlite3_column_text(select, 0);
@@ -355,17 +370,24 @@ static int validate_alter_table_existing_column_value(
 static bool alter_table_column_requires_integer_value(
     const struct mylite_alter_table_column *column
 ) {
-    return strcmp(column->data_type, "tinyint") == 0 ||
-           strcmp(column->data_type, "smallint") == 0 ||
-           strcmp(column->data_type, "mediumint") == 0 || strcmp(column->data_type, "int") == 0 ||
-           strcmp(column->data_type, "bigint") == 0;
+    if (strcmp(column->data_type, "tinyint") == 0 || strcmp(column->data_type, "smallint") == 0 ||
+        strcmp(column->data_type, "mediumint") == 0 || strcmp(column->data_type, "int") == 0 ||
+        strcmp(column->data_type, "bigint") == 0) {
+        return true;
+    }
+    return false;
 }
 
 static bool alter_table_column_requires_limited_text_value(
     const struct mylite_alter_table_column *column
 ) {
-    return column->has_character_maximum_length &&
-           (strcmp(column->data_type, "char") == 0 || strcmp(column->data_type, "varchar") == 0);
+    if (!column->has_character_maximum_length) {
+        return false;
+    }
+    if (strcmp(column->data_type, "char") == 0) {
+        return true;
+    }
+    return strcmp(column->data_type, "varchar") == 0;
 }
 
 static bool sqlite_text_is_mysql_integer(const unsigned char *text, int byte_count) {

@@ -61,6 +61,14 @@ static bool create_table_check_name_exists(
     size_t before_index
 );
 
+static int set_create_table_exists_error(mylite_db *database, const char *table_name);
+
+static bool set_create_table_duplicate_column_error(mylite_db *database, const char *column_name);
+
+static bool set_create_table_duplicate_key_error(mylite_db *database, const char *index_name);
+
+static bool set_create_table_multiple_primary_key_error(mylite_db *database);
+
 static int set_create_table_duplicate_check_error(mylite_db *database, const char *constraint_name);
 
 static bool create_table_foreign_key_columns_exist(
@@ -154,13 +162,7 @@ int mylite_table_ddl_validate_create_table_plan(
             }
             return note_status;
         }
-        (void)mylite_diagnostics_set_error_message_parts(
-            database,
-            "Table '",
-            plan->table_name,
-            "' already exists"
-        );
-        return MYLITE_EXEC_ERROR;
+        return set_create_table_exists_error(database, plan->table_name);
     }
 
     status = mylite_catalog_schema_default_by_name(database, schema_name, schema_default);
@@ -212,13 +214,7 @@ static bool validate_create_table_column_names(
     for (size_t left = 0U; left < plan->column_count; ++left) {
         for (size_t right = left + 1U; right < plan->column_count; ++right) {
             if (mylite_ascii_case_equal(plan->columns[left].name, plan->columns[right].name)) {
-                (void)mylite_diagnostics_set_error_message_parts(
-                    database,
-                    "Duplicate column name '",
-                    plan->columns[right].name,
-                    "'"
-                );
-                return false;
+                return set_create_table_duplicate_column_error(database, plan->columns[right].name);
             }
         }
     }
@@ -236,21 +232,13 @@ static bool validate_create_table_indexes(
 
         if (table_index->is_primary) {
             if (has_primary) {
-                (void)
-                    mylite_diagnostics_set_error_message(database, "Multiple primary key defined");
-                return false;
+                return set_create_table_multiple_primary_key_error(database);
             }
             has_primary = true;
         }
         if (table_index->explicit_name &&
             create_table_index_name_exists(plan, table_index->name, index)) {
-            (void)mylite_diagnostics_set_error_message_parts(
-                database,
-                "Duplicate key name '",
-                table_index->name,
-                "'"
-            );
-            return false;
+            return set_create_table_duplicate_key_error(database, table_index->name);
         }
         for (size_t part = 0U; part < table_index->part_count; ++part) {
             if (mylite_table_ddl_find_create_table_column(
@@ -332,6 +320,73 @@ static bool create_table_check_name_exists(
         if (mylite_ascii_case_equal(plan->checks[index].name, name)) {
             return true;
         }
+    }
+    return false;
+}
+
+static int set_create_table_exists_error(mylite_db *database, const char *table_name) {
+    int status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Table '",
+        table_name,
+        "' already exists"
+    );
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_TABLE_EXISTS_ERROR,
+            mylite_error_message(database)
+        );
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static bool set_create_table_duplicate_column_error(mylite_db *database, const char *column_name) {
+    int status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Duplicate column name '",
+        column_name,
+        "'"
+    );
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_DUP_FIELDNAME,
+            mylite_error_message(database)
+        );
+    }
+    return false;
+}
+
+static bool set_create_table_duplicate_key_error(mylite_db *database, const char *index_name) {
+    int status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Duplicate key name '",
+        index_name,
+        "'"
+    );
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_DUP_KEYNAME,
+            mylite_error_message(database)
+        );
+    }
+    return false;
+}
+
+static bool set_create_table_multiple_primary_key_error(mylite_db *database) {
+    int status = mylite_diagnostics_set_error_message(database, "Multiple primary key defined");
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_MULTIPLE_PRI_KEY,
+            mylite_error_message(database)
+        );
     }
     return false;
 }

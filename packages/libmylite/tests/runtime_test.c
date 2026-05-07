@@ -115,6 +115,7 @@ enum {
     mysql_warning_ambiguous_column = 1052,
     mysql_warning_unknown_column = 1054,
     mysql_warning_duplicate_field = 1060,
+    mysql_warning_duplicate_key = 1061,
     mysql_warning_duplicate_entry = 1062,
     mysql_warning_invalid_default = 1067,
     mysql_warning_multiple_primary = 1068,
@@ -37326,6 +37327,11 @@ static int test_create_table_base_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate table create");
     failures +=
         expect_contains(mylite_error_message(database), "already exists", "duplicate table error");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_table_exists,
+        "duplicate table error code"
+    );
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(
@@ -37370,6 +37376,11 @@ static int test_create_table_base_execution(void) {
 
     failures += prepare_sql(database, "CREATE TABLE bad_columns (a INT, A INT)", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate columns");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_field,
+        "duplicate column error code"
+    );
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "bad_columns");
@@ -37381,6 +37392,11 @@ static int test_create_table_base_execution(void) {
         &stmt
     );
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate indexes");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_duplicate_key,
+        "duplicate index name error code"
+    );
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "bad_index");
@@ -37409,6 +37425,11 @@ static int test_create_table_base_execution(void) {
         &stmt
     );
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate primary key");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_multiple_primary,
+        "duplicate primary key error code"
+    );
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "bad_primary");

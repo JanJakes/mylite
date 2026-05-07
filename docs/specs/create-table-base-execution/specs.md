@@ -87,6 +87,8 @@ or implementation sources.
   MyLite does not implement privileges, but system schemas must remain not
   writable.
 - Duplicate table creation fails with error 1050.
+- Duplicate column, key-name, and primary-key declarations fail with errors
+  1060, 1061, and 1068 respectively.
 - `CREATE TABLE IF NOT EXISTS existing_table (...)` succeeds as a no-op,
   records note 1050, and must not mutate existing metadata or storage.
 

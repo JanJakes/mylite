@@ -99,6 +99,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Support `DEFAULT NOW()` and parenthesized `DEFAULT (NOW())` in
       `CREATE TABLE`, including MySQL-compatible `INFORMATION_SCHEMA.COLUMNS`
       and `SHOW CREATE TABLE` normalization for fractional precision forms.
+- [x] Attach MySQL-specific duplicate DDL error codes for supported
+      `CREATE TABLE` duplicate table, column, key-name, and primary-key
+      validation failures instead of falling back to generic 1105 diagnostics.
 
 ## DML
 

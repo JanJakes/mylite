@@ -11,6 +11,7 @@
 #include "sql/mylite_ast.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 static int validate_operator_descriptor_callbacks(
@@ -27,6 +28,10 @@ static int infer_collate_expression_descriptor(
 static struct mylite_field_descriptor negative_expression_descriptor(
     const struct mylite_field_descriptor *operand
 );
+
+static uint64_t json_document_result_length(mylite_db *database);
+
+static uint64_t json_unquote_json_result_length(mylite_db *database);
 
 static bool descriptor_has_integer_result(const struct mylite_field_descriptor *descriptor);
 
@@ -353,7 +358,7 @@ int mylite_expression_descriptor_infer_binary_expression(
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_JSON,
             .flags = MYLITE_FIELD_FLAG_BINARY,
-            .length = mylite_mysql_json_document_length,
+            .length = json_document_result_length(database),
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = mylite_expression_descriptor_connection_charset_id(database),
             .nullable = true,
@@ -364,7 +369,7 @@ int mylite_expression_descriptor_infer_binary_expression(
         *out_descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_LONG_BLOB,
             .flags = MYLITE_FIELD_FLAG_BINARY,
-            .length = mylite_mysql_long_text_length,
+            .length = json_unquote_json_result_length(database),
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = mylite_expression_descriptor_connection_charset_id(database),
             .nullable = true,
@@ -511,6 +516,26 @@ int mylite_expression_descriptor_infer_ternary_expression(
 
     *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
+}
+
+static uint64_t json_document_result_length(mylite_db *database) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (max_bytes_per_character > UINT64_MAX / mylite_mysql_json_document_length) {
+        return mylite_mysql_long_text_length;
+    }
+    return mylite_mysql_json_document_length * max_bytes_per_character;
+}
+
+static uint64_t json_unquote_json_result_length(mylite_db *database) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (max_bytes_per_character > 1U) {
+        return mylite_mysql_long_text_length;
+    }
+    return mylite_mysql_json_document_length * 4U;
 }
 
 static int infer_collate_expression_descriptor(

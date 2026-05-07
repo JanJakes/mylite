@@ -6293,9 +6293,20 @@ static int test_json_scalar_foundation_execution(void) {
         NULL,
     };
     static const char *const metadata_columns[] =
-        {"jv", "jt", "jq", "ju", "ja", "jo", "je", "jcp", "jk", "jl"};
-    static const char *const metadata_values[] =
-        {"1", "OBJECT", "\"x\"", "x", "[\"a\", 1]", "{\"a\": 1}", "1", "1", "[\"a\"]", "1"};
+        {"jv", "jt", "jq", "ju", "juj", "ja", "jo", "je", "jcp", "jk", "jl"};
+    static const char *const metadata_values[] = {
+        "1",
+        "OBJECT",
+        "\"x\"",
+        "x",
+        "1",
+        "[\"a\", 1]",
+        "{\"a\": 1}",
+        "1",
+        "1",
+        "[\"a\"]",
+        "1",
+    };
     static const struct expected_result_metadata metadata[] = {
         {"jv",
          NULL,
@@ -6307,16 +6318,16 @@ static int test_json_scalar_foundation_execution(void) {
          MYLITE_FIELD_TYPE_LONGLONG,
          0U,
          63U,
-         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-         0U,
-         0},
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
         {"jt",
          NULL,
          NULL,
          NULL,
          NULL,
          NULL,
-         65535U,
+         68U,
          MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
          255U,
@@ -6329,7 +6340,7 @@ static int test_json_scalar_foundation_execution(void) {
          NULL,
          NULL,
          NULL,
-         65535U,
+         32U,
          MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
          255U,
@@ -6342,8 +6353,21 @@ static int test_json_scalar_foundation_execution(void) {
          NULL,
          NULL,
          NULL,
-         65535U,
+         12U,
          MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"juj",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967295),
+         MYLITE_FIELD_TYPE_LONG_BLOB,
          31U,
          255U,
          MYLITE_FIELD_FLAG_BINARY,
@@ -6355,33 +6379,33 @@ static int test_json_scalar_foundation_execution(void) {
          NULL,
          NULL,
          NULL,
-         1073741823U,
+         UINT64_C(4294967292),
          MYLITE_FIELD_TYPE_JSON,
          31U,
          255U,
-         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
-         0U,
-         0},
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
         {"jo",
          NULL,
          NULL,
          NULL,
          NULL,
          NULL,
-         1073741823U,
+         UINT64_C(4294967292),
          MYLITE_FIELD_TYPE_JSON,
          31U,
          255U,
-         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
-         0U,
-         0},
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
         {"je",
          NULL,
          NULL,
          NULL,
          NULL,
          NULL,
-         1073741823U,
+         UINT64_C(4294967292),
          MYLITE_FIELD_TYPE_JSON,
          31U,
          255U,
@@ -6407,7 +6431,7 @@ static int test_json_scalar_foundation_execution(void) {
          NULL,
          NULL,
          NULL,
-         1073741823U,
+         UINT64_C(4294967292),
          MYLITE_FIELD_TYPE_JSON,
          31U,
          255U,
@@ -6448,7 +6472,7 @@ static int test_json_scalar_foundation_execution(void) {
          NULL,
          NULL,
          NULL,
-         1073741823U,
+         UINT64_C(4294967292),
          MYLITE_FIELD_TYPE_JSON,
          31U,
          255U,
@@ -6586,6 +6610,7 @@ static int test_json_scalar_foundation_execution(void) {
         "JSON_TYPE('{\"a\":1}') AS jt, "
         "JSON_QUOTE('x') AS jq, "
         "JSON_UNQUOTE('\"x\"') AS ju, "
+        "JSON_UNQUOTE(JSON_EXTRACT('{\"a\":1}', '$.a')) AS juj, "
         "JSON_ARRAY('a',1) AS ja, "
         "JSON_OBJECT('a',1) AS jo, "
         "JSON_EXTRACT('{\"a\":1}', '$.a') AS je, "
@@ -6602,12 +6627,12 @@ static int test_json_scalar_foundation_execution(void) {
         "json metadata"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "json metadata row");
-    for (int index = 0; index < 10; ++index) {
+    for (int index = 0; index < 11; ++index) {
         failures +=
             expect_string(mylite_column_text(stmt, index), metadata_values[index], "json value");
     }
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "json metadata done");
-    failures += expect_column_names(stmt, metadata_columns, 10, "json metadata columns");
+    failures += expect_column_names(stmt, metadata_columns, 11, "json metadata columns");
     mylite_finalize(stmt);
     stmt = NULL;
 

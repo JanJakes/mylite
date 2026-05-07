@@ -225,8 +225,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
       covered as well. Conditional scalar functions `IF`, `IFNULL`, `NULLIF`,
       and `COALESCE` now infer MySQL-shaped result descriptors for the covered
       scalar domains, and hex/bit literals now infer MySQL-shaped binary
-      descriptors for zero-row table-backed results. Remaining expression and
-      other SQLite-backed result metadata gaps are still tracked here.
+      descriptors for zero-row table-backed results. JSON scalar and path
+      functions now infer byte-scaled JSON document lengths, argument-shaped
+      `JSON_QUOTE()` / plain-string `JSON_UNQUOTE()` lengths, and long-blob
+      metadata for JSON unquote expressions. Remaining expression and other
+      SQLite-backed result metadata gaps are still tracked here.
 
 ## Test harness classification
 

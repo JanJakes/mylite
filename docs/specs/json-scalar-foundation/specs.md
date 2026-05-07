@@ -116,12 +116,16 @@ Observed metadata for a projection containing all six functions:
 
 - `JSON_VALID()`: nullable `LONGLONG`, display length `21`, binary collation,
   decimals `0`, numeric and binary flags.
-- `JSON_TYPE()`, `JSON_QUOTE()`, and `JSON_UNQUOTE()`: nullable
-  `VAR_STRING`, decimals `31`, binary flag, connection-compatible character
-  metadata.
-- `JSON_ARRAY()` and `JSON_OBJECT()`: nullable JSON field type, length
-  `1073741823`, decimals `31`, binary flag, connection-compatible character
-  metadata.
+- `JSON_TYPE()`, `JSON_QUOTE()`, and plain-string `JSON_UNQUOTE()`:
+  nullable `VAR_STRING`, decimals `31`, binary flag, connection-compatible
+  character metadata, and MySQL-derived display lengths based on the argument
+  shape.
+- `JSON_UNQUOTE(JSON_EXTRACT(...))`: nullable `LONG_BLOB`, decimals `31`,
+  binary flag, connection-compatible character metadata, and MySQL-derived
+  long-text display length.
+- `JSON_ARRAY()` and `JSON_OBJECT()`: nullable JSON field type, byte-scaled
+  JSON document display length, decimals `31`, binary flag,
+  connection-compatible character metadata.
 
 MyLite exposes a public `MYLITE_FIELD_TYPE_JSON` field type for JSON-typed
 result metadata.
@@ -224,15 +228,20 @@ as error-level expression conditions.
 - decimals: `31`
 - binary flag set
 - nullable
+- display length: `JSON_TYPE()` uses 17 characters, `JSON_QUOTE()` reserves
+  escape expansion for its argument, and plain-string `JSON_UNQUOTE()` follows
+  the argument display length. `JSON_UNQUOTE()` over JSON-typed expressions
+  returns `LONG_BLOB` metadata.
 
 `JSON_ARRAY()` and `JSON_OBJECT()`:
 
 - field type: `JSON`
-- length: `1073741823`
+- length: MySQL's JSON document character limit scaled by connection character
+  width, such as `4294967292` under `utf8mb4`
 - charset/collation: current connection character metadata
 - decimals: `31`
 - binary flag set
-- nullable: false for these deterministic creation calls
+- nullable
 
 ## Runtime And Storage
 

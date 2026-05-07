@@ -48,12 +48,6 @@ bool mylite_expression_descriptor_infer_regexp_scalar_function(
     bool result_nullable,
     struct mylite_field_descriptor *out_descriptor
 );
-bool mylite_expression_descriptor_infer_json_function(
-    mylite_db *database,
-    const struct mylite_sql_ast_node *name,
-    bool result_nullable,
-    struct mylite_field_descriptor *out_descriptor
-);
 bool mylite_expression_descriptor_infer_uuid_function(
     mylite_db *database,
     const struct mylite_sql_ast_node *name,

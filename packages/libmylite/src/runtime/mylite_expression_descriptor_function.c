@@ -51,6 +51,14 @@ static int infer_conditional_function_descriptor(
     const struct mylite_expression_descriptor_function_callbacks *callbacks
 );
 
+static int infer_json_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks
+);
+
 static bool function_name_is_if(const struct mylite_sql_ast_node *name);
 
 static bool function_name_is_ifnull(const struct mylite_sql_ast_node *name);
@@ -157,6 +165,26 @@ static bool infer_common_scalar_function_descriptor(
     struct mylite_field_descriptor *out_descriptor
 );
 
+static struct mylite_field_descriptor json_text_descriptor(mylite_db *database, uint64_t length);
+
+static struct mylite_field_descriptor json_document_descriptor(mylite_db *database, bool nullable);
+
+static struct mylite_field_descriptor json_unquote_json_descriptor(mylite_db *database);
+
+static uint64_t json_document_result_length(mylite_db *database);
+
+static uint64_t json_unquote_json_result_length(mylite_db *database);
+
+static uint64_t json_quote_result_length(const struct mylite_field_descriptor *argument);
+
+static int infer_json_argument_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks
+);
+
 static int infer_variadic_scalar_function_descriptor(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -238,6 +266,10 @@ int mylite_expression_descriptor_infer_function_expression(
         out_descriptor,
         callbacks
     );
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
+    status = infer_json_function_descriptor(database, plan, expression, out_descriptor, callbacks);
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
@@ -646,6 +678,144 @@ static int infer_conditional_result_descriptor(
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
+static int infer_json_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    struct mylite_field_descriptor argument = mylite_expression_descriptor_defaults();
+    int status = MYLITE_OK;
+
+    if (mylite_function_name_is_json_valid(name) ||
+        mylite_function_name_is_json_contains_path(name) ||
+        mylite_function_name_is_json_length(name)) {
+        *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
+        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
+        return MYLITE_OK;
+    }
+    if (mylite_function_name_is_json_type(name)) {
+        *out_descriptor = json_text_descriptor(
+            database,
+            17U * mylite_expression_descriptor_connection_character_max_length(database)
+        );
+        return MYLITE_OK;
+    }
+    if (mylite_function_name_is_json_quote(name)) {
+        status = infer_json_argument_descriptor(database, plan, expression, &argument, callbacks);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        *out_descriptor = json_text_descriptor(database, json_quote_result_length(&argument));
+        return MYLITE_OK;
+    }
+    if (mylite_function_name_is_json_unquote(name)) {
+        status = infer_json_argument_descriptor(database, plan, expression, &argument, callbacks);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        *out_descriptor = argument.type == MYLITE_FIELD_TYPE_JSON
+                              ? json_unquote_json_descriptor(database)
+                              : json_text_descriptor(database, argument.length);
+        return MYLITE_OK;
+    }
+    if (mylite_function_name_is_json_creation(name) || mylite_function_name_is_json_extract(name) ||
+        mylite_function_name_is_json_keys(name)) {
+        *out_descriptor = json_document_descriptor(database, true);
+        return MYLITE_OK;
+    }
+    return MYLITE_UNSUPPORTED;
+}
+
+static struct mylite_field_descriptor json_text_descriptor(mylite_db *database, uint64_t length) {
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor json_document_descriptor(mylite_db *database, bool nullable) {
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_JSON,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = json_document_result_length(database),
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = nullable,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor json_unquote_json_descriptor(mylite_db *database) {
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_LONG_BLOB,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = json_unquote_json_result_length(database),
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static uint64_t json_document_result_length(mylite_db *database) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (max_bytes_per_character > UINT64_MAX / mylite_mysql_json_document_length) {
+        return mylite_mysql_long_text_length;
+    }
+    return mylite_mysql_json_document_length * max_bytes_per_character;
+}
+
+static uint64_t json_unquote_json_result_length(mylite_db *database) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (max_bytes_per_character > 1U) {
+        return mylite_mysql_long_text_length;
+    }
+    return mylite_mysql_json_document_length * 4U;
+}
+
+static uint64_t json_quote_result_length(const struct mylite_field_descriptor *argument) {
+    uint64_t length = argument == NULL ? 0U : argument->length;
+
+    if (length > (mylite_mysql_long_text_length - 8U) / 6U) {
+        return mylite_mysql_long_text_length;
+    }
+    return (length * 6U) + 8U;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_json_argument_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *argument =
+        arguments == NULL ? NULL : mylite_ast_child_at(arguments, 0U);
+
+    return callbacks->infer_expression_descriptor(database, plan, argument, NULL, out_descriptor);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
 static int conditional_results_use_string_domain(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -927,14 +1097,6 @@ static bool infer_common_scalar_function_descriptor(
         return true;
     }
     if (mylite_expression_descriptor_infer_regexp_scalar_function(
-            database,
-            name,
-            result_nullable,
-            out_descriptor
-        )) {
-        return true;
-    }
-    if (mylite_expression_descriptor_infer_json_function(
             database,
             name,
             result_nullable,

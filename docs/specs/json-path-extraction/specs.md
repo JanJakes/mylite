@@ -98,10 +98,12 @@ warning/error path.
 
 ## Metadata
 
-`JSON_EXTRACT()` and `JSON_KEYS()` return MySQL JSON field metadata, length
-`1073741823`, binary flag, and nullable results. `JSON_CONTAINS_PATH()` and
-`JSON_LENGTH()` return nullable signed `LONGLONG` metadata. `->` returns JSON
-metadata, while `->>` returns long binary text metadata.
+`JSON_EXTRACT()` and `JSON_KEYS()` return MySQL JSON field metadata, binary
+flag, nullable results, and a byte-scaled JSON document display length, such as
+`4294967292` under `utf8mb4`. `JSON_CONTAINS_PATH()` and `JSON_LENGTH()` return
+nullable signed `LONGLONG` metadata. `->` returns JSON metadata, while `->>`
+returns long binary text metadata with the MySQL-observed connection-sensitive
+display length.
 
 ## Runtime Coverage
 

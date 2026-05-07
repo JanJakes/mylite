@@ -5311,6 +5311,8 @@ static int test_expression_operator_foundation(void) {
         "1 XOR 1 OR 1",
     };
     static const char *values[] = {"7", "9", "1", "1", "0", "6", "0", "1"};
+    static const char *const dual_columns[] = {"1"};
+    static const char *const dual_values[] = {"1"};
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
@@ -5347,6 +5349,50 @@ static int test_expression_operator_foundation(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "null truth done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT DISTINCT 1 FROM DUAL WHERE TRUE ORDER BY 1 LIMIT 1",
+        dual_columns,
+        1,
+        dual_values,
+        1,
+        "dual distinct where order limit"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT ALL 1 FROM DUAL",
+        dual_columns,
+        1,
+        dual_values,
+        1,
+        "dual all"
+    );
+    failures += expect_select_row_count(
+        database,
+        "SELECT 1 FROM DUAL WHERE FALSE",
+        0,
+        "dual false predicate"
+    );
+    failures += expect_select_row_count(
+        database,
+        "SELECT 1 FROM DUAL ORDER BY 1 LIMIT 0",
+        0,
+        "dual limit zero"
+    );
+    failures += prepare_sql(database, "SELECT 1/0 FROM DUAL WHERE FALSE", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "dual false skips projection");
+    failures += expect_int(mylite_warning_count(database), 0, "dual false warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT * FROM DUAL",
+        MYLITE_EXEC_ERROR,
+        "No tables used",
+        "dual wildcard"
+    );
 
     failures += prepare_sql(
         database,
@@ -51014,7 +51060,7 @@ static int test_show_index_execution(void) {
 
 static int test_insert_values_execution(void) {
     enum {
-        insert_forms_row_count = 8,
+        insert_forms_row_count = 10,
         ai_first_insert_id = 10,
         ai_default_value_insert_id = 12,
         ai_empty_column_insert_id = 13,
@@ -51135,6 +51181,31 @@ static int test_insert_values_execution(void) {
         1,
         "insert select from dual column order affected rows"
     );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms SELECT 9, 'nine' FROM DUAL WHERE TRUE",
+        1,
+        "insert select from dual where true affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms SELECT 10, 'ten' FROM DUAL WHERE FALSE",
+        0,
+        "insert select from dual where false affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms SELECT 11, 'eleven' FROM DUAL ORDER BY 1 LIMIT 0",
+        0,
+        "insert select from dual limit zero affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms SELECT DISTINCT 12, 'twelve' FROM DUAL WHERE TRUE "
+        "ORDER BY 1 LIMIT 1",
+        1,
+        "insert select distinct from dual affected rows"
+    );
     failures += prepare_sql(database, "INSERT INTO insert_forms () VALUES (4)", MYLITE_OK, &stmt);
     failures += expect_status(
         mylite_step(stmt),
@@ -51180,6 +51251,22 @@ static int test_insert_values_execution(void) {
             "WHERE a = 8",
             "eight",
             "INSERT SELECT column order"
+        );
+        failures += expect_sqlite_physical_text(
+            path,
+            forms_physical,
+            "b",
+            "WHERE a = 9",
+            "nine",
+            "INSERT SELECT DUAL WHERE TRUE"
+        );
+        failures += expect_sqlite_physical_text(
+            path,
+            forms_physical,
+            "b",
+            "WHERE a = 12",
+            "twelve",
+            "INSERT SELECT DUAL DISTINCT"
         );
         failures += expect_sqlite_physical_null(
             path,

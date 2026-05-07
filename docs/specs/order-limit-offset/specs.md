@@ -43,8 +43,10 @@ Out of scope:
   subqueries
 - `GROUP BY`, `HAVING`, `WITH ROLLUP`, window clauses, aggregate functions,
   `DISTINCT`, locking clauses, and `SELECT ... INTO`
-- no-table scalar `SELECT` and `FROM DUAL` ordering/limiting unless the
-  implementation can add them without changing this feature's one-table scope
+- no-table scalar `SELECT` ordering/limiting. A later
+  `INSERT ... SELECT FROM DUAL` slice added the covered scalar
+  `FROM DUAL ORDER BY ... LIMIT` subset for standalone DUAL selects and
+  insert-from-DUAL sources.
 - arbitrary table-backed projection expressions and their result metadata,
   except where an expression is used only as a hidden sort key
 - functions, casts, `CASE`, variables, user-defined variables, subqueries,
@@ -416,10 +418,8 @@ exists; direct text execution should match MySQL's syntax error for `LIMIT ?`.
 The following MySQL-supported forms remain outside Task 18:
 
 ```lemon
-/* Deferred: rowless and DUAL SELECT ordering/limiting. */
+/* Deferred: rowless SELECT ordering/limiting. */
 select_statement ::= SELECT select_item_list opt_order_by_clause opt_limit_clause.
-select_statement ::= SELECT select_item_list FROM DUAL opt_order_by_clause
-    opt_limit_clause.
 
 /* Deferred: grouping, post-group filtering, and windows. */
 select_statement ::= SELECT select_item_list FROM table_reference where_clause

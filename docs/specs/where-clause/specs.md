@@ -36,9 +36,9 @@ Out of scope:
   tasks
 - `WHERE` for `UPDATE`, `DELETE`, `SHOW`, subqueries, CTEs, views, and
   information-schema system views unless a later task explicitly widens them
-- `SELECT` without `FROM` and `SELECT ... FROM DUAL` with `WHERE`; MySQL
-  supports these forms, but Task 17 is scoped to table-backed SELECT unless the
-  implementation can add rowless predicates without broadening other surfaces
+- `SELECT` without `FROM` with `WHERE`; MySQL supports this form, but Task 17 is
+  scoped to table-backed SELECT. A later `INSERT ... SELECT FROM DUAL` slice
+  added the covered scalar `FROM DUAL WHERE` subset for no-table predicates.
 - `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, locking clauses, `SELECT ... INTO`,
   and SELECT modifiers
 - aggregate functions, window functions, scalar functions, casts, `CASE`,
@@ -479,8 +479,9 @@ optimizer features.
 
 ## Explicit deferred behavior
 
-- `WHERE` on no-table scalar SELECT and `FROM DUAL` is deferred unless added as
-  a small, fully tested extension of the same predicate evaluator.
+- `WHERE` on no-table scalar SELECT is deferred. The covered scalar
+  `FROM DUAL WHERE` subset is implemented for standalone DUAL selects and
+  `INSERT ... SELECT FROM DUAL`.
 - Joins and ambiguous predicate references are deferred.
 - `ON` and `HAVING` predicates are deferred.
 - `WHERE` for `UPDATE` and `DELETE` is deferred to their statement tasks.

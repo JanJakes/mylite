@@ -6942,6 +6942,7 @@ static int test_insert_values_syntax(void) {
     const struct mylite_sql_ast_node *columns = NULL;
     const struct mylite_sql_ast_node *rows = NULL;
     const struct mylite_sql_ast_node *row = NULL;
+    const struct mylite_sql_ast_node *select = NULL;
     int failures = 0;
 
     failures +=
@@ -7024,29 +7025,67 @@ static int test_insert_values_syntax(void) {
     );
     statement = child_at(result.root, 0U);
     columns = child_at(statement, 1U);
-    rows = child_at(statement, 2U);
+    select = child_at(statement, 2U);
     failures +=
-        expect_node(statement, MYLITE_SQL_AST_INSERT_VALUES_STATEMENT, "insert select dual");
+        expect_node(statement, MYLITE_SQL_AST_INSERT_SELECT_STATEMENT, "insert select dual");
     failures += expect_node(columns, MYLITE_SQL_AST_INSERT_COLUMN_LIST, "insert select columns");
     failures += expect_child_count(columns, 2U, "insert select column count");
     failures += expect_span_text(child_at(columns, 0U), "a", "insert select first column");
     failures += expect_span_text(child_at(columns, 1U), "b", "insert select second column");
-    failures += expect_node(rows, MYLITE_SQL_AST_INSERT_ROW_LIST, "insert select row list");
-    failures += expect_child_count(rows, 1U, "insert select row count");
-    row = child_at(rows, 0U);
-    failures += expect_node(row, MYLITE_SQL_AST_INSERT_ROW, "insert select lowered row");
-    failures += expect_child_count(row, 2U, "insert select value count");
-    failures +=
-        expect_literal(child_at(row, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "insert select integer");
-    failures +=
-        expect_literal(child_at(row, 1U), MYLITE_SQL_AST_LITERAL_STRING, "insert select string");
+    failures += expect_node(select, MYLITE_SQL_AST_SELECT_STATEMENT, "insert select dual source");
+    rows = child_at(select, 0U);
+    failures += expect_node(rows, MYLITE_SQL_AST_SELECT_LIST, "insert select dual list");
+    failures += expect_child_count(rows, 2U, "insert select value count");
+    failures += expect_literal(
+        child_at(child_at(rows, 0U), 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "insert select integer"
+    );
+    failures += expect_literal(
+        child_at(child_at(rows, 1U), 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "insert select string"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("INSERT t SELECT 1 FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    rows = child_at(statement, 1U);
+    select = child_at(statement, 1U);
     failures += expect_child_count(statement, 2U, "insert select without INTO children");
-    failures += expect_child_count(child_at(rows, 0U), 1U, "insert select without INTO values");
+    failures += expect_child_count(child_at(select, 0U), 1U, "insert select without INTO values");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO t SELECT DISTINCT 1 FROM DUAL WHERE TRUE ORDER BY 1 LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert select dual with clauses"
+    );
+    failures += expect_node(
+        child_at(select, 1U),
+        MYLITE_SQL_AST_FROM_DUAL,
+        "insert select dual source clause"
+    );
+    failures +=
+        expect_node(child_at(select, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "insert select dual where");
+    failures += expect_node(
+        child_at(select, 3U),
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "insert select dual order"
+    );
+    failures +=
+        expect_node(child_at(select, 4U), MYLITE_SQL_AST_LIMIT_CLAUSE, "insert select dual limit");
+    if (select == NULL ||
+        select->select_duplicate_mode != MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT) {
+        fprintf(stderr, "Expected SELECT DISTINCT mode for INSERT SELECT DUAL\n");
+        ++failures;
+    }
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

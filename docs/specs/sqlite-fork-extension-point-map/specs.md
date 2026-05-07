@@ -81,6 +81,9 @@ Implemented fork points:
   to SQLite's native UPSERT update path for the current direct DML subset,
   including the common `VALUES(column)` assignment form as an `excluded.column`
   expression
+- direct SQLite parser admission for MySQL `INSERT ... SET`, lowered to
+  SQLite's ordinary `INSERT` path with a generated column list and one-row
+  `VALUES` source
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before

@@ -3439,6 +3439,36 @@ static int test_wordpress_like_crud(void) {
     );
     failures += exec_sql(
         database,
+        "INSERT INTO wp_options_like SET option_name = 'admin_email', "
+        "option_value = 'admin@example.test', autoload = 'no'",
+        "insert option through direct INSERT SET"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(COUNT(*), ':', GROUP_CONCAT(option_name, '|')) "
+                   "FROM (SELECT option_name FROM wp_options_like ORDER BY option_name)",
+            .expected = "3:admin_email|blogname|siteurl",
+            .context = "direct INSERT SET inserts assignment-form rows",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO wp_options_like SET option_name = 'blogname', "
+        "option_value = 'Updated MyLite Blog' "
+        "ON DUPLICATE KEY UPDATE option_value = VALUES(option_value)",
+        "update duplicate option through direct INSERT SET with ODKU"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT option_value FROM wp_options_like WHERE option_name = 'blogname'",
+            .expected = "Updated MyLite Blog",
+            .context = "direct INSERT SET feeds MySQL duplicate-key update lowering",
+        }
+    );
+    failures += exec_sql(
+        database,
         "CREATE TABLE inline_index_forms ("
         "id INTEGER PRIMARY KEY,"
         "name TEXT,"

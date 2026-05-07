@@ -1183,6 +1183,9 @@ cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
   sqlite3Insert(pParse, X, S, F, R, U);
 }
+cmd ::= with insert_cmd(R) INTO xfullname(X) SET setlist(Y) upsert(U). {
+  myliteInsertSet(pParse, X, Y, R, U);
+}
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES returning.
 {
   sqlite3Insert(pParse, X, 0, F, R, 0);
@@ -1271,6 +1274,53 @@ idlist(A) ::= nm(Y).
       }
     }
     return p;
+  }
+
+  static void myliteInsertSet(
+    Parse *pParse,
+    SrcList *pTabList,
+    ExprList *pSetList,
+    int onError,
+    Upsert *pUpsert
+  ){
+    sqlite3 *db = pParse->db;
+    IdList *pColumns = 0;
+    ExprList *pValues = 0;
+    Select *pSelect;
+    int i;
+
+    for(i=0; pSetList && i<pSetList->nExpr; i++){
+      const char *zName = pSetList->a[i].zEName;
+      Token name;
+      if( zName==0 ){
+        sqlite3ErrorMsg(pParse, "missing column name in INSERT SET");
+        break;
+      }
+      name.z = zName;
+      name.n = sqlite3Strlen30(zName);
+      pColumns = sqlite3IdListAppend(pParse, pColumns, &name);
+      pValues = sqlite3ExprListAppend(pParse, pValues, pSetList->a[i].pExpr);
+      pSetList->a[i].pExpr = 0;
+      if( db->mallocFailed ) break;
+    }
+    sqlite3ExprListDelete(db, pSetList);
+
+    if( pParse->nErr>0 || db->mallocFailed ){
+      sqlite3SrcListDelete(db, pTabList);
+      sqlite3ExprListDelete(db, pValues);
+      sqlite3IdListDelete(db, pColumns);
+      sqlite3UpsertDelete(db, pUpsert);
+      return;
+    }
+
+    pSelect = sqlite3SelectNew(pParse, pValues, 0, 0, 0, 0, 0, SF_Values, 0);
+    if( pSelect==0 ){
+      sqlite3SrcListDelete(db, pTabList);
+      sqlite3IdListDelete(db, pColumns);
+      sqlite3UpsertDelete(db, pUpsert);
+      return;
+    }
+    sqlite3Insert(pParse, pTabList, pSelect, pColumns, onError, pUpsert);
   }
 
 }

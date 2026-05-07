@@ -45,6 +45,9 @@ slices:
 - admit MySQL `ON DUPLICATE KEY UPDATE` in the direct fork parser and lower it
   to SQLite's native UPSERT update path for duplicate unique-key rows in the
   current CRUD subset, including direct `VALUES(column)` assignment references
+- admit MySQL `INSERT ... SET` in the direct fork parser and lower it to
+  SQLite's ordinary insert path with a generated column list and one-row
+  values source
 - execute the MySQL-runtime-verified WordPress-like CRUD fixture through
   MyLite's public SQL API
 
@@ -463,6 +466,11 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
     mapped to SQLite's `excluded.column` expression. Exact MySQL affected-row
     counts, duplicate-key warning metadata, row-alias forms, and
     auto-increment gap behavior remain future fork statement-completion work.
+17. Admit MySQL `INSERT ... SET` syntax in the direct parser. Implemented by
+    converting the assignment list to SQLite's ordinary insert primitive with a
+    generated column list and single-row `VALUES` source, so defaults,
+    constraints, indexes, `INSERT IGNORE`, and direct ODKU continue through the
+    same VDBE paths as `INSERT ... VALUES`.
 
 ## Lemon Grammar Direction
 
@@ -476,6 +484,7 @@ opt_table ::= .
 opt_table ::= TABLE.
 
 insert_cmd ::= INSERT IGNORE.
+cmd ::= insert_cmd INTO table_name SET setlist upsert.
 upsert ::= ON DUPLICATE KEY UPDATE mysql_upsert_setlist.
 mysql_upsert_value ::= VALUES LP column_name RP.
 

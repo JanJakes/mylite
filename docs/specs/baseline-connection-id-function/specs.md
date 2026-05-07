@@ -46,8 +46,12 @@ licensed implementation sources.
 
 Observed against the local `mysql:8.4.9` runtime using TCP:
 
-- `CONNECTION_ID()` returns a positive integer connection identifier and
-  warning count `0`.
+- `CONNECTION_ID()` returns a non-`NULL` unsigned integer connection
+  identifier and warning count `0`.
+- Normal generated connection ids observed in the local runtime are nonzero
+  positive integers. MySQL can return `0` if the session `pseudo_thread_id`
+  variable is set to `0`; MyLite does not implement `pseudo_thread_id` in this
+  slice.
 - Repeated `CONNECTION_ID()` calls in the same connection return the same
   value.
 - Concurrent independent client connections have distinct `CONNECTION_ID()`
@@ -69,9 +73,8 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
   connection.
 - MySQL accepts wider scalar forms such as aliases, `LIMIT`, and table-backed
   evaluation; those remain outside this MyLite slice.
-- MySQL documents that changing the session `pseudo_thread_id` system variable
-  changes `CONNECTION_ID()`. MyLite does not implement that variable in this
-  slice.
+- MySQL exposes `CONNECTION_ID()` with unsigned 64-bit integer-style metadata
+  in result sets.
 
 ## Scope
 

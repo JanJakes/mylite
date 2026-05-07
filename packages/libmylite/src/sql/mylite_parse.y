@@ -4850,12 +4850,20 @@ multiplicative_expression(A) ::= multiplicative_expression(B) MOD(T) bit_xor_exp
         state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
 }
 
-bit_xor_expression(A) ::= unary_expression(B). {
+bit_xor_expression(A) ::= collate_expression(B). {
     A = B;
 }
-bit_xor_expression(A) ::= bit_xor_expression(B) BIT_XOR(T) unary_expression(C). {
+bit_xor_expression(A) ::= bit_xor_expression(B) BIT_XOR(T) collate_expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_XOR, C);
+}
+
+collate_expression(A) ::= unary_expression(B). {
+    A = B;
+}
+collate_expression(A) ::= collate_expression(B) COLLATE(T) charset_value(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_COLLATE, C);
 }
 
 unary_expression(A) ::= primary_expression(B). {

@@ -350,6 +350,19 @@ static int bind_order_binary_expression( // NOLINT(misc-no-recursion)
     if (mylite_select_subquery_binary_expression_is_in(expression)) {
         return bind_order_in_subquery_expression(database, expression, plan, callbacks);
     }
+    if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
+        int status = mylite_expression_validate_collate_operator(database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        return mylite_select_bind_order_expression(
+            database,
+            mylite_ast_child_at(expression, 0U),
+            plan,
+            callbacks
+        );
+    }
     for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
          child = child->next_sibling) {
         int status = mylite_select_bind_order_expression(database, child, plan, callbacks);

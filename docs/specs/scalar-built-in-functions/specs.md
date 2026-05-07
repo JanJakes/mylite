@@ -241,7 +241,8 @@ by common scalar expressions:
   `docs/specs/advisory-lock-functions/specs.md`;
 - grammar-level cast expressions: `CAST(expr AS type)`, `CONVERT(expr, type)`,
   and `CONVERT(expr USING charset_name)` for the supported CAST target and
-  charset-registry subsets; see `docs/specs/cast-expression/specs.md` and
+  charset-registry subsets, plus expression-level `COLLATE` over registered
+  collations; see `docs/specs/cast-expression/specs.md` and
   `docs/specs/convert-function/specs.md`
 
 These functions are implemented in no-table scalar `SELECT`, one-table
@@ -915,8 +916,8 @@ for results, metadata, warnings, errors, type conversion, and edge cases.
   role state.
 - `CHARSET()`, `COLLATION()`, and `COERCIBILITY()` are implemented by the
   dedicated charset/collation introspection slice for the current descriptor
-  and AST-visible subset. Full collation coercion, introducers, and explicit
-  expression `COLLATE` remain deferred; see
+  and AST-visible subset. Full collation coercion and introducers remain
+  deferred; see
   [charset and collation introspection functions](../charset-collation-functions/specs.md).
 - Date and time functions support the session time zone offset needed by the
   current session model. Named time zones and MySQL time-zone tables are

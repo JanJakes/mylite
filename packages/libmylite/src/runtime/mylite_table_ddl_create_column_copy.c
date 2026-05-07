@@ -515,6 +515,7 @@ static const char *check_operator_symbol(enum mylite_sql_ast_operator operator_k
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
     case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
     case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+    case MYLITE_SQL_AST_OPERATOR_COLLATE:
         return NULL;
     }
     return NULL;

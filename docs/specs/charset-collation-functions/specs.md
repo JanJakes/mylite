@@ -205,7 +205,7 @@ not gain persistent charset/collation fields in this feature.
 The following remain explicitly deferred:
 
 - full MySQL collation aggregation and coercibility conflict rules
-- `_charset` introducer syntax and expression-level `COLLATE`
+- `_charset` introducer syntax
 - charset conversion beyond existing `CHAR(... USING charset)` behavior
 - exact native diagnostics for every wrong-arity parse shape
 - exact charset/collation propagation for all mixed binary/nonbinary scalar

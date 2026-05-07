@@ -296,6 +296,7 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT = 42,
     MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT = 43,
     MYLITE_SQL_AST_OPERATOR_BINARY_CAST = 44,
+    MYLITE_SQL_AST_OPERATOR_COLLATE = 45,
 };
 
 enum mylite_sql_ast_schema_option {

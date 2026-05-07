@@ -65,6 +65,30 @@ int mylite_expression_validate_cast_target_charset(
     return status;
 }
 
+int mylite_expression_validate_collate_operator(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *collation_node = mylite_ast_child_at(expression, 1U);
+    char *collation_name = NULL;
+    int status = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        expression->operator_kind != MYLITE_SQL_AST_OPERATOR_COLLATE) {
+        return MYLITE_OK;
+    }
+
+    collation_name = mylite_copy_schema_text_span(collation_node);
+    if (collation_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    if (mylite_collation_lookup(collation_name) == NULL) {
+        status = mylite_diagnostics_set_unknown_collation_error(database, collation_name);
+    }
+    free(collation_name);
+    return status;
+}
+
 bool mylite_expression_char_function_charset_name_is_supported(const char *name) {
     if (mylite_ascii_case_equal(name, mylite_mysql_binary_charset_name)) {
         return true;

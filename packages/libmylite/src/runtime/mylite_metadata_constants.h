@@ -16,6 +16,7 @@ extern const char mylite_mysql_utf8mb3_general_ci_collation_name[];
 extern const char mylite_mysql_ascii_charset_name[];
 extern const char mylite_mysql_ascii_general_ci_collation_name[];
 extern const char mylite_mysql_compatibility_version[];
+extern const int mylite_mysql_coercibility_explicit;
 extern const int mylite_mysql_coercibility_implicit;
 extern const int mylite_mysql_coercibility_system_constant;
 extern const int mylite_mysql_coercibility_coercible;

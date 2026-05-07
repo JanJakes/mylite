@@ -71,8 +71,37 @@ int mylite_dml_bind_mutation_expression(
         }
         return MYLITE_OK;
     }
-    case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
+            int status = mylite_expression_validate_collate_operator(database, expression);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+            return mylite_dml_bind_mutation_expression(
+                database,
+                table,
+                mylite_ast_child_at(expression, 0U),
+                clause_context,
+                diagnostics
+            );
+        }
+        for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
+             child = child->next_sibling) {
+            int status = mylite_dml_bind_mutation_expression(
+                database,
+                table,
+                child,
+                clause_context,
+                diagnostics
+            );
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:

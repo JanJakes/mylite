@@ -30644,13 +30644,15 @@ static int test_inet_ipv4_functions_execution(void) {
 static int test_charset_collation_functions_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const scalar_columns[] = {
-        "cs_lit",          "co_lit",           "ce_lit",       "cs_null",
-        "co_null",         "ce_null",          "cs_num",       "co_dec",
-        "ce_real",         "cs_char",          "co_char_utf8", "cs_char_ascii",
-        "co_unhex",        "cs_hex",           "co_concat",    "ce_concat",
-        "cs_concat_null",  "ce_coalesce_null", "co_concat_ws", "cs_quote_null",
-        "co_quote_binary", "cs_quote_num",     "co_quote_num", "ce_quote_num",
-        "cs_cast_bin",     "ce_cast_bin",      "ce_cast_char", "ce_if_string_null",
+        "cs_lit",          "co_lit",           "ce_lit",         "cs_null",
+        "co_null",         "ce_null",          "cs_num",         "co_dec",
+        "ce_real",         "cs_char",          "co_char_utf8",   "cs_char_ascii",
+        "co_unhex",        "cs_hex",           "co_concat",      "ce_concat",
+        "cs_concat_null",  "ce_coalesce_null", "co_concat_ws",   "cs_quote_null",
+        "co_quote_binary", "cs_quote_num",     "co_quote_num",   "ce_quote_num",
+        "cs_cast_bin",     "ce_cast_bin",      "ce_cast_char",   "ce_if_string_null",
+        "cs_collate_lit",  "co_collate_lit",   "ce_collate_lit", "cs_collate_num",
+        "co_collate_num",  "ce_collate_num",
     };
     static const char *const scalar_values[] = {
         "utf8mb4",
@@ -30681,6 +30683,12 @@ static int test_charset_collation_functions_execution(void) {
         "2",
         "2",
         "4",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "0",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "0",
     };
     static const char *const latin1_columns[] = {"cs_lit", "co_lit", "cs_hex", "co_concat"};
     static const char *const latin1_values[] =
@@ -30998,12 +31006,25 @@ static int test_charset_collation_functions_execution(void) {
         "CHARSET(CAST('abc' AS BINARY)) AS cs_cast_bin, "
         "COERCIBILITY(CAST('abc' AS BINARY)) AS ce_cast_bin, "
         "COERCIBILITY(CAST('abc' AS CHAR)) AS ce_cast_char, "
-        "COERCIBILITY(IF(1,'a',NULL)) AS ce_if_string_null",
+        "COERCIBILITY(IF(1,'a',NULL)) AS ce_if_string_null, "
+        "CHARSET('abc' COLLATE utf8mb4_bin) AS cs_collate_lit, "
+        "COLLATION('abc' COLLATE utf8mb4_bin) AS co_collate_lit, "
+        "COERCIBILITY('abc' COLLATE utf8mb4_bin) AS ce_collate_lit, "
+        "CHARSET(1 COLLATE utf8mb4_bin) AS cs_collate_num, "
+        "COLLATION(1 COLLATE utf8mb4_bin) AS co_collate_num, "
+        "COERCIBILITY(1 COLLATE utf8mb4_bin) AS ce_collate_num",
         scalar_columns,
         (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])),
         scalar_values,
         1,
         "charset collation scalar values"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT NULL COLLATE utf8mb4_bin",
+        MYLITE_EXEC_ERROR,
+        "not valid for CHARACTER SET 'binary'",
+        "COLLATE null invalid charset"
     );
 
     failures += prepare_sql(
@@ -33957,6 +33978,34 @@ static int test_convert_expression_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
          1},
     };
+    static const struct expected_result_metadata collate_metadata[] = {
+        {"using_utf8mb4_bin",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         12U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         46U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY,
+         0},
+        {"using_latin1_bin",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         47U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         MYLITE_FIELD_FLAG_BINARY,
+         0},
+    };
     static const char *const introspection_columns[] = {
         "cs_latin1",
         "co_latin1",
@@ -33974,6 +34023,15 @@ static int test_convert_expression_execution(void) {
         "co_binary",
         "cc_binary",
         "cs_char_latin1",
+        "cs_latin1_bin",
+        "co_latin1_bin",
+        "cc_latin1_bin",
+        "cs_utf8mb4_bin",
+        "co_utf8mb4_bin",
+        "cc_utf8mb4_bin",
+        "cs_char_utf8mb4_bin",
+        "co_char_utf8mb4_bin",
+        "cc_char_utf8mb4_bin",
     };
     static const char *const introspection_values[] = {
         "latin1",
@@ -33992,6 +34050,15 @@ static int test_convert_expression_execution(void) {
         "binary",
         "2",
         "latin1",
+        "latin1",
+        "latin1_bin",
+        "0",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "0",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "0",
     };
     static const char *const id_int_columns[] = {"id", "s_int"};
     static const char *const projection_values[] = {"1", "12", "2", "0", "3", NULL};
@@ -34102,6 +34169,24 @@ static int test_convert_expression_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(
+        database,
+        "SELECT CONVERT('abc' USING utf8mb4) COLLATE utf8mb4_bin AS using_utf8mb4_bin, "
+        "CONVERT('abc' USING latin1) COLLATE latin1_bin AS using_latin1_bin",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        collate_metadata,
+        (int)(sizeof(collate_metadata) / sizeof(collate_metadata[0])),
+        "CONVERT COLLATE metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT COLLATE metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT COLLATE metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += expect_select_rows(
         database,
         "SELECT CHARSET(CONVERT('abc' USING latin1)) AS cs_latin1, "
@@ -34120,9 +34205,21 @@ static int test_convert_expression_execution(void) {
         "COLLATION(CONVERT('abc' USING binary)) AS co_binary, "
         "COERCIBILITY(CONVERT('abc' USING binary)) AS cc_binary, "
         "CHARSET(CONVERT('abc', CHAR CHARACTER SET latin1)) "
-        "AS cs_char_latin1",
+        "AS cs_char_latin1, "
+        "CHARSET(CONVERT('abc' USING latin1) COLLATE latin1_bin) AS cs_latin1_bin, "
+        "COLLATION(CONVERT('abc' USING latin1) COLLATE latin1_bin) AS co_latin1_bin, "
+        "COERCIBILITY(CONVERT('abc' USING latin1) COLLATE latin1_bin) AS cc_latin1_bin, "
+        "CHARSET(CONVERT('abc' USING utf8mb4) COLLATE utf8mb4_bin) AS cs_utf8mb4_bin, "
+        "COLLATION(CONVERT('abc' USING utf8mb4) COLLATE utf8mb4_bin) AS co_utf8mb4_bin, "
+        "COERCIBILITY(CONVERT('abc' USING utf8mb4) COLLATE utf8mb4_bin) AS cc_utf8mb4_bin, "
+        "CHARSET(CONVERT('abc', CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) "
+        "AS cs_char_utf8mb4_bin, "
+        "COLLATION(CONVERT('abc', CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) "
+        "AS co_char_utf8mb4_bin, "
+        "COERCIBILITY(CONVERT('abc', CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) "
+        "AS cc_char_utf8mb4_bin",
         introspection_columns,
-        16,
+        25,
         introspection_values,
         1,
         "CONVERT charset introspection"
@@ -34141,6 +34238,20 @@ static int test_convert_expression_execution(void) {
         MYLITE_EXEC_ERROR,
         "Unknown character set",
         "CONVERT target unknown charset"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT 'abc' COLLATE nosuchcollation",
+        MYLITE_EXEC_ERROR,
+        "Unknown collation",
+        "COLLATE unknown collation"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT CONVERT('abc' USING latin1) COLLATE utf8mb4_bin",
+        MYLITE_EXEC_ERROR,
+        "not valid for CHARACTER SET 'latin1'",
+        "COLLATE invalid charset"
     );
 
     failures += execute_sql(

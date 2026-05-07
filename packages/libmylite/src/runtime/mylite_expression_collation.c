@@ -1,11 +1,22 @@
 #include "mylite_expression_collation.h"
 
 #include "mylite_charset.h"
+#include "mylite_diagnostics.h"
 #include "mylite_expression_collation_leaf.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
+
+#include <stdlib.h>
+
+static int infer_collate_operator_collation_info(
+    mylite_db *database,
+    const struct mylite_expression_collation_context *context,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_collation_callbacks *callbacks,
+    struct mylite_charset_collation_info *out_info
+);
 
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_infer_collation_info(
@@ -52,8 +63,25 @@ int mylite_expression_infer_collation_info(
         );
     case MYLITE_SQL_AST_CAST_EXPRESSION:
         return mylite_expression_infer_cast_collation_info(database, node, callbacks, out_info);
-    case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
+            return infer_collate_operator_collation_info(
+                database,
+                context,
+                node,
+                callbacks,
+                out_info
+            );
+        }
+        return mylite_expression_infer_descriptor_collation_info(
+            database,
+            context,
+            node,
+            mylite_mysql_coercibility_coercible,
+            callbacks,
+            out_info
+        );
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_CASE_EXPRESSION:
     case MYLITE_SQL_AST_AGGREGATE_CALL:
@@ -216,6 +244,55 @@ int mylite_expression_infer_collation_info(
         break;
     }
     return MYLITE_UNSUPPORTED;
+}
+
+static int infer_collate_operator_collation_info(
+    mylite_db *database,
+    const struct mylite_expression_collation_context *context,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_collation_callbacks *callbacks,
+    struct mylite_charset_collation_info *out_info
+) {
+    const struct mylite_sql_ast_node *collation_node = mylite_ast_child_at(expression, 1U);
+    char *collation_name = mylite_copy_schema_text_span(collation_node);
+    const struct mylite_collation *collation = NULL;
+    struct mylite_charset_collation_info source =
+        mylite_expression_binary_collation_info(mylite_mysql_coercibility_ignorable);
+    int status = MYLITE_OK;
+
+    if (collation_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    collation = mylite_collation_lookup(collation_name);
+    if (collation == NULL) {
+        status = mylite_diagnostics_set_unknown_collation_error(database, collation_name);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_expression_infer_collation_info(
+            database,
+            context,
+            mylite_ast_child_at(expression, 0U),
+            callbacks,
+            &source
+        );
+    }
+    if (status == MYLITE_OK && source.coercibility != mylite_mysql_coercibility_numeric &&
+        !mylite_ascii_case_equal(source.character_set, collation->character_set)) {
+        status = mylite_diagnostics_set_collation_charset_error(
+            database,
+            collation->name,
+            source.character_set
+        );
+    }
+    if (status == MYLITE_OK) {
+        *out_info = (struct mylite_charset_collation_info){
+            .character_set = collation->character_set,
+            .collation = collation->name,
+            .coercibility = mylite_mysql_coercibility_explicit,
+        };
+    }
+    free(collation_name);
+    return status;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

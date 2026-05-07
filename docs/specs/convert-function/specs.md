@@ -38,8 +38,9 @@ The following behavior is deferred with the same compatibility boundaries as
 - fixed-length binary padding/truncation fidelity
 - full byte transcoding between character sets
 - exhaustive overflow/range diagnostics and every SQL-mode variant
-- `COLLATE` inside `CONVERT` target syntax; a future standalone `COLLATE`
-  operator can apply to the result separately
+- `COLLATE` inside `CONVERT` target syntax, which MySQL rejects; applying
+  expression-level `COLLATE` to the result is supported for registered
+  collations
 
 ## References
 
@@ -93,6 +94,9 @@ introspection metadata for supported charsets.
 | `CHARSET(CONVERT('abc' USING binary))` | `binary` |
 | `COLLATION(CONVERT('abc' USING binary))` | `binary` |
 | `CONVERT(NULL USING utf8mb4)` | `NULL` |
+| `COLLATION(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `latin1_bin` |
+| `COERCIBILITY(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `0` |
+| `COLLATION(CONVERT('abc' USING utf8mb4) COLLATE utf8mb4_bin)` | `utf8mb4_bin` |
 
 `utf8` is accepted as MySQL 8.4's compatibility alias for `utf8mb3`. MySQL
 returns the converted value with `utf8mb3` charset/collation introspection and
@@ -114,6 +118,7 @@ Parser and validation errors observed with MySQL 8.4.9:
 | `CONVERT()` | syntax error 1064 / `42000` |
 | `CONVERT(1)` | syntax error 1064 / `42000` |
 | `CONVERT(1, SIGNED, 2)` | syntax error 1064 / `42000` |
+| `CONVERT('abc' USING latin1) COLLATE utf8mb4_bin` | error 1253 / `42000` |
 
 Metadata observations from `mysql --column-type-info -vvv`:
 
@@ -147,6 +152,7 @@ primary_expression ::= convert_expression.
 
 convert_expression ::= CONVERT LPAREN expression COMMA cast_target_type RPAREN.
 convert_expression ::= CONVERT LPAREN expression USING charset_value RPAREN.
+collate_expression ::= collate_expression COLLATE charset_value.
 ```
 
 The first production reuses the `cast_target_type` grammar from the CAST
@@ -245,10 +251,13 @@ Parser tests:
   `CHAR CHARSET utf8mb4`, `NCHAR(4)`, and `BINARY`
 - `CONVERT('abc' USING latin1)`, `utf8mb4`, quoted `utf8mb3`, `utf8`, and
   `binary`
+- expression-level `COLLATE` after `CONVERT(... USING ...)` and
+  `CONVERT(..., CHAR CHARACTER SET ...)`
 - nested `CONVERT` and `CONVERT` inside `CASE`
 - syntax errors for `INT`, empty argument list, one argument, three arguments,
   missing comma, missing `USING` charset, `COLLATE` inside the target, and
-  invalid decimal precision/scale
+  invalid decimal precision/scale; unknown or charset-incompatible
+  expression-level collations fail during preparation
 
 Runtime tests:
 

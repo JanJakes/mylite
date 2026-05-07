@@ -173,8 +173,9 @@ opt_cast_character_set ::= CHARACTER SET charset_value.
 opt_cast_character_set ::= CHARSET charset_value.
 ```
 
-`COLLATE` inside the cast target remains a syntax error. Applying a future
-standalone `COLLATE` operator to the result is separate work.
+`COLLATE` inside the cast target remains a syntax error. Applying standalone
+expression-level `COLLATE` to the cast result is supported for registered
+collations.
 
 ## AST
 
@@ -285,6 +286,7 @@ Parser tests:
 - `CAST('1' AS DECIMAL)`, `DECIMAL(5)`, `DECIMAL(5,2)`, `DEC(5,2)`
 - `CAST(38.8 AS CHAR)`, `CHAR(3)`, `CHAR CHARACTER SET utf8mb4`,
   `CHAR CHARACTER SET binary`, `NCHAR(4)`, and `BINARY`
+- expression-level `COLLATE` after a supported character cast
 - nested casts and casts inside `CASE`
 - syntax errors for `INT`, `INTEGER`, `NUMERIC`, `COLLATE` inside the target,
   missing `AS`, missing target type, and invalid decimal precision/scale

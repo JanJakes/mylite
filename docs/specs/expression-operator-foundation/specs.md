@@ -43,7 +43,7 @@ Out of scope:
   scalar expression support where current execution paths can handle it
 - assignment operators `:=` and assignment-form `=`
 - function calls, aggregate calls, window functions, `CASE`, `CAST`,
-  `INTERVAL`, `BINARY`, `COLLATE`, `REGEXP`, `RLIKE`, `SOUNDS LIKE`,
+  `INTERVAL`, `BINARY`, `REGEXP`, `RLIKE`, `SOUNDS LIKE`,
   JSON operators, `MEMBER OF`, subqueries, quantified comparisons, `EXISTS`,
   variables, parameters, prepared statement marker binding, and stored-program
   local variables
@@ -452,9 +452,8 @@ primary_expression ::= LPAREN expression COMMA expression_list RPAREN.
 comparison_expression ::= comparison_expression IN LPAREN select_statement RPAREN.
 comparison_expression ::= comparison_expression comparison_operator ANY LPAREN select_statement RPAREN.
 
-/* Deferred: casts, collations, and mode-sensitive concatenation. */
+/* Deferred: mode-sensitive concatenation and broader cast targets. */
 primary_expression ::= CAST LPAREN expression AS cast_type RPAREN.
-comparison_expression ::= comparison_expression COLLATE identifier.
 ```
 
 ### Analyzer and evaluator

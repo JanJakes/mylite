@@ -369,6 +369,22 @@ static int bind_predicate_binary_expression( // NOLINT(misc-no-recursion)
             callbacks
         );
     }
+    if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
+        int status = mylite_expression_validate_collate_operator(database, expression);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        return mylite_select_bind_predicate_expression_in_clause(
+            database,
+            mylite_ast_child_at(expression, 0U),
+            plan,
+            clause_context,
+            first_table,
+            table_count,
+            callbacks
+        );
+    }
     for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
          child = child->next_sibling) {
         int status = mylite_select_bind_predicate_expression_in_clause(

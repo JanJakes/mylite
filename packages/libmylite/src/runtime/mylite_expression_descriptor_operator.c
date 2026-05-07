@@ -1,5 +1,8 @@
 #include "mylite_expression_descriptor_operator.h"
 
+#include "mylite_charset.h"
+#include "mylite_diagnostics.h"
+#include "mylite_expression_collation.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_expression_descriptor_subquery.h"
 #include "mylite_metadata_constants.h"
@@ -7,9 +10,17 @@
 #include "sql/mylite_ast.h"
 
 #include <stdbool.h>
+#include <stdlib.h>
 
 static int validate_operator_descriptor_callbacks(
     const struct mylite_expression_descriptor_operator_callbacks *callbacks
+);
+
+static int infer_collate_expression_descriptor(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_field_descriptor *left,
+    struct mylite_field_descriptor *out_descriptor
 );
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -140,6 +151,7 @@ int mylite_expression_descriptor_infer_unary_expression(
     case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
     case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_COLLATE:
     case MYLITE_SQL_AST_OPERATOR_IN:
     case MYLITE_SQL_AST_OPERATOR_NOT_IN:
     case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
@@ -184,23 +196,27 @@ int mylite_expression_descriptor_infer_binary_expression(
         database,
         plan,
         mylite_ast_child_at(expression, 0U),
-        NULL,
+        expression->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE ? value : NULL,
         &left
     );
 
-    if (status == MYLITE_OK) {
-        status = callbacks->infer_expression_descriptor(
-            database,
-            plan,
-            mylite_ast_child_at(expression, 1U),
-            NULL,
-            &right
-        );
-    }
     if (status != MYLITE_OK) {
         return status;
     }
+    if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
+        return infer_collate_expression_descriptor(database, expression, &left, out_descriptor);
+    }
 
+    status = callbacks->infer_expression_descriptor(
+        database,
+        plan,
+        mylite_ast_child_at(expression, 1U),
+        NULL,
+        &right
+    );
+    if (status != MYLITE_OK) {
+        return status;
+    }
     if (mylite_expression_descriptor_is_nullable(&left) ||
         mylite_expression_descriptor_is_nullable(&right)) {
         nullable = true;
@@ -293,6 +309,7 @@ int mylite_expression_descriptor_infer_binary_expression(
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
     case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+    case MYLITE_SQL_AST_OPERATOR_COLLATE:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
@@ -370,6 +387,7 @@ int mylite_expression_descriptor_infer_ternary_expression(
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
     case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+    case MYLITE_SQL_AST_OPERATOR_COLLATE:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
@@ -394,6 +412,52 @@ int mylite_expression_descriptor_infer_ternary_expression(
 
     *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
+}
+
+static int infer_collate_expression_descriptor(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_field_descriptor *left,
+    struct mylite_field_descriptor *out_descriptor
+) {
+    const struct mylite_sql_ast_node *collation_node = mylite_ast_child_at(expression, 1U);
+    char *collation_name = mylite_copy_schema_text_span(collation_node);
+    const struct mylite_collation *collation = NULL;
+    const struct mylite_charset_collation_info source =
+        mylite_expression_descriptor_collation_info(left, mylite_mysql_coercibility_implicit);
+    int status = MYLITE_OK;
+
+    if (collation_name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    collation = mylite_collation_lookup(collation_name);
+    if (collation == NULL) {
+        status = mylite_diagnostics_set_unknown_collation_error(database, collation_name);
+    } else if (
+        source.coercibility != mylite_mysql_coercibility_numeric &&
+        !mylite_ascii_case_equal(source.character_set, collation->character_set)
+    ) {
+        status = mylite_diagnostics_set_collation_charset_error(
+            database,
+            collation->name,
+            source.character_set
+        );
+    } else {
+        *out_descriptor = *left;
+        if (mylite_expression_descriptor_has_text_result(out_descriptor)) {
+            out_descriptor->charset_id = (unsigned int)collation->id;
+            if (mylite_ascii_case_equal(
+                    collation->character_set,
+                    mylite_mysql_binary_charset_name
+                )) {
+                out_descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
+            } else {
+                out_descriptor->flags &= ~(unsigned int)MYLITE_FIELD_FLAG_BINARY;
+            }
+        }
+    }
+    free(collation_name);
+    return status;
 }
 
 static int validate_operator_descriptor_callbacks(

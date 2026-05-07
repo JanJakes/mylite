@@ -11210,6 +11210,7 @@ static int test_cast_expression_syntax(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *cast_expression = NULL;
+    const struct mylite_sql_ast_node *collate_expression = NULL;
     const struct mylite_sql_ast_node *target = NULL;
     const struct mylite_sql_ast_node *case_expression = NULL;
     const struct mylite_sql_ast_node *when_list = NULL;
@@ -11308,6 +11309,25 @@ static int test_cast_expression_syntax(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT CAST('x' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    collate_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(collate_expression, MYLITE_SQL_AST_BINARY_EXPRESSION, "CAST COLLATE node");
+    failures +=
+        expect_operator(collate_expression, MYLITE_SQL_AST_OPERATOR_COLLATE, "CAST COLLATE op");
+    failures += expect_node(
+        child_at(collate_expression, 0U),
+        MYLITE_SQL_AST_CAST_EXPRESSION,
+        "CAST COLLATE source"
+    );
+    failures += expect_span_text(child_at(collate_expression, 1U), "utf8mb4_bin", "CAST COLLATE");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT CASE WHEN 1 THEN CAST(1 AS UNSIGNED) "
         "ELSE CAST(0 AS SIGNED) END;",
         MYLITE_SQL_PARSE_OK,
@@ -11360,6 +11380,7 @@ static int test_convert_expression_syntax(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *cast_expression = NULL;
+    const struct mylite_sql_ast_node *collate_expression = NULL;
     const struct mylite_sql_ast_node *target = NULL;
     const struct mylite_sql_ast_node *case_expression = NULL;
     const struct mylite_sql_ast_node *when_list = NULL;
@@ -11441,6 +11462,33 @@ static int test_convert_expression_syntax(void) {
     }
     failures +=
         expect_span_text(cast_expression, "CONVERT('abc' USING latin1)", "USING CONVERT span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT CONVERT('abc' USING utf8mb4) COLLATE utf8mb4_bin, "
+        "CONVERT('abc', CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin, "
+        "'abc' COLLATE utf8mb4_bin;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    collate_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(collate_expression, MYLITE_SQL_AST_BINARY_EXPRESSION, "USING COLLATE node");
+    failures +=
+        expect_operator(collate_expression, MYLITE_SQL_AST_OPERATOR_COLLATE, "USING COLLATE op");
+    failures += expect_node(
+        child_at(collate_expression, 0U),
+        MYLITE_SQL_AST_CAST_EXPRESSION,
+        "USING COLLATE source"
+    );
+    failures += expect_span_text(child_at(collate_expression, 1U), "utf8mb4_bin", "USING COLLATE");
+    collate_expression = child_at(child_at(select_list, 1U), 0U);
+    failures +=
+        expect_operator(collate_expression, MYLITE_SQL_AST_OPERATOR_COLLATE, "target COLLATE op");
+    collate_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_operator(collate_expression, MYLITE_SQL_AST_OPERATOR_COLLATE, "literal COLLATE op");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

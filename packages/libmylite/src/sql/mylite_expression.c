@@ -4149,8 +4149,12 @@ static bool expression_is_supported_no_table(
             return false;
         }
         return false;
-    case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
+        if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
+            return expression_is_supported_no_table(child_at(expression, 0U), require_cacheable);
+        }
+        return expression_children_are_supported_no_table(expression, require_cacheable);
+    case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_TERNARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_EXPRESSION_LIST:
@@ -4646,6 +4650,9 @@ static int eval_binary(
     }
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR) {
         return eval_logical_or(node, context, warnings, out_value);
+    }
+    if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
+        return eval_node(child_at(node, 0U), context, warnings, out_value);
     }
 
     status = eval_node(child_at(node, 0U), context, warnings, &left);
@@ -18708,6 +18715,7 @@ static bool trigonometric_pi_expression_value_impl(
     case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
     case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+    case MYLITE_SQL_AST_OPERATOR_COLLATE:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
@@ -22070,6 +22078,7 @@ static bool row_subquery_comparison_operator_is_supported(
     case MYLITE_SQL_AST_OPERATOR_POSITIVE:
     case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
     case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+    case MYLITE_SQL_AST_OPERATOR_COLLATE:
     case MYLITE_SQL_AST_OPERATOR_BETWEEN:
     case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
     case MYLITE_SQL_AST_OPERATOR_LIKE:

@@ -44,12 +44,17 @@ struct mylite_sqlite_pad_trim_request {
     unsigned int flags;
 };
 
+struct mylite_sqlite_fork_session {
+    char *default_schema;
+};
+
 struct mylite_sqlite_int64_range {
     sqlite3_int64 minimum;
     sqlite3_int64 maximum;
 };
 
 static const double mylite_sqlite_integer_round_half = 0.5;
+static const char mylite_sqlite_fork_session_key[] = "mylite.sqlite_fork.session";
 
 static const unsigned int mylite_sqlite_collation_flag_contexts[] = {
     0U,
@@ -67,6 +72,14 @@ static int register_scalar_function(
     const char *name,
     int argument_count,
     void (*callback)(sqlite3_context *, int, sqlite3_value **)
+);
+
+static int register_scalar_function_with_user_data(
+    sqlite3 *database,
+    const char *name,
+    int argument_count,
+    void (*callback)(sqlite3_context *, int, sqlite3_value **),
+    void *user_data
 );
 
 static void mysql_concat(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
@@ -90,6 +103,8 @@ static void mysql_bit_count(
     int argument_count,
     sqlite3_value **arguments
 );
+
+static void mysql_database(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments);
 
@@ -169,6 +184,17 @@ static bool parse_mysql_text_bit_uint64(
 
 static int count_uint64_bits(uint64_t value);
 
+static struct mylite_sqlite_fork_session *ensure_session_for_database(sqlite3 *database);
+
+static struct mylite_sqlite_fork_session *session_for_database(sqlite3 *database);
+
+static int set_session_default_schema(
+    struct mylite_sqlite_fork_session *session,
+    const char *schema_name
+);
+
+static void destroy_session(void *user_data);
+
 static bool value_is_sql_numeric(sqlite3_value *value);
 
 static bool compare_values_as_mysql_text(
@@ -228,12 +254,17 @@ static unsigned char ascii_lower(unsigned char byte);
 static int sqlite_sequence_exists(sqlite3 *database, bool *out_exists);
 
 int mylite_sqlite_fork_configure(sqlite3 *database) {
+    struct mylite_sqlite_fork_session *session = NULL;
     int rc = SQLITE_OK;
 
     if (database == NULL) {
         return SQLITE_MISUSE;
     }
 
+    session = ensure_session_for_database(database);
+    if (session == NULL) {
+        return SQLITE_NOMEM;
+    }
     rc = register_mysql_collations(database);
     if (rc != SQLITE_OK) {
         return rc;
@@ -243,6 +274,20 @@ int mylite_sqlite_fork_configure(sqlite3 *database) {
         return rc;
     }
     return register_mysql_functions(database);
+}
+
+int mylite_sqlite_fork_set_default_schema(sqlite3 *database, const char *schema_name) {
+    struct mylite_sqlite_fork_session *session = NULL;
+
+    if (database == NULL) {
+        return SQLITE_MISUSE;
+    }
+
+    session = ensure_session_for_database(database);
+    if (session == NULL) {
+        return SQLITE_NOMEM;
+    }
+    return set_session_default_schema(session, schema_name);
 }
 
 int mylite_sqlite_fork_truncate_table(sqlite3 *database, const char *table_name) {
@@ -311,8 +356,12 @@ static int register_mysql_collations(sqlite3 *database) {
 }
 
 static int register_mysql_functions(sqlite3 *database) {
+    struct mylite_sqlite_fork_session *session = ensure_session_for_database(database);
     int rc = register_scalar_function(database, "CONCAT", -1, mysql_concat);
 
+    if (session == NULL) {
+        return SQLITE_NOMEM;
+    }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "CONCAT_WS", -1, mysql_concat_ws);
     }
@@ -324,6 +373,19 @@ static int register_mysql_functions(sqlite3 *database) {
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "BIT_COUNT", 1, mysql_bit_count);
+    }
+    if (rc == SQLITE_OK) {
+        rc = register_scalar_function_with_user_data(
+            database,
+            "DATABASE",
+            0,
+            mysql_database,
+            session
+        );
+    }
+    if (rc == SQLITE_OK) {
+        rc =
+            register_scalar_function_with_user_data(database, "SCHEMA", 0, mysql_database, session);
     }
     if (rc == SQLITE_OK) {
         rc = register_scalar_function(database, "ISNULL", 1, mysql_isnull);
@@ -380,6 +442,26 @@ static int register_scalar_function(
         argument_count,
         SQLITE_UTF8 | SQLITE_DETERMINISTIC,
         NULL,
+        callback,
+        NULL,
+        NULL,
+        NULL
+    );
+}
+
+static int register_scalar_function_with_user_data(
+    sqlite3 *database,
+    const char *name,
+    int argument_count,
+    void (*callback)(sqlite3_context *, int, sqlite3_value **),
+    void *user_data
+) {
+    return sqlite3_create_function_v2(
+        database,
+        name,
+        argument_count,
+        SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+        user_data,
         callback,
         NULL,
         NULL,
@@ -544,6 +626,22 @@ static void mysql_bit_count(
         return;
     }
     sqlite3_result_int(context, count_uint64_bits(value));
+}
+
+static void mysql_database(
+    sqlite3_context *context,
+    int argument_count,
+    sqlite3_value **arguments
+) {
+    struct mylite_sqlite_fork_session *session = sqlite3_user_data(context);
+
+    (void)argument_count;
+    (void)arguments;
+    if (session == NULL || session->default_schema == NULL || session->default_schema[0] == '\0') {
+        sqlite3_result_null(context);
+        return;
+    }
+    sqlite3_result_text(context, session->default_schema, -1, sqlite_transient_destructor());
 }
 
 static void mysql_isnull(sqlite3_context *context, int argument_count, sqlite3_value **arguments) {
@@ -1057,6 +1155,71 @@ static int count_uint64_bits(uint64_t value) {
         ++count;
     }
     return count;
+}
+
+static struct mylite_sqlite_fork_session *ensure_session_for_database(sqlite3 *database) {
+    struct mylite_sqlite_fork_session *session = session_for_database(database);
+    int rc = SQLITE_OK;
+
+    if (session != NULL) {
+        return session;
+    }
+
+    session = sqlite3_malloc64(sizeof(*session));
+    if (session == NULL) {
+        return NULL;
+    }
+    *session = (struct mylite_sqlite_fork_session){0};
+
+    rc = sqlite3_set_clientdata(database, mylite_sqlite_fork_session_key, session, destroy_session);
+    if (rc != SQLITE_OK) {
+        return NULL;
+    }
+    return session;
+}
+
+static struct mylite_sqlite_fork_session *session_for_database(sqlite3 *database) {
+    if (database == NULL) {
+        return NULL;
+    }
+    return sqlite3_get_clientdata(database, mylite_sqlite_fork_session_key);
+}
+
+static int set_session_default_schema(
+    struct mylite_sqlite_fork_session *session,
+    const char *schema_name
+) {
+    char *copy = NULL;
+    size_t length = 0U;
+
+    if (session == NULL) {
+        return SQLITE_MISUSE;
+    }
+    if (schema_name == NULL || schema_name[0] == '\0') {
+        sqlite3_free(session->default_schema);
+        session->default_schema = NULL;
+        return SQLITE_OK;
+    }
+
+    length = strlen(schema_name);
+    copy = sqlite3_malloc64(length + 1U);
+    if (copy == NULL) {
+        return SQLITE_NOMEM;
+    }
+    memcpy(copy, schema_name, length + 1U);
+    sqlite3_free(session->default_schema);
+    session->default_schema = copy;
+    return SQLITE_OK;
+}
+
+static void destroy_session(void *user_data) {
+    struct mylite_sqlite_fork_session *session = user_data;
+
+    if (session == NULL) {
+        return;
+    }
+    sqlite3_free(session->default_schema);
+    sqlite3_free(session);
 }
 
 static bool value_is_sql_numeric(sqlite3_value *value) {

@@ -42,6 +42,8 @@ Implemented fork points:
   `CHECK`, and immediate foreign-key constraint failures
 - structured fork warning publication from configured scalar callbacks,
   beginning with `IF()` condition conversion warnings
+- connection-local session state backed by SQLite client data, beginning with
+  the default-schema value consumed by native `DATABASE()` and `SCHEMA()`
 - narrow parser admission for MySQL function names that SQLite tokenizes as
   syntax instead of identifiers, beginning with `ISNULL(expr)`
 - tokenizer/parser admission for MySQL-only operators that SQLite rejects
@@ -144,6 +146,11 @@ Use existing SQLite APIs for:
 - Virtual tables for synthetic schemas such as `information_schema`,
   `performance_schema`, `sys`, and perhaps diagnostic views, provided metadata
   updates remain coordinated with MyLite's catalog.
+- Connection client data for compact MyLite session state used by native
+  callbacks, such as the selected default schema. This public SQLite surface is
+  sufficient while the state is read by callbacks and owned by the connection;
+  statement-completion state, warning lists, and row-identity allocation still
+  need fork points where SQLite completes VDBE execution.
 - VFS or pager wrappers for opening MyLite files, temporary databases, and
   controlled file-system behavior when the on-disk SQLite database still starts
   at SQLite page 1.

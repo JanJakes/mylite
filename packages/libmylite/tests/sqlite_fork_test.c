@@ -248,6 +248,50 @@ static int test_registered_functions(void) {
         0,
         "CONCAT_WS returns an empty string when all values are NULL"
     );
+    failures += expect_int64(
+        database,
+        "SELECT DATABASE() IS NULL",
+        1,
+        "DATABASE returns NULL before a default schema is selected"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT SCHEMA() IS NULL",
+        1,
+        "SCHEMA returns NULL before a default schema is selected"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_default_schema(database, "wp_app"),
+        database,
+        "set fork default schema"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT DATABASE()",
+            .expected = "wp_app",
+            .context = "DATABASE returns configured default schema",
+        }
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT SCHEMA()",
+            .expected = "wp_app",
+            .context = "SCHEMA is a DATABASE synonym",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_default_schema(database, NULL),
+        database,
+        "clear fork default schema"
+    );
+    failures += expect_int64(
+        database,
+        "SELECT DATABASE() IS NULL",
+        1,
+        "DATABASE returns NULL after default schema is cleared"
+    );
     failures += expect_sqlite_exec_error(
         database,
         (struct expected_sqlite_error){

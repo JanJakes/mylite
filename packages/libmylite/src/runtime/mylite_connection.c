@@ -192,10 +192,21 @@ int mylite_connection_set_released_error(mylite_db *database) {
 
 int mylite_connection_set_selected_schema(mylite_db *database, const char *schema_name) {
     char *copy = mylite_copy_span_text(schema_name, strlen(schema_name));
+    int rc = SQLITE_OK;
 
     if (copy == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
+    }
+
+    rc = mylite_sqlite_fork_set_default_schema(database->sqlite, copy);
+    if (rc != SQLITE_OK) {
+        free(copy);
+        (void)mylite_diagnostics_set_error_message(
+            database,
+            rc == SQLITE_NOMEM ? "out of memory" : "failed to update SQLite fork schema state"
+        );
+        return rc == SQLITE_NOMEM ? MYLITE_NOMEM : MYLITE_SQLITE_ERROR;
     }
 
     free(database->selected_schema);
@@ -208,6 +219,7 @@ void mylite_connection_clear_selected_schema_if_matches(
     const char *schema_name
 ) {
     if (database->selected_schema != NULL && strcmp(database->selected_schema, schema_name) == 0) {
+        (void)mylite_sqlite_fork_set_default_schema(database->sqlite, NULL);
         free(database->selected_schema);
         database->selected_schema = NULL;
     }

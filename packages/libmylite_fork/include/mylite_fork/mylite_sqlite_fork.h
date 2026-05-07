@@ -80,6 +80,7 @@ struct mylite_sqlite_fork_condition {
 };
 
 int mylite_sqlite_fork_configure(sqlite3 *database);
+int mylite_sqlite_fork_set_default_schema(sqlite3 *database, const char *schema_name);
 int mylite_sqlite_fork_last_condition(
     sqlite3 *database,
     struct mylite_sqlite_fork_condition *out_condition

@@ -340,6 +340,20 @@ void sqlite3MyliteFreeConditions(sqlite3 *db){
   db->nMyliteConditionAlloc = 0;
 }
 
+void sqlite3MyliteSetTableAutoIncrementOption(Parse *pParse, Token *pValue){
+  i64 iValue = 0;
+
+  if( pParse==0 || pValue==0 ) return;
+  if( sqlite3Atoi64(pValue->z, &iValue, pValue->n, SQLITE_UTF8)!=0
+   || iValue<0
+  ){
+    sqlite3ErrorMsg(pParse, "invalid AUTO_INCREMENT table option");
+    return;
+  }
+  pParse->u1.cr.myliteAutoIncrementStart = iValue;
+  pParse->u1.cr.bMyliteAutoIncrementStart = 1;
+}
+
 static void myliteCopyCondition(
   const struct MyliteCondition *pCondition,
   struct mylite_sqlite_fork_condition *pOut

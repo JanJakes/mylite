@@ -4021,7 +4021,9 @@ struct Parse {
       int addrCrTab;        /* Address of OP_CreateBtree on CREATE TABLE */
       int regRowid;         /* Register holding rowid of CREATE TABLE entry */
       int regRoot;          /* Register holding root page for new objects */
+      i64 myliteAutoIncrementStart; /* MySQL CREATE TABLE AUTO_INCREMENT */
       Token constraintName; /* Name of the constraint currently being parsed */
+      u8 bMyliteAutoIncrementStart; /* True if table option was present */
     } cr;
     struct {  /* These fields available to all other statements */
       Returning *pReturning; /* The RETURNING clause */
@@ -5438,6 +5440,7 @@ void sqlite3MyliteSetCondition(sqlite3*, u8, u32, const char*);
 void sqlite3MyliteSetConstraintCondition(sqlite3*, int, u8);
 void sqlite3MyliteClearCondition(sqlite3*);
 void sqlite3MyliteFreeConditions(sqlite3*);
+void sqlite3MyliteSetTableAutoIncrementOption(Parse*, Token*);
 #endif
 char sqlite3CompareAffinity(const Expr *pExpr, char aff2);
 int sqlite3IndexAffinityOk(const Expr *pExpr, char idx_affinity);

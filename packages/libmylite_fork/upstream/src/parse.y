@@ -220,8 +220,14 @@ ifnotexists(A) ::= IF NOT EXISTS. {A = 1;}
 temp(A) ::= TEMP.  {A = pParse->db->init.busy==0;}
 %endif  SQLITE_OMIT_TEMPDB
 temp(A) ::= .      {A = 0;}
+create_table_args ::= LP columnlist conslist_opt(X) RP(E). {
+  sqlite3EndTable(pParse,&X,&E,0,0);
+}
 create_table_args ::= LP columnlist conslist_opt(X) RP(E) table_option_set(F). {
   sqlite3EndTable(pParse,&X,&E,F,0);
+}
+create_table_args ::= LP columnlist conslist_opt(X) RP(E) mysql_table_options. {
+  sqlite3EndTable(pParse,&X,&E,0,0);
 }
 create_table_args ::= AS select(S). {
   sqlite3EndTable(pParse,0,0,0,S);
@@ -229,7 +235,6 @@ create_table_args ::= AS select(S). {
 }
 %type table_option_set {u32}
 %type table_option {u32}
-table_option_set(A) ::= .    {A = 0;}
 table_option_set(A) ::= table_option(A).
 table_option_set(A) ::= table_option_set(X) COMMA table_option(Y). {A = X|Y;}
 table_option(A) ::= WITHOUT nm(X). {
@@ -271,8 +276,8 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
 //
 %fallback ID
   ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST COLUMNKW
-  CONFLICT DATABASE DEFERRED DESC DETACH DO
-  EACH END EXCLUSIVE EXPLAIN FAIL FOR
+  CHARACTER CHARSET COMMENTKW CONFLICT DATABASE DEFERRED DESC DETACH DO
+  EACH END ENGINE EXCLUSIVE EXPLAIN FAIL FOR
   IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
   QUERY KEY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW ROWS
   ROLLBACK SAVEPOINT TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
@@ -338,6 +343,26 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
 %type nm {Token}
 nm(A) ::= idj(A).
 nm(A) ::= STRING(A).
+nm(A) ::= CHARACTER(A).
+nm(A) ::= CHARSET(A).
+nm(A) ::= COMMENTKW(A).
+nm(A) ::= ENGINE(A).
+
+mysql_table_options ::= mysql_table_option.
+mysql_table_options ::= mysql_table_options mysql_table_option.
+mysql_table_option ::= ENGINE mysql_eq_opt nm.
+mysql_table_option ::= CHARSET mysql_eq_opt nm.
+mysql_table_option ::= DEFAULT CHARSET mysql_eq_opt nm.
+mysql_table_option ::= CHARACTER SET mysql_eq_opt nm.
+mysql_table_option ::= DEFAULT CHARACTER SET mysql_eq_opt nm.
+mysql_table_option ::= COLLATE mysql_eq_opt nm.
+mysql_table_option ::= DEFAULT COLLATE mysql_eq_opt nm.
+mysql_table_option ::= COMMENTKW mysql_eq_opt STRING.
+mysql_table_option ::= AUTOINCR mysql_eq_opt INTEGER(X). {
+  sqlite3MyliteSetTableAutoIncrementOption(pParse, &X);
+}
+mysql_eq_opt ::= .
+mysql_eq_opt ::= EQ.
 
 // A typetoken is really zero or more tokens that form a type name such
 // as can be found after the column name in a CREATE TABLE statement.
@@ -1183,6 +1208,7 @@ idlist(A) ::= nm(Y).
 expr(A) ::= term(A).
 expr(A) ::= LP expr(X) RP. {A = X;}
 expr(A) ::= idj(X).          {A=tokenExpr(pParse,TK_ID,X); /*A-overwrites-X*/}
+expr(A) ::= mylite_mysql_id(X). {A=tokenExpr(pParse,TK_ID,X); /*A-overwrites-X*/}
 expr(A) ::= nm(X) DOT nm(Y). {
   Expr *temp1 = tokenExpr(pParse,TK_ID,X);
   Expr *temp2 = tokenExpr(pParse,TK_ID,Y);
@@ -1198,6 +1224,11 @@ expr(A) ::= nm(X) DOT nm(Y) DOT nm(Z). {
   }
   A = sqlite3PExpr(pParse, TK_DOT, temp1, temp4);
 }
+%type mylite_mysql_id {Token}
+mylite_mysql_id(A) ::= CHARACTER(A).
+mylite_mysql_id(A) ::= CHARSET(A).
+mylite_mysql_id(A) ::= COMMENTKW(A).
+mylite_mysql_id(A) ::= ENGINE(A).
 term(A) ::= NULL|FLOAT|BLOB(X). {A=tokenExpr(pParse,@X,X); /*A-overwrites-X*/}
 term(A) ::= STRING(X).          {A=tokenExpr(pParse,@X,X); /*A-overwrites-X*/}
 term(A) ::= INTEGER(X). {

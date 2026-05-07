@@ -3342,6 +3342,33 @@ static int test_wordpress_like_crud(void) {
 
     failures += exec_sql(
         database,
+        "CREATE TABLE wp_options_like ("
+        "option_id INTEGER PRIMARY KEY AUTO_INCREMENT,"
+        "option_name VARCHAR(191) NOT NULL DEFAULT '' COLLATE utf8mb4_unicode_ci,"
+        "option_value LONGTEXT NOT NULL,"
+        "autoload VARCHAR(20) NOT NULL DEFAULT 'yes'"
+        ") ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4 "
+        "COLLATE=utf8mb4_unicode_ci COMMENT='options fixture' AUTO_INCREMENT=10",
+        "create wp_options_like physical table with MySQL options"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO wp_options_like (option_name, option_value) "
+        "VALUES ('siteurl', 'https://example.test')",
+        "insert WordPress-like option using table AUTO_INCREMENT start"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(option_id, ':', LAST_INSERT_ID(), ':', ROW_COUNT()) "
+                   "FROM wp_options_like",
+            .expected = "10:10:1",
+            .context = "MySQL table AUTO_INCREMENT option seeds native sequence",
+        }
+    );
+
+    failures += exec_sql(
+        database,
         "CREATE TABLE wp_posts_like ("
         "ID INTEGER PRIMARY KEY AUTO_INCREMENT,"
         "post_author INTEGER NOT NULL DEFAULT 0 CHECK(post_author >= 0),"

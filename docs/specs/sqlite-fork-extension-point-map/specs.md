@@ -64,6 +64,11 @@ Implemented fork points:
   tables
 - SQLite keyword admission for MySQL `AUTO_INCREMENT` as an alias of the
   rowid-backed `AUTOINCREMENT` primitive in the current direct-parser subset
+- direct SQLite parser admission for common MySQL `CREATE TABLE` table options,
+  beginning with `ENGINE`, `DEFAULT CHARSET`, `DEFAULT CHARACTER SET`,
+  `COLLATE`, `DEFAULT COLLATE`, `COMMENT`, and `AUTO_INCREMENT`
+- native `sqlite_sequence` seeding from direct `CREATE TABLE ...
+  AUTO_INCREMENT=N` for rowid-backed autoincrement tables
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before
@@ -338,6 +343,9 @@ SQLite rowid is the right primitive for common single-column integer primary
 keys, but MySQL-visible semantics exceed ordinary rowid behavior:
 
 - all MySQL integer families can be `AUTO_INCREMENT`
+- `CREATE TABLE ... AUTO_INCREMENT=N` must seed the next generated value;
+  implemented first for direct parser rowid-backed `AUTOINCREMENT` tables by
+  writing `sqlite_sequence` during table creation
 - explicit values advance the next value differently from SQLite sequence rules
 - failed multi-row statements can leave gaps
 - `NO_AUTO_VALUE_ON_ZERO` changes zero handling

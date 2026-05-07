@@ -1318,6 +1318,10 @@ void sqlite3StartTable(
 #endif
   assert( pParse->pNewTable==0 );
   pParse->pNewTable = pTable;
+#ifdef SQLITE_ENABLE_MYLITE
+  pParse->u1.cr.myliteAutoIncrementStart = 0;
+  pParse->u1.cr.bMyliteAutoIncrementStart = 0;
+#endif
 
   /* Begin generating the code that will insert the table record into
   ** the schema table.  Note in particular that we must go ahead
@@ -2802,6 +2806,10 @@ void sqlite3EndTable(
     char *zType;    /* "view" or "table" */
     char *zType2;   /* "VIEW" or "TABLE" */
     char *zStmt;    /* Text of the CREATE TABLE or CREATE VIEW statement */
+#ifdef SQLITE_ENABLE_MYLITE
+    i64 myliteAutoIncrementStart = 0;
+    int bMyliteAutoIncrementStart = 0;
+#endif
 
     v = sqlite3GetVdbe(pParse);
     if( NEVER(v==0) ) return;
@@ -2924,6 +2932,10 @@ void sqlite3EndTable(
     */
     if( (p->tabFlags & TF_Autoincrement)!=0 && !IN_SPECIAL_PARSE ){
       Db *pDb = &db->aDb[iDb];
+#ifdef SQLITE_ENABLE_MYLITE
+      myliteAutoIncrementStart = pParse->u1.cr.myliteAutoIncrementStart;
+      bMyliteAutoIncrementStart = pParse->u1.cr.bMyliteAutoIncrementStart;
+#endif
       assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
       if( pDb->pSchema->pSeqTab==0 ){
         sqlite3NestedParse(pParse,
@@ -2937,6 +2949,21 @@ void sqlite3EndTable(
     /* Reparse everything to update our internal data structures */
     sqlite3VdbeAddParseSchemaOp(v, iDb,
            sqlite3MPrintf(db, "tbl_name='%q' AND type!='trigger'", p->zName),0);
+
+#ifdef SQLITE_ENABLE_MYLITE
+    if( bMyliteAutoIncrementStart ){
+      i64 iSeq = myliteAutoIncrementStart;
+      if( iSeq>0 ) iSeq--;
+      sqlite3VdbeAddOp4(v, OP_SqlExec, 0x0001, 0, 0,
+        sqlite3MPrintf(db,
+          "INSERT OR REPLACE INTO \"%w\".sqlite_sequence(name,seq)"
+          " VALUES(%Q,%lld)",
+          db->aDb[iDb].zDbSName, p->zName, iSeq
+        ),
+        P4_DYNAMIC
+      );
+    }
+#endif
 
     /* Test for cycles in generated columns and illegal expressions
     ** in CHECK constraints and in DEFAULT clauses. */

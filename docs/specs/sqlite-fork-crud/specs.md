@@ -403,7 +403,10 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
    SQLite grammar for `TRUNCATE TABLE`, MySQL table options, secondary-key
    table elements, and `AUTO_INCREMENT`. Implemented for direct
    `TRUNCATE [TABLE] name` and the direct-parser `AUTO_INCREMENT` spelling for
-   SQLite-compatible integer primary-key declarations.
+   SQLite-compatible integer primary-key declarations. The direct parser now
+   also admits the first common `CREATE TABLE` table options: `ENGINE`,
+   `DEFAULT CHARSET`, `DEFAULT CHARACTER SET`, `COLLATE`, `DEFAULT COLLATE`,
+   `COMMENT`, and `AUTO_INCREMENT`.
 9. Then move type descriptors into SQLite column metadata and enforce MySQL
    conversion/range/length rules in SQLite's insert/update path. Implemented
    for the first signed integer, supported unsigned integer, `DOUBLE`,
@@ -423,6 +426,10 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
 12. Admit parenthesized SQLite current-time keyword forms in the direct parser.
     Implemented for `CURRENT_DATE()`, `CURRENT_TIME()`, `CURRENT_TIME(fsp)`,
     `CURRENT_TIMESTAMP()`, and `CURRENT_TIMESTAMP(fsp)`.
+13. Seed native rowid-backed autoincrement from MySQL's `CREATE TABLE ...
+    AUTO_INCREMENT=N` table option. Implemented for direct parser
+    rowid-backed `AUTO_INCREMENT` tables by writing `sqlite_sequence` during
+    table creation, so the next generated id is `N`.
 
 ## Lemon Grammar Direction
 

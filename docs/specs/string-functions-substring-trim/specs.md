@@ -180,6 +180,18 @@ Verified constant metadata with `SET NAMES utf8mb4`:
 | `LOWER(varbinary_col)` | `VAR_STRING` | `63` | source octet length | `31` | `BINARY` |
 | `LOWER(NULL)` | `VAR_STRING` | `63` | `0` | `31` | `BINARY` |
 
+Verified table-backed `SUBSTRING()` metadata over `s VARCHAR(12)` and
+`n INT NULL` with `SET NAMES utf8mb4`:
+
+| Expression | Type | Collation id | Length | Decimals | Flags |
+| --- | --- | ---: | ---: | ---: | --- |
+| `SUBSTRING(s,2,3)` | `VAR_STRING` | `255` | `12` | `31` | none |
+| `SUBSTR(s,n,3)` | `VAR_STRING` | `255` | `12` | `31` | none |
+| `MID(s,2,n)` | `VAR_STRING` | `255` | `44` | `31` | none |
+| `SUBSTRING(s,n,n)` | `VAR_STRING` | `255` | `48` | `31` | none |
+| `SUBSTRING(s,-2,n)` | `VAR_STRING` | `255` | `8` | `31` | none |
+| `SUBSTRING(s,2)` | `VAR_STRING` | `255` | `44` | `31` | none |
+
 ## Parser and AST design
 
 Generic comma-separated calls continue to use the existing

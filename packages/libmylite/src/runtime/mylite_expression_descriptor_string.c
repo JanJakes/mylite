@@ -135,6 +135,13 @@ static uint64_t replace_function_result_length(
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
+static uint64_t substring_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static uint64_t add_text_display_lengths(uint64_t left, uint64_t right);
 
 static uint64_t multiply_text_display_length(uint64_t length, uint64_t factor);
@@ -148,6 +155,8 @@ static bool function_name_is_left_right(const struct mylite_sql_ast_node *name);
 static bool function_name_is_replace(const struct mylite_sql_ast_node *name);
 
 static bool function_name_is_space(const struct mylite_sql_ast_node *name);
+
+static bool function_name_is_substring(const struct mylite_sql_ast_node *name);
 
 static struct mylite_field_descriptor space_function_descriptor(
     mylite_db *database,
@@ -164,6 +173,13 @@ static bool space_function_constant_result_length(
 static uint64_t space_function_constant_max_length(mylite_db *database);
 
 static uint64_t space_function_dynamic_length(mylite_db *database);
+
+static uint64_t substring_remaining_characters(
+    uint64_t source_characters,
+    const struct mylite_sql_ast_node *position
+);
+
+static uint64_t string_character_capacity(uint64_t length, uint64_t max_bytes_per_character);
 
 static uint64_t replace_function_replacement_multiplier(
     mylite_db *database,
@@ -683,6 +699,9 @@ static uint64_t slice_string_function_result_length(
     if (function_name_is_replace(name)) {
         return replace_function_result_length(database, plan, arguments, callbacks);
     }
+    if (function_name_is_substring(name)) {
+        return substring_function_result_length(database, plan, arguments, callbacks);
+    }
     if (!mylite_function_name_uses_source_length(name) && value != NULL &&
         value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return mylite_expression_descriptor_string_length(database, value, NULL);
@@ -776,6 +795,39 @@ static uint64_t replace_function_result_length(
     return multiply_text_display_length(source_length, multiplier);
 }
 
+static uint64_t substring_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
+    const struct mylite_sql_ast_node *position = mylite_ast_child_at(arguments, 1U);
+    const struct mylite_sql_ast_node *length = mylite_ast_child_at(arguments, 2U);
+    struct integer_constant_value length_value = {0};
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t source_length = expression_text_display_length(database, plan, source, callbacks);
+    uint64_t source_characters = string_character_capacity(source_length, max_bytes_per_character);
+    uint64_t remaining_characters = substring_remaining_characters(source_characters, position);
+    uint64_t result_characters = remaining_characters;
+
+    if (length != NULL && integer_constant_value(length, &length_value)) {
+        if (!length_value.is_unsigned && length_value.signed_value < 0) {
+            result_characters = 0U;
+        } else {
+            uint64_t requested_characters = length_value.is_unsigned
+                                                ? length_value.unsigned_value
+                                                : (uint64_t)length_value.signed_value;
+
+            result_characters =
+                minimum_text_display_length(remaining_characters, requested_characters);
+        }
+    }
+
+    return multiply_text_display_length(result_characters, max_bytes_per_character);
+}
+
 static uint64_t add_text_display_lengths(uint64_t left, uint64_t right) {
     if (left > UINT64_MAX - right) {
         return mylite_mysql_long_text_length;
@@ -810,6 +862,12 @@ static bool function_name_is_replace(const struct mylite_sql_ast_node *name) {
 
 static bool function_name_is_space(const struct mylite_sql_ast_node *name) {
     return name != NULL && mylite_span_equal_ci(name->span, "SPACE");
+}
+
+static bool function_name_is_substring(const struct mylite_sql_ast_node *name) {
+    return name != NULL &&
+           (mylite_span_equal_ci(name->span, "SUBSTRING") ||
+            mylite_span_equal_ci(name->span, "SUBSTR") || mylite_span_equal_ci(name->span, "MID"));
 }
 
 static struct mylite_field_descriptor space_function_descriptor(
@@ -882,6 +940,47 @@ static uint64_t space_function_dynamic_length(mylite_db *database) {
         space_function_constant_max_length(database),
         max_bytes_per_character
     );
+}
+
+static uint64_t substring_remaining_characters(
+    uint64_t source_characters,
+    const struct mylite_sql_ast_node *position
+) {
+    struct integer_constant_value position_value = {0};
+
+    if (!integer_constant_value(position, &position_value)) {
+        return source_characters;
+    }
+    if (position_value.is_unsigned) {
+        if (position_value.unsigned_value == 0U ||
+            position_value.unsigned_value > source_characters) {
+            return 0U;
+        }
+        return source_characters - position_value.unsigned_value + 1U;
+    }
+    if (position_value.signed_value == 0) {
+        return 0U;
+    }
+    if (position_value.signed_value > 0) {
+        uint64_t position_characters = (uint64_t)position_value.signed_value;
+
+        if (position_characters > source_characters) {
+            return 0U;
+        }
+        return source_characters - position_characters + 1U;
+    }
+    if (position_value.signed_value == INT64_MIN ||
+        (uint64_t)(-position_value.signed_value) > source_characters) {
+        return 0U;
+    }
+    return (uint64_t)(-position_value.signed_value);
+}
+
+static uint64_t string_character_capacity(uint64_t length, uint64_t max_bytes_per_character) {
+    if (max_bytes_per_character == 0U) {
+        return length;
+    }
+    return (length + max_bytes_per_character - 1U) / max_bytes_per_character;
 }
 
 static uint64_t replace_function_replacement_multiplier(

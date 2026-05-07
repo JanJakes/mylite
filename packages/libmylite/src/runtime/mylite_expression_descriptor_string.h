@@ -34,6 +34,15 @@ int mylite_expression_descriptor_infer_string_encoding_function(
     const struct mylite_expression_descriptor_string_callbacks *callbacks,
     bool *out_matched
 );
+int mylite_expression_descriptor_infer_concat_function(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool nullable,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks,
+    bool *out_matched
+);
 int mylite_expression_descriptor_infer_slice_string_function(
     mylite_db *database,
     const struct mylite_select_plan *plan,

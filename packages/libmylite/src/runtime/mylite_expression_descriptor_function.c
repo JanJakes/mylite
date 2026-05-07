@@ -251,6 +251,7 @@ int mylite_expression_descriptor_infer_function_expression(
     bool nullable = false;
     bool result_nullable = false;
     bool matched_string_encoding = false;
+    bool matched_concat = false;
     bool matched_slice_string = false;
     struct mylite_expression_descriptor_numeric_callbacks numeric_callbacks = {0};
     struct mylite_expression_descriptor_string_callbacks string_callbacks = {0};
@@ -338,6 +339,18 @@ int mylite_expression_descriptor_infer_function_expression(
         &matched_string_encoding
     );
     if (status != MYLITE_OK || matched_string_encoding) {
+        return status;
+    }
+    status = mylite_expression_descriptor_infer_concat_function(
+        database,
+        plan,
+        expression,
+        nullable,
+        out_descriptor,
+        &string_callbacks,
+        &matched_concat
+    );
+    if (status != MYLITE_OK || matched_concat) {
         return status;
     }
     status = mylite_expression_descriptor_infer_slice_string_function(

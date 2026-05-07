@@ -2517,6 +2517,86 @@ static int test_information_schema_engines_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] =
         {"ENGINE", "SUPPORT", "COMMENT", "TRANSACTIONS", "XA", "SAVEPOINTS"};
+    static const struct expected_result_metadata metadata[] = {
+        {"ENGINE",
+         "information_schema",
+         "ENGINES",
+         "information_schema",
+         "ENGINES",
+         "ENGINE",
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         0U,
+         0},
+        {"SUPPORT",
+         "information_schema",
+         "ENGINES",
+         "information_schema",
+         "ENGINES",
+         "SUPPORT",
+         8U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         0U,
+         0},
+        {"COMMENT",
+         "information_schema",
+         "ENGINES",
+         "information_schema",
+         "ENGINES",
+         "COMMENT",
+         80U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         0U,
+         0},
+        {"TRANSACTIONS",
+         "information_schema",
+         "ENGINES",
+         "information_schema",
+         "ENGINES",
+         "TRANSACTIONS",
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"XA",
+         "information_schema",
+         "ENGINES",
+         "information_schema",
+         "ENGINES",
+         "XA",
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"SAVEPOINTS",
+         "information_schema",
+         "ENGINES",
+         "information_schema",
+         "ENGINES",
+         "SAVEPOINTS",
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
     static const char *const show_tables_columns[] = {
         "Tables_in_information_schema (ENGINES)",
         "Table_type"
@@ -2543,6 +2623,7 @@ static int test_information_schema_engines_execution(void) {
         NULL,         NULL,      NULL,
     };
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -2575,6 +2656,11 @@ static int test_information_schema_engines_execution(void) {
         8,
         "information schema engines mixed-case"
     );
+    failures += prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.ENGINES", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 6, "information schema engines metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "information schema engines row");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SELECT * FROM `information_schema`.`ENGINES`",
@@ -2607,6 +2693,7 @@ static int test_information_schema_engines_execution(void) {
     );
 
     mylite_close(database);
+    mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
@@ -2615,6 +2702,63 @@ static int test_information_schema_character_sets_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] =
         {"CHARACTER_SET_NAME", "DEFAULT_COLLATE_NAME", "DESCRIPTION", "MAXLEN"};
+    static const struct expected_result_metadata metadata[] = {
+        {"CHARACTER_SET_NAME",
+         "information_schema",
+         "CHARACTER_SETS",
+         "information_schema",
+         "CHARACTER_SETS",
+         "CHARACTER_SET_NAME",
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+         0U,
+         0},
+        {"DEFAULT_COLLATE_NAME",
+         "information_schema",
+         "CHARACTER_SETS",
+         "information_schema",
+         "CHARACTER_SETS",
+         "DEFAULT_COLLATE_NAME",
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+         0U,
+         0},
+        {"DESCRIPTION",
+         "information_schema",
+         "CHARACTER_SETS",
+         "information_schema",
+         "CHARACTER_SETS",
+         "DESCRIPTION",
+         2048U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+         0U,
+         0},
+        {"MAXLEN",
+         "information_schema",
+         "CHARACTER_SETS",
+         "information_schema",
+         "CHARACTER_SETS",
+         "MAXLEN",
+         10U,
+         MYLITE_FIELD_TYPE_LONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+    };
     static const char *const show_tables_columns[] = {
         "Tables_in_information_schema (CHARACTER_SETS)",
         "Table_type"
@@ -2704,6 +2848,8 @@ static int test_information_schema_character_sets_execution(void) {
 
     failures +=
         prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.CHARACTER_SETS", MYLITE_OK, &stmt);
+    failures +=
+        expect_result_metadata(stmt, metadata, 4, "information schema character sets metadata");
     failures += expect_column_names(stmt, columns, 4, "information schema character sets columns");
     failures += expect_status(
         mylite_step(stmt),
@@ -2750,6 +2896,101 @@ static int test_information_schema_collations_execution(void) {
         "IS_COMPILED",
         "SORTLEN",
         "PAD_ATTRIBUTE"
+    };
+    static const struct expected_result_metadata metadata[] = {
+        {"COLLATION_NAME",
+         "information_schema",
+         "COLLATIONS",
+         "information_schema",
+         "COLLATIONS",
+         "COLLATION_NAME",
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+         0U,
+         0},
+        {"CHARACTER_SET_NAME",
+         "information_schema",
+         "COLLATIONS",
+         "information_schema",
+         "COLLATIONS",
+         "CHARACTER_SET_NAME",
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+         0U,
+         0},
+        {"ID",
+         "information_schema",
+         "COLLATIONS",
+         "information_schema",
+         "COLLATIONS",
+         "ID",
+         20U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"IS_DEFAULT",
+         "information_schema",
+         "COLLATIONS",
+         "information_schema",
+         "COLLATIONS",
+         "IS_DEFAULT",
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         0U,
+         0},
+        {"IS_COMPILED",
+         "information_schema",
+         "COLLATIONS",
+         "information_schema",
+         "COLLATIONS",
+         "IS_COMPILED",
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         0U,
+         0},
+        {"SORTLEN",
+         "information_schema",
+         "COLLATIONS",
+         "information_schema",
+         "COLLATIONS",
+         "SORTLEN",
+         10U,
+         MYLITE_FIELD_TYPE_LONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"PAD_ATTRIBUTE",
+         "information_schema",
+         "COLLATIONS",
+         "information_schema",
+         "COLLATIONS",
+         "PAD_ATTRIBUTE",
+         9U,
+         MYLITE_FIELD_TYPE_STRING,
+         0U,
+         8U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_ENUM |
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+         0U,
+         0},
     };
     static const char *const show_tables_columns[] = {
         "Tables_in_information_schema (COLLATIONS)",
@@ -2884,6 +3125,7 @@ static int test_information_schema_collations_execution(void) {
 
     failures +=
         prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.COLLATIONS", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 7, "information schema collations metadata");
     failures += expect_column_names(stmt, columns, 7, "information schema collations columns");
     failures += expect_status(
         mylite_step(stmt),
@@ -8977,6 +9219,36 @@ static int test_scalar_builtin_functions_execution(void) {
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
     };
+    static const struct expected_result_metadata concat_table_metadata[] = {
+        {"concat_sn",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         124U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"concat_ws_sn",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         128U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
     static const struct expected_result_metadata case_conversion_table_metadata[] = {
         {"lower_s",
          NULL,
@@ -11855,6 +12127,20 @@ static int test_scalar_builtin_functions_execution(void) {
         base_table_metadata,
         (int)(sizeof(base_table_metadata) / sizeof(base_table_metadata[0])),
         "table numeric base conversion metadata"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "SELECT CONCAT(s,n) AS concat_sn, CONCAT_WS(':', s, n) AS concat_ws_sn FROM t",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        concat_table_metadata,
+        (int)(sizeof(concat_table_metadata) / sizeof(concat_table_metadata[0])),
+        "table concat metadata"
     );
     mylite_finalize(stmt);
     stmt = NULL;

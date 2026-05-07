@@ -11,6 +11,7 @@ bool mylite_function_name_is_make_set(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_elt(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_quote(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_insert(const struct mylite_sql_ast_node *name);
+bool mylite_function_name_is_concat(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_char(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_hex(const struct mylite_sql_ast_node *name);
 bool mylite_function_name_is_unhex(const struct mylite_sql_ast_node *name);

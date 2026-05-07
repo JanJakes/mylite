@@ -23,6 +23,11 @@ static const uint64_t information_schema_enforced_length = 3U;
 static const uint64_t information_schema_match_option_length = 7U;
 static const uint64_t information_schema_rule_length = 11U;
 static const uint64_t information_schema_unsigned_int_length = 10U;
+static const uint64_t information_schema_engine_support_length = 8U;
+static const uint64_t information_schema_engine_comment_length = 80U;
+static const uint64_t information_schema_yes_no_length = 3U;
+static const uint64_t information_schema_collation_id_length = 20U;
+static const uint64_t information_schema_pad_attribute_length = 9U;
 
 static const char *information_schema_table_name(enum mylite_information_schema_table table);
 
@@ -47,6 +52,18 @@ static struct mylite_field_descriptor information_schema_key_column_usage_column
 );
 
 static struct mylite_field_descriptor information_schema_referential_constraints_column_descriptor(
+    const char *name
+);
+
+static struct mylite_field_descriptor information_schema_engines_column_descriptor(
+    const char *name
+);
+
+static struct mylite_field_descriptor information_schema_character_sets_column_descriptor(
+    const char *name
+);
+
+static struct mylite_field_descriptor information_schema_collations_column_descriptor(
     const char *name
 );
 
@@ -230,12 +247,15 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
         return information_schema_key_column_usage_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_REFERENTIAL_CONSTRAINTS:
         return information_schema_referential_constraints_column_descriptor(name);
+    case MYLITE_INFORMATION_SCHEMA_ENGINES:
+        return information_schema_engines_column_descriptor(name);
+    case MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS:
+        return information_schema_character_sets_column_descriptor(name);
+    case MYLITE_INFORMATION_SCHEMA_COLLATIONS:
+        return information_schema_collations_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
-    case MYLITE_INFORMATION_SCHEMA_ENGINES:
-    case MYLITE_INFORMATION_SCHEMA_CHARACTER_SETS:
-    case MYLITE_INFORMATION_SCHEMA_COLLATIONS:
     case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
     case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
     case MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS:
@@ -556,6 +576,131 @@ static struct mylite_field_descriptor information_schema_referential_constraints
             0U,
             false
         );
+    }
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_INVALID,
+    };
+}
+
+static struct mylite_field_descriptor information_schema_engines_column_descriptor(
+    const char *name
+) {
+    if (mylite_ascii_case_equal(name, "ENGINE")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            MYLITE_FIELD_FLAG_NOT_NULL,
+            mylite_mysql_not_fixed_decimals,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "SUPPORT")) {
+        return information_schema_text_descriptor(
+            information_schema_engine_support_length,
+            MYLITE_FIELD_FLAG_NOT_NULL,
+            mylite_mysql_not_fixed_decimals,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "COMMENT")) {
+        return information_schema_text_descriptor(
+            information_schema_engine_comment_length,
+            MYLITE_FIELD_FLAG_NOT_NULL,
+            mylite_mysql_not_fixed_decimals,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "TRANSACTIONS") || mylite_ascii_case_equal(name, "XA") ||
+        mylite_ascii_case_equal(name, "SAVEPOINTS")) {
+        return information_schema_text_descriptor(
+            information_schema_yes_no_length,
+            0U,
+            mylite_mysql_not_fixed_decimals,
+            true
+        );
+    }
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_INVALID,
+    };
+}
+
+static struct mylite_field_descriptor information_schema_character_sets_column_descriptor(
+    const char *name
+) {
+    if (mylite_ascii_case_equal(name, "CHARACTER_SET_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "DESCRIPTION")) {
+        return information_schema_text_descriptor(
+            information_schema_table_comment_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "DEFAULT_COLLATE_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "MAXLEN")) {
+        return information_schema_integer_descriptor(
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+            false
+        );
+    }
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_INVALID,
+    };
+}
+
+static struct mylite_field_descriptor information_schema_collations_column_descriptor(
+    const char *name
+) {
+    if (mylite_ascii_case_equal(name, "COLLATION_NAME") ||
+        mylite_ascii_case_equal(name, "CHARACTER_SET_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "ID")) {
+        return information_schema_bigint_descriptor(
+            information_schema_collation_id_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "IS_DEFAULT") ||
+        mylite_ascii_case_equal(name, "IS_COMPILED")) {
+        return information_schema_text_descriptor(
+            information_schema_yes_no_length,
+            MYLITE_FIELD_FLAG_NOT_NULL,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "SORTLEN")) {
+        return information_schema_integer_descriptor(
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "PAD_ATTRIBUTE")) {
+        return information_schema_enum_descriptor(information_schema_pad_attribute_length);
     }
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_INVALID,

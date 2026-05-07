@@ -50,6 +50,20 @@ static uint64_t elt_function_result_length(
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
+static uint64_t concat_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static uint64_t concat_ws_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static uint64_t elt_argument_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -71,6 +85,8 @@ static uint64_t slice_string_function_result_length(
     const struct mylite_expression_value *value,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
+
+static uint64_t add_text_display_lengths(uint64_t left, uint64_t right);
 
 static int infer_function_arguments_nullable(
     mylite_db *database,
@@ -122,6 +138,42 @@ int mylite_expression_descriptor_infer_slice_string_function(
         .nullable = true,
     };
     mylite_field_descriptor_set_nullable(out_descriptor, true);
+    return MYLITE_OK;
+}
+
+int mylite_expression_descriptor_infer_concat_function(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool nullable,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks,
+    bool *out_matched
+) {
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    uint64_t length = 0U;
+
+    if (callbacks == NULL || callbacks->infer_expression_descriptor == NULL ||
+        out_matched == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_matched = mylite_function_name_is_concat(name);
+    if (!*out_matched) {
+        return MYLITE_OK;
+    }
+
+    length = concat_function_result_length(database, plan, arguments, callbacks);
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = 0U,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .nullable = nullable,
+    };
+    mylite_field_descriptor_set_nullable(out_descriptor, nullable);
     return MYLITE_OK;
 }
 
@@ -313,6 +365,51 @@ static uint64_t elt_function_result_length(
     return result;
 }
 
+static uint64_t concat_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    uint64_t result = 0U;
+
+    for (const struct mylite_sql_ast_node *argument = arguments == NULL ? NULL
+                                                                        : arguments->first_child;
+         argument != NULL;
+         argument = argument->next_sibling) {
+        uint64_t length = elt_argument_result_length(database, plan, argument, callbacks);
+
+        result = add_text_display_lengths(result, length);
+    }
+    return result;
+}
+
+static uint64_t concat_ws_function_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *separator = arguments == NULL ? NULL : arguments->first_child;
+    uint64_t separator_length = elt_argument_result_length(database, plan, separator, callbacks);
+    uint64_t result = 0U;
+    size_t value_count = 0U;
+
+    for (const struct mylite_sql_ast_node *argument = separator == NULL ? NULL
+                                                                        : separator->next_sibling;
+         argument != NULL;
+         argument = argument->next_sibling) {
+        uint64_t length = elt_argument_result_length(database, plan, argument, callbacks);
+
+        if (value_count != 0U) {
+            result = add_text_display_lengths(result, separator_length);
+        }
+        result = add_text_display_lengths(result, length);
+        ++value_count;
+    }
+    return result;
+}
+
 static uint64_t elt_argument_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -406,7 +503,7 @@ static uint64_t slice_string_function_result_length(
         return mylite_expression_descriptor_string_length(database, value, NULL);
     }
     if (mylite_function_name_is_concat_ws(name)) {
-        return mylite_mysql_text_length;
+        return concat_ws_function_result_length(database, plan, arguments, callbacks);
     }
     if (source != NULL &&
         callbacks->infer_expression_descriptor(database, plan, source, NULL, &source_descriptor) ==
@@ -414,6 +511,13 @@ static uint64_t slice_string_function_result_length(
         return source_descriptor.length;
     }
     return mylite_mysql_text_length;
+}
+
+static uint64_t add_text_display_lengths(uint64_t left, uint64_t right) {
+    if (left > UINT64_MAX - right) {
+        return mylite_mysql_long_text_length;
+    }
+    return left + right;
 }
 
 static int infer_function_arguments_nullable(

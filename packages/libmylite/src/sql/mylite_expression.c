@@ -842,12 +842,14 @@ static int eval_binary_prefix_cast(
 );
 
 static int eval_signed_cast(
+    const struct mylite_sql_ast_node *source,
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 );
 
 static int eval_unsigned_cast(
+    const struct mylite_sql_ast_node *source,
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
@@ -3895,6 +3897,11 @@ static int append_decimal_cast_out_of_range_warning(
     const struct mylite_sql_ast_node *expression
 );
 
+static int append_integer_cast_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *expression
+);
+
 static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text);
 
 static int cast_value_to_string_with_length(
@@ -5262,9 +5269,9 @@ static int eval_cast_expression(
     switch (target->column_type) {
     case MYLITE_SQL_AST_COLUMN_TYPE_BIGINT:
         if (target->column_type_unsigned) {
-            status = eval_unsigned_cast(&value, warnings, out_value);
+            status = eval_unsigned_cast(source, &value, warnings, out_value);
         } else {
-            status = eval_signed_cast(&value, warnings, out_value);
+            status = eval_signed_cast(source, &value, warnings, out_value);
         }
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL:
@@ -5340,13 +5347,18 @@ static int eval_binary_prefix_cast(
 }
 
 static int eval_signed_cast(
+    const struct mylite_sql_ast_node *source,
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 ) {
     int64_t integer = 0;
-    int status = cast_value_to_signed_integer(value, warnings, &integer);
+    int status = 0;
 
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL && value->real_value < (double)INT64_MIN) {
+        return append_integer_cast_out_of_range_error(warnings, source);
+    }
+    status = cast_value_to_signed_integer(value, warnings, &integer);
     if (status != 0) {
         return status;
     }
@@ -5358,13 +5370,18 @@ static int eval_signed_cast(
 }
 
 static int eval_unsigned_cast(
+    const struct mylite_sql_ast_node *source,
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 ) {
     uint64_t integer = 0;
-    int status = cast_value_to_unsigned_integer(value, warnings, &integer);
+    int status = 0;
 
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL && value->real_value < (double)INT64_MIN) {
+        return append_integer_cast_out_of_range_error(warnings, source);
+    }
+    status = cast_value_to_unsigned_integer(value, warnings, &integer);
     if (status != 0) {
         return status;
     }
@@ -24059,6 +24076,42 @@ static int append_decimal_cast_out_of_range_warning(
         return -1;
     }
     return append_warning(warnings, MYLITE_WARNING_WARN_DATA_OUT_OF_RANGE, message);
+}
+
+static int append_integer_cast_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *expression
+) {
+    static const char prefix[] = "BIGINT value is out of range in '";
+    static const char fallback[] = "cast()";
+    size_t prefix_length = sizeof(prefix) - 1U;
+    const char *text =
+        expression == NULL || expression->span.text == NULL ? fallback : expression->span.text;
+    size_t text_length = expression == NULL || expression->span.text == NULL
+                             ? sizeof(fallback) - 1U
+                             : expression->span.length;
+    char *message = NULL;
+    int status = 0;
+
+    if (text_length > SIZE_MAX - prefix_length - 2U) {
+        return -1;
+    }
+    message = malloc(prefix_length + text_length + 2U);
+    if (message == NULL) {
+        return -1;
+    }
+    memcpy(message, prefix, prefix_length);
+    memcpy(message + prefix_length, text, text_length);
+    message[prefix_length + text_length] = '\'';
+    message[prefix_length + text_length + 1U] = '\0';
+    status = mylite_expression_warnings_append_condition(
+        warnings,
+        MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+        MYLITE_WARNING_OUT_OF_RANGE,
+        message
+    );
+    free(message);
+    return status == 0 ? MYLITE_EXEC_ERROR : status;
 }
 
 static int cast_value_to_string(const struct mylite_expression_value *value, char **out_text) {

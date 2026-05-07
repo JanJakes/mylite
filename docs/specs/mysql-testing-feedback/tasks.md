@@ -230,7 +230,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Scalar unsigned integer arithmetic now covers exact `BIGINT UNSIGNED`
       addition, subtraction, multiplication, `/`, `DIV`, and modulo above
       signed 64-bit range, including MySQL-style 1690 overflow/underflow
-      diagnostics.
+      diagnostics. Scalar `CAST`/`CONVERT` to signed and unsigned integer
+      targets now reject negative approximate values below the signed 64-bit
+      floor with MySQL-style 1690 diagnostics while preserving MySQL's
+      positive approximate overflow clipping behavior.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719, FLOAT/DOUBLE target casts, DATE/TIME/DATETIME

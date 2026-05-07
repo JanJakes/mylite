@@ -73,6 +73,8 @@ same MySQL 8.4.9 runtime.
 
 Floating-point target behavior, including `REAL_AS_FLOAT` for `REAL` targets,
 was additionally checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
+Integer target overflow behavior for approximate inputs was additionally
+checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 
 ## MySQL observations
 
@@ -89,6 +91,8 @@ prefix returns `0` with warning 1292.
 | `CAST(12.4 AS SIGNED)` | `12` | none |
 | `CAST(12.5 AS SIGNED)` | `13` | none |
 | `CAST(-12.5 AS SIGNED)` | `-13` | none |
+| `CAST(1e20 AS SIGNED)` | `9223372036854775807` | none |
+| `CAST(-1e20 AS SIGNED)` | error | 1690 out of range |
 | `CAST('12.5' AS SIGNED)` | `12` | 1292 truncated integer |
 | `CAST('x' AS SIGNED)` | `0` | 1292 truncated integer |
 
@@ -99,6 +103,8 @@ warning. Negative string inputs wrap and also emit warning 1105.
 | SQL | Result | Warnings |
 | --- | --- | --- |
 | `CAST(-1 AS UNSIGNED)` | `18446744073709551615` | none |
+| `CAST(1e20 AS UNSIGNED)` | `9223372036854775807` | none |
+| `CAST(-1e20 AS UNSIGNED)` | error | 1690 out of range |
 | `CAST('-1' AS UNSIGNED)` | `18446744073709551615` | 1105 negative-to-unsigned |
 | `CAST('-1.5' AS UNSIGNED)` | `18446744073709551615` | 1292 truncated integer, 1105 negative-to-unsigned |
 | `CAST('x' AS UNSIGNED)` | `0` | 1292 truncated integer |

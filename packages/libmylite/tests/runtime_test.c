@@ -35162,6 +35162,64 @@ static int test_cast_expression_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(
+        database,
+        "SELECT CAST(-9223372036854775808e0 AS SIGNED) AS signed_value, "
+        "CAST(-9223372036854775808e0 AS UNSIGNED) AS unsigned_value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST real signed floor boundary row");
+    failures += expect_string(
+        mylite_column_text(stmt, 0),
+        "-9223372036854775808",
+        "CAST real signed floor boundary value"
+    );
+    failures += expect_string(
+        mylite_column_text(stmt, 1),
+        "9223372036854775808",
+        "CAST real unsigned floor boundary value"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "CAST real floor boundary warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT CAST(-1e20 AS SIGNED)",
+        MYLITE_EXEC_ERROR,
+        "BIGINT value is out of range",
+        "CAST negative real signed overflow"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "CAST negative real signed overflow warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_out_of_range,
+        "CAST negative real signed overflow warning code"
+    );
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT CONVERT(-1e20, UNSIGNED)",
+        MYLITE_EXEC_ERROR,
+        "BIGINT value is out of range",
+        "CONVERT negative real unsigned overflow"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "CONVERT negative real unsigned overflow warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_out_of_range,
+        "CONVERT negative real unsigned overflow warning code"
+    );
+
     failures +=
         prepare_sql(database, "SELECT CAST('x' AS DECIMAL(5,2)) AS value", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST bad decimal warning row");

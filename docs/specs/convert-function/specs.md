@@ -75,6 +75,8 @@ same MySQL 8.4.9 runtime.
 
 Floating-point target behavior, including `REAL_AS_FLOAT` for `REAL` targets,
 was additionally checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
+Integer target overflow behavior for approximate inputs was additionally
+checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 
 ## MySQL observations
 
@@ -85,7 +87,9 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | SQL | Result | Warnings |
 | --- | --- | --- |
 | `CONVERT('12.5', SIGNED)` | `12` | 1292 truncated integer |
+| `CONVERT(-1e20, SIGNED)` | error | 1690 out of range |
 | `CONVERT('-1', UNSIGNED)` | `18446744073709551615` | 1105 negative-to-unsigned |
+| `CONVERT(-1e20, UNSIGNED)` | error | 1690 out of range |
 | `CONVERT('12.345', DECIMAL(5,2))` | `12.35` | none |
 | `CONVERT(999999, DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CONVERT('999999x', DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |

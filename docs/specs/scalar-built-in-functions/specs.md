@@ -685,6 +685,9 @@ Verified `mysql --column-type-info -vvv` examples:
 | Expression alias | Type | Length | Decimals | Collation | Flags |
 | --- | --- | ---: | ---: | --- | --- |
 | `CONCAT('a','b') AS concat_value` | `VAR_STRING` | `8` | `31` | `utf8mb4_0900_ai_ci` | none |
+| `LOWER(varchar_col) AS lower_s` | `VAR_STRING` | source octet length | `31` | source collation | none |
+| `LOWER(varbinary_col) AS lower_b` | `VAR_STRING` | source octet length | `31` | `binary` | `BINARY` |
+| `LOWER(NULL) AS lower_null` | `VAR_STRING` | `0` | `31` | `binary` | `BINARY` |
 | `HEX('Az') AS hex_text` | `VAR_STRING` | `64` | `31` | `utf8mb4_0900_ai_ci` | none |
 | `UNHEX('417a') AS unhex_text` | `VAR_STRING` | `8` | `31` | `binary` | `BINARY` |
 | `LENGTH('海豚') AS byte_len` | `LONGLONG` | `10` | `0` | `binary` | `NOT_NULL BINARY NUM` |

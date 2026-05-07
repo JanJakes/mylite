@@ -157,11 +157,13 @@ Verified examples:
 ## Result metadata
 
 The first MyLite slice follows the existing scalar-function metadata policy:
-supported text functions expose `VAR_STRING`, the connection collation, MySQL's
-not-fixed decimals marker, nullable metadata, and no `NOT_NULL`, `BINARY`, or
-numeric flags for the supported paths. `CONCAT_WS` and `SUBSTRING` use the
-known constant result length when one is available. The trim family uses the
-source string's declared length, which matches observed constant metadata.
+supported text functions expose MySQL's not-fixed decimals marker and nullable
+metadata without `NOT_NULL` or numeric flags for the supported paths.
+`CONCAT_WS` and `SUBSTRING` use the known constant result length when one is
+available. The trim family uses the source string's declared length, which
+matches observed constant metadata. `LOWER` / `LCASE` and `UPPER` / `UCASE`
+derive table-backed string metadata from the argument descriptor, preserving
+source declared length and binary charset/flags for binary strings.
 
 Verified constant metadata with `SET NAMES utf8mb4`:
 
@@ -174,6 +176,9 @@ Verified constant metadata with `SET NAMES utf8mb4`:
 | `TRIM('  hi  ')` | `VAR_STRING` | `255` | `24` | `31` | none |
 | `LTRIM('  hi  ')` | `VAR_STRING` | `255` | `24` | `31` | none |
 | `RTRIM('  hi  ')` | `VAR_STRING` | `255` | `24` | `31` | none |
+| `LOWER(varchar_col)` | `VAR_STRING` | source collation id | source octet length | `31` | none |
+| `LOWER(varbinary_col)` | `VAR_STRING` | `63` | source octet length | `31` | `BINARY` |
+| `LOWER(NULL)` | `VAR_STRING` | `63` | `0` | `31` | `BINARY` |
 
 ## Parser and AST design
 

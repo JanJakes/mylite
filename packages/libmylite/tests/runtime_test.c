@@ -8711,6 +8711,112 @@ static int test_scalar_builtin_functions_execution(void) {
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
     };
+    static const struct expected_result_metadata case_conversion_table_metadata[] = {
+        {"lower_s",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         48U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"lower_sn",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         48U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"upper_s",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         48U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"lcase_sn",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         48U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"ucase_s",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         48U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"lower_vb",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         12U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"upper_vbn",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         12U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"lower_null",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         0U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+    };
     static const struct expected_result_metadata hex_table_metadata[] = {
         {"hex_s",
          NULL,
@@ -11392,6 +11498,35 @@ static int test_scalar_builtin_functions_execution(void) {
         "n INT)",
         MYLITE_DONE
     );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE case_conversion_meta ("
+        "id INT PRIMARY KEY, "
+        "s VARCHAR(12) NOT NULL, "
+        "sn VARCHAR(12), "
+        "vb VARBINARY(12) NOT NULL, "
+        "vbn VARBINARY(12))",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "SELECT LOWER(s) AS lower_s, LOWER(sn) AS lower_sn, "
+        "UPPER(s) AS upper_s, LCASE(sn) AS lcase_sn, UCASE(s) AS ucase_s, "
+        "LOWER(vb) AS lower_vb, UPPER(vbn) AS upper_vbn, "
+        "LOWER(NULL) AS lower_null "
+        "FROM case_conversion_meta LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        case_conversion_table_metadata,
+        (int)(sizeof(case_conversion_table_metadata) / sizeof(case_conversion_table_metadata[0])),
+        "case conversion table metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "case conversion metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += execute_sql(
         database,
         "INSERT INTO t (s,n) VALUES "

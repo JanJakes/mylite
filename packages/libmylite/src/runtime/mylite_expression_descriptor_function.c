@@ -195,6 +195,28 @@ static int infer_variadic_scalar_function_descriptor(
     const struct mylite_expression_descriptor_function_callbacks *callbacks
 );
 
+static int infer_case_conversion_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks
+);
+
+static bool function_name_is_case_conversion(const struct mylite_sql_ast_node *name);
+
+static struct mylite_field_descriptor case_conversion_result_descriptor(
+    mylite_db *database,
+    const struct mylite_field_descriptor *argument
+);
+
+static uint64_t case_conversion_result_length(
+    mylite_db *database,
+    const struct mylite_field_descriptor *argument
+);
+
+static int case_conversion_result_type(uint64_t length);
+
 static int infer_function_arguments_nullable(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -329,6 +351,16 @@ int mylite_expression_descriptor_infer_function_expression(
     if (status != MYLITE_OK || matched_slice_string) {
         return status;
     }
+    status = infer_case_conversion_function_descriptor(
+        database,
+        plan,
+        expression,
+        out_descriptor,
+        callbacks
+    );
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
     if (mylite_expression_descriptor_infer_text_function(
             database,
             name,
@@ -370,6 +402,110 @@ int mylite_expression_descriptor_infer_function_expression(
 
     *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static int infer_case_conversion_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_function_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *argument = mylite_ast_child_at(arguments, 0U);
+    struct mylite_field_descriptor argument_descriptor = mylite_expression_descriptor_defaults();
+    int status = MYLITE_OK;
+
+    if (!function_name_is_case_conversion(name)) {
+        return MYLITE_UNSUPPORTED;
+    }
+    if (argument == NULL) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    status =
+        callbacks
+            ->infer_expression_descriptor(database, plan, argument, NULL, &argument_descriptor);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *out_descriptor = case_conversion_result_descriptor(database, &argument_descriptor);
+    return MYLITE_OK;
+}
+
+static bool function_name_is_case_conversion(const struct mylite_sql_ast_node *name) {
+    return name != NULL &&
+           (mylite_span_equal_ci(name->span, "LOWER") ||
+            mylite_span_equal_ci(name->span, "LCASE") ||
+            mylite_span_equal_ci(name->span, "UPPER") || mylite_span_equal_ci(name->span, "UCASE"));
+}
+
+static struct mylite_field_descriptor case_conversion_result_descriptor(
+    mylite_db *database,
+    const struct mylite_field_descriptor *argument
+) {
+    uint64_t length = case_conversion_result_length(database, argument);
+    unsigned int charset_id = mylite_expression_descriptor_connection_charset_id(database);
+    unsigned int flags = 0U;
+
+    if (argument != NULL &&
+        (mylite_expression_descriptor_has_text_result(argument) ||
+         argument->type == MYLITE_FIELD_TYPE_BLOB || argument->type == MYLITE_FIELD_TYPE_NULL)) {
+        charset_id = argument->charset_id;
+    }
+    if (argument != NULL && ((argument->flags & MYLITE_FIELD_FLAG_BINARY) != 0U ||
+                             argument->charset_id == mylite_mysql_binary_charset_id)) {
+        flags |= MYLITE_FIELD_FLAG_BINARY;
+    }
+
+    return (struct mylite_field_descriptor){
+        .type = case_conversion_result_type(length),
+        .flags = flags,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = charset_id,
+        .nullable = true,
+    };
+}
+
+static uint64_t case_conversion_result_length(
+    mylite_db *database,
+    const struct mylite_field_descriptor *argument
+) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (argument == NULL || argument->type == MYLITE_FIELD_TYPE_NULL) {
+        return 0U;
+    }
+    if ((argument->flags & MYLITE_FIELD_FLAG_NUM) != 0U) {
+        if (max_bytes_per_character != 0U &&
+            argument->length > UINT64_MAX / max_bytes_per_character) {
+            return mylite_mysql_long_text_length;
+        }
+        return argument->length * max_bytes_per_character;
+    }
+    if (argument->type == MYLITE_FIELD_TYPE_BLOB &&
+        argument->charset_id != mylite_mysql_binary_charset_id) {
+        if (max_bytes_per_character != 0U &&
+            argument->length > UINT64_MAX / max_bytes_per_character) {
+            return mylite_mysql_long_text_length;
+        }
+        return argument->length * max_bytes_per_character;
+    }
+    return argument->length;
+}
+
+static int case_conversion_result_type(uint64_t length) {
+    if (length > mylite_mysql_medium_text_length) {
+        return MYLITE_FIELD_TYPE_LONG_BLOB;
+    }
+    if (length > mylite_mysql_text_length) {
+        return MYLITE_FIELD_TYPE_MEDIUM_BLOB;
+    }
+    return MYLITE_FIELD_TYPE_VAR_STRING;
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

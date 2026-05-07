@@ -46141,6 +46141,33 @@ static int test_show_table_status_execution(void) {
         1,
         "show table status where auto increment and update time"
     );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment BETWEEN 40 AND 50",
+        columns,
+        18,
+        selected_values + (18 * 3),
+        1,
+        "show table status where between"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE Name <=> 'alpha'",
+        columns,
+        18,
+        alpha_values,
+        1,
+        "show table status where null-safe equal"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment IS TRUE",
+        columns,
+        18,
+        selected_values + (18 * 3),
+        1,
+        "show table status where is true"
+    );
     failures += execute_sql(database, "DELETE FROM status_meta WHERE v = 20", MYLITE_DONE);
     failures += expect_select_rows(
         database,
@@ -52382,12 +52409,14 @@ static int test_show_index_execution(void) {
         3,
         "show index where or predicate"
     );
-    failures += expect_prepare_error(
+    failures += expect_select_rows(
         database,
         "SHOW INDEX FROM meta WHERE Key_name <=> 'PRIMARY'",
-        MYLITE_UNSUPPORTED,
-        "SHOW INDEX WHERE expression is not supported",
-        "show index where unsupported expression"
+        show_index_columns,
+        15,
+        primary_index_values,
+        1,
+        "show index where null-safe equal"
     );
 
     failures += execute_sql(database, "CREATE TABLE no_idx (id INT)", MYLITE_DONE);

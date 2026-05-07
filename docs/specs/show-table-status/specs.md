@@ -228,7 +228,7 @@ Runtime coverage:
   DML `Update_time`, and next auto-increment
 - `CREATE TABLE ... AUTO_INCREMENT`, `ALTER TABLE ... AUTO_INCREMENT`, inserts,
   deletes, and `SHOW TABLE STATUS WHERE` predicates over displayed
-  `Auto_increment` / timestamp columns
+  `Auto_increment` / timestamp columns, `BETWEEN`, `<=>`, and `IS TRUE`
 - transaction rollback of maintained row counts
 - secondary-index length changes after `CREATE INDEX` and `DROP INDEX`
 - `information_schema` lower-case and mixed-case schema/pattern behavior

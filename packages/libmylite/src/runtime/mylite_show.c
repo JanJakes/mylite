@@ -73,6 +73,14 @@ static int append_show_where_expression_list(
     size_t column_count
 );
 
+static int append_show_where_between_expression(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_sql_ast_node *expression,
+    const char *const *column_names,
+    size_t column_count
+);
+
 static int append_show_where_identifier(
     mylite_db *database,
     sqlite3_str *sql,
@@ -646,7 +654,13 @@ static int append_show_where_expression(
             );
         }
         if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NULL ||
-            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL ||
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_TRUE ||
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE ||
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_FALSE ||
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE ||
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN ||
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN) {
             sqlite3_str_appendall(sql, "(");
             int status = append_show_where_expression(
                 database,
@@ -657,12 +671,35 @@ static int append_show_where_expression(
             );
 
             if (status == MYLITE_OK) {
-                sqlite3_str_appendall(
-                    sql,
-                    expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL
-                        ? " IS NOT NULL)"
-                        : " IS NULL)"
-                );
+                switch (expression->operator_kind) {
+                case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+                    sqlite3_str_appendall(sql, " IS NULL)");
+                    break;
+                case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+                    sqlite3_str_appendall(sql, " IS NOT NULL)");
+                    break;
+                case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+                    sqlite3_str_appendall(sql, " IS TRUE)");
+                    break;
+                case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+                    sqlite3_str_appendall(sql, " IS NOT TRUE)");
+                    break;
+                case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+                    sqlite3_str_appendall(sql, " IS FALSE)");
+                    break;
+                case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+                    sqlite3_str_appendall(sql, " IS NOT FALSE)");
+                    break;
+                case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+                    sqlite3_str_appendall(sql, " IS NULL)");
+                    break;
+                case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+                    sqlite3_str_appendall(sql, " IS NOT NULL)");
+                    break;
+                default:
+                    status = MYLITE_UNSUPPORTED;
+                    break;
+                }
             }
             return status;
         }
@@ -739,6 +776,18 @@ static int append_show_where_expression(
             sqlite3_str_appendall(sql, ")");
         }
         return status;
+    case MYLITE_SQL_AST_TERNARY_EXPRESSION:
+        if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_BETWEEN ||
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN) {
+            return append_show_where_between_expression(
+                database,
+                sql,
+                expression,
+                column_names,
+                column_count
+            );
+        }
+        return MYLITE_UNSUPPORTED;
     case MYLITE_SQL_AST_EXPRESSION_LIST:
         return append_show_where_expression_list(
             database,
@@ -750,6 +799,52 @@ static int append_show_where_expression(
     default:
         return MYLITE_UNSUPPORTED;
     }
+}
+
+static int append_show_where_between_expression(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_sql_ast_node *expression,
+    const char *const *column_names,
+    size_t column_count
+) {
+    sqlite3_str_appendall(sql, "(");
+    int status = append_show_where_expression(
+        database,
+        sql,
+        mylite_ast_child_at(expression, 0U),
+        column_names,
+        column_count
+    );
+
+    if (status == MYLITE_OK) {
+        sqlite3_str_appendall(
+            sql,
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN ? " NOT BETWEEN "
+                                                                             : " BETWEEN "
+        );
+        status = append_show_where_expression(
+            database,
+            sql,
+            mylite_ast_child_at(expression, 1U),
+            column_names,
+            column_count
+        );
+    }
+    if (status == MYLITE_OK) {
+        sqlite3_str_appendall(sql, " AND ");
+        status = append_show_where_expression(
+            database,
+            sql,
+            mylite_ast_child_at(expression, 2U),
+            column_names,
+            column_count
+        );
+    }
+    if (status == MYLITE_OK) {
+        sqlite3_str_appendall(sql, ")");
+    }
+    return status;
 }
 
 static int append_show_where_expression_list(
@@ -910,6 +1005,8 @@ static const char *show_where_binary_operator_sql(enum mylite_sql_ast_operator o
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
         return "=";
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+        return "IS";
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
         return "<>";
     case MYLITE_SQL_AST_OPERATOR_LESS:
@@ -928,7 +1025,6 @@ static const char *show_where_binary_operator_sql(enum mylite_sql_ast_operator o
         return "LIKE";
     case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
         return "NOT LIKE";
-    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
     case MYLITE_SQL_AST_OPERATOR_POSITIVE:
     case MYLITE_SQL_AST_OPERATOR_NEGATIVE:

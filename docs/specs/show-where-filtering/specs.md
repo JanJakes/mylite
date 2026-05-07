@@ -27,12 +27,14 @@ the underlying catalog column names. The supported expression subset is:
 - displayed-column identifiers, including backtick-quoted identifiers such as
   `` `Default collation` ``
 - string, numeric, boolean, and `NULL` literals
-- `=`, `<>`, `<`, `<=`, `>`, `>=`
+- `=`, `<=>`, `<>`, `<`, `<=`, `>`, `>=`
 - `AND`, `OR`, and unary `NOT`
 - `LIKE` and `NOT LIKE`, including a literal `ESCAPE` expression
 - `IN` and `NOT IN`
+- `BETWEEN` and `NOT BETWEEN`
 - unary `+` and `-`
-- `IS NULL` and `IS NOT NULL`
+- `IS NULL`, `IS NOT NULL`, `IS TRUE`, `IS NOT TRUE`, `IS FALSE`,
+  `IS NOT FALSE`, `IS UNKNOWN`, and `IS NOT UNKNOWN`
 - parentheses
 
 Unknown displayed-column identifiers return MySQL error `1054` with an unknown
@@ -64,5 +66,5 @@ label:
 
 Runtime coverage includes successful filtering for each covered SHOW family,
 including generated `SHOW TABLES` display-column names, backtick-quoted
-character-set and collation labels, `IN`, `AND`, numeric comparisons, and
-unknown-column diagnostics.
+character-set and collation labels, `IN`, `BETWEEN`, `<=>`, `IS TRUE`, `AND`,
+numeric comparisons, and unknown-column diagnostics.

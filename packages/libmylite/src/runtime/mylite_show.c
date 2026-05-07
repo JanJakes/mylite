@@ -5,6 +5,7 @@
 #include "mylite_error_codes.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_metadata.h"
+#include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
 #include "mylite_show_types.h"
 #include "mylite_span.h"
@@ -17,13 +18,30 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+static int attach_show_schemas_result_metadata(
+    mylite_db *database,
+    mylite_stmt *stmt,
+    const char *column_name
+);
+
+static struct mylite_field_descriptor show_latin1_string_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    unsigned int decimals,
+    bool nullable
+);
+
 static struct mylite_field_descriptor show_engines_field_descriptor(uint64_t length, bool nullable);
 
 static int show_engines_sql(mylite_db *database, char **out_sql);
 
+static char *copy_show_schemas_column_name(const struct mylite_sql_ast_node *filter);
+
 static int show_schemas_filtered_sql(
     mylite_db *database,
     const struct mylite_sql_ast_node *filter,
+    const char *display_column,
     char **out_sql
 );
 
@@ -77,9 +95,6 @@ static int show_where_column_name(
 static int set_show_unknown_column_error(mylite_db *database, const char *column_name);
 
 static const char *show_where_binary_operator_sql(enum mylite_sql_ast_operator operator_kind);
-static const unsigned int mylite_show_latin1_swedish_ci_charset_id = 8U;
-static const unsigned int mylite_show_not_fixed_decimals = 31U;
-
 static const char show_schemas_sql[] =
     "SELECT name AS \"Database\" FROM __mylite_schema_catalog ORDER BY name COLLATE BINARY";
 
@@ -114,32 +129,108 @@ int mylite_show_prepare_schemas_statement(
     mylite_stmt **out_stmt
 ) {
     const struct mylite_sql_ast_node *filter = mylite_ast_child_at(statement, 0U);
+    char *column_name = copy_show_schemas_column_name(filter);
     char *sqlite_sql = NULL;
-    int status = show_schemas_filtered_sql(database, filter, &sqlite_sql);
+    int status = column_name == NULL
+                     ? MYLITE_NOMEM
+                     : show_schemas_filtered_sql(database, filter, column_name, &sqlite_sql);
 
+    *out_stmt = NULL;
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
+    }
+    if (status == MYLITE_OK) {
+        status = attach_show_schemas_result_metadata(database, *out_stmt, column_name);
     }
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
+    if (status != MYLITE_OK) {
+        mylite_finalize(*out_stmt);
+        *out_stmt = NULL;
+    }
+    sqlite3_free(column_name);
     sqlite3_free(sqlite_sql);
     return status;
+}
+
+static int attach_show_schemas_result_metadata(
+    mylite_db *database,
+    mylite_stmt *stmt,
+    const char *column_name
+) {
+    const struct mylite_result_column_metadata_spec columns[] = {
+        {.name = column_name,
+         .table_name = "SCHEMATA",
+         .origin_table_name = "schemata",
+         .descriptor = show_latin1_string_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             64U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             0U,
+             false
+         )},
+    };
+
+    return mylite_result_metadata_attach_columns(
+        database,
+        stmt,
+        columns,
+        sizeof(columns) / sizeof(columns[0])
+    );
+}
+
+static struct mylite_field_descriptor show_latin1_string_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    unsigned int decimals,
+    bool nullable
+) {
+    struct mylite_field_descriptor descriptor = {
+        .type = type,
+        .flags = flags,
+        .length = length,
+        .decimals = decimals,
+        .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
+        .nullable = nullable,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
+    return descriptor;
 }
 
 static int show_engines_sql(mylite_db *database, char **out_sql) {
     return mylite_storage_engine_show_sql(database, out_sql);
 }
 
+static char *copy_show_schemas_column_name(const struct mylite_sql_ast_node *filter) {
+    char *like_pattern = NULL;
+    char *column_name = NULL;
+
+    if (filter == NULL || filter->kind != MYLITE_SQL_AST_LITERAL) {
+        return sqlite3_mprintf("%s", "Database");
+    }
+
+    like_pattern = mylite_show_copy_like_pattern_span(filter);
+    if (like_pattern == NULL) {
+        return NULL;
+    }
+    column_name = sqlite3_mprintf("Database (%s)", like_pattern);
+    free(like_pattern);
+    return column_name;
+}
+
 static int show_schemas_filtered_sql(
     mylite_db *database,
     const struct mylite_sql_ast_node *filter,
+    const char *display_column,
     char **out_sql
 ) {
     static const char *const columns[] = {"Database"};
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
     char *like_pattern = NULL;
-    char *display_column = NULL;
     const struct mylite_sql_ast_node *where_expression = show_schemas_where_expression(filter);
     bool like_escape_backslash =
         filter != NULL && filter->kind == MYLITE_SQL_AST_LITERAL && !filter->no_backslash_escapes;
@@ -154,11 +245,6 @@ static int show_schemas_filtered_sql(
         like_pattern = mylite_show_copy_like_pattern_span(filter);
         if (like_pattern == NULL) {
             status = MYLITE_NOMEM;
-        } else {
-            display_column = sqlite3_mprintf("Database (%s)", like_pattern);
-            if (display_column == NULL) {
-                status = MYLITE_NOMEM;
-            }
         }
     }
 
@@ -166,7 +252,7 @@ static int show_schemas_filtered_sql(
         sqlite3_str_appendf(
             sql,
             "SELECT name AS \"%w\" FROM __mylite_schema_catalog",
-            display_column == NULL ? "Database" : display_column
+            display_column
         );
         if (like_pattern != NULL) {
             sqlite3_str_appendf(sql, " WHERE name LIKE %Q", like_pattern);
@@ -188,7 +274,6 @@ static int show_schemas_filtered_sql(
     }
 
     *out_sql = sqlite3_str_finish(sql);
-    sqlite3_free(display_column);
     free(like_pattern);
 
     if (status != MYLITE_OK) {
@@ -999,8 +1084,8 @@ static struct mylite_field_descriptor show_engines_field_descriptor(
     struct mylite_field_descriptor descriptor = {
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
         .length = length,
-        .decimals = mylite_show_not_fixed_decimals,
-        .charset_id = mylite_show_latin1_swedish_ci_charset_id,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
         .nullable = nullable,
     };
 

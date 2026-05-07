@@ -2,6 +2,9 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_field_descriptor.h"
+#include "mylite_metadata.h"
+#include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
 #include "mylite_show_types.h"
 #include "mylite_span.h"
@@ -18,6 +21,29 @@ static int copy_show_tables_schema_name(
 );
 
 static int validate_show_tables_schema(mylite_db *database, const char *schema_name);
+
+static int attach_show_tables_result_metadata(
+    mylite_db *database,
+    mylite_stmt *stmt,
+    const char *column_name,
+    bool full
+);
+
+static struct mylite_field_descriptor show_tables_latin1_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    bool nullable
+);
+
+static int attach_show_table_status_result_metadata(mylite_db *database, mylite_stmt *stmt);
+
+static struct mylite_field_descriptor show_table_status_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    bool nullable
+);
 
 static char *copy_show_tables_like_pattern(const struct mylite_sql_ast_node *statement);
 
@@ -52,6 +78,7 @@ int mylite_show_prepare_tables_statement(
     char *sqlite_sql = NULL;
     int status = copy_show_tables_schema_name(database, statement, &schema_name);
 
+    *out_stmt = NULL;
     if (status == MYLITE_OK) {
         status = validate_show_tables_schema(database, schema_name);
     }
@@ -104,9 +131,21 @@ int mylite_show_prepare_tables_statement(
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
+    if (status == MYLITE_OK) {
+        status = attach_show_tables_result_metadata(
+            database,
+            *out_stmt,
+            column_name,
+            statement->show_tables_full
+        );
+    }
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
+    }
+    if (status != MYLITE_OK) {
+        mylite_finalize(*out_stmt);
+        *out_stmt = NULL;
     }
     free(schema_name);
     free(like_pattern);
@@ -129,6 +168,7 @@ int mylite_show_prepare_table_status_statement(
     char *sqlite_sql = NULL;
     int status = copy_show_tables_schema_name(database, statement, &schema_name);
 
+    *out_stmt = NULL;
     if (status == MYLITE_OK) {
         status = validate_show_tables_schema(database, schema_name);
     }
@@ -173,9 +213,16 @@ int mylite_show_prepare_table_status_statement(
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
+    if (status == MYLITE_OK) {
+        status = attach_show_table_status_result_metadata(database, *out_stmt);
+    }
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
+    }
+    if (status != MYLITE_OK) {
+        mylite_finalize(*out_stmt);
+        *out_stmt = NULL;
     }
     free(schema_name);
     free(like_pattern);
@@ -183,6 +230,231 @@ int mylite_show_prepare_table_status_statement(
     sqlite3_free(glob_pattern);
     sqlite3_free(sqlite_sql);
     return status;
+}
+
+static int attach_show_tables_result_metadata(
+    mylite_db *database,
+    mylite_stmt *stmt,
+    const char *column_name,
+    bool full
+) {
+    size_t column_count = 1U;
+    const struct mylite_result_column_metadata_spec columns[] = {
+        {.name = column_name,
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .descriptor = show_tables_latin1_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             64U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             false
+         )},
+        {.name = "Table_type",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .descriptor = show_tables_latin1_descriptor(
+             MYLITE_FIELD_TYPE_STRING,
+             11U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_ENUM |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             false
+         )},
+    };
+
+    if (full) {
+        column_count = 2U;
+    }
+    return mylite_result_metadata_attach_columns(database, stmt, columns, column_count);
+}
+
+static struct mylite_field_descriptor show_tables_latin1_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    bool nullable
+) {
+    struct mylite_field_descriptor descriptor = {
+        .type = type,
+        .flags = flags,
+        .length = length,
+        .decimals = 0U,
+        .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
+        .nullable = nullable,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
+    return descriptor;
+}
+
+static int attach_show_table_status_result_metadata(mylite_db *database, mylite_stmt *stmt) {
+    const struct mylite_result_column_metadata_spec columns[] = {
+        {.name = "Name",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             64U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             false
+         )},
+        {.name = "Engine",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(MYLITE_FIELD_TYPE_VAR_STRING, 64U, 0U, true)},
+        {.name = "Version",
+         .table_name = "TABLES",
+         .descriptor =
+             show_table_status_descriptor(MYLITE_FIELD_TYPE_LONG, 3U, MYLITE_FIELD_FLAG_NUM, true)},
+        {.name = "Row_format",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_STRING,
+             10U,
+             MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_ENUM,
+             true
+         )},
+        {.name = "Rows",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+             true
+         )},
+        {.name = "Avg_row_length",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+             true
+         )},
+        {.name = "Data_length",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+             true
+         )},
+        {.name = "Max_data_length",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+             true
+         )},
+        {.name = "Index_length",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+             true
+         )},
+        {.name = "Data_free",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+             true
+         )},
+        {.name = "Auto_increment",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+             true
+         )},
+        {.name = "Create_time",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_TIMESTAMP,
+             19U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             false
+         )},
+        {.name = "Update_time",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_DATETIME,
+             19U,
+             MYLITE_FIELD_FLAG_BINARY,
+             true
+         )},
+        {.name = "Check_time",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_DATETIME,
+             19U,
+             MYLITE_FIELD_FLAG_BINARY,
+             true
+         )},
+        {.name = "Collation",
+         .table_name = "TABLES",
+         .origin_table_name = "collations",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             64U,
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             true
+         )},
+        {.name = "Checksum",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_NUM,
+             true
+         )},
+        {.name = "Create_options",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(MYLITE_FIELD_TYPE_VAR_STRING, 256U, 0U, true)},
+        {.name = "Comment",
+         .table_name = "TABLES",
+         .descriptor = show_table_status_descriptor(
+             MYLITE_FIELD_TYPE_BLOB,
+             6144U,
+             MYLITE_FIELD_FLAG_BLOB,
+             true
+         )},
+    };
+
+    return mylite_result_metadata_attach_columns(
+        database,
+        stmt,
+        columns,
+        sizeof(columns) / sizeof(columns[0])
+    );
+}
+
+static struct mylite_field_descriptor show_table_status_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    bool nullable
+) {
+    struct mylite_field_descriptor descriptor = {
+        .type = type,
+        .flags = flags,
+        .length = length,
+        .decimals = 0U,
+        .charset_id = (type == MYLITE_FIELD_TYPE_VAR_STRING || type == MYLITE_FIELD_TYPE_STRING ||
+                       type == MYLITE_FIELD_TYPE_BLOB)
+                          ? mylite_mysql_latin1_swedish_ci_charset_id
+                          : mylite_mysql_binary_charset_id,
+        .nullable = nullable,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
+    return descriptor;
 }
 
 static int copy_show_tables_schema_name(

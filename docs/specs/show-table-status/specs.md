@@ -139,6 +139,23 @@ Column mapping:
 - `Create_options`: `create_options`
 - `Comment`: `table_comment`
 
+Result metadata follows the MySQL 8.4.9 `SHOW TABLE STATUS` field descriptors
+for the covered C API surface:
+
+| Column | Type | Length | Charset | Flags |
+| --- | --- | --- | --- | --- |
+| `Name` | `VAR_STRING` | `64` | latin1 id `8` | `NOT_NULL`, `BINARY`, `NO_DEFAULT_VALUE` |
+| `Engine` | `VAR_STRING` | `64` | latin1 id `8` | nullable |
+| `Version` | `LONG` | `3` | binary id `63` | `NUM`, nullable |
+| `Row_format` | `STRING` | `10` | latin1 id `8` | `BINARY`, `ENUM`, nullable |
+| `Rows` through `Auto_increment` | `LONGLONG` | `21` | binary id `63` | `UNSIGNED`, `NUM`, nullable |
+| `Create_time` | `TIMESTAMP` | `19` | binary id `63` | `NOT_NULL`, `BINARY`, `NO_DEFAULT_VALUE` |
+| `Update_time`, `Check_time` | `DATETIME` | `19` | binary id `63` | `BINARY`, nullable |
+| `Collation` | `VAR_STRING` | `64` | latin1 id `8` | `NO_DEFAULT_VALUE`, nullable |
+| `Checksum` | `LONGLONG` | `21` | binary id `63` | `NUM`, nullable |
+| `Create_options` | `VAR_STRING` | `256` | latin1 id `8` | nullable |
+| `Comment` | `BLOB` | `6144` | latin1 id `8` | `BLOB`, nullable |
+
 For `information_schema` system-view rows, MyLite returns deterministic
 MySQL-shaped placeholder rows:
 
@@ -200,6 +217,7 @@ Runtime coverage:
 - no selected schema diagnostic
 - missing schema diagnostic
 - selected-schema result shape and rows
+- selected-schema result-column metadata for all status columns
 - `FROM` and `IN` synonyms
 - empty schema with stable metadata
 - `LIKE` case sensitivity

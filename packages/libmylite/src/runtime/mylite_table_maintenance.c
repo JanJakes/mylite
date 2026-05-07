@@ -2,7 +2,10 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_field_descriptor.h"
 #include "mylite_information_schema.h"
+#include "mylite_metadata.h"
+#include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 #include "mylite_statement.h"
@@ -10,6 +13,7 @@
 #include "sqlite3.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 enum mylite_table_maintenance_operation {
@@ -113,6 +117,10 @@ static void free_identifier_parts(char **parts, size_t part_count);
 
 static int set_maintenance_out_of_memory(mylite_db *database);
 
+static int attach_table_maintenance_result_metadata(mylite_db *database, mylite_stmt *stmt);
+
+static struct mylite_field_descriptor table_maintenance_field_descriptor(int type, uint64_t length);
+
 int mylite_table_maintenance_prepare_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -165,8 +173,52 @@ int mylite_table_maintenance_prepare_statement(
     }
 
     status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
+    if (status == MYLITE_OK) {
+        status = attach_table_maintenance_result_metadata(database, *out_stmt);
+    }
+    if (status != MYLITE_OK) {
+        mylite_finalize(*out_stmt);
+        *out_stmt = NULL;
+    }
     sqlite3_free(sqlite_sql);
     return status;
+}
+
+static int attach_table_maintenance_result_metadata(mylite_db *database, mylite_stmt *stmt) {
+    const struct mylite_result_column_metadata_spec columns[] = {
+        {.name = "Table",
+         .descriptor = table_maintenance_field_descriptor(MYLITE_FIELD_TYPE_VAR_STRING, 128U)},
+        {.name = "Op",
+         .descriptor = table_maintenance_field_descriptor(MYLITE_FIELD_TYPE_VAR_STRING, 10U)},
+        {.name = "Msg_type",
+         .descriptor = table_maintenance_field_descriptor(MYLITE_FIELD_TYPE_VAR_STRING, 10U)},
+        {.name = "Msg_text",
+         .descriptor =
+             table_maintenance_field_descriptor(MYLITE_FIELD_TYPE_MEDIUM_BLOB, UINT64_C(393216))},
+    };
+
+    return mylite_result_metadata_attach_columns(
+        database,
+        stmt,
+        columns,
+        sizeof(columns) / sizeof(columns[0])
+    );
+}
+
+static struct mylite_field_descriptor table_maintenance_field_descriptor(
+    int type,
+    uint64_t length
+) {
+    struct mylite_field_descriptor descriptor = {
+        .type = type,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
 }
 
 static int operation_from_statement(

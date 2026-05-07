@@ -147,6 +147,16 @@ Column names:
   this slice.
 - The `FULL` table type column is named `Table_type`.
 
+Result metadata:
+
+- The first column is a non-null `VAR_STRING` with latin1 collation id `8`,
+  length `64`, decimals `0`, and `NOT_NULL`, `BINARY`, and
+  `NO_DEFAULT_VALUE` flags. Its table metadata follows MySQL's `TABLES` /
+  `tables` SHOW surface.
+- `Table_type` is present only for `SHOW FULL TABLES`. It is a non-null
+  `STRING` with latin1 collation id `8`, length `11`, decimals `0`, and
+  `NOT_NULL`, `BINARY`, `ENUM`, and `NO_DEFAULT_VALUE` flags.
+
 LIKE filtering:
 
 - `%` matches any byte sequence.
@@ -188,6 +198,7 @@ Parser coverage:
 Runtime coverage:
 
 - selected-schema listing with exact column name
+- selected-schema result metadata for standard and `FULL` output
 - schema-qualified listing via `FROM` and `IN`
 - `FULL` result shape and `BASE TABLE` values
 - `EXTENDED` accepted as no-op over the current catalog

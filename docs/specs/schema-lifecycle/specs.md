@@ -241,6 +241,10 @@ Behavior:
 - `WHERE` filters over the displayed `Database` column.
 - Returns seeded system schemas and user-created schemas.
 - Sorts by schema name using bytewise order.
+- Result metadata follows MySQL's `SHOW DATABASES` surface: the output is a
+  non-null `VAR_STRING` with latin1 collation id `8`, length `64`, decimals
+  `0`, `NOT_NULL`, `BINARY`, and `NO_DEFAULT_VALUE` flags, visible table
+  `SCHEMATA`, and origin table `schemata`.
 
 Compatibility gaps:
 
@@ -366,6 +370,8 @@ The following observations were verified against `mylite-mysql-849`:
     `Database`
   - `SHOW DATABASES LIKE` and `SHOW SCHEMAS WHERE` filter catalog rows and
     expose MySQL-compatible column labels
+  - `SHOW DATABASES` and `SHOW DATABASES LIKE` expose MySQL-compatible
+    result-column metadata
   - `CREATE DATABASE` adds a row and does not select it
   - duplicate create fails without `IF NOT EXISTS` and succeeds with it
   - `USE` succeeds for an existing schema and fails for a missing schema

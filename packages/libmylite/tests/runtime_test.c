@@ -1082,6 +1082,26 @@ int main(void) {
 }
 
 static int test_schema_lifecycle(void) {
+    static const struct expected_result_metadata show_databases_metadata[] = {
+        {.name = "Database",
+         .table_name = "SCHEMATA",
+         .origin_table_name = "schemata",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+    };
+    static const struct expected_result_metadata show_databases_like_metadata[] = {
+        {.name = "Database (mylite_schema_lifecycle%)",
+         .table_name = "SCHEMATA",
+         .origin_table_name = "schemata",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -1089,8 +1109,7 @@ static int test_schema_lifecycle(void) {
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
 
     failures += prepare_sql(database, "SHOW DATABASES", MYLITE_OK, &stmt);
-    failures += expect_int(mylite_column_count(stmt), 1, "show databases column count");
-    failures += expect_string(mylite_column_name(stmt, 0), "Database", "show databases column");
+    failures += expect_result_metadata(stmt, show_databases_metadata, 1, "show databases metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show databases first row");
     failures += expect_string(
         mylite_column_text(stmt, 0),
@@ -1117,6 +1136,18 @@ static int test_schema_lifecycle(void) {
         1,
         "show databases like"
     );
+    failures +=
+        prepare_sql(database, "SHOW DATABASES LIKE 'mylite_schema_lifecycle%'", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        show_databases_like_metadata,
+        1,
+        "show databases like metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show databases like metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show databases like metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SHOW SCHEMAS WHERE `Database` = 'mylite_schema_lifecycle_a'",
@@ -42423,6 +42454,36 @@ static int test_truncate_table_execution(void) {
 static int test_table_maintenance_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"Table", "Op", "Msg_type", "Msg_text"};
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "Table",
+         .declared_length = 128U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Op",
+         .declared_length = 10U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Msg_type",
+         .declared_length = 10U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Msg_text",
+         .declared_length = 393216U,
+         .field_type = MYLITE_FIELD_TYPE_MEDIUM_BLOB,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
     static const char *const no_default_values[] = {
         "mylite_table_maintenance_no_default.q",
         "check",
@@ -42511,6 +42572,7 @@ static int test_table_maintenance_execution(void) {
     };
     mylite_db *database = NULL;
     mylite_db *no_default_database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -42531,6 +42593,18 @@ static int test_table_maintenance_execution(void) {
         MYLITE_DONE
     );
     failures += execute_sql(database, "CREATE TEMPORARY TABLE temp_t (id INT)", MYLITE_DONE);
+
+    failures += prepare_sql(database, "CHECK TABLE t", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        (int)(sizeof(metadata) / sizeof(metadata[0])),
+        "table maintenance metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "table maintenance metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "table maintenance metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_select_rows(
         database,
@@ -42645,6 +42719,34 @@ static int test_show_tables_execution(void) {
         "Tables_in_mylite_show_tables_a",
         "Table_type"
     };
+    static const struct expected_result_metadata show_a_metadata[] = {
+        {.name = "Tables_in_mylite_show_tables_a",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+    };
+    static const struct expected_result_metadata show_full_a_metadata[] = {
+        {.name = "Tables_in_mylite_show_tables_a",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Table_type",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .declared_length = 11U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_ENUM | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+    };
     static const char *const alpha_columns[] = {"Tables_in_mylite_show_tables_a (alpha%)"};
     static const char *const beta_columns[] = {"Tables_in_mylite_show_tables_a (beta\\_%)"};
     static const char *const camel_columns[] = {"Tables_in_mylite_show_tables_a (Camel%)"};
@@ -42682,6 +42784,7 @@ static int test_show_tables_execution(void) {
     static const char *const info_values[] = {"TABLES"};
     static const char *const info_full_values[] = {"TABLES", "SYSTEM VIEW"};
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -42712,6 +42815,14 @@ static int test_show_tables_execution(void) {
         3,
         "show tables selected schema"
     );
+    failures += prepare_sql(database, "SHOW TABLES", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, show_a_metadata, 1, "show tables metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show tables metadata first row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show tables metadata second row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show tables metadata third row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show tables metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SHOW FULL TABLES",
@@ -42721,6 +42832,20 @@ static int test_show_tables_execution(void) {
         3,
         "show full tables selected schema"
     );
+    failures += prepare_sql(database, "SHOW FULL TABLES", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        show_full_a_metadata,
+        (int)(sizeof(show_full_a_metadata) / sizeof(show_full_a_metadata[0])),
+        "show full tables metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show full tables metadata row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_ROW, "show full tables metadata second row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show full tables metadata third row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show full tables metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SHOW EXTENDED TABLES",
@@ -42933,6 +43058,152 @@ static int test_show_table_status_execution(void) {
         "Create_options",
         "Comment",
     };
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "Name",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Engine",
+         .table_name = "TABLES",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Version",
+         .table_name = "TABLES",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_LONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Row_format",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .declared_length = 10U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_ENUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Rows",
+         .table_name = "TABLES",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Avg_row_length",
+         .table_name = "TABLES",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Data_length",
+         .table_name = "TABLES",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Max_data_length",
+         .table_name = "TABLES",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Index_length",
+         .table_name = "TABLES",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Data_free",
+         .table_name = "TABLES",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Auto_increment",
+         .table_name = "TABLES",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Create_time",
+         .table_name = "TABLES",
+         .origin_table_name = "tables",
+         .declared_length = 19U,
+         .field_type = MYLITE_FIELD_TYPE_TIMESTAMP,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Update_time",
+         .table_name = "TABLES",
+         .declared_length = 19U,
+         .field_type = MYLITE_FIELD_TYPE_DATETIME,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Check_time",
+         .table_name = "TABLES",
+         .declared_length = 19U,
+         .field_type = MYLITE_FIELD_TYPE_DATETIME,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Collation",
+         .table_name = "TABLES",
+         .origin_table_name = "collations",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Checksum",
+         .table_name = "TABLES",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Create_options",
+         .table_name = "TABLES",
+         .declared_length = 256U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Comment",
+         .table_name = "TABLES",
+         .declared_length = 6144U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_BLOB,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
     static const char *const selected_values[] = {
         "CamelCase",   "InnoDB", "10",          "Dynamic", "0",  "0",
         "16384",       "0",      "0",           "0",       NULL, any_datetime_text,
@@ -43128,6 +43399,7 @@ static int test_show_table_status_execution(void) {
         "",
     };
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -43172,6 +43444,23 @@ static int test_show_table_status_execution(void) {
         4,
         "show table status selected schema"
     );
+    failures += prepare_sql(database, "SHOW TABLE STATUS", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        (int)(sizeof(metadata) / sizeof(metadata[0])),
+        "show table status metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show table status metadata row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_ROW, "show table status metadata second row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_ROW, "show table status metadata third row");
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_ROW, "show table status metadata fourth row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show table status metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SHOW TABLE STATUS LIKE 'alpha%'",

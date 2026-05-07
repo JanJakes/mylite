@@ -16,6 +16,12 @@ MySQL-style result set columns:
 - `Msg_type`
 - `Msg_text`
 
+The result columns expose MySQL 8.4.9-compatible metadata for the covered C API
+surface: `Table`, `Op`, and `Msg_type` are nullable `VAR_STRING` fields with
+latin1 collation id `8`, lengths `128`, `10`, and `10`, and decimals `31`.
+`Msg_text` is a nullable `MEDIUM_BLOB` field with latin1 collation id `8`,
+length `393216`, and decimals `31`.
+
 The statements are embedded no-ops. They do not rebuild tables, repair data,
 refresh optimizer statistics, or mutate storage.
 
@@ -108,3 +114,4 @@ Coverage includes:
 - missing tables and unknown schemas
 - selected-schema and fully-qualified table names
 - supported `information_schema` targets
+- MySQL-compatible result-column metadata for all four output columns

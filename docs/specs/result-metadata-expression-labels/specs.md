@@ -39,6 +39,12 @@ Out of scope:
 - exact `max_length` population for stored result sets; MyLite may initially
   expose static declared/display lengths only
 
+Follow-up result-set producers outside the original Task 23 `SELECT` scope must
+attach descriptors through the same statement-owned metadata model instead of
+falling back to SQLite column metadata. Current covered non-`SELECT` surfaces
+include `SHOW DATABASES`, `SHOW TABLES`, `SHOW TABLE STATUS`, and
+`CHECK` / `OPTIMIZE` / `REPAIR TABLE`.
+
 This task should not change SQL grammar meaning except where the parser already
 accepts projection expressions that runtime has not yet executed. It turns
 accepted supported projections into fully described result fields.

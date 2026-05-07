@@ -190,7 +190,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [ ] Complete result column metadata for expressions that currently report no
       metadata. FK information-schema result metadata is now covered for
       `TABLE_CONSTRAINTS`, `KEY_COLUMN_USAGE`, and `REFERENTIAL_CONSTRAINTS`;
-      remaining expression metadata gaps are still tracked here.
+      `SHOW DATABASES`, `SHOW TABLES`, `SHOW TABLE STATUS`, and table
+      maintenance result sets now attach MySQL-verified descriptors; remaining
+      expression and SQLite-backed result metadata gaps are still tracked here.
 
 ## Test harness classification
 

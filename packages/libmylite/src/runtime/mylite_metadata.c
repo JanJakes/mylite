@@ -10,6 +10,12 @@
 
 static const mylite_stmt *effective_metadata_stmt(const mylite_stmt *stmt);
 
+static int copy_result_column_metadata(
+    mylite_db *database,
+    struct mylite_result_column_metadata *metadata,
+    const struct mylite_result_column_metadata_spec *spec
+);
+
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata);
 
 const struct mylite_result_column_metadata *mylite_result_metadata_column(
@@ -22,6 +28,40 @@ const struct mylite_result_column_metadata *mylite_result_metadata_column(
         return NULL;
     }
     return &stmt->result_metadata.columns[column];
+}
+
+int mylite_result_metadata_attach_columns(
+    mylite_db *database,
+    mylite_stmt *stmt,
+    const struct mylite_result_column_metadata_spec *columns,
+    size_t column_count
+) {
+    struct mylite_result_metadata metadata = {0};
+
+    if (database == NULL || stmt == NULL || columns == NULL || column_count == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    metadata.columns = calloc(column_count, sizeof(*metadata.columns));
+    if (metadata.columns == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    metadata.column_count = column_count;
+
+    for (size_t index = 0U; index < column_count; ++index) {
+        int status =
+            copy_result_column_metadata(database, &metadata.columns[index], &columns[index]);
+
+        if (status != MYLITE_OK) {
+            mylite_result_metadata_deinit(&metadata);
+            return status;
+        }
+    }
+
+    mylite_result_metadata_deinit(&stmt->result_metadata);
+    stmt->result_metadata = metadata;
+    return MYLITE_OK;
 }
 
 int mylite_result_metadata_copy_text(mylite_db *database, char **out_text, const char *text) {
@@ -206,6 +246,48 @@ static const mylite_stmt *effective_metadata_stmt(const mylite_stmt *stmt) {
         return stmt->prepared_execute_stmt;
     }
     return stmt;
+}
+
+static int copy_result_column_metadata(
+    mylite_db *database,
+    struct mylite_result_column_metadata *metadata,
+    const struct mylite_result_column_metadata_spec *spec
+) {
+    int status = mylite_result_metadata_copy_text(database, &metadata->name, spec->name);
+
+    if (status == MYLITE_OK) {
+        status =
+            mylite_result_metadata_copy_text(database, &metadata->schema_name, spec->schema_name);
+    }
+    if (status == MYLITE_OK) {
+        status =
+            mylite_result_metadata_copy_text(database, &metadata->table_name, spec->table_name);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_result_metadata_copy_text(
+            database,
+            &metadata->origin_schema_name,
+            spec->origin_schema_name
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_result_metadata_copy_text(
+            database,
+            &metadata->origin_table_name,
+            spec->origin_table_name
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_result_metadata_copy_text(
+            database,
+            &metadata->origin_column_name,
+            spec->origin_column_name
+        );
+    }
+    if (status == MYLITE_OK) {
+        metadata->descriptor = spec->descriptor;
+    }
+    return status;
 }
 
 static void result_column_metadata_deinit(struct mylite_result_column_metadata *metadata) {

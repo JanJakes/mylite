@@ -41610,10 +41610,13 @@ static int test_rename_table_execution(void) {
 static int test_truncate_table_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const count_column[] = {"c"};
+    static const char *const id_column[] = {"id"};
     static const char *const id_v_columns[] = {"id", "v"};
     static const char *const zero_count[] = {"0"};
     static const char *const post_truncate_values[] = {"1", "30"};
     static const char *const qualified_count[] = {"0"};
+    static const char *const successful_truncate_implicit_values[] = {"1", "2"};
+    static const char *const failed_truncate_implicit_values[] = {"1", "2", "3", "4"};
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
     mylite_db *file_database = NULL;
@@ -41749,6 +41752,68 @@ static int test_truncate_table_execution(void) {
         1,
         "truncate shorthand removes rows"
     );
+
+    failures += execute_sql(database, "CREATE TABLE tx_keep (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "CREATE TABLE tx_truncate (id INT PRIMARY KEY)", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_truncate VALUES (9)", MYLITE_DONE);
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_keep VALUES (1)", MYLITE_DONE);
+    failures += execute_sql(database, "TRUNCATE TABLE tx_truncate", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_keep VALUES (2)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM tx_keep ORDER BY id",
+        id_column,
+        1,
+        successful_truncate_implicit_values,
+        2,
+        "truncate table commits active transaction"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM tx_truncate",
+        count_column,
+        1,
+        zero_count,
+        1,
+        "truncate table survives rollback"
+    );
+    failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
+    failures += execute_sql(database, "INSERT INTO tx_keep VALUES (3)", MYLITE_DONE);
+    failures += prepare_sql(database, "TRUNCATE TABLE missing_truncate", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "doesn't exist",
+        "failed truncate table commits active transaction"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "INSERT INTO tx_keep VALUES (4)", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM tx_keep ORDER BY id",
+        id_column,
+        1,
+        failed_truncate_implicit_values,
+        4,
+        "failed truncate leaves later work autocommitted"
+    );
+    failures += execute_sql(database, "START TRANSACTION READ ONLY", MYLITE_DONE);
+    failures += execute_sql(database, "TRUNCATE TABLE tx_keep", MYLITE_DONE);
+    failures += execute_sql(database, "ROLLBACK", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM tx_keep",
+        count_column,
+        1,
+        zero_count,
+        1,
+        "truncate table read-only transaction commits before execution"
+    );
+    failures += execute_sql(database, "DROP TABLE tx_keep, tx_truncate", MYLITE_DONE);
 
     failures += execute_sql(database, "CREATE TABLE truncate (id INT)", MYLITE_DONE);
     failures += execute_sql(database, "INSERT INTO truncate VALUES (1)", MYLITE_DONE);

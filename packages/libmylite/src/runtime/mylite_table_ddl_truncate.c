@@ -47,6 +47,8 @@ static int truncate_table_transaction(
     const struct mylite_truncate_table_plan *plan
 );
 
+static int commit_truncate_table_implicit_transaction(mylite_db *database);
+
 static int delete_truncate_table_rows(
     mylite_db *database,
     const struct mylite_truncate_table_plan *plan
@@ -69,12 +71,23 @@ int mylite_table_ddl_execute_truncate_table_statement(
     const char *selected_schema,
     struct mylite_truncate_table_plan *plan
 ) {
-    int status = validate_truncate_table_plan(database, selected_schema, plan);
+    int status = commit_truncate_table_implicit_transaction(database);
 
+    if (status == MYLITE_OK) {
+        status = validate_truncate_table_plan(database, selected_schema, plan);
+    }
     if (status == MYLITE_OK) {
         status = truncate_table_transaction(database, plan);
     }
     return status;
+}
+
+static int commit_truncate_table_implicit_transaction(mylite_db *database) {
+    if (!database->transaction_active) {
+        return MYLITE_OK;
+    }
+
+    return mylite_transaction_commit_explicit(database);
 }
 
 static int validate_truncate_table_plan(

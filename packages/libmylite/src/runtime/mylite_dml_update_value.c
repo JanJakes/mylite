@@ -6,6 +6,7 @@
 #include "mylite_dml_insert_default.h"
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
+#include "mylite_uint64_text.h"
 #include "sql/mylite_expression.h"
 
 #include <ctype.h>
@@ -402,6 +403,11 @@ bool mylite_dml_update_expression_value_positive_uint64(
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_UINT64 && value->uint64_value > 0U) {
         *out_value = value->uint64_value;
+        return true;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+        mylite_parse_uint64_text(value->text_value, value->text_length, out_value) &&
+        *out_value > 0U) {
         return true;
     }
     return false;

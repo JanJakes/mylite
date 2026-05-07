@@ -3,6 +3,7 @@
 #include "mylite_catalog_schema.h"
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
+#include "mylite_uint64_text.h"
 #include "sqlite3.h"
 
 #include <stdbool.h>
@@ -44,7 +45,7 @@ static const char table_catalog_sql[] = "CREATE TABLE IF NOT EXISTS __mylite_tab
                                         "max_data_length INTEGER,"
                                         "index_length INTEGER,"
                                         "data_free INTEGER,"
-                                        "auto_increment INTEGER,"
+                                        "auto_increment TEXT,"
                                         "create_time TEXT NOT NULL,"
                                         "update_time TEXT,"
                                         "check_time TEXT,"
@@ -153,7 +154,7 @@ static const char temporary_table_catalog_sql[] =
     "max_data_length INTEGER,"
     "index_length INTEGER,"
     "data_free INTEGER,"
-    "auto_increment INTEGER,"
+    "auto_increment TEXT,"
     "create_time TEXT NOT NULL,"
     "update_time TEXT,"
     "check_time TEXT,"
@@ -603,7 +604,11 @@ int mylite_catalog_update_auto_increment(
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    sqlite3_bind_int64(update, 1, (sqlite3_int64)next_auto_increment);
+    rc = mylite_sqlite_bind_uint64(update, 1, next_auto_increment);
+    if (rc != SQLITE_OK) {
+        sqlite3_finalize(update);
+        return mylite_diagnostics_set_sqlite_error(database);
+    }
     sqlite3_bind_text(update, 2, schema_name, -1, SQLITE_STATIC);
     sqlite3_bind_text(update, 3, table_name, -1, SQLITE_STATIC);
     rc = sqlite3_step(update);
@@ -1118,13 +1123,11 @@ static int load_table_metadata_from_catalog(
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
         *out_found = true;
-        if (sqlite3_column_type(stmt, 0) != SQLITE_NULL) {
-            sqlite3_int64 value = sqlite3_column_int64(stmt, 0);
+        uint64_t value = 0U;
 
-            if (value > 0) {
-                out_metadata->auto_increment = (uint64_t)value;
-                out_metadata->has_auto_increment = true;
-            }
+        if (mylite_sqlite_column_uint64(stmt, 0, &value) && value > 0U) {
+            out_metadata->auto_increment = value;
+            out_metadata->has_auto_increment = true;
         }
     }
 

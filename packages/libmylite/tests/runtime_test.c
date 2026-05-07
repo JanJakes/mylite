@@ -941,6 +941,8 @@ static int expect_int(int actual, int expected, const char *context);
 
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 
+static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
+
 static int expect_u16(unsigned int actual, unsigned int expected, const char *context);
 
 static int expect_string(const char *actual, const char *expected, const char *context);
@@ -58309,6 +58311,51 @@ static int test_bigint_unsigned_dml_coercion_execution(void) {
         "9223372036854775807",
         "4294967295",
     };
+    static const char *const bigint_auto_columns[] = {"id", "v"};
+    static const char *const bigint_auto_initial_values[] = {
+        "9223372036854775808",
+        "1",
+        "9223372036854775809",
+        "2",
+    };
+    static const char *const bigint_auto_advanced_values[] = {
+        "9223372036854775808",
+        "1",
+        "9223372036854775809",
+        "2",
+        "9223372036854775820",
+        "3",
+        "9223372036854775821",
+        "4",
+    };
+    static const char *const bigint_auto_altered_values[] = {
+        "9223372036854775808",
+        "1",
+        "9223372036854775809",
+        "2",
+        "9223372036854775820",
+        "3",
+        "9223372036854775821",
+        "4",
+        "9223372036854775830",
+        "5",
+    };
+    static const char *const bigint_auto_metadata_columns[] = {"AUTO_INCREMENT"};
+    static const char *const bigint_auto_initial_metadata[] = {"9223372036854775810"};
+    static const char *const bigint_auto_advanced_metadata[] = {"9223372036854775822"};
+    static const char *const bigint_auto_altered_metadata[] = {"9223372036854775831"};
+    static const char *const show_create_columns[] = {"Table", "Create Table"};
+    static const char bigint_auto_initial_create[] =
+        "CREATE TABLE `bigint_unsigned_ai` (\n"
+        "  `id` bigint unsigned NOT NULL AUTO_INCREMENT,\n"
+        "  `v` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`)\n"
+        ") ENGINE=InnoDB AUTO_INCREMENT=9223372036854775810 DEFAULT CHARSET=utf8mb4 "
+        "COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const bigint_auto_initial_create_values[] = {
+        "bigint_unsigned_ai",
+        bigint_auto_initial_create,
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -58647,6 +58694,121 @@ static int test_bigint_unsigned_dml_coercion_execution(void) {
         update_ignore_values,
         1,
         "update ignore bigint clipped values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE bigint_unsigned_ai ("
+        "id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, v INT) "
+        "AUTO_INCREMENT=9223372036854775808",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ai(v) VALUES (1),(2)",
+        2,
+        "bigint unsigned auto increment insert"
+    );
+    failures += expect_uint64(
+        mylite_last_insert_id(database),
+        UINT64_C(9223372036854775808),
+        "bigint unsigned auto increment last insert id"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,v FROM bigint_unsigned_ai ORDER BY id",
+        bigint_auto_columns,
+        2,
+        bigint_auto_initial_values,
+        2,
+        "bigint unsigned auto increment generated values"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT AUTO_INCREMENT FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bigint_unsigned_ai'",
+        bigint_auto_metadata_columns,
+        1,
+        bigint_auto_initial_metadata,
+        1,
+        "bigint unsigned auto increment metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE bigint_unsigned_ai",
+        show_create_columns,
+        2,
+        bigint_auto_initial_create_values,
+        1,
+        "bigint unsigned auto increment show create"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ai(id,v) VALUES (9223372036854775820,3)",
+        1,
+        "bigint unsigned explicit auto increment insert"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ai(v) VALUES (4)",
+        1,
+        "bigint unsigned auto increment after explicit high value"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,v FROM bigint_unsigned_ai ORDER BY id",
+        bigint_auto_columns,
+        2,
+        bigint_auto_advanced_values,
+        4,
+        "bigint unsigned auto increment advances after explicit value"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT AUTO_INCREMENT FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bigint_unsigned_ai'",
+        bigint_auto_metadata_columns,
+        1,
+        bigint_auto_advanced_metadata,
+        1,
+        "bigint unsigned advanced auto increment metadata"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE bigint_unsigned_ai AUTO_INCREMENT=9223372036854775830",
+        0,
+        "bigint unsigned alter auto increment"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ai(v) VALUES (5)",
+        1,
+        "bigint unsigned auto increment after alter"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE bigint_unsigned_ai AUTO_INCREMENT=10",
+        0,
+        "bigint unsigned lower alter auto increment"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,v FROM bigint_unsigned_ai ORDER BY id",
+        bigint_auto_columns,
+        2,
+        bigint_auto_altered_values,
+        5,
+        "bigint unsigned auto increment alter generated values"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT AUTO_INCREMENT FROM information_schema.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bigint_unsigned_ai'",
+        bigint_auto_metadata_columns,
+        1,
+        bigint_auto_altered_metadata,
+        1,
+        "bigint unsigned lowered alter keeps max plus one"
     );
 
     mylite_finalize(stmt);
@@ -74604,6 +74766,15 @@ static int expect_int(int actual, int expected, const char *context) {
 static int expect_int64(int64_t actual, int64_t expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %" PRId64 ", got %" PRId64 "\n", context, expected, actual);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %" PRIu64 ", got %" PRIu64 "\n", context, expected, actual);
         return 1;
     }
 

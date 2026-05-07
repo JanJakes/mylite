@@ -5,8 +5,10 @@
 #include "mylite_dml_insert_conflict.h"
 #include "mylite_dml_insert_set_row_resolve.h"
 #include "mylite_dml_insert_sqlite_bind.h"
+#include "mylite_uint64_text.h"
 #include "sqlite3.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -24,6 +26,11 @@ static char *build_insert_update_physical_sql(
 static bool insert_bound_values_equal(
     const struct mylite_insert_bound_value *left,
     const struct mylite_insert_bound_value *right
+);
+
+static bool insert_bound_value_uint64(
+    const struct mylite_insert_bound_value *value,
+    uint64_t *out_value
 );
 
 static bool insert_plan_tracks_required_warnings(
@@ -391,6 +398,7 @@ int mylite_dml_advance_insert_row_auto_increment(
     struct mylite_insert_execution_state *state
 ) {
     const struct mylite_insert_bound_value *auto_value = NULL;
+    uint64_t value = 0U;
 
     if (table == NULL || values == NULL || state == NULL) {
         return MYLITE_MISUSE;
@@ -400,9 +408,9 @@ int mylite_dml_advance_insert_row_auto_increment(
     }
 
     auto_value = &values[table->auto_increment_column_index];
-    if (auto_value->kind == MYLITE_INSERT_BOUND_INTEGER && auto_value->integer_value > 0 &&
-        (uint64_t)auto_value->integer_value >= state->next_auto_increment) {
-        state->next_auto_increment = (uint64_t)auto_value->integer_value + 1U;
+    if (insert_bound_value_uint64(auto_value, &value) && value > 0U &&
+        value >= state->next_auto_increment) {
+        state->next_auto_increment = value == UINT64_MAX ? UINT64_MAX : value + 1U;
     }
     return MYLITE_OK;
 }
@@ -454,21 +462,42 @@ static bool insert_bound_values_equal(
     return false;
 }
 
+static bool insert_bound_value_uint64(
+    const struct mylite_insert_bound_value *value,
+    uint64_t *out_value
+) {
+    if (value == NULL || out_value == NULL) {
+        return false;
+    }
+    if (value->kind == MYLITE_INSERT_BOUND_INTEGER) {
+        if (value->integer_value < 0) {
+            return false;
+        }
+        *out_value = (uint64_t)value->integer_value;
+        return true;
+    }
+    if (value->kind == MYLITE_INSERT_BOUND_TEXT) {
+        return mylite_parse_uint64_text(value->text_value, value->text_length, out_value);
+    }
+    return false;
+}
+
 static void record_insert_row_auto_increment_id(
     const struct mylite_insert_table *table,
     const struct mylite_insert_bound_value *values,
     struct mylite_insert_execution_state *state
 ) {
     const struct mylite_insert_bound_value *auto_value = NULL;
+    uint64_t value = 0U;
 
     if (!table->has_auto_increment || state->generated_insert_id) {
         return;
     }
 
     auto_value = &values[table->auto_increment_column_index];
-    if (auto_value->generated_auto_increment && auto_value->kind == MYLITE_INSERT_BOUND_INTEGER &&
-        auto_value->integer_value > 0) {
-        state->first_insert_id = (uint64_t)auto_value->integer_value;
+    if (auto_value->generated_auto_increment && insert_bound_value_uint64(auto_value, &value) &&
+        value > 0U) {
+        state->first_insert_id = value;
         state->generated_insert_id = true;
     }
 }

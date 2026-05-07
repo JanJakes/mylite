@@ -6,10 +6,12 @@
 #include "mylite_runtime.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl_types.h"
+#include "mylite_uint64_text.h"
 #include "sqlite3.h"
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 static int delete_alter_table_catalog_rows(
     mylite_db *database,
@@ -624,9 +626,10 @@ static int alter_table_effective_auto_increment(
     }
 
     sql = sqlite3_mprintf(
-        "SELECT MAX(CAST(\"%w\" AS INTEGER)) FROM \"%w\"",
+        "SELECT \"%w\" FROM \"%w\" WHERE \"%w\" IS NOT NULL",
         column->name,
-        model->physical_name
+        model->physical_name,
+        column->name
     );
     if (sql == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -638,16 +641,16 @@ static int alter_table_effective_auto_increment(
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    rc = sqlite3_step(select);
-    if (rc == SQLITE_ROW && sqlite3_column_type(select, 0) != SQLITE_NULL) {
-        sqlite3_int64 max_value = sqlite3_column_int64(select, 0);
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        uint64_t max_value = 0U;
 
-        if (max_value >= 0 && (uint64_t)max_value + 1U > *out_auto_increment) {
-            *out_auto_increment = (uint64_t)max_value + 1U;
+        if (mylite_sqlite_column_uint64(select, 0, &max_value) &&
+            max_value >= *out_auto_increment && max_value < UINT64_MAX) {
+            *out_auto_increment = max_value + 1U;
         }
     }
     sqlite3_finalize(select);
-    return rc == SQLITE_ROW ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static const struct mylite_alter_table_column *find_alter_table_auto_increment_column(

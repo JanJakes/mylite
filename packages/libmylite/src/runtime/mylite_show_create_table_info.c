@@ -7,6 +7,7 @@
 #include "mylite_show_create_common.h"
 #include "mylite_show_create_table_target.h"
 #include "mylite_span.h"
+#include "mylite_uint64_text.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>
@@ -60,7 +61,7 @@ int mylite_show_create_table_read_info(
             comment == NULL ? 0U : strlen((const char *)comment)
         );
         out_info->has_auto_increment = sqlite3_column_type(select, 1) != SQLITE_NULL;
-        out_info->auto_increment = sqlite3_column_int64(select, 1);
+        (void)mylite_sqlite_column_uint64(select, 1, &out_info->auto_increment);
         sqlite3_finalize(select);
         if (out_info->engine == NULL || out_info->table_collation == NULL ||
             out_info->table_comment == NULL) {

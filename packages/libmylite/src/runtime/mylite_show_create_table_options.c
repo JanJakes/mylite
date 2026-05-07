@@ -14,8 +14,12 @@ void mylite_show_create_table_append_options(
         collation == NULL ? mylite_charset_default_name() : collation->character_set;
 
     sqlite3_str_appendf(create_sql, " ENGINE=%s", info->engine == NULL ? "InnoDB" : info->engine);
-    if (info->has_auto_increment && info->auto_increment > 1) {
-        sqlite3_str_appendf(create_sql, " AUTO_INCREMENT=%lld", info->auto_increment);
+    if (info->has_auto_increment && info->auto_increment > 1U) {
+        sqlite3_str_appendf(
+            create_sql,
+            " AUTO_INCREMENT=%llu",
+            (unsigned long long)info->auto_increment
+        );
     }
     sqlite3_str_appendf(
         create_sql,

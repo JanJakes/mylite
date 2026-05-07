@@ -4,8 +4,10 @@
 #include "mylite_diagnostics.h"
 #include "mylite_runtime.h"
 #include "mylite_span.h"
+#include "mylite_uint64_text.h"
 #include "sqlite3.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -384,9 +386,10 @@ static int read_insert_auto_increment_max(
 
     sqlite3_str_appendf(
         sql,
-        "SELECT max(\"%w\") FROM \"%w\"",
+        "SELECT \"%w\" FROM \"%w\" WHERE \"%w\" IS NOT NULL",
         table->columns[table->auto_increment_column_index].name,
-        table->physical_name
+        table->physical_name,
+        table->columns[table->auto_increment_column_index].name
     );
     select_sql = sqlite3_str_finish(sql);
     if (select_sql == NULL) {
@@ -407,16 +410,16 @@ static int read_insert_auto_increment_max(
         return mylite_diagnostics_set_sqlite_error(database);
     }
 
-    rc = sqlite3_step(select);
-    if (rc == SQLITE_ROW && sqlite3_column_type(select, 0) != SQLITE_NULL) {
-        sqlite3_int64 max_value = sqlite3_column_int64(select, 0);
+    while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
+        uint64_t max_value = 0U;
 
-        if (max_value >= 0) {
-            *out_next_auto_increment = (uint64_t)max_value + 1U;
+        if (mylite_sqlite_column_uint64(select, 0, &max_value) &&
+            max_value >= *out_next_auto_increment && max_value < UINT64_MAX) {
+            *out_next_auto_increment = max_value + 1U;
         }
     }
     sqlite3_finalize(select);
-    return rc == SQLITE_ROW ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
+    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static size_t insert_table_column_index(

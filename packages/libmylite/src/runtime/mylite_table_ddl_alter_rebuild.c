@@ -102,7 +102,9 @@ static char *alter_table_shadow_physical_name(mylite_db *database, const char *p
 
 static bool sqlite_table_name_exists(mylite_db *database, const char *name);
 
-static const char *sqlite_affinity_for_catalog_data_type(const char *data_type);
+static const char *sqlite_affinity_for_catalog_column(
+    const struct mylite_alter_table_column *column
+);
 
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
@@ -214,7 +216,7 @@ static char *build_alter_table_create_shadow_sql(
             sql,
             "\"%w\" %s",
             model->columns[index].name,
-            sqlite_affinity_for_catalog_data_type(model->columns[index].data_type)
+            sqlite_affinity_for_catalog_column(&model->columns[index])
         );
     }
     sqlite3_str_append(sql, ")", 1);
@@ -597,8 +599,16 @@ static bool sqlite_table_name_exists(mylite_db *database, const char *name) {
     return exists;
 }
 
-static const char *sqlite_affinity_for_catalog_data_type(const char *data_type) {
+static const char *sqlite_affinity_for_catalog_column(
+    const struct mylite_alter_table_column *column
+) {
+    const char *data_type = column == NULL ? NULL : column->data_type;
+
     if (data_type == NULL) {
+        return "TEXT";
+    }
+    if (mylite_ascii_case_equal(data_type, "bigint") &&
+        mylite_text_contains_word(column->column_type, "unsigned")) {
         return "TEXT";
     }
     if (mylite_ascii_case_equal(data_type, "tinyint") ||

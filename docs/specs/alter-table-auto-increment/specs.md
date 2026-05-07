@@ -52,6 +52,12 @@ Observed MySQL 8.4.9 results:
 - `CREATE TABLE no_ai (id INT PRIMARY KEY)` followed by
   `ALTER TABLE no_ai AUTO_INCREMENT=50` succeeded and left
   `information_schema.TABLES.AUTO_INCREMENT` null.
+- `CREATE TABLE ai64 (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY)
+  AUTO_INCREMENT=9223372036854775808` followed by generated inserts produced
+  ids `9223372036854775808` and `9223372036854775809`; a later
+  `ALTER TABLE ai64 AUTO_INCREMENT=9223372036854775830` made the next generated
+  value `9223372036854775830`, while lowering the option below the maximum kept
+  the exposed next value at `MAX(id) + 1`.
 
 ## MyLite Behavior
 
@@ -63,6 +69,10 @@ When the final table model contains an `AUTO_INCREMENT` column, MyLite stores
 the larger of the requested value and `MAX(auto_column) + 1` in the table
 catalog. This keeps `INFORMATION_SCHEMA.TABLES` and `SHOW TABLE STATUS`
 aligned with the next generated value before a later insert runs.
+For `BIGINT UNSIGNED` auto-increment columns above signed 64-bit range, the
+catalog and physical store preserve the sequence value as canonical decimal
+text so `SHOW CREATE TABLE`, `INFORMATION_SCHEMA.TABLES`, and generated inserts
+do not lose precision through SQLite integer or floating-point affinity.
 
 When the final table model has no `AUTO_INCREMENT` column, MyLite treats the
 table option as an accepted no-op. It does not create a new catalog value and
@@ -86,5 +96,7 @@ Runtime tests compare the MySQL-observed generated-value behavior:
 - raising the next value to `50`;
 - trying to lower the value below existing rows;
 - using the no-equals spelling;
+- raising, generating, and lowering `BIGINT UNSIGNED AUTO_INCREMENT` values
+  above `INT64_MAX`;
 - accepting the option as a no-op on tables without an auto-increment column,
   both with and without an existing create-time table option value.

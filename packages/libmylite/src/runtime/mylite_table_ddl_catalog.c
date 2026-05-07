@@ -6,6 +6,7 @@
 #include "mylite_span.h"
 #include "mylite_table_ddl.h"
 #include "mylite_table_ddl_create_catalog_index.h"
+#include "mylite_uint64_text.h"
 #include "sqlite3.h"
 
 #include <stdbool.h>
@@ -166,11 +167,11 @@ static int insert_table_catalog_row(
     sqlite3_bind_text(insert, 2, plan->table_name, -1, sqlite_transient_destructor());
     sqlite3_bind_text(insert, 3, "InnoDB", -1, SQLITE_STATIC);
     if (plan->options.has_auto_increment) {
-        sqlite3_bind_int64(
-            insert,
-            bind_auto_increment,
-            (sqlite3_int64)plan->options.auto_increment
-        );
+        rc = mylite_sqlite_bind_uint64(insert, bind_auto_increment, plan->options.auto_increment);
+        if (rc != SQLITE_OK) {
+            sqlite3_finalize(insert);
+            return mylite_diagnostics_set_sqlite_error(database);
+        }
     } else {
         sqlite3_bind_null(insert, bind_auto_increment);
     }

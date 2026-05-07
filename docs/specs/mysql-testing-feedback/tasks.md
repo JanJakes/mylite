@@ -192,11 +192,17 @@ MySQL 8.4.9 runtime before each item is marked complete.
       non-strict and `INSERT IGNORE` clipping to finite endpoints, invalid
       approximate text truncation diagnostics, and single-precision storage
       rounding for `FLOAT` targets.
+- [x] Align first-slice `BIGINT UNSIGNED AUTO_INCREMENT` generation and
+      metadata above signed 64-bit range. Covered behavior includes
+      `CREATE TABLE ... AUTO_INCREMENT=9223372036854775808`, generated inserts,
+      explicit high-value sequence advancement, `ALTER TABLE ... AUTO_INCREMENT`
+      raising and lowering, `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT`,
+      `SHOW CREATE TABLE`, and public last-insert-id preservation.
 - [ ] Align remaining numeric/string casts and coercions in strict and
       non-strict modes, including TEXT/BLOB limits, binary-string byte edge
       cases, charset-specific string validation, remaining floating-point
-      display and warning-order edge cases, `BIGINT UNSIGNED` auto-increment
-      and broad unsigned arithmetic beyond signed 64-bit range, scalar
+      display and warning-order edge cases, broad unsigned arithmetic beyond
+      signed 64-bit range, scalar
       `CAST`/`CONVERT` value semantics beyond the covered floating-point target
       slice, and conversion/truncation
       `IGNORE` demotion beyond the currently covered `INSERT IGNORE` invalid

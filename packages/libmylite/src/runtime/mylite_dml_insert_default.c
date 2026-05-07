@@ -5,6 +5,7 @@
 #include "mylite_dml.h"
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
+#include "mylite_uint64_text.h"
 #include "sql/mylite_parser.h"
 
 #include <ctype.h>
@@ -464,9 +465,6 @@ int mylite_dml_resolve_insert_text_value(
         }
         return status;
     }
-    if (column->auto_increment) {
-        return mylite_dml_insert_set_unsupported_expression_error(database);
-    }
     if (insert_text_requires_integer_text_coercion(column, text, text_length)) {
         return resolve_insert_large_integer_text_value(
             database,
@@ -476,6 +474,9 @@ int mylite_dml_resolve_insert_text_value(
             ignore,
             out_value
         );
+    }
+    if (column->auto_increment) {
+        return mylite_dml_insert_set_unsupported_expression_error(database);
     }
     if (mylite_dml_parse_insert_real_text(text, &real_value)) {
         int status = MYLITE_OK;
@@ -556,21 +557,27 @@ int mylite_dml_allocate_insert_auto_increment(
     }
 
     value = state->next_auto_increment == 0U ? 1U : state->next_auto_increment;
-    if (value > (uint64_t)INT64_MAX) {
-        (void)
-            mylite_diagnostics_set_error_message(database, "AUTO_INCREMENT value is out of range");
-        return MYLITE_EXEC_ERROR;
-    }
     status = reserve_insert_auto_increment(database, statement_row_count, state, value);
     if (status != MYLITE_OK) {
         return status;
     }
     state->next_auto_increment = value + 1U;
-    *out_value = (struct mylite_insert_bound_value){
-        .kind = MYLITE_INSERT_BOUND_INTEGER,
-        .integer_value = (int64_t)value,
-        .generated_auto_increment = true,
-    };
+    if (value <= (uint64_t)INT64_MAX) {
+        *out_value = (struct mylite_insert_bound_value){
+            .kind = MYLITE_INSERT_BOUND_INTEGER,
+            .integer_value = (int64_t)value,
+            .generated_auto_increment = true,
+        };
+    } else {
+        out_value->text_value = mylite_copy_uint64_text(value);
+        if (out_value->text_value == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        out_value->kind = MYLITE_INSERT_BOUND_TEXT;
+        out_value->text_length = strlen(out_value->text_value);
+        out_value->generated_auto_increment = true;
+    }
     return MYLITE_OK;
 }
 
@@ -599,7 +606,7 @@ static int reserve_insert_auto_increment(
     if (state->reserved_auto_increment_end != 0U) {
         return MYLITE_OK;
     }
-    if (statement_row_count > (uint64_t)INT64_MAX - first_value) {
+    if (statement_row_count > UINT64_MAX - first_value) {
         (void)
             mylite_diagnostics_set_error_message(database, "AUTO_INCREMENT value is out of range");
         return MYLITE_EXEC_ERROR;

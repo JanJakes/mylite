@@ -106,6 +106,9 @@ For signed integer-family columns, MyLite:
   `INT64_MIN`, avoiding lossy floating-point coercion before range diagnostics
 - stores covered `BIGINT UNSIGNED` values above `INT64_MAX` as canonical
   decimal text in MyLite's physical store so they can be read back exactly
+- generates, advances, persists, and exposes `BIGINT UNSIGNED AUTO_INCREMENT`
+  sequence values above `INT64_MAX` as exact decimal text for covered
+  `CREATE TABLE`, `INSERT`, and `ALTER TABLE ... AUTO_INCREMENT` paths
 - reports range condition 1264 before truncation condition 1265 when both
   apply to the same integer value
 
@@ -132,9 +135,9 @@ For approximate numeric columns, MyLite:
 
 This slice intentionally does not claim full fixed-point precision. It improves
 observable storage, warnings, and strict/non-strict control for common
-application writes while keeping full decimal arithmetic, `BIGINT UNSIGNED`
-auto-increment beyond signed 64-bit range, broad unsigned arithmetic, and
-exhaustive approximate-number display formatting tracked separately.
+application writes while keeping full decimal arithmetic, broad unsigned
+arithmetic, and exhaustive approximate-number display formatting tracked
+separately.
 
 ## Test Expectations
 
@@ -148,6 +151,9 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
   `BIGINT` endpoints
 - exact `BIGINT UNSIGNED` endpoint storage and overflow diagnostics for direct
   numeric literals, quoted values, and `CAST(... AS UNSIGNED)` assignments
+- exact `BIGINT UNSIGNED AUTO_INCREMENT` generation, explicit high-value
+  advancement, `INFORMATION_SCHEMA.TABLES.AUTO_INCREMENT`, `SHOW CREATE TABLE`,
+  and `ALTER TABLE ... AUTO_INCREMENT` behavior above signed 64-bit range
 - exact signed `BIGINT` minimum storage, underflow diagnostics, non-strict
   clipping, and trailing-character precedence for direct and quoted values
 - strict rejection, non-strict clipping, and `INSERT IGNORE` warning demotion

@@ -365,16 +365,20 @@ static int execute_select_from_plan(
     const struct planned_select *plan,
     mylite_result **out_result
 );
-static bool select_statement_is_current_schema_scalar(const struct mylite_sql_ast_node *statement);
-static int execute_current_schema_select_statement(
+static bool select_statement_is_session_scalar(const struct mylite_sql_ast_node *statement);
+static int execute_session_scalar_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static const char *session_scalar_value(
+    const struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
 static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(
     const struct mylite_sql_ast_node *expression
 );
-static bool is_current_schema_expression(const struct mylite_sql_ast_node *expression);
+static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expression);
 static int copy_source_span_text(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
@@ -988,6 +992,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
         break;
     }
 
@@ -1330,8 +1336,8 @@ static int execute_select_statement(
     struct planned_select plan = {0};
     int rc = MYLITE_OK;
 
-    if (select_statement_is_current_schema_scalar(statement)) {
-        return execute_current_schema_select_statement(database, statement, out_result);
+    if (select_statement_is_session_scalar(statement)) {
+        return execute_session_scalar_select_statement(database, statement, out_result);
     }
 
     rc = plan_select(database, statement, &plan);
@@ -2480,7 +2486,7 @@ static int execute_select_from_plan(
     return finish_successful_result(database, result, out_result);
 }
 
-static bool select_statement_is_current_schema_scalar(const struct mylite_sql_ast_node *statement) {
+static bool select_statement_is_session_scalar(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     const struct mylite_sql_ast_node *select_item = NULL;
@@ -2501,7 +2507,7 @@ static bool select_statement_is_current_schema_scalar(const struct mylite_sql_as
     }
     while (select_item != NULL) {
         if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_current_schema_expression(child_at(select_item, 0U))) {
+            !is_session_scalar_expression(child_at(select_item, 0U))) {
             return false;
         }
         select_item = select_item->next_sibling;
@@ -2510,7 +2516,7 @@ static bool select_statement_is_current_schema_scalar(const struct mylite_sql_as
     return true;
 }
 
-static int execute_current_schema_select_statement(
+static int execute_session_scalar_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -2551,8 +2557,8 @@ static int execute_current_schema_select_statement(
             }
         }
         free(column_name);
-        if (rc == MYLITE_OK && database->session.has_selected_schema) {
-            values[column_index] = database->session.selected_schema;
+        if (rc == MYLITE_OK) {
+            values[column_index] = session_scalar_value(database, expression);
         }
         ++column_index;
         select_item = select_item->next_sibling;
@@ -2572,7 +2578,32 @@ static int execute_current_schema_select_statement(
     return finish_successful_result(database, result, out_result);
 }
 
-static bool is_current_schema_expression(const struct mylite_sql_ast_node *expression) {
+static const char *session_scalar_value(
+    const struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+        if (database->session.has_selected_schema) {
+            return database->session.selected_schema;
+        }
+        return NULL;
+    case MYLITE_SQL_AST_USER_FUNCTION:
+        return database->session.client_user_identity;
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+        return database->session.current_user_identity;
+    default:
+        return NULL;
+    }
+}
+
+static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expression) {
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL) {
@@ -2582,6 +2613,12 @@ static bool is_current_schema_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_USER_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION) {
         return true;
     }
 

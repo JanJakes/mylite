@@ -293,6 +293,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "database_function";
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
         return "schema_function";
+    case MYLITE_SQL_AST_USER_FUNCTION:
+        return "user_function";
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+        return "current_user_function";
     }
 
     return "unknown";

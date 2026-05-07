@@ -403,12 +403,23 @@ expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 expression(A) ::= DATABASE(T) LPAREN RPAREN(R). {
-    A = mylite_sql_parser_make_current_database_function(
+    A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_DATABASE_FUNCTION, R);
 }
 expression(A) ::= SCHEMA(T) LPAREN RPAREN(R). {
-    A = mylite_sql_parser_make_current_database_function(
+    A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_SCHEMA_FUNCTION, R);
+}
+expression(A) ::= USER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_USER_FUNCTION, R);
+}
+expression(A) ::= CURRENT_USER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CURRENT_USER_FUNCTION, R);
+}
+expression(A) ::= CURRENT_USER(T). {
+    A = mylite_sql_parser_make_current_user_keyword(state, T);
 }
 expression(A) ::= PLUS(T) expression(B). [UPLUS] {
     A = mylite_sql_parser_make_unary_expression(
@@ -484,6 +495,9 @@ identifier(A) ::= IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= QUOTED_IDENTIFIER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= USER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

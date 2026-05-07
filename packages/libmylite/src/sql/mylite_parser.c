@@ -1009,7 +1009,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     return parenthesized;
 }
 
-struct mylite_sql_ast_node *mylite_sql_parser_make_current_database_function(
+struct mylite_sql_ast_node *mylite_sql_parser_make_zero_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
     enum mylite_sql_ast_node_kind function_kind,
@@ -1019,6 +1019,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_current_database_function(
         state,
         function_kind,
         span_join(span_from_token(&function_token), span_from_token(&right_paren))
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_user_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_CURRENT_USER_FUNCTION,
+        span_from_token(&current_user_token)
     );
 }
 
@@ -1355,6 +1366,7 @@ static bool map_keyword_token(
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
+        {"CURRENT_USER", MYLITE_SQL_PARSE_CURRENT_USER},
         {"ASC", MYLITE_SQL_PARSE_ASC},
         {"DESC", MYLITE_SQL_PARSE_DESC},
         {"LIMIT", MYLITE_SQL_PARSE_LIMIT},
@@ -1389,6 +1401,7 @@ static bool map_keyword_token(
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
         {"NULL", MYLITE_SQL_PARSE_NULL},
         {"DUAL", MYLITE_SQL_PARSE_DUAL},
+        {"USER", MYLITE_SQL_PARSE_USER},
     };
 
     if (previous_token_was_dot) {

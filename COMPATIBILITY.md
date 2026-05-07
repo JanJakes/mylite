@@ -26,7 +26,7 @@ tests.
 | --- | :-: | --- | --- |
 | Dynamic current database | 🟡 | `USE` selects catalog schemas; `DATABASE()` / `SCHEMA()` return the selected schema or `NULL` in the limited scalar-select slice; dropping the selected schema clears the selection. | [SQL schemas](docs/compatibility/sql-schemas.md), [runtime session state](docs/compatibility/runtime-session-sql-modes.md), [system functions](docs/compatibility/functions-system.md) |
 | Database listing baseline | 🟡 | Descriptor-driven `SHOW DATABASES` / `SHOW SCHEMAS` for MyLite catalog schemas only; no system schemas, filters, or privileges. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
-| Current user identity | ❌ | Exposes `root@%`. | [SQL users, roles, and privileges](docs/compatibility/sql-users-privileges.md), [system functions](docs/compatibility/functions-system.md) |
+| Current user identity | 🟡 | Limited scalar `USER()`, `CURRENT_USER()`, and bare `CURRENT_USER` expose MyLite's embedded `root@%` session identity; no accounts, authentication, roles, privileges, or definer semantics. | [SQL users, roles, and privileges](docs/compatibility/sql-users-privileges.md), [system functions](docs/compatibility/functions-system.md) |
 | SQLSTATE values | ❌ | MySQL-compatible SQLSTATEs. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
 | Error numbers | ❌ | MySQL-compatible error codes. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
 | Warning numbers | ❌ | MySQL-compatible warning codes. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
@@ -430,10 +430,10 @@ tests.
 | `DATABASE()` | 🟡 | Limited one-row scalar `SELECT DATABASE()` with optional `FROM DUAL`; returns connection-local selected schema or `NULL`. | [system functions](docs/compatibility/functions-system.md) |
 | `SCHEMA()` | 🟡 | Limited synonym for `DATABASE()` in the same scalar-select slice. | [system functions](docs/compatibility/functions-system.md) |
 | `FOUND_ROWS()` | ❌ | Rows before LIMIT. | [system functions](docs/compatibility/functions-system.md) |
-| `CURRENT_USER()` / `CURRENT_USER` | ❌ | Current authenticated user. | [system functions](docs/compatibility/functions-system.md) |
+| `CURRENT_USER()` / `CURRENT_USER` | 🟡 | Limited one-row scalar select returns MyLite's embedded current identity `root@%`; no account or definer semantics. | [system functions](docs/compatibility/functions-system.md) |
 | `LAST_INSERT_ID()` | ❌ | Last auto-increment value. | [system functions](docs/compatibility/functions-system.md) |
 | `ROW_COUNT()` | ❌ | Rows affected by last statement. | [system functions](docs/compatibility/functions-system.md) |
-| `USER()` | ❌ | Client user identity. | [system functions](docs/compatibility/functions-system.md) |
+| `USER()` | 🟡 | Limited one-row scalar select returns MyLite's embedded client identity `root@%`; no authentication or host matching. | [system functions](docs/compatibility/functions-system.md) |
 | `VERSION()` | ❌ | MySQL-compatible version string. | [system functions](docs/compatibility/functions-system.md) |
 
 ### Temporal Functions

@@ -8,7 +8,7 @@ miscellaneous system helpers.
 | `BENCHMARK()` | ❌ | Repeatedly execute an expression |
 | `CONNECTION_ID()` | ❌ | Return connection ID (thread ID) for the connection |
 | `CURRENT_ROLE()` | ❌ | Return current active roles |
-| `CURRENT_USER(), CURRENT_USER` | ❌ | The authenticated user name and host name |
+| `CURRENT_USER(), CURRENT_USER` | 🟡 | Limited one-row scalar select returns MyLite's embedded current identity `root@%`; no accounts, definers, roles, privileges, or table-backed evaluation |
 | `DATABASE()` | 🟡 | Limited one-row scalar `SELECT DATABASE()` with optional `FROM DUAL`; returns selected MyLite catalog schema or `NULL`; no aliases, table-backed evaluation, clauses, or general expression support |
 | `ExtractValue()` | ❌ | Extract a value from an XML string using XPath notation |
 | `FOUND_ROWS()` | ❌ | Rows before LIMIT |
@@ -29,7 +29,7 @@ miscellaneous system helpers.
 | `SLEEP()` | ❌ | Sleep for a number of seconds |
 | `SYSTEM_USER()` | ❌ | Synonym for USER() |
 | `UpdateXML()` | ❌ | Return replaced XML fragment |
-| `USER()` | ❌ | The user name and host name provided by the client |
+| `USER()` | 🟡 | Limited one-row scalar select returns MyLite's embedded client identity `root@%`; no authentication, host matching, privileges, or table-backed evaluation |
 | `VERSION()` | ❌ | Return a string that indicates the MySQL server version |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

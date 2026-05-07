@@ -232,11 +232,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_expression(
     struct mylite_sql_ast_node *expression,
     struct mylite_sql_token right_paren
 );
-struct mylite_sql_ast_node *mylite_sql_parser_make_current_database_function(
+struct mylite_sql_ast_node *mylite_sql_parser_make_zero_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
     enum mylite_sql_ast_node_kind function_kind,
     struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_keyword(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_user_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition_list(
     struct mylite_sql_parser_state *state,

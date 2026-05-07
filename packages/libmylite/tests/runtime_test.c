@@ -51571,11 +51571,28 @@ static int test_insert_values_execution(void) {
     );
     failures += execute_sql_expect_done_affected(
         database,
+        "INSERT insert_forms SELECT 13, 'thirteen' FROM DUAL LIMIT 0",
+        0,
+        "insert select from dual without INTO limit zero affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
         "INSERT INTO insert_forms SELECT DISTINCT 12, 'twelve' FROM DUAL WHERE TRUE "
         "ORDER BY 1 LIMIT 1",
         1,
         "insert select distinct from dual affected rows"
     );
+    failures +=
+        prepare_sql(database, "INSERT INTO insert_forms SELECT * FROM DUAL", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert select wildcard from dual");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "No tables used",
+        "insert select wildcard from dual error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += prepare_sql(database, "INSERT INTO insert_forms () VALUES (4)", MYLITE_OK, &stmt);
     failures += expect_status(
         mylite_step(stmt),

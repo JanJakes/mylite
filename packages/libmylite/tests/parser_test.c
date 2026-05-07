@@ -7135,6 +7135,10 @@ static int test_insert_values_syntax(void) {
     failures += parse_sql("INSERT INTO t VALUES (1,);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("INSERT t SELECT 1 FROM DUAL AS d;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("INSERT INTO t VALUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

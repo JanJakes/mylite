@@ -14,6 +14,7 @@ In scope:
 - `DROP TABLE` dropping a shadowing temporary table before the persistent table
 - `DROP TEMPORARY TABLE` targeting only temporary tables
 - `SELECT`, `INSERT`, `REPLACE`, `UPDATE`, `DELETE`, `ALTER TABLE`,
+  standalone `CREATE INDEX`, standalone `DROP INDEX`,
   `SHOW COLUMNS`, `DESCRIBE`, `SHOW INDEX`, and `SHOW CREATE TABLE` resolving
   the temporary table while it shadows a persistent table
 - temporary `AUTO_INCREMENT` state independent from persistent tables with the
@@ -26,8 +27,6 @@ Out of scope:
 - temporary views
 - temporary table privilege checks
 - implicit-commit differences between temporary and persistent DDL
-- temporary table support for standalone `CREATE INDEX` and `DROP INDEX`
-  surfaces outside the verified `ALTER TABLE` path
 
 ## Sources
 
@@ -145,6 +144,10 @@ Table-backed SELECT and DML use the same physical name as persistent tables, so
 SQLite resolves the temporary physical table while it exists. Column, unique
 index, and auto-increment metadata helpers read and update temporary catalog
 rows first.
+
+Standalone `CREATE INDEX` and `DROP INDEX` resolve temporary tables through the
+same model loader as `ALTER TABLE` and mutate the temporary index catalog for
+temporary targets.
 
 `SHOW COLUMNS`, `DESCRIBE`, `SHOW INDEX`, and `SHOW CREATE TABLE` resolve the
 temporary catalog first. `SHOW CREATE TABLE` emits `CREATE TEMPORARY TABLE` for

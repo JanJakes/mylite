@@ -39881,6 +39881,23 @@ static int test_temporary_table_execution(void) {
         "YES",
         NULL,
     };
+    static const char temp_create_with_standalone_index[] =
+        "CREATE TEMPORARY TABLE `shadowed` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `temp_note` varchar(20) DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  KEY `idx_temp_note` (`temp_note`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const temp_create_with_standalone_index_values[] = {
+        "shadowed",
+        temp_create_with_standalone_index
+    };
+    static const char *const show_temp_standalone_index_values[] = {
+        "shadowed", "0",         "PRIMARY", "1", "id",  "A",  "0",        NULL,    NULL,
+        "",         "BTREE",     "",        "",  "YES", NULL, "shadowed", "1",     "idx_temp_note",
+        "1",        "temp_note", "A",       "0", NULL,  NULL, "YES",      "BTREE", "",
+        "",         "YES",       NULL,
+    };
     static const char *const show_temp_only_columns[] = {
         "Tables_in_mylite_temp_tables (temp_only)"
     };
@@ -40059,6 +40076,36 @@ static int test_temporary_table_execution(void) {
         temp_create_values,
         1,
         "show create table resolves temporary table"
+    );
+    failures +=
+        execute_sql(database, "CREATE INDEX idx_temp_note ON shadowed (temp_note)", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW INDEX FROM shadowed",
+        show_index_columns,
+        15,
+        show_temp_standalone_index_values,
+        2,
+        "show index exposes standalone temporary index"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE shadowed",
+        show_create_columns,
+        2,
+        temp_create_with_standalone_index_values,
+        1,
+        "show create table exposes standalone temporary index"
+    );
+    failures += execute_sql(database, "DROP INDEX idx_temp_note ON shadowed", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW INDEX FROM shadowed",
+        show_index_columns,
+        15,
+        show_index_values,
+        1,
+        "show index omits dropped standalone temporary index"
     );
     failures +=
         execute_sql(database, "ALTER TABLE shadowed ADD COLUMN altered INT NULL", MYLITE_DONE);

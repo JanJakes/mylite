@@ -12,7 +12,8 @@ int mylite_table_ddl_create_index_catalog_transaction(
 );
 int mylite_table_ddl_drop_index_catalog_transaction(
     mylite_db *database,
-    const struct mylite_index_ddl_plan *plan
+    const struct mylite_index_ddl_plan *plan,
+    const struct mylite_alter_table_model *model
 );
 
 #endif

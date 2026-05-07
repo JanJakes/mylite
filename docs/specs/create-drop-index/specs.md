@@ -549,9 +549,9 @@ therefore autocommit unless the client starts a new transaction.
 The first executable slice is implemented for supported base tables:
 
 - `CREATE INDEX` and `CREATE UNIQUE INDEX` parse and execute for identifier key
-  parts, prefix lengths, `ASC`/`DESC`, BTREE/HASH clauses, comments,
-  visibility, engine attributes, and embedded no-op `ALGORITHM`/`LOCK`
-  modifiers.
+  parts on supported persistent and temporary base tables, prefix lengths,
+  `ASC`/`DESC`, BTREE/HASH clauses, comments, visibility, engine attributes,
+  and embedded no-op `ALGORITHM`/`LOCK` modifiers.
 - successful creation writes internal index catalog rows surfaced through
   `INFORMATION_SCHEMA.STATISTICS`, including `NON_UNIQUE`, `SEQ_IN_INDEX`,
   `COLUMN_NAME`, `COLLATION`, `SUB_PART`, `INDEX_TYPE`, `INDEX_COMMENT`, and

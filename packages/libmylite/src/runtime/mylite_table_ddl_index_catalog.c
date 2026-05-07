@@ -22,7 +22,11 @@ static int insert_standalone_index_catalog_part(
     size_t part_index
 );
 
-static int delete_index_catalog_rows(mylite_db *database, const struct mylite_index_ddl_plan *plan);
+static int delete_index_catalog_rows(
+    mylite_db *database,
+    const struct mylite_index_ddl_plan *plan,
+    bool temporary
+);
 
 static sqlite3_destructor_type sqlite_transient_destructor(void);
 
@@ -59,7 +63,8 @@ int mylite_table_ddl_create_index_catalog_transaction(
 
 int mylite_table_ddl_drop_index_catalog_transaction(
     mylite_db *database,
-    const struct mylite_index_ddl_plan *plan
+    const struct mylite_index_ddl_plan *plan,
+    const struct mylite_alter_table_model *model
 ) {
     int status = mylite_transaction_begin_storage(database);
 
@@ -67,23 +72,14 @@ int mylite_table_ddl_drop_index_catalog_transaction(
         return status;
     }
 
-    status = delete_index_catalog_rows(database, plan);
+    status = delete_index_catalog_rows(database, plan, model->temporary);
     if (status == MYLITE_OK) {
-        char *physical_name =
-            mylite_catalog_physical_table_name(plan->schema_name, plan->table_name);
-
-        if (physical_name == NULL) {
-            (void)mylite_diagnostics_set_error_message(database, "out of memory");
-            status = MYLITE_NOMEM;
-        } else {
-            status = mylite_catalog_refresh_table_statistics(
-                database,
-                plan->schema_name,
-                plan->table_name,
-                physical_name
-            );
-            free(physical_name);
-        }
+        status = mylite_catalog_refresh_table_statistics(
+            database,
+            plan->schema_name,
+            plan->table_name,
+            model->physical_name
+        );
     }
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_storage(database);
@@ -102,15 +98,22 @@ static int insert_standalone_index_catalog_rows(
     const struct mylite_alter_table_index *index
 ) {
     sqlite3_stmt *insert = NULL;
-    static const char sql[] =
-        "INSERT INTO __mylite_index_catalog("
+    char *sql = sqlite3_mprintf(
+        "INSERT INTO %s("
         "table_catalog, table_schema, table_name, non_unique, index_schema, index_name, "
         "seq_in_index, column_name, collation, cardinality, sub_part, packed, nullable, "
         "index_type, display_index_type, comment, index_comment, is_visible, expression)"
-        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, ?, ?, ?, '', ?, ?, NULL)";
-    int rc =
-        sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+        " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, ?, ?, ?, '', ?, ?, NULL)",
+        mylite_catalog_index_catalog_name(model->temporary)
+    );
+    int rc = SQLITE_OK;
 
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &insert, NULL);
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
@@ -231,12 +234,21 @@ static int insert_standalone_index_catalog_part(
 
 static int delete_index_catalog_rows(
     mylite_db *database,
-    const struct mylite_index_ddl_plan *plan
+    const struct mylite_index_ddl_plan *plan,
+    bool temporary
 ) {
     sqlite3_stmt *delete_stmt = NULL;
-    static const char sql[] = "DELETE FROM __mylite_index_catalog "
-                              "WHERE table_schema = ? AND table_name = ? AND index_name = ?";
-    int rc = sqlite3_prepare_v3(
+    char *sql = sqlite3_mprintf(
+        "DELETE FROM %s WHERE table_schema = ? AND table_name = ? AND index_name = ?",
+        mylite_catalog_index_catalog_name(temporary)
+    );
+    int rc = SQLITE_OK;
+
+    if (sql == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v3(
         database->sqlite,
         sql,
         -1,
@@ -244,7 +256,7 @@ static int delete_index_catalog_rows(
         &delete_stmt,
         NULL
     );
-
+    sqlite3_free(sql);
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }

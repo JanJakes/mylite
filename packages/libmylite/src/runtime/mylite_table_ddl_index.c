@@ -89,7 +89,7 @@ int mylite_table_ddl_execute_drop_index_statement(
         status = apply_drop_index_to_model(database, plan, &model);
     }
     if (status == MYLITE_OK) {
-        status = mylite_table_ddl_drop_index_catalog_transaction(database, plan);
+        status = mylite_table_ddl_drop_index_catalog_transaction(database, plan, &model);
     }
 
     mylite_table_ddl_alter_table_model_deinit(&model);

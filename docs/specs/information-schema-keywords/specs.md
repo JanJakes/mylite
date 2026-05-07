@@ -58,10 +58,10 @@ The result has exactly these columns in order:
 
 Column metadata observed for a `SELECT` row in MySQL 8.4.9:
 
-| Column | Type | Collation | Length | Flags |
-| --- | --- | --- | ---: | --- |
-| `WORD` | `VAR_STRING` | `latin1_swedish_ci` | 128 | `PART_KEY` |
-| `RESERVED` | `LONG` | `binary` | 11 | `NUM` |
+| Column | Type | Collation | Length | Flags | Nullable |
+| --- | --- | --- | ---: | --- | --- |
+| `WORD` | `VAR_STRING` | `latin1_swedish_ci` | 128 | none | yes |
+| `RESERVED` | `LONG` | `binary` | 11 | `NUM` | yes |
 
 The verified MySQL 8.4.9 keyword catalog contains 734 rows, of which 259 rows
 have `RESERVED = 1`. The first five rows from `SELECT * FROM
@@ -167,16 +167,6 @@ metadata views:
 system-view list, including `SHOW FULL TABLES FROM information_schema LIKE
 'keywords'` returning `KEYWORDS`, `SYSTEM VIEW`.
 
-## Metadata Limitation
-
-Existing `INFORMATION_SCHEMA` `SELECT` execution prepares SQLite-backed
-statements directly and does not attach full MySQL field metadata for any
-supported information-schema table. This first slice keeps that behavior
-consistent: tests verify column names, values, numeric `RESERVED` values, row
-order, and case-insensitive resolution, while exact field descriptors for
-`INFORMATION_SCHEMA.KEYWORDS` remain deferred to a unified information-schema
-metadata pass.
-
 ## Composable Query Forms
 
 The following MySQL-supported forms are covered by the shared system-view
@@ -217,6 +207,7 @@ Parser coverage:
 Runtime coverage:
 
 - exact uppercase result column names
+- MySQL-shaped result metadata for `WORD` and `RESERVED`
 - first rows match lexer catalog order
 - representative reserved and nonreserved rows expose numeric `RESERVED`
   values
@@ -235,5 +226,3 @@ Runtime coverage:
 - MyLite exposes its current lexer-supported keyword catalog instead of
   claiming exact MySQL 8.4.9 keyword catalog completeness. The catalog may be
   smaller or differ until full MySQL grammar coverage lands.
-- Full MySQL field metadata for information-schema `SELECT` statements remains
-  deferred.

@@ -28,6 +28,8 @@ static const uint64_t information_schema_engine_comment_length = 80U;
 static const uint64_t information_schema_yes_no_length = 3U;
 static const uint64_t information_schema_collation_id_length = 20U;
 static const uint64_t information_schema_pad_attribute_length = 9U;
+static const uint64_t information_schema_keyword_word_length = 128U;
+static const uint64_t information_schema_keyword_reserved_length = 11U;
 
 static const char *information_schema_table_name(enum mylite_information_schema_table table);
 
@@ -64,6 +66,10 @@ static struct mylite_field_descriptor information_schema_character_sets_column_d
 );
 
 static struct mylite_field_descriptor information_schema_collations_column_descriptor(
+    const char *name
+);
+
+static struct mylite_field_descriptor information_schema_keywords_column_descriptor(
     const char *name
 );
 
@@ -253,11 +259,12 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
         return information_schema_character_sets_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_COLLATIONS:
         return information_schema_collations_column_descriptor(name);
+    case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
+        return information_schema_keywords_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
     case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
-    case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
     case MYLITE_INFORMATION_SCHEMA_CHECK_CONSTRAINTS:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         break;
@@ -701,6 +708,34 @@ static struct mylite_field_descriptor information_schema_collations_column_descr
     }
     if (mylite_ascii_case_equal(name, "PAD_ATTRIBUTE")) {
         return information_schema_enum_descriptor(information_schema_pad_attribute_length);
+    }
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_INVALID,
+    };
+}
+
+static struct mylite_field_descriptor information_schema_keywords_column_descriptor(
+    const char *name
+) {
+    if (mylite_ascii_case_equal(name, "WORD")) {
+        return information_schema_text_descriptor(
+            information_schema_keyword_word_length,
+            0U,
+            0U,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "RESERVED")) {
+        struct mylite_field_descriptor descriptor = {
+            .type = MYLITE_FIELD_TYPE_LONG,
+            .flags = MYLITE_FIELD_FLAG_NUM,
+            .length = information_schema_keyword_reserved_length,
+            .charset_id = mylite_mysql_binary_charset_id,
+            .nullable = true,
+        };
+
+        mylite_field_descriptor_set_nullable(&descriptor, true);
+        return descriptor;
     }
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_INVALID,

@@ -3329,6 +3329,35 @@ static int test_information_schema_keywords_execution(void) {
     static const char *const show_tables_values[] = {"KEYWORDS", "SYSTEM VIEW"};
     static const char *const keyword_projection_columns[] = {"WORD"};
     static const char *const keyword_projection_values[] = {"ADD", "SELECT"};
+    static const struct expected_result_metadata metadata[] = {
+        {"WORD",
+         "information_schema",
+         "KEYWORDS",
+         "information_schema",
+         "KEYWORDS",
+         "WORD",
+         128U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         0U,
+         8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_PART_KEY,
+         1},
+        {"RESERVED",
+         "information_schema",
+         "KEYWORDS",
+         "information_schema",
+         "KEYWORDS",
+         "RESERVED",
+         11U,
+         MYLITE_FIELD_TYPE_LONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -3368,6 +3397,7 @@ static int test_information_schema_keywords_execution(void) {
     failures +=
         prepare_sql(database, "SELECT * FROM INFORMATION_SCHEMA.KEYWORDS", MYLITE_OK, &stmt);
     failures += expect_column_names(stmt, columns, 2, "information schema keywords columns");
+    failures += expect_result_metadata(stmt, metadata, 2, "information schema keywords metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "information schema keywords row");
     failures += expect_int64(
         mylite_column_int64(stmt, 1),

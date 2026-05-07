@@ -275,10 +275,14 @@ specs should guide implementation. Function descriptors need:
   `LAST_INSERT_ID()`, `ROW_COUNT()`, user variables, and locks
 
 The current executable slice registers compact callbacks for `CONCAT`,
-`CONCAT_WS`, `IF`, `BIT_LENGTH`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`, and
+`CONCAT_WS`, `BIT_LENGTH`, `LENGTH`, `OCTET_LENGTH`, `CHAR_LENGTH`, and
 `CHARACTER_LENGTH`. Broader function families stay in public SQLite scalar
 callbacks until they need parser, statement-state, diagnostics, or storage
 hooks that SQLite's public function API cannot provide.
+For example, `IF()` cannot be registered correctly yet because MySQL emits
+successful-statement truncation warnings for nonnumeric string conditions; that
+requires a fork warning collector rather than a callback that only returns one
+SQLite value.
 
 ### Auto-increment
 

@@ -82,6 +82,8 @@ Implemented fork points:
   rowid autoincrement storage for integer-affinity single-column keys
 - direct SQLite parser admission for MySQL `INSERT IGNORE`, lowered to
   SQLite's native conflict-ignore insert mode for the current direct DML subset
+- direct SQLite parser admission for MySQL `UPDATE IGNORE`, lowered to
+  SQLite's native conflict-ignore update mode for the current direct DML subset
 - direct SQLite parser admission for MySQL `ON DUPLICATE KEY UPDATE`, lowered
   to SQLite's native UPSERT update path for the current direct DML subset,
   including the common `VALUES(column)` assignment form as an `excluded.column`

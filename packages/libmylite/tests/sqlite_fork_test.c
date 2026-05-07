@@ -3537,6 +3537,19 @@ static int test_wordpress_like_crud(void) {
         "(1, 'Alpha', 'alpha'), (2, 'Alpha Again', 'alpha-again')",
         "insert direct inline index form rows"
     );
+    failures += exec_sql(
+        database,
+        "UPDATE IGNORE inline_index_forms SET slug = 'alpha' WHERE id = 2",
+        "ignore duplicate slug through direct UPDATE IGNORE"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(slug, ':', ROW_COUNT()) FROM inline_index_forms WHERE id = 2",
+            .expected = "alpha-again:0",
+            .context = "direct UPDATE IGNORE skips duplicate unique rows",
+        }
+    );
     failures += expect_sqlite_exec_error(
         database,
         (struct expected_sqlite_error){

@@ -45,6 +45,9 @@ slices:
 - admit MySQL `INSERT IGNORE` in the direct fork parser and lower it to
   SQLite's native conflict-ignore insert mode for duplicate unique-key rows in
   the current CRUD subset
+- admit MySQL `UPDATE IGNORE` in the direct fork parser and lower it to
+  SQLite's native conflict-ignore update mode for duplicate unique-key rows in
+  the current CRUD subset
 - admit MySQL `ON DUPLICATE KEY UPDATE` in the direct fork parser and lower it
   to SQLite's native UPSERT update path for duplicate unique-key rows in the
   current CRUD subset, including direct `VALUES(column)` assignment references
@@ -466,24 +469,29 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
     lowering to SQLite's existing conflict-ignore insert mode for the current
     direct DML subset, with broader MySQL warning demotion still owned by the
     MyLite diagnostics/type-coercion path.
-16. Admit MySQL `ON DUPLICATE KEY UPDATE` syntax in the direct parser.
+16. Admit MySQL `UPDATE IGNORE` syntax in the direct parser. Implemented by
+    accepting `IGNORE` in SQLite's conflict-resolution nonterminal, so the
+    direct update path uses SQLite's existing conflict-ignore mode. Broader
+    MySQL warning demotion, conversion clipping, and multi-row continuation
+    details still belong to the diagnostics/type-coercion path.
+17. Admit MySQL `ON DUPLICATE KEY UPDATE` syntax in the direct parser.
     Implemented by lowering to SQLite's existing targetless UPSERT update mode
     for the current direct DML subset. The common `VALUES(column)` RHS form is
     mapped to SQLite's `excluded.column` expression. Exact MySQL affected-row
     counts, duplicate-key warning metadata, row-alias forms, and
     auto-increment gap behavior remain future fork statement-completion work.
-17. Admit MySQL `INSERT ... SET` syntax in the direct parser. Implemented by
+18. Admit MySQL `INSERT ... SET` syntax in the direct parser. Implemented by
     converting the assignment list to SQLite's ordinary insert primitive with a
     generated column list and single-row `VALUES` source, so defaults,
     constraints, indexes, `INSERT IGNORE`, and direct ODKU continue through the
     same VDBE paths as `INSERT ... VALUES`.
-18. Admit MySQL column-level `CHARACTER SET`, `CHARSET`, and `COMMENT`
+19. Admit MySQL column-level `CHARACTER SET`, `CHARSET`, and `COMMENT`
     attributes in the direct parser. The current fork slice treats them as
     schema-builder extension points so common MySQL table declarations parse
     unchanged; later descriptor/catalog work must persist the authored column
     charset, collation, and comment metadata for `SHOW` and information-schema
     surfaces.
-19. Admit MySQL prefix index key parts in table-level direct parser indexes.
+20. Admit MySQL prefix index key parts in table-level direct parser indexes.
     Implemented by lowering `column(length)` to SQLite expression-index keys
     over `substr(column, 1, length)` and allowing expression keys for
     MyLite-owned application-defined inline indexes while preserving SQLite's
@@ -505,6 +513,7 @@ opt_table ::= .
 opt_table ::= TABLE.
 
 insert_cmd ::= INSERT IGNORE.
+orconf ::= IGNORE.
 cmd ::= insert_cmd INTO table_name SET setlist upsert.
 upsert ::= ON DUPLICATE KEY UPDATE mysql_upsert_setlist.
 mysql_upsert_value ::= VALUES LP column_name RP.

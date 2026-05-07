@@ -583,6 +583,7 @@ onconf(A) ::= .                              {A = OE_Default;}
 onconf(A) ::= ON CONFLICT resolvetype(X).    {A = X;}
 orconf(A) ::= .                              {A = OE_Default;}
 orconf(A) ::= OR resolvetype(X).             {A = X;}
+orconf(A) ::= IGNORE.                        {A = OE_Ignore;}
 resolvetype(A) ::= raisetype(A).
 resolvetype(A) ::= IGNORE.                   {A = OE_Ignore;}
 resolvetype(A) ::= REPLACE.                  {A = OE_Replace;}
@@ -1241,7 +1242,6 @@ returning ::= .
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
-insert_cmd(A) ::= INSERT IGNORE.      {A = OE_Ignore;}
 insert_cmd(A) ::= REPLACE.            {A = OE_Replace;}
 
 %type idlist_opt {IdList*}

@@ -46,7 +46,9 @@ add_library(mylite STATIC
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
+  src/storage/mylite_file_open.c
   src/storage/mylite_file_format.c
+  src/storage/mylite_offset_vfs.c
   src/version.c
 )
 add_library(MyLite::mylite ALIAS mylite)
@@ -118,6 +120,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_open_memory_test)
 
+  add_executable(mylite_runtime_file_backed_open_test
+    tests/runtime_file_backed_open_test.c
+  )
+  target_link_libraries(mylite_runtime_file_backed_open_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_file_backed_open_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_file_backed_open_test)
+
   add_executable(mylite_runtime_sqlite_owner_test
     tests/runtime_sqlite_owner_test.c
   )
@@ -173,6 +187,10 @@ if(BUILD_TESTING)
   add_test(NAME libmylite.parser COMMAND mylite_parser_test)
   add_test(NAME libmylite.file_format COMMAND mylite_file_format_test)
   add_test(NAME libmylite.runtime.diagnostics COMMAND mylite_runtime_diagnostics_test)
+  add_test(
+    NAME libmylite.runtime.file_backed_open
+    COMMAND mylite_runtime_file_backed_open_test
+  )
   add_test(NAME libmylite.runtime.open_memory COMMAND mylite_runtime_open_memory_test)
   add_test(NAME libmylite.runtime.result_metadata COMMAND mylite_runtime_result_metadata_test)
   add_test(

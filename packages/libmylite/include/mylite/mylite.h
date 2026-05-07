@@ -32,6 +32,7 @@ typedef struct mylite_db mylite_db;
 
 MYLITE_API const char *mylite_version(void);
 
+MYLITE_API int mylite_open(const char *path, mylite_db **out_db);
 MYLITE_API int mylite_open_memory(mylite_db **out_db);
 MYLITE_API void mylite_close(mylite_db *database);
 

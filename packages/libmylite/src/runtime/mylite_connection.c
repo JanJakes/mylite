@@ -1,18 +1,24 @@
 #include "mylite_connection.h"
 
+#include "mylite_file_open.h"
 #include "sqlite3.h"
 
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+static int allocate_database_handle(struct mylite_db **out_database);
+static int open_memory_sqlite(struct mylite_db *database);
+static int open_file_sqlite(struct mylite_db *database, const char *path);
+static int bootstrap_sqlite_connection(struct mylite_db *database);
+static void destroy_database_handle(struct mylite_db *database);
+static int sqlite_status_to_mylite(int sqlite_status);
 static void initialize_session_state(struct mylite_session_state *session);
 static void copy_session_text(char *destination, size_t destination_size, const char *source);
 
 int mylite_open_memory(mylite_db **out_db) {
     struct mylite_db *database = NULL;
-    sqlite3 *sqlite = NULL;
-    int rc = SQLITE_OK;
+    int rc = MYLITE_OK;
 
     if (out_db == NULL) {
         return MYLITE_MISUSE;
@@ -20,35 +26,53 @@ int mylite_open_memory(mylite_db **out_db) {
 
     *out_db = NULL;
 
-    database = calloc(1U, sizeof(*database));
-    if (database == NULL) {
-        return MYLITE_NOMEM;
-    }
-
-    mylite_diagnostics_init(&database->diagnostics);
-    initialize_session_state(&database->session);
-
-    rc = sqlite3_open(":memory:", &sqlite);
-    if (rc != SQLITE_OK) {
-        if (sqlite != NULL) {
-            (void)sqlite3_close(sqlite);
-        }
-        mylite_diagnostics_deinit(&database->diagnostics);
-        free(database);
-        return rc == SQLITE_NOMEM ? MYLITE_NOMEM : MYLITE_ERROR;
-    }
-
-    database->sqlite = sqlite;
-    rc =
-        mylite_sqlite_bootstrap_connection(database->sqlite, database, &database->sqlite_bootstrap);
+    rc = allocate_database_handle(&database);
     if (rc != MYLITE_OK) {
-        (void)sqlite3_close(database->sqlite);
-        database->sqlite = NULL;
-        mylite_diagnostics_deinit(&database->diagnostics);
-        free(database);
         return rc;
     }
 
+    rc = open_memory_sqlite(database);
+    if (rc != MYLITE_OK) {
+        destroy_database_handle(database);
+        return rc;
+    }
+
+    *out_db = database;
+
+    return MYLITE_OK;
+}
+
+int mylite_open(const char *path, mylite_db **out_db) {
+    struct mylite_storage_open_state open_state;
+    struct mylite_db *database = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_db == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_db = NULL;
+    if (path == NULL || path[0] == '\0') {
+        return MYLITE_MISUSE;
+    }
+
+    rc = mylite_storage_prepare_mylite_file(path, &open_state);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = allocate_database_handle(&database);
+    if (rc == MYLITE_OK) {
+        rc = open_file_sqlite(database, path);
+    }
+    if (rc != MYLITE_OK) {
+        destroy_database_handle(database);
+        mylite_storage_open_state_deinit(&open_state, path);
+        return rc;
+    }
+
+    mylite_storage_open_state_mark_published(&open_state);
+    mylite_storage_open_state_deinit(&open_state, path);
     *out_db = database;
 
     return MYLITE_OK;
@@ -59,13 +83,7 @@ void mylite_close(mylite_db *database) {
         return;
     }
 
-    mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
-    if (database->sqlite != NULL) {
-        (void)sqlite3_close(database->sqlite);
-    }
-    database->sqlite = NULL;
-    mylite_diagnostics_deinit(&database->diagnostics);
-    free(database);
+    destroy_database_handle(database);
 }
 
 int mylite_errcode(const mylite_db *database) {
@@ -126,6 +144,104 @@ const struct mylite_sqlite_bootstrap_state *mylite_connection_sqlite_bootstrap_s
     }
 
     return &database->sqlite_bootstrap;
+}
+
+static int allocate_database_handle(struct mylite_db **out_database) {
+    struct mylite_db *database = calloc(1U, sizeof(*database));
+
+    if (database == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    mylite_diagnostics_init(&database->diagnostics);
+    initialize_session_state(&database->session);
+    *out_database = database;
+
+    return MYLITE_OK;
+}
+
+static int open_memory_sqlite(struct mylite_db *database) {
+    sqlite3 *sqlite = NULL;
+    int rc = sqlite3_open(":memory:", &sqlite);
+
+    if (rc != SQLITE_OK) {
+        if (sqlite != NULL) {
+            (void)sqlite3_close(sqlite);
+        }
+        return sqlite_status_to_mylite(rc);
+    }
+
+    database->sqlite = sqlite;
+
+    return bootstrap_sqlite_connection(database);
+}
+
+static int open_file_sqlite(struct mylite_db *database, const char *path) {
+    sqlite3 *sqlite = NULL;
+    int rc = MYLITE_OK;
+
+    rc = mylite_storage_vfs_ensure_registered();
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = sqlite3_open_v2(
+        path,
+        &sqlite,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+        mylite_storage_vfs_name()
+    );
+    if (rc != SQLITE_OK) {
+        if (sqlite != NULL) {
+            (void)sqlite3_close(sqlite);
+        }
+        return sqlite_status_to_mylite(rc);
+    }
+
+    database->sqlite = sqlite;
+
+    rc = bootstrap_sqlite_connection(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return mylite_storage_configure_sqlite_payload(database->sqlite);
+}
+
+static int bootstrap_sqlite_connection(struct mylite_db *database) {
+    return mylite_sqlite_bootstrap_connection(
+        database->sqlite,
+        database,
+        &database->sqlite_bootstrap
+    );
+}
+
+static void destroy_database_handle(struct mylite_db *database) {
+    if (database == NULL) {
+        return;
+    }
+
+    mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
+    if (database->sqlite != NULL) {
+        (void)sqlite3_close(database->sqlite);
+    }
+    database->sqlite = NULL;
+    mylite_diagnostics_deinit(&database->diagnostics);
+    free(database);
+}
+
+static int sqlite_status_to_mylite(int sqlite_status) {
+    if (sqlite_status == SQLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (sqlite_status == SQLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    if (sqlite_status == SQLITE_MISUSE) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_ERROR;
 }
 
 static void initialize_session_state(struct mylite_session_state *session) {

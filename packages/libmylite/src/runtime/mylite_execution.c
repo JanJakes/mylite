@@ -66,6 +66,11 @@ struct planned_rename_table {
     struct table_name_resolution target;
 };
 
+struct planned_truncate_table {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+};
+
 struct planned_value {
     bool is_null;
     int64_t integer;
@@ -189,6 +194,11 @@ static int execute_drop_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_truncate_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_rename_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -249,6 +259,17 @@ static int execute_physical_create_table(
     const char *physical_name
 );
 static int execute_physical_drop_table(struct mylite_db *database, const char *physical_name);
+
+static int plan_truncate_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_truncate_table *out_plan
+);
+static int execute_truncate_from_plan(
+    struct mylite_db *database,
+    const struct planned_truncate_table *plan,
+    mylite_result *result
+);
 
 static int plan_rename_table(
     struct mylite_db *database,
@@ -314,6 +335,11 @@ static int update_matches_any_row(
 );
 
 static int resolve_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution
+);
+static int resolve_truncate_table_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution
@@ -594,6 +620,7 @@ static int build_create_table_sql(
     char **out_sql
 );
 static int build_drop_table_sql(const char *physical_name, char **out_sql);
+static int build_truncate_table_sql(const struct planned_truncate_table *plan, char **out_sql);
 static int build_insert_sql(const struct planned_insert *plan, char **out_sql);
 static int append_insert_column_names(
     struct dynamic_string *string,
@@ -830,6 +857,8 @@ static int execute_parsed_statement(
         return execute_create_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
         return execute_drop_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
+        return execute_truncate_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return execute_rename_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_STATEMENT:
@@ -1013,6 +1042,32 @@ static int execute_drop_table_statement(
     }
 
     ++database->session.sqlite_schema_generation;
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_truncate_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_truncate_table plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_truncate_table(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = execute_truncate_from_plan(database, &plan, result);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
 
     return finish_successful_result(database, result, out_result);
 }
@@ -1398,6 +1453,93 @@ static int execute_physical_drop_table(struct mylite_db *database, const char *p
     return rc;
 }
 
+static int plan_truncate_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_truncate_table *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_truncate_table){0};
+    rc = resolve_truncate_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(database, "TRUNCATE TABLE supports only persistent base tables");
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int execute_truncate_from_plan(
+    struct mylite_db *database,
+    const struct planned_truncate_table *plan,
+    mylite_result *result
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    bool transaction_started = false;
+    int sqlite_rc = SQLITE_OK;
+    int rc = build_truncate_table_sql(plan, &sql);
+
+    (void)result;
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_control_sql(database, "BEGIN IMMEDIATE");
+    }
+    if (rc == MYLITE_OK) {
+        transaction_started = true;
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    statement = NULL;
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_control_sql(database, "COMMIT");
+        if (rc == MYLITE_OK) {
+            transaction_started = false;
+        }
+    }
+    if (rc != MYLITE_OK && transaction_started) {
+        (void)execute_sqlite_control_sql(database, "ROLLBACK");
+    }
+    free(sql);
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+            return rc;
+        }
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int plan_rename_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1581,7 +1723,9 @@ static int execute_insert_from_plan(
     statement = NULL;
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, "COMMIT");
-        transaction_started = false;
+        if (rc == MYLITE_OK) {
+            transaction_started = false;
+        }
     }
     if (rc != MYLITE_OK && transaction_started) {
         (void)execute_sqlite_control_sql(database, "ROLLBACK");
@@ -1751,7 +1895,9 @@ static int execute_update_from_plan(
     statement = NULL;
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, "COMMIT");
-        transaction_started = false;
+        if (rc == MYLITE_OK) {
+            transaction_started = false;
+        }
     }
     if (rc != MYLITE_OK && transaction_started) {
         (void)execute_sqlite_control_sql(database, "ROLLBACK");
@@ -2089,7 +2235,9 @@ static int execute_delete_from_plan(
     statement = NULL;
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, "COMMIT");
-        transaction_started = false;
+        if (rc == MYLITE_OK) {
+            transaction_started = false;
+        }
     }
     if (rc != MYLITE_OK && transaction_started) {
         (void)execute_sqlite_control_sql(database, "ROLLBACK");
@@ -2147,6 +2295,53 @@ static int resolve_table_name(
             memcpy(out_resolution->table_name, parts[1], sizeof(out_resolution->table_name));
         }
         return rc;
+    }
+
+    set_parse_error(database, NULL);
+
+    return MYLITE_ERROR;
+}
+
+static int resolve_truncate_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct table_name_resolution *out_resolution
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_resolution = (struct table_name_resolution){0};
+    rc = collect_identifier_parts(
+        database == NULL ? NULL : node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 1U) {
+        rc = resolve_selected_schema(database, &out_resolution->schema);
+        if (rc == MYLITE_OK) {
+            memcpy(out_resolution->table_name, parts[0], sizeof(out_resolution->table_name));
+        }
+        return rc;
+    }
+    if (part_count == 2U) {
+        if (mylite_catalog_name_is_reserved(parts[0])) {
+            set_reserved_name_error(database, "database", parts[0]);
+            return MYLITE_ERROR;
+        }
+        rc = mylite_catalog_read_schema_by_name(database, parts[0], &out_resolution->schema);
+        if (rc != MYLITE_OK) {
+            memcpy(out_resolution->schema.name, parts[0], sizeof(out_resolution->schema.name));
+            set_table_does_not_exist_error(database, parts[0], parts[1]);
+            return MYLITE_ERROR;
+        }
+        memcpy(out_resolution->table_name, parts[1], sizeof(out_resolution->table_name));
+        return MYLITE_OK;
     }
 
     set_parse_error(database, NULL);
@@ -3761,6 +3956,29 @@ static int build_drop_table_sql(const char *physical_name, char **out_sql) {
     rc = dynamic_string_append(&string, "DROP TABLE ");
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_quoted_identifier(&string, physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_truncate_table_sql(const struct planned_truncate_table *plan, char **out_sql) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "DELETE FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);

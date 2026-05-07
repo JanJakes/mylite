@@ -379,6 +379,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_truncate_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token truncate_token,
+    struct mylite_sql_ast_node *table_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&truncate_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
@@ -1263,39 +1284,23 @@ static bool map_keyword_token(
         const char *keyword;
         int parser_token;
     } keyword_mappings[] = {
-        {"SELECT", MYLITE_SQL_PARSE_SELECT},
-        {"FROM", MYLITE_SQL_PARSE_FROM},
-        {"WHERE", MYLITE_SQL_PARSE_WHERE},
-        {"ORDER", MYLITE_SQL_PARSE_ORDER},
-        {"BY", MYLITE_SQL_PARSE_BY},
-        {"ASC", MYLITE_SQL_PARSE_ASC},
-        {"DESC", MYLITE_SQL_PARSE_DESC},
-        {"LIMIT", MYLITE_SQL_PARSE_LIMIT},
-        {"OFFSET", MYLITE_SQL_PARSE_OFFSET},
-        {"USE", MYLITE_SQL_PARSE_USE},
-        {"CREATE", MYLITE_SQL_PARSE_CREATE},
-        {"TABLE", MYLITE_SQL_PARSE_TABLE},
-        {"DROP", MYLITE_SQL_PARSE_DROP},
-        {"SHOW", MYLITE_SQL_PARSE_SHOW},
-        {"TABLES", MYLITE_SQL_PARSE_TABLES},
-        {"RENAME", MYLITE_SQL_PARSE_RENAME},
-        {"INSERT", MYLITE_SQL_PARSE_INSERT},
-        {"INTO", MYLITE_SQL_PARSE_INTO},
-        {"VALUES", MYLITE_SQL_PARSE_VALUES},
-        {"TO", MYLITE_SQL_PARSE_TO},
-        {"DELETE", MYLITE_SQL_PARSE_DELETE},
-        {"UPDATE", MYLITE_SQL_PARSE_UPDATE},
-        {"SET", MYLITE_SQL_PARSE_SET},
-        {"INT", MYLITE_SQL_PARSE_INT},
-        {"INTEGER", MYLITE_SQL_PARSE_INTEGER_TYPE},
-        {"BIGINT", MYLITE_SQL_PARSE_BIGINT},
-        {"UNSIGNED", MYLITE_SQL_PARSE_UNSIGNED},
-        {"NOT", MYLITE_SQL_PARSE_NOT},
-        {"IS", MYLITE_SQL_PARSE_IS},
-        {"IN", MYLITE_SQL_PARSE_IN},
-        {"TRUE", MYLITE_SQL_PARSE_TRUE},
-        {"FALSE", MYLITE_SQL_PARSE_FALSE},
-        {"NULL", MYLITE_SQL_PARSE_NULL},
+        {"SELECT", MYLITE_SQL_PARSE_SELECT}, {"FROM", MYLITE_SQL_PARSE_FROM},
+        {"WHERE", MYLITE_SQL_PARSE_WHERE},   {"ORDER", MYLITE_SQL_PARSE_ORDER},
+        {"BY", MYLITE_SQL_PARSE_BY},         {"ASC", MYLITE_SQL_PARSE_ASC},
+        {"DESC", MYLITE_SQL_PARSE_DESC},     {"LIMIT", MYLITE_SQL_PARSE_LIMIT},
+        {"OFFSET", MYLITE_SQL_PARSE_OFFSET}, {"USE", MYLITE_SQL_PARSE_USE},
+        {"CREATE", MYLITE_SQL_PARSE_CREATE}, {"TABLE", MYLITE_SQL_PARSE_TABLE},
+        {"DROP", MYLITE_SQL_PARSE_DROP},     {"TRUNCATE", MYLITE_SQL_PARSE_TRUNCATE},
+        {"SHOW", MYLITE_SQL_PARSE_SHOW},     {"TABLES", MYLITE_SQL_PARSE_TABLES},
+        {"RENAME", MYLITE_SQL_PARSE_RENAME}, {"INSERT", MYLITE_SQL_PARSE_INSERT},
+        {"INTO", MYLITE_SQL_PARSE_INTO},     {"VALUES", MYLITE_SQL_PARSE_VALUES},
+        {"TO", MYLITE_SQL_PARSE_TO},         {"DELETE", MYLITE_SQL_PARSE_DELETE},
+        {"UPDATE", MYLITE_SQL_PARSE_UPDATE}, {"SET", MYLITE_SQL_PARSE_SET},
+        {"INT", MYLITE_SQL_PARSE_INT},       {"INTEGER", MYLITE_SQL_PARSE_INTEGER_TYPE},
+        {"BIGINT", MYLITE_SQL_PARSE_BIGINT}, {"UNSIGNED", MYLITE_SQL_PARSE_UNSIGNED},
+        {"NOT", MYLITE_SQL_PARSE_NOT},       {"IS", MYLITE_SQL_PARSE_IS},
+        {"IN", MYLITE_SQL_PARSE_IN},         {"TRUE", MYLITE_SQL_PARSE_TRUE},
+        {"FALSE", MYLITE_SQL_PARSE_FALSE},   {"NULL", MYLITE_SQL_PARSE_NULL},
         {"DUAL", MYLITE_SQL_PARSE_DUAL},
     };
 

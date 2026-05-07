@@ -62,6 +62,9 @@ statement(A) ::= create_table_statement(B). {
 statement(A) ::= drop_table_statement(B). {
     A = B;
 }
+statement(A) ::= truncate_table_statement(B). {
+    A = B;
+}
 statement(A) ::= show_tables_statement(B). {
     A = B;
 }
@@ -88,6 +91,13 @@ create_table_statement(A) ::= CREATE(C) TABLE table_name(T) LPAREN column_defini
 
 drop_table_statement(A) ::= DROP(D) TABLE table_name(T). {
     A = mylite_sql_parser_make_drop_table_statement(state, D, T);
+}
+
+truncate_table_statement(A) ::= TRUNCATE(T) table_name(N). {
+    A = mylite_sql_parser_make_truncate_table_statement(state, T, N);
+}
+truncate_table_statement(A) ::= TRUNCATE(T) TABLE table_name(N). {
+    A = mylite_sql_parser_make_truncate_table_statement(state, T, N);
 }
 
 show_tables_statement(A) ::= SHOW(S) TABLES(T). {

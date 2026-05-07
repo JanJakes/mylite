@@ -14,7 +14,7 @@ actions.
 | `CREATE TABLE ... SELECT` | ❌ | CTAS inference and atomicity |
 | `DROP TABLE` | 🟡 | Limited single persistent base-table drop without `IF EXISTS`, `TEMPORARY`, multi-table drop, `RESTRICT`, or `CASCADE` |
 | `RENAME TABLE` | 🟡 | Limited single-pair persistent base-table rename from `baseline-table-rename-lifecycle`, including unqualified, schema-qualified, and cross-schema names; no multi-table rename, temporary tables, views, triggers, or privilege semantics |
-| `TRUNCATE TABLE` | ❌ | DDL truncate semantics |
+| `TRUNCATE TABLE` | 🟡 | Limited persistent base-table `TRUNCATE [TABLE] table_name` for unqualified and schema-qualified descriptor targets; empties physical rows, preserves descriptors, and reports zero affected rows; no implicit commits, temporary tables, partitions, foreign keys, triggers, auto-increment reset, locks, privileges, or physical storage rebuild semantics |
 | Atomic DDL | 🟡 | Catalog descriptor rows and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename subsets only |
 | Implicit commit boundaries | ❌ | Implicit commit boundaries |
 | `IMPORT TABLE` | ❌ | Transportable tablespace import syntax, diagnostics |

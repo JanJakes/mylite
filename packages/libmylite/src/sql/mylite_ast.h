@@ -42,6 +42,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_UPDATE_STATEMENT = 33,
     MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST = 34,
     MYLITE_SQL_AST_UPDATE_ASSIGNMENT = 35,
+    MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT = 36,
 };
 
 enum mylite_sql_ast_literal_kind {

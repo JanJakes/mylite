@@ -83,6 +83,7 @@ static bool map_lexer_token(
     bool previous_token_was_dot,
     bool previous_token_allows_subquery_quantifier,
     bool token_starts_parenthesized_select_subquery,
+    bool token_starts_temporal_literal,
     struct mylite_sql_parser_token_map *out_map
 );
 
@@ -98,6 +99,7 @@ static bool map_keyword_token(
     bool previous_token_was_dot,
     bool previous_token_allows_subquery_quantifier,
     bool token_starts_parenthesized_select_subquery,
+    bool token_starts_temporal_literal,
     int *out_parser_token
 );
 
@@ -112,7 +114,11 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
 
 static bool parser_token_allows_subquery_quantifier(int parser_token);
 
+static bool token_can_start_temporal_literal(const struct mylite_sql_token *token);
+
 static bool lexer_starts_parenthesized_select_subquery(const struct mylite_sql_lexer *lexer);
+
+static bool lexer_starts_temporal_literal_string(const struct mylite_sql_lexer *lexer);
 
 static bool lexer_next_non_comment(
     struct mylite_sql_lexer *lexer,
@@ -293,6 +299,7 @@ enum mylite_sql_parse_status mylite_sql_parse(
         struct mylite_sql_token token;
         struct mylite_sql_parser_token_map token_map;
         bool token_starts_parenthesized_select_subquery = false;
+        bool token_starts_temporal_literal = false;
 
         if (mylite_sql_lexer_next(&lexer, &token) != 0) {
             out_result->status = MYLITE_SQL_PARSE_MISUSE;
@@ -320,12 +327,16 @@ enum mylite_sql_parse_status mylite_sql_parse(
             token_starts_parenthesized_select_subquery =
                 lexer_starts_parenthesized_select_subquery(&lexer);
         }
+        if (token_can_start_temporal_literal(&token)) {
+            token_starts_temporal_literal = lexer_starts_temporal_literal_string(&lexer);
+        }
 
         if (!map_lexer_token(
                 &token,
                 previous_token_was_dot,
                 previous_token_allows_subquery_quantifier,
                 token_starts_parenthesized_select_subquery,
+                token_starts_temporal_literal,
                 &token_map
             )) {
             record_parse_error(
@@ -6498,6 +6509,35 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_literal(
     return literal;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_temporal_literal(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token keyword_token,
+    struct mylite_sql_ast_node *value,
+    enum mylite_sql_ast_literal_kind literal_kind
+) {
+    struct mylite_sql_ast_node *literal = NULL;
+
+    if (value == NULL) {
+        return NULL;
+    }
+
+    literal = make_node(
+        state,
+        MYLITE_SQL_AST_LITERAL,
+        span_join(span_from_token(&keyword_token), value->span)
+    );
+    if (literal == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_literal_kind(literal, literal_kind);
+    if ((state->modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U) {
+        mylite_sql_ast_node_set_no_backslash_escapes(literal);
+    }
+    mylite_sql_ast_node_append_child(literal, value);
+    return literal;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_bare_function_call(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token name_token
@@ -7557,6 +7597,7 @@ static bool map_lexer_token(
     bool previous_token_was_dot,
     bool previous_token_allows_subquery_quantifier,
     bool token_starts_parenthesized_select_subquery,
+    bool token_starts_temporal_literal,
     struct mylite_sql_parser_token_map *out_map
 ) {
     int parser_token = 0;
@@ -7590,6 +7631,7 @@ static bool map_lexer_token(
                 previous_token_was_dot,
                 previous_token_allows_subquery_quantifier,
                 token_starts_parenthesized_select_subquery,
+                token_starts_temporal_literal,
                 &parser_token
             )) {
             return false;
@@ -7621,6 +7663,9 @@ static bool map_lexer_token(
         break;
     case MYLITE_SQL_TOKEN_FLOAT:
         parser_token = MYLITE_SQL_PARSE_FLOAT;
+        break;
+    case MYLITE_SQL_TOKEN_NOT_ENFORCED:
+        parser_token = MYLITE_SQL_PARSE_NOT_ENFORCED;
         break;
     case MYLITE_SQL_TOKEN_OPERATOR:
         if (!map_operator_token(token, &parser_token)) {
@@ -7843,6 +7888,7 @@ static bool map_keyword_token(
     bool previous_token_was_dot,
     bool previous_token_allows_subquery_quantifier,
     bool token_starts_parenthesized_select_subquery,
+    bool token_starts_temporal_literal,
     int *out_parser_token
 ) {
     if (previous_token_was_dot) {
@@ -7855,6 +7901,20 @@ static bool map_keyword_token(
          !token_starts_parenthesized_select_subquery)) {
         *out_parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
         return true;
+    }
+    if (token_starts_temporal_literal) {
+        if (token_text_equals(token, "DATE")) {
+            *out_parser_token = MYLITE_SQL_PARSE_DATE_LITERAL;
+            return true;
+        }
+        if (token_text_equals(token, "TIME")) {
+            *out_parser_token = MYLITE_SQL_PARSE_TIME_LITERAL;
+            return true;
+        }
+        if (token_text_equals(token, "TIMESTAMP")) {
+            *out_parser_token = MYLITE_SQL_PARSE_TIMESTAMP_LITERAL;
+            return true;
+        }
     }
 
     if (lookup_keyword_parser_token(token, out_parser_token)) {
@@ -8384,6 +8444,19 @@ static bool parser_token_allows_subquery_quantifier(int parser_token) {
     }
 }
 
+static bool token_can_start_temporal_literal(const struct mylite_sql_token *token) {
+    if (token == NULL || token->kind != MYLITE_SQL_TOKEN_KEYWORD) {
+        return false;
+    }
+    if (token_text_equals(token, "DATE")) {
+        return true;
+    }
+    if (token_text_equals(token, "TIME")) {
+        return true;
+    }
+    return token_text_equals(token, "TIMESTAMP");
+}
+
 static bool lexer_starts_parenthesized_select_subquery(const struct mylite_sql_lexer *lexer) {
     struct mylite_sql_lexer lookahead;
     struct mylite_sql_token token;
@@ -8403,6 +8476,21 @@ static bool lexer_starts_parenthesized_select_subquery(const struct mylite_sql_l
     }
 
     return token_text_equals(&token, "SELECT");
+}
+
+static bool lexer_starts_temporal_literal_string(const struct mylite_sql_lexer *lexer) {
+    struct mylite_sql_lexer lookahead;
+    struct mylite_sql_token token;
+
+    if (lexer == NULL) {
+        return false;
+    }
+
+    lookahead = *lexer;
+    if (!lexer_next_non_comment(&lookahead, &token)) {
+        return false;
+    }
+    return token.kind == MYLITE_SQL_TOKEN_STRING;
 }
 
 static bool lexer_next_non_comment(

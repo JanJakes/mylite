@@ -84,6 +84,9 @@ bool mylite_expression_literal_is_supported(const struct mylite_sql_ast_node *ex
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
     case MYLITE_SQL_AST_LITERAL_HEX:
     case MYLITE_SQL_AST_LITERAL_BIT:
+    case MYLITE_SQL_AST_LITERAL_DATE:
+    case MYLITE_SQL_AST_LITERAL_TIME:
+    case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
         return true;
     case MYLITE_SQL_AST_LITERAL_NONE:
         return false;

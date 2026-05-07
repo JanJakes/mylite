@@ -45,6 +45,9 @@ int mylite_expression_infer_literal_collation_info(
     case MYLITE_SQL_AST_LITERAL_FALSE:
         *out_info = mylite_expression_binary_collation_info(mylite_mysql_coercibility_numeric);
         return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_DATE:
+    case MYLITE_SQL_AST_LITERAL_TIME:
+    case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
     case MYLITE_SQL_AST_LITERAL_HEX:
     case MYLITE_SQL_AST_LITERAL_BIT:
     case MYLITE_SQL_AST_LITERAL_NONE:

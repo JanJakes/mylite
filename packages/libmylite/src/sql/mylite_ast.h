@@ -220,6 +220,9 @@ enum mylite_sql_ast_literal_kind {
     MYLITE_SQL_AST_LITERAL_TRUE = 8,
     MYLITE_SQL_AST_LITERAL_FALSE = 9,
     MYLITE_SQL_AST_LITERAL_NULL = 10,
+    MYLITE_SQL_AST_LITERAL_DATE = 11,
+    MYLITE_SQL_AST_LITERAL_TIME = 12,
+    MYLITE_SQL_AST_LITERAL_TIMESTAMP = 13,
 };
 
 enum mylite_sql_ast_show_diagnostics_kind {

@@ -14274,8 +14274,11 @@ static int test_unary_and_parenthesized_expression(void) {
 
 static int test_literal_categories(void) {
     enum { expected_literal_item_count = 5 };
+
+    enum { expected_temporal_literal_item_count = 3 };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *literal = NULL;
     int failures = 0;
 
     failures += parse_sql("SELECT 0xabc, b'10', .25, 1e+3, N'a';", MYLITE_SQL_PARSE_OK, &result);
@@ -14305,6 +14308,53 @@ static int test_literal_categories(void) {
         child_at(child_at(select_list, 4U), 0U),
         MYLITE_SQL_AST_LITERAL_NATIONAL_STRING,
         "national literal"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DATE '2024-02-29', TIME '12:34:56.123456', "
+        "TIMESTAMP '2024-02-29 12:34:56.123456';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(
+        select_list,
+        expected_temporal_literal_item_count,
+        "temporal literal select list"
+    );
+    literal = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_literal(literal, MYLITE_SQL_AST_LITERAL_DATE, "date literal");
+    failures += expect_span_text(literal, "DATE '2024-02-29'", "date literal span");
+    failures += expect_child_count(literal, 1U, "date literal child count");
+    failures +=
+        expect_literal(child_at(literal, 0U), MYLITE_SQL_AST_LITERAL_STRING, "date literal string");
+    failures += expect_span_text(child_at(literal, 0U), "'2024-02-29'", "date literal string span");
+    literal = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_literal(literal, MYLITE_SQL_AST_LITERAL_TIME, "time literal");
+    failures += expect_span_text(literal, "TIME '12:34:56.123456'", "time literal span");
+    failures += expect_child_count(literal, 1U, "time literal child count");
+    failures +=
+        expect_literal(child_at(literal, 0U), MYLITE_SQL_AST_LITERAL_STRING, "time literal string");
+    failures +=
+        expect_span_text(child_at(literal, 0U), "'12:34:56.123456'", "time literal string span");
+    literal = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_literal(literal, MYLITE_SQL_AST_LITERAL_TIMESTAMP, "timestamp literal");
+    failures += expect_span_text(
+        literal,
+        "TIMESTAMP '2024-02-29 12:34:56.123456'",
+        "timestamp literal span"
+    );
+    failures += expect_child_count(literal, 1U, "timestamp literal child count");
+    failures += expect_literal(
+        child_at(literal, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "timestamp literal string"
+    );
+    failures += expect_span_text(
+        child_at(literal, 0U),
+        "'2024-02-29 12:34:56.123456'",
+        "timestamp literal string span"
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -1744,6 +1744,12 @@ const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind ki
         return "false";
     case MYLITE_SQL_AST_LITERAL_NULL:
         return "null";
+    case MYLITE_SQL_AST_LITERAL_DATE:
+        return "date";
+    case MYLITE_SQL_AST_LITERAL_TIME:
+        return "time";
+    case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
+        return "timestamp";
     }
 
     return "unknown";

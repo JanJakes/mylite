@@ -217,6 +217,21 @@ static int copy_insert_literal_value(
             mylite_copy_string_literal_span_with_length(literal, &out_value->text_length);
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
+    if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_DATE ||
+        literal->literal_kind == MYLITE_SQL_AST_LITERAL_TIME ||
+        literal->literal_kind == MYLITE_SQL_AST_LITERAL_TIMESTAMP) {
+        const struct mylite_sql_ast_node *value = mylite_ast_child_at(literal, 0U);
+
+        if (value == NULL || value->kind != MYLITE_SQL_AST_LITERAL ||
+            value->literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+            *out_value = (struct mylite_insert_value){.kind = MYLITE_INSERT_VALUE_UNSUPPORTED};
+            return MYLITE_OK;
+        }
+        out_value->kind = MYLITE_INSERT_VALUE_TEXT;
+        out_value->text =
+            mylite_copy_string_literal_span_with_length(value, &out_value->text_length);
+        return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    }
     if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
         out_value->kind = MYLITE_INSERT_VALUE_INTEGER;
         out_value->text_length = 1U;

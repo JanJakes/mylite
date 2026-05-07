@@ -3150,6 +3150,12 @@ static int eval_literal(
     struct mylite_expression_value *out_value
 );
 
+static int eval_temporal_literal(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_expression_temporal_type temporal_type,
+    struct mylite_expression_value *out_value
+);
+
 static int eval_hex_literal(
     const struct mylite_sql_ast_node *node,
     struct mylite_expression_value *out_value
@@ -4089,6 +4095,9 @@ static bool expression_is_supported_no_table(
         case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
         case MYLITE_SQL_AST_LITERAL_HEX:
         case MYLITE_SQL_AST_LITERAL_BIT:
+        case MYLITE_SQL_AST_LITERAL_DATE:
+        case MYLITE_SQL_AST_LITERAL_TIME:
+        case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
             return true;
         case MYLITE_SQL_AST_LITERAL_NONE:
             return false;
@@ -20559,10 +20568,34 @@ static int eval_literal(
         return eval_hex_literal(node, out_value);
     case MYLITE_SQL_AST_LITERAL_BIT:
         return eval_bit_literal(node, out_value);
+    case MYLITE_SQL_AST_LITERAL_DATE:
+        return eval_temporal_literal(node, MYLITE_EXPRESSION_TEMPORAL_DATE, out_value);
+    case MYLITE_SQL_AST_LITERAL_TIME:
+        return eval_temporal_literal(node, MYLITE_EXPRESSION_TEMPORAL_TIME, out_value);
+    case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
+        return eval_temporal_literal(node, MYLITE_EXPRESSION_TEMPORAL_TIMESTAMP, out_value);
     case MYLITE_SQL_AST_LITERAL_NONE:
         return -1;
     }
     return -1;
+}
+
+static int eval_temporal_literal(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_expression_temporal_type temporal_type,
+    struct mylite_expression_value *out_value
+) {
+    const struct mylite_sql_ast_node *value = child_at(node, 0U);
+
+    if (value == NULL) {
+        return -1;
+    }
+
+    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_value->text_value = decode_string_literal(value, &out_value->text_length);
+    out_value->temporal_type = temporal_type;
+    out_value->preserve_temporal_fraction_digits = true;
+    return out_value->text_value == NULL ? -1 : 0;
 }
 
 static int eval_hex_literal(

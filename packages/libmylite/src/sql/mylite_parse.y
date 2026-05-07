@@ -688,10 +688,10 @@ check_enforcement(A) ::= ENFORCED(T). {
         .enforcement = MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_ENFORCED,
     };
 }
-check_enforcement(A) ::= NOT(T) ENFORCED(E). {
+check_enforcement(A) ::= NOT_ENFORCED(T). {
     A = (struct mylite_sql_parser_constraint_enforcement){
         .start = T,
-        .end = E,
+        .end = T,
         .enforcement = MYLITE_SQL_AST_CONSTRAINT_ENFORCEMENT_NOT_ENFORCED,
     };
 }
@@ -4822,6 +4822,9 @@ unary_expression(A) ::= BINARY(T) unary_expression(B). {
 primary_expression(A) ::= literal(B). {
     A = B;
 }
+primary_expression(A) ::= temporal_literal(B). {
+    A = B;
+}
 primary_expression(A) ::= cast_expression(B). {
     A = B;
 }
@@ -4884,6 +4887,28 @@ primary_expression(A) ::= row_constructor(B). {
 }
 primary_expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+temporal_literal(A) ::= DATE_LITERAL(T) STRING(S). {
+    A = mylite_sql_parser_make_temporal_literal(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, S, MYLITE_SQL_AST_LITERAL_STRING),
+        MYLITE_SQL_AST_LITERAL_DATE);
+}
+temporal_literal(A) ::= TIME_LITERAL(T) STRING(S). {
+    A = mylite_sql_parser_make_temporal_literal(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, S, MYLITE_SQL_AST_LITERAL_STRING),
+        MYLITE_SQL_AST_LITERAL_TIME);
+}
+temporal_literal(A) ::= TIMESTAMP_LITERAL(T) STRING(S). {
+    A = mylite_sql_parser_make_temporal_literal(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, S, MYLITE_SQL_AST_LITERAL_STRING),
+        MYLITE_SQL_AST_LITERAL_TIMESTAMP);
 }
 
 json_extract_expression(A) ::= qualified_identifier(B) JSON_EXTRACT(T) STRING(P). {

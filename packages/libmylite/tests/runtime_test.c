@@ -329,6 +329,8 @@ static int test_scalar_builtin_functions_execution(void);
 
 static int test_hex_bit_literal_execution(void);
 
+static int test_temporal_literal_execution(void);
+
 static int test_current_temporal_functions_execution(void);
 
 static int test_date_and_datediff_functions_execution(void);
@@ -948,6 +950,7 @@ int main(void) {
     failures += test_json_scalar_foundation_execution();
     failures += test_scalar_builtin_functions_execution();
     failures += test_hex_bit_literal_execution();
+    failures += test_temporal_literal_execution();
     failures += test_current_temporal_functions_execution();
     failures += test_date_and_datediff_functions_execution();
     failures += test_last_day_function_execution();
@@ -12903,6 +12906,158 @@ static int test_hex_bit_literal_execution(void) {
     mylite_finalize(stmt);
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_temporal_literal_execution(void) {
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const scalar_columns[] = {
+        "DATE '2024-02-29'",
+        "TIME '12:34:56.123456'",
+        "TIMESTAMP '2024-02-29 12:34:56.123456'",
+    };
+    static const char *const scalar_values[] = {
+        "2024-02-29",
+        "12:34:56.123456",
+        "2024-02-29 12:34:56.123456",
+    };
+    static const struct expected_result_metadata scalar_metadata[] = {
+        {"DATE '2024-02-29'",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         10U,
+         MYLITE_FIELD_TYPE_DATE,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM,
+         0},
+        {"TIME '12:34:56.123456'",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         17U,
+         MYLITE_FIELD_TYPE_TIME,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM,
+         0},
+        {"TIMESTAMP '2024-02-29 12:34:56.123456'",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         26U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM,
+         0},
+    };
+    static const char *const lexical_columns[] = {"d", "t", "quoted_d"};
+    static const char *const lexical_values[] = {"2024-02-29", "12:34:56", "2024-02-29"};
+    static const char *const stored_columns[] = {"d", "t", "dt", "ts"};
+    static const char *const stored_values[] = {
+        "2024-02-29",
+        "12:34:56.123456",
+        "2024-02-29 12:34:56.123456",
+        "2024-02-29 12:34:56.123456",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_status(mylite_open_memory(&database), MYLITE_OK, "open temporal literal database");
+    failures += prepare_sql(
+        database,
+        "SELECT DATE '2024-02-29', TIME '12:34:56.123456', "
+        "TIMESTAMP '2024-02-29 12:34:56.123456'",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(
+        stmt,
+        scalar_columns,
+        (int)(sizeof(scalar_columns) / sizeof(scalar_columns[0])),
+        "temporal literal columns"
+    );
+    failures += expect_result_metadata(
+        stmt,
+        scalar_metadata,
+        (int)(sizeof(scalar_metadata) / sizeof(scalar_metadata[0])),
+        "temporal literal metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "temporal literal row");
+    for (int column = 0; column < (int)(sizeof(scalar_values) / sizeof(scalar_values[0]));
+         ++column) {
+        failures += expect_string(
+            mylite_column_text(stmt, column),
+            scalar_values[column],
+            "temporal literal value"
+        );
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "temporal literal done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT DATE'2024-02-29' AS d, TIME'12:34:56' AS t, "
+        "DATE \"2024-02-29\" AS quoted_d",
+        lexical_columns,
+        (int)(sizeof(lexical_columns) / sizeof(lexical_columns[0])),
+        lexical_values,
+        1,
+        "temporal literal lexical forms"
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = 'ANSI_QUOTES'", MYLITE_DONE);
+    failures += prepare_sql(database, "SELECT DATE \"2024-02-29\"", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ansi quotes temporal double quote");
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+
+    failures += execute_sql(database, "CREATE DATABASE temporal_literal_schema", MYLITE_DONE);
+    failures += execute_sql(database, "USE temporal_literal_schema", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE temporal_literal_target ("
+        "id INT PRIMARY KEY,"
+        "d DATE,"
+        "t TIME(6),"
+        "dt DATETIME(6),"
+        "ts TIMESTAMP(6) NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO temporal_literal_target VALUES ("
+        "1,"
+        "DATE '2024-02-29',"
+        "TIME '12:34:56.123456',"
+        "TIMESTAMP '2024-02-29 12:34:56.123456',"
+        "TIMESTAMP '2024-02-29 12:34:56.123456')",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT d, t, dt, ts FROM temporal_literal_target ORDER BY id",
+        stored_columns,
+        (int)(sizeof(stored_columns) / sizeof(stored_columns[0])),
+        stored_values,
+        1,
+        "temporal literal stored values"
+    );
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

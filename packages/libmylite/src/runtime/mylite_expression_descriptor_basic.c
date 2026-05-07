@@ -4,11 +4,20 @@
 #include "mylite_metadata_constants.h"
 #include "mylite_select.h"
 #include "mylite_select_resolve.h"
+#include "mylite_span.h"
 #include "mylite_system_variables.h"
 #include "mylite_user_variables.h"
 #include "sql/mylite_ast.h"
 
+#include <stdbool.h>
 #include <stddef.h>
+
+static struct mylite_field_descriptor temporal_literal_descriptor(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_field_type type
+);
+
+static unsigned int temporal_literal_fraction_digits(const struct mylite_sql_ast_node *expression);
 
 int mylite_expression_descriptor_infer_literal(
     mylite_db *database,
@@ -50,10 +59,69 @@ int mylite_expression_descriptor_infer_literal(
     case MYLITE_SQL_AST_LITERAL_NONE:
         descriptor = mylite_expression_descriptor_from_value(value);
         break;
+    case MYLITE_SQL_AST_LITERAL_DATE:
+        descriptor = temporal_literal_descriptor(expression, MYLITE_FIELD_TYPE_DATE);
+        break;
+    case MYLITE_SQL_AST_LITERAL_TIME:
+        descriptor = temporal_literal_descriptor(expression, MYLITE_FIELD_TYPE_TIME);
+        break;
+    case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
+        descriptor = temporal_literal_descriptor(expression, MYLITE_FIELD_TYPE_DATETIME);
+        break;
     }
 
     *out_descriptor = descriptor;
     return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor temporal_literal_descriptor(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_field_type type
+) {
+    unsigned int decimals = temporal_literal_fraction_digits(expression);
+    struct mylite_field_descriptor descriptor = {
+        .type = type,
+        .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+        .decimals = decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = false,
+    };
+
+    if (type == MYLITE_FIELD_TYPE_DATE) {
+        descriptor.length = mylite_mysql_date_display_length;
+    } else if (type == MYLITE_FIELD_TYPE_TIME) {
+        descriptor.length = decimals == 0U ? mylite_mysql_time_display_length
+                                           : mylite_mysql_time_fraction_display_base + decimals;
+    } else {
+        descriptor.length = decimals == 0U ? mylite_mysql_datetime_display_length
+                                           : mylite_mysql_datetime_fraction_display_base + decimals;
+    }
+    return descriptor;
+}
+
+static unsigned int temporal_literal_fraction_digits(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *value = mylite_ast_child_at(expression, 0U);
+    const char *text = value == NULL ? NULL : value->span.text;
+    size_t length = value == NULL ? 0U : value->span.length;
+    bool in_fraction = false;
+    unsigned int digits = 0U;
+
+    for (size_t index = 0U; index < length; ++index) {
+        if (text[index] == '.') {
+            in_fraction = true;
+            continue;
+        }
+        if (in_fraction && text[index] >= '0' && text[index] <= '9') {
+            if (digits < mylite_mysql_temporal_max_fsp) {
+                ++digits;
+            }
+            continue;
+        }
+        if (in_fraction) {
+            break;
+        }
+    }
+    return digits;
 }
 
 int mylite_expression_descriptor_infer_identifier(

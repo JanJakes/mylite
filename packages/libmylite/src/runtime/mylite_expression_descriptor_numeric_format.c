@@ -138,6 +138,9 @@ static uint64_t format_literal_result_character_length(const struct mylite_sql_a
                    : mylite_format_literal_extra_length;
     case MYLITE_SQL_AST_LITERAL_TRUE:
     case MYLITE_SQL_AST_LITERAL_FALSE:
+    case MYLITE_SQL_AST_LITERAL_DATE:
+    case MYLITE_SQL_AST_LITERAL_TIME:
+    case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
     case MYLITE_SQL_AST_LITERAL_HEX:
     case MYLITE_SQL_AST_LITERAL_BIT:
     case MYLITE_SQL_AST_LITERAL_NONE:

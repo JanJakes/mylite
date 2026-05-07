@@ -205,5 +205,7 @@ normalized exactly like `TIME(0)`, `DATETIME(6)`, `TIMESTAMP(0)`, and `YEAR(4)`.
 - Zero date/time/year insertion, invalid-date handling, SQL modes such as
   `NO_ZERO_DATE`, `NO_ZERO_IN_DATE`, `ALLOW_INVALID_DATES`, and
   `TIME_TRUNCATE_FRACTIONAL` are deferred.
-- Temporal literals, casts, functions, arithmetic, result metadata, and
-  protocol flags are deferred.
+- Temporal literal expressions are covered by the dedicated
+  [temporal literals](../temporal-literals/specs.md) slice. Temporal casts,
+  arithmetic, broader conversion behavior, column metadata edge cases, and
+  protocol flags remain deferred.

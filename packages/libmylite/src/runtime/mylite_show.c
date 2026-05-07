@@ -643,6 +643,9 @@ static int append_show_where_literal(
         return MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_HEX:
     case MYLITE_SQL_AST_LITERAL_BIT:
+    case MYLITE_SQL_AST_LITERAL_DATE:
+    case MYLITE_SQL_AST_LITERAL_TIME:
+    case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
     case MYLITE_SQL_AST_LITERAL_NONE:
         return MYLITE_UNSUPPORTED;
     }

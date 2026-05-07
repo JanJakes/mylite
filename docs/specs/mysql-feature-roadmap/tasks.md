@@ -73,6 +73,7 @@ level application surfaces.
        [MD5, SHA, SHA1, and SHA2 hash functions](../hash-functions/specs.md).
        [advisory lock functions](../advisory-lock-functions/specs.md).
        [REGEXP scalar functions](../regexp-scalar-functions/specs.md).
+       [temporal literals](../temporal-literals/specs.md).
 25. [x] Aggregate functions and grouping: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`,
        `GROUP_CONCAT`, `GROUP BY`, `HAVING`, aliases, ordinals,
        `ONLY_FULL_GROUP_BY`, and grouped joined row sources. Specs:

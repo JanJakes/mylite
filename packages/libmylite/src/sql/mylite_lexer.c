@@ -106,6 +106,12 @@ static bool scan_unquoted_identifier(
     struct mylite_sql_token *out_token
 );
 
+static bool scan_not_enforced_keyword(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_sql_token *out_token
+);
+
 static bool scan_system_variable(
     struct mylite_sql_lexer *lexer,
     struct mylite_token_start start,
@@ -1120,6 +1126,8 @@ const char *mylite_sql_token_kind_name(enum mylite_sql_token_kind kind) {
         return "string";
     case MYLITE_SQL_TOKEN_NATIONAL_STRING:
         return "national_string";
+    case MYLITE_SQL_TOKEN_NOT_ENFORCED:
+        return "not_enforced";
     case MYLITE_SQL_TOKEN_HEX_LITERAL:
         return "hex_literal";
     case MYLITE_SQL_TOKEN_BIT_LITERAL:
@@ -1733,6 +1741,14 @@ static bool scan_unquoted_identifier(
         advance_one(lexer);
     }
 
+    if (lexer->offset - start.offset == 3U &&
+        ascii_upper((unsigned char)lexer->input[start.offset]) == 'N' &&
+        ascii_upper((unsigned char)lexer->input[start.offset + 1U]) == 'O' &&
+        ascii_upper((unsigned char)lexer->input[start.offset + 2U]) == 'T' &&
+        scan_not_enforced_keyword(lexer, start, out_token)) {
+        return true;
+    }
+
     if (mylite_sql_keyword_lookup(
             &lexer->input[start.offset],
             lexer->offset - start.offset,
@@ -1743,6 +1759,45 @@ static bool scan_unquoted_identifier(
 
     set_token(lexer, out_token, kind, start);
     out_token->keyword_flags = keyword_flags;
+    return true;
+}
+
+static bool scan_not_enforced_keyword(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_token_start start,
+    struct mylite_sql_token *out_token
+) {
+    static const char enforced[] = "ENFORCED";
+    size_t saved_offset = lexer->offset;
+    size_t saved_line = lexer->line;
+    size_t saved_column = lexer->column;
+    bool has_separator = false;
+
+    while (is_space(peek_at(lexer, 0U))) {
+        has_separator = true;
+        advance_one(lexer);
+    }
+    if (!has_separator) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(enforced) - 1U; ++index) {
+        if (ascii_upper(peek_at(lexer, index)) != enforced[index]) {
+            lexer->offset = saved_offset;
+            lexer->line = saved_line;
+            lexer->column = saved_column;
+            return false;
+        }
+    }
+    if (is_identifier_part(peek_at(lexer, sizeof(enforced) - 1U))) {
+        lexer->offset = saved_offset;
+        lexer->line = saved_line;
+        lexer->column = saved_column;
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(enforced) - 1U; ++index) {
+        advance_one(lexer);
+    }
+    set_token(lexer, out_token, MYLITE_SQL_TOKEN_NOT_ENFORCED, start);
     return true;
 }
 

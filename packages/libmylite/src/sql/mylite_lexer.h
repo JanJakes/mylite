@@ -40,6 +40,7 @@ enum mylite_sql_token_kind {
     MYLITE_SQL_TOKEN_PARAMETER = 17,
     MYLITE_SQL_TOKEN_OPERATOR = 18,
     MYLITE_SQL_TOKEN_PUNCTUATION = 19,
+    MYLITE_SQL_TOKEN_NOT_ENFORCED = 20,
 };
 
 enum mylite_sql_operator_kind {

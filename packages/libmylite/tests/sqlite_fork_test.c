@@ -222,6 +222,12 @@ static int test_mysql_collations(void) {
     if (failures != 0) {
         return failures;
     }
+    failures += expect_int64(
+        database,
+        "PRAGMA foreign_keys",
+        1,
+        "configured fork connections enforce foreign keys"
+    );
 
     failures += exec_sql(
         database,
@@ -575,7 +581,6 @@ static int test_native_constraint_diagnostics(void) {
         database,
         "clear CHECK condition before foreign key diagnostics"
     );
-    failures += exec_sql(database, "PRAGMA foreign_keys = ON", "enable direct foreign keys");
     failures += exec_sql(
         database,
         "CREATE TABLE fk_parent_diag(id INT PRIMARY KEY)",

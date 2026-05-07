@@ -156,6 +156,10 @@ int mylite_sqlite_fork_configure(sqlite3 *database) {
     if (rc != SQLITE_OK) {
         return rc;
     }
+    rc = sqlite3_db_config(database, SQLITE_DBCONFIG_ENABLE_FKEY, 1, NULL);
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
     return register_mysql_functions(database);
 }
 

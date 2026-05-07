@@ -11,6 +11,7 @@ Implemented fork points:
 
 - source-tree fork package with reproducible generated SQLite sources
 - MyLite connection bootstrap for native collations, functions, and truncate
+- MyLite connection bootstrap for SQLite-native foreign-key enforcement
 - native SQLite collation registration used for MySQL comparison, ordering,
   grouping, duplicate elimination, and unique-key probes where generated SQL
   preserves expression collation
@@ -133,7 +134,8 @@ Use existing SQLite APIs for:
   observation, statement interruption, and some policy checks.
 - `sqlite3_trace_v2()` for instrumentation and test diagnostics.
 - `sqlite3_db_config()` / `sqlite3_config()` for connection policy when SQLite
-  already exposes the relevant switch.
+  already exposes the relevant switch, including enabling native foreign-key
+  enforcement on configured MyLite connections.
 
 These surfaces are not enough for core MySQL semantics that must be visible
 while SQLite is generating bytecode or making storage decisions.

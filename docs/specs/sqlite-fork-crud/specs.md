@@ -13,6 +13,8 @@ slices:
 
 - register MyLite's current MySQL collation names directly with SQLite
 - register a few MySQL-compatible scalar functions directly with SQLite
+- enable SQLite's native foreign-key enforcement for configured MyLite
+  connections
 - add a native truncate helper that preserves SQLite's fast row deletion path
   and resets `sqlite_sequence` for auto-increment tables
 - add a WordPress-like CRUD test using native SQLite tables shaped as the
@@ -57,6 +59,8 @@ eventually execute unchanged through the forked SQLite parser.
   https://www.sqlite.org/c3ref/create_function.html
 - SQLite collating sequences:
   https://www.sqlite.org/c3ref/create_collation.html
+- SQLite foreign key support:
+  https://www.sqlite.org/foreignkeys.html
 - SQLite fork extension point map:
   `docs/specs/sqlite-fork-extension-point-map/specs.md`
 
@@ -141,6 +145,11 @@ The behavior that matters for the first CRUD foundation is:
 - `TRUNCATE TABLE` empties the table, reports no row count requirement for the
   deleted rows, and resets the next `AUTO_INCREMENT` value.
 - `DROP TABLE` removes the table and its metadata.
+
+Configured MyLite fork connections enable SQLite's native foreign-key
+enforcement with SQLite's public database-configuration API. Foreign-key DDL
+parsing and catalog integration remain separate MyLite work, but the execution
+primitive should not require every caller to remember a per-connection PRAGMA.
 
 ## SQLite Capabilities To Lean On
 

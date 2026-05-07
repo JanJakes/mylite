@@ -19,11 +19,14 @@ will all depend on it.
 | `third_party/` | Pinned upstream source snapshots and vendored build tools. |
 | `tools/` | Command-line tools and developer utilities. Buildable tools should live in subdirectories. |
 
-SQLite source is pinned in `third_party/sqlite/`. Lemon is vendored from that
-same SQLite source snapshot and built as a host tool so generated parser code is
-reproducible. Runtime SQLite integration should prefer public extension APIs,
-with small local SQLite fork patches reserved for missing extension points that
-MyLite needs for MySQL compatibility or performance.
+SQLite source is pinned in `third_party/sqlite/`. The pristine source tree
+lives in `third_party/sqlite/upstream/`, the buildable amalgamation lives in
+`third_party/sqlite/amalgamation/`, and local SQLite fork patches belong in
+`third_party/sqlite/patches/`. Lemon is built from the same pinned source
+snapshot so generated parser code is reproducible. Runtime SQLite integration
+should prefer public extension APIs, with small local SQLite fork patches
+reserved for missing extension points that MyLite needs for MySQL compatibility
+or performance.
 
 ## Build
 

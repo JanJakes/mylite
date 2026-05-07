@@ -56,6 +56,11 @@ target_include_directories(mylite
     "${MYLITE_SQL_PARSE_DIR}"
 )
 
+target_link_libraries(mylite
+  PRIVATE
+    MyLite::sqlite
+)
+
 mylite_configure_c_target(mylite)
 
 if(BUILD_TESTING)
@@ -91,8 +96,15 @@ if(BUILD_TESTING)
   target_link_libraries(mylite_version_test PRIVATE MyLite::mylite)
   mylite_configure_c_target(mylite_version_test)
 
+  add_executable(mylite_sqlite_test
+    tests/sqlite_test.c
+  )
+  target_link_libraries(mylite_sqlite_test PRIVATE MyLite::sqlite)
+  mylite_configure_c_target(mylite_sqlite_test)
+
   add_test(NAME libmylite.lexer COMMAND mylite_lexer_test)
   add_test(NAME libmylite.parser COMMAND mylite_parser_test)
   add_test(NAME libmylite.file_format COMMAND mylite_file_format_test)
+  add_test(NAME libmylite.sqlite COMMAND mylite_sqlite_test)
   add_test(NAME libmylite.version COMMAND mylite_version_test)
 endif()

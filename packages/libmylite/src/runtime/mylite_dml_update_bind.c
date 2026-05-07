@@ -1,6 +1,7 @@
 #include "mylite_dml.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_select.h"
 #include "mylite_span.h"
 #include "sqlite3.h"
 
@@ -91,6 +92,21 @@ int mylite_dml_copy_delete_target_to_select_table(
         }
     }
     return MYLITE_OK;
+}
+
+int mylite_dml_resolve_update_target(mylite_db *database, struct mylite_select_table *table) {
+    int status = MYLITE_OK;
+
+    if (database == NULL || table == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    status = mylite_select_resolve_table_target(database, table);
+    if (status == MYLITE_UNSUPPORTED && table->schema_name != NULL &&
+        mylite_select_schema_name_is_system(table->schema_name)) {
+        return mylite_diagnostics_set_schema_access_denied_error(database, table->schema_name);
+    }
+    return status;
 }
 
 int mylite_dml_bind_update_assignment_targets(

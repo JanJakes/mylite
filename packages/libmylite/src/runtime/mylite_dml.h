@@ -399,6 +399,7 @@ int mylite_dml_copy_delete_target_to_select_table(
     const struct mylite_delete_plan *plan,
     struct mylite_select_table *table
 );
+int mylite_dml_resolve_update_target(mylite_db *database, struct mylite_select_table *table);
 int mylite_dml_set_delete_unknown_column_error(
     mylite_db *database,
     const char *column_name,

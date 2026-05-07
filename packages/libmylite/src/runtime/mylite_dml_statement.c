@@ -596,7 +596,7 @@ int mylite_dml_execute_update_statement(
 
     status = mylite_dml_copy_update_target_to_select_table(stmt->database, &stmt->update, &table);
     if (status == MYLITE_OK) {
-        status = mylite_select_resolve_table_target(stmt->database, &table);
+        status = mylite_dml_resolve_update_target(stmt->database, &table);
     }
     if (status == MYLITE_OK) {
         status = mylite_select_load_table_columns(stmt->database, &table);

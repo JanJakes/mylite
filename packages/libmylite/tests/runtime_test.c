@@ -68252,6 +68252,19 @@ static int test_update_single_table_execution(void) {
 
     failures += execute_sql(database, "CREATE DATABASE mylite_task19_update", MYLITE_DONE);
     failures += execute_sql(database, "USE mylite_task19_update", MYLITE_DONE);
+
+    failures += prepare_sql(
+        database,
+        "UPDATE information_schema.tables SET TABLE_NAME = 'x'",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "update system schema");
+    failures +=
+        expect_contains(mylite_error_message(database), "Access denied", "update system error");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += execute_sql(
         database,
         "CREATE TABLE t ("

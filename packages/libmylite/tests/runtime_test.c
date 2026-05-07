@@ -53015,6 +53015,14 @@ static int test_show_create_table_execution(void) {
         "  `dt` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6)\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
     static const char *const on_update_fsp_values[] = {"on_update_fsp", on_update_fsp_create};
+    static const char generated_meta_create[] =
+        "CREATE TABLE `generated_meta` (\n"
+        "  `base` int DEFAULT NULL,\n"
+        "  `stored_col` int GENERATED ALWAYS AS ((`base` + 1)) STORED,\n"
+        "  `virtual_col` int GENERATED ALWAYS AS ((`base` + 2)) VIRTUAL,\n"
+        "  `default_virtual` int GENERATED ALWAYS AS ((`base` + 3)) VIRTUAL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const generated_meta_values[] = {"generated_meta", generated_meta_create};
     static const char show_create_fk_create[] =
         "CREATE TABLE `child_fk` (\n"
         "  `id` int NOT NULL,\n"
@@ -53246,6 +53254,24 @@ static int test_show_create_table_execution(void) {
         on_update_fsp_values,
         1,
         "show create on update current timestamp fsp"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE generated_meta ("
+        "base INT, "
+        "stored_col INT GENERATED ALWAYS AS (base + 1) STORED, "
+        "virtual_col INT GENERATED ALWAYS AS (base + 2) VIRTUAL, "
+        "default_virtual INT AS (base + 3))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE generated_meta",
+        columns,
+        2,
+        generated_meta_values,
+        1,
+        "show create table generated column metadata"
     );
     failures += execute_sql(database, "CREATE TABLE parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
     failures += execute_sql(

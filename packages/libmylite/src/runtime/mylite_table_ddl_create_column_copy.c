@@ -9,7 +9,7 @@
 #include <string.h>
 
 static const size_t generated_check_constraint_suffix_digits = 20U;
-static const size_t binary_check_expression_text_overhead = 5U;
+static const size_t binary_expression_text_overhead = 5U;
 
 static int copy_create_table_column_type(
     const struct mylite_sql_ast_node *type_node,
@@ -27,7 +27,14 @@ static int copy_create_table_column_check_attribute(
     struct mylite_create_table_plan *plan
 );
 
-static char *copy_expression_text(const struct mylite_sql_ast_node *node);
+static char *copy_generated_expression_text(const struct mylite_sql_ast_node *expression);
+static char *copy_generated_binary_expression_text(const struct mylite_sql_ast_node *expression);
+static char *copy_generated_operand_text(const struct mylite_sql_ast_node *expression);
+static char *copy_generated_parenthesized_expression_text(
+    const struct mylite_sql_ast_node *expression
+);
+static char *copy_generated_fallback_expression_text(const struct mylite_sql_ast_node *expression);
+static const char *generated_operator_symbol(enum mylite_sql_ast_operator operator_kind);
 static char *copy_check_constraint_name(
     const struct mylite_create_table_plan *plan,
     const struct mylite_sql_ast_node *constraint_name
@@ -267,7 +274,7 @@ static int copy_create_table_column_attributes(
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK:
             return copy_create_table_column_check_attribute(attribute, plan);
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED:
-            copy = copy_expression_text(mylite_ast_child_at(attribute, 0U));
+            copy = copy_generated_expression_text(mylite_ast_child_at(attribute, 0U));
             if (copy == NULL) {
                 return MYLITE_NOMEM;
             }
@@ -302,21 +309,166 @@ static int copy_create_table_column_check_attribute(
     return mylite_table_ddl_add_create_table_check(plan, &input);
 }
 
-static char *copy_expression_text(const struct mylite_sql_ast_node *node) {
-    if (node == NULL) {
+static char *copy_generated_expression_text(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
         return NULL;
     }
-    if (node->kind == MYLITE_SQL_AST_LITERAL &&
-        node->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
-        return mylite_copy_string_literal_span(node);
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return copy_generated_binary_expression_text(expression);
     }
-    if (node->kind == MYLITE_SQL_AST_LITERAL && node->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
-        return NULL;
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return copy_check_identifier_text(expression);
     }
-    if (node->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP) {
+    if (expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        return copy_generated_parenthesized_expression_text(expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP) {
         return mylite_copy_span_text("CURRENT_TIMESTAMP", strlen("CURRENT_TIMESTAMP"));
     }
-    return mylite_copy_span_text(node->span.text, node->span.length);
+    return copy_generated_fallback_expression_text(expression);
+}
+
+static char *copy_generated_binary_expression_text(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *left_expression = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *right_expression = mylite_ast_child_at(expression, 1U);
+    const char *operator_text = generated_operator_symbol(expression->operator_kind);
+    char *left_text = NULL;
+    char *right_text = NULL;
+    char *text = NULL;
+    size_t length = 0U;
+
+    if (operator_text == NULL || left_expression == NULL || right_expression == NULL) {
+        return copy_generated_fallback_expression_text(expression);
+    }
+
+    left_text = copy_generated_operand_text(left_expression);
+    right_text = copy_generated_operand_text(right_expression);
+    if (left_text == NULL || right_text == NULL) {
+        free(left_text);
+        free(right_text);
+        return NULL;
+    }
+
+    length = strlen(left_text) + strlen(operator_text) + strlen(right_text) +
+             binary_expression_text_overhead;
+    text = malloc(length + 1U);
+    if (text != NULL) {
+        (void)snprintf(text, length + 1U, "(%s %s %s)", left_text, operator_text, right_text);
+    }
+    free(left_text);
+    free(right_text);
+    return text;
+}
+
+static char *copy_generated_operand_text(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return NULL;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return copy_check_identifier_text(expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return copy_generated_binary_expression_text(expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        return copy_generated_parenthesized_expression_text(expression);
+    }
+    return copy_generated_fallback_expression_text(expression);
+}
+
+static char *copy_generated_parenthesized_expression_text(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *inner_expression = mylite_ast_child_at(expression, 0U);
+    char *inner_text = inner_expression == NULL
+                           ? copy_generated_fallback_expression_text(expression)
+                           : copy_generated_expression_text(inner_expression);
+    char *text = NULL;
+    size_t length = 0U;
+
+    if (inner_text == NULL) {
+        return NULL;
+    }
+    length = strlen(inner_text) + 2U;
+    text = malloc(length + 1U);
+    if (text != NULL) {
+        (void)snprintf(text, length + 1U, "(%s)", inner_text);
+    }
+    free(inner_text);
+    return text;
+}
+
+static char *copy_generated_fallback_expression_text(const struct mylite_sql_ast_node *expression) {
+    return mylite_copy_span_text(expression->span.text, expression->span.length);
+}
+
+static const char *generated_operator_symbol(enum mylite_sql_ast_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        return "+";
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        return "-";
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return "*";
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+        return "/";
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+        return "div";
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        return "mod";
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+        return "=";
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+        return "<>";
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+        return "<";
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+        return "<=";
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+        return ">";
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return ">=";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+        return "and";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+        return "or";
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_IN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_IN:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+    case MYLITE_SQL_AST_OPERATOR_COLLATE:
+        return NULL;
+    }
+    return NULL;
 }
 
 static char *copy_check_constraint_name(
@@ -390,7 +542,7 @@ static char *copy_check_binary_expression_text(const struct mylite_sql_ast_node 
     }
 
     length = strlen(left_text) + strlen(operator_text) + strlen(right_text) +
-             binary_check_expression_text_overhead;
+             binary_expression_text_overhead;
     text = malloc(length + 1U);
     if (text != NULL) {
         (void)snprintf(text, length + 1U, "(%s %s %s)", left_text, operator_text, right_text);

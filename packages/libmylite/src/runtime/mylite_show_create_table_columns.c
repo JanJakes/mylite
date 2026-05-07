@@ -36,6 +36,12 @@ static bool show_create_column_needs_explicit_null_current_timestamp(
 
 static void append_show_create_column_default(sqlite3_str *create_sql, const char *column_default);
 
+static void append_show_create_column_generation_expression(
+    sqlite3_str *create_sql,
+    const char *generation_expression,
+    const char *extra
+);
+
 static void append_show_create_column_on_update_current_timestamp(
     sqlite3_str *create_sql,
     const char *data_type,
@@ -61,7 +67,7 @@ int mylite_show_create_table_append_columns(
     sqlite3_stmt *select = NULL;
     char *sql = sqlite3_mprintf(
         "SELECT column_name, column_type, is_nullable, column_default, extra, column_comment, "
-        "character_set_name, collation_name, data_type, has_default "
+        "character_set_name, collation_name, data_type, has_default, generation_expression "
         "FROM %s WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position",
         mylite_catalog_column_catalog_name(target->temporary)
@@ -114,6 +120,7 @@ static int append_show_create_table_column(
         collation_column = 7,
         data_type_column = 8,
         has_default_column = 9,
+        generation_expression_column = 10,
     };
 
     const char *column_name = (const char *)sqlite3_column_text(select, column_name_column);
@@ -125,7 +132,11 @@ static int append_show_create_table_column(
     const char *character_set = (const char *)sqlite3_column_text(select, character_set_column);
     const char *column_collation = (const char *)sqlite3_column_text(select, collation_column);
     const char *data_type = (const char *)sqlite3_column_text(select, data_type_column);
+    const char *generation_expression =
+        (const char *)sqlite3_column_text(select, generation_expression_column);
     bool auto_increment = mylite_text_contains_word(extra, "auto_increment");
+    bool generated =
+        mylite_text_contains_word(extra, "STORED") || mylite_text_contains_word(extra, "VIRTUAL");
     bool nullable = mylite_ascii_case_equal(is_nullable, "YES");
     bool has_default = sqlite3_column_int(select, has_default_column) != 0;
 
@@ -146,7 +157,9 @@ static int append_show_create_table_column(
     ) {
         sqlite3_str_appendall(create_sql, " NULL");
     }
-    if (column_default != NULL && !auto_increment) {
+    if (generated) {
+        append_show_create_column_generation_expression(create_sql, generation_expression, extra);
+    } else if (column_default != NULL && !auto_increment) {
         sqlite3_str_appendall(create_sql, " DEFAULT ");
         if (mylite_column_default_is_current_timestamp(column_default)) {
             append_show_create_column_default(create_sql, column_default);
@@ -191,6 +204,21 @@ static void append_show_create_column_default(sqlite3_str *create_sql, const cha
         return;
     }
     sqlite3_str_appendall(create_sql, column_default);
+}
+
+static void append_show_create_column_generation_expression(
+    sqlite3_str *create_sql,
+    const char *generation_expression,
+    const char *extra
+) {
+    sqlite3_str_appendall(create_sql, " GENERATED ALWAYS AS (");
+    sqlite3_str_appendall(create_sql, generation_expression == NULL ? "" : generation_expression);
+    sqlite3_str_appendchar(create_sql, 1, ')');
+    if (mylite_text_contains_word(extra, "STORED")) {
+        sqlite3_str_appendall(create_sql, " STORED");
+    } else {
+        sqlite3_str_appendall(create_sql, " VIRTUAL");
+    }
 }
 
 static void append_show_create_column_on_update_current_timestamp(

@@ -36,7 +36,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       reporting with MySQL next-value expectations.
 - [x] Align `SHOW CREATE TABLE` formatting and metadata, including index
       spacing, text-column defaults, comments, `USING BTREE`, foreign keys, and
-      CHECK constraints.
+      CHECK constraints. Stored, virtual, and default-virtual generated columns
+      now render MySQL-compatible `GENERATED ALWAYS AS (...) STORED|VIRTUAL`
+      clauses.
 - [x] Align `SHOW CREATE TABLE missing_table` diagnostics with MySQL.
 - [x] Verify and complete `DESCRIBE` / `SHOW COLUMNS` for generated schemas.
       Stored, virtual, and default-virtual generated-column metadata now

@@ -15,7 +15,7 @@ Generated text is deterministic and describes the currently supported
 defaults, `AUTO_INCREMENT`, invisible columns, primary keys, unique indexes,
 secondary indexes, key-part prefix lengths and descending order, index
 comments, explicit `USING BTREE` display, index visibility, foreign keys,
-CHECK constraints, engine,
+CHECK constraints, generated columns, engine,
 auto-increment table option, table charset, table collation, and table comment.
 
 Deferred surfaces:
@@ -23,8 +23,8 @@ Deferred surfaces:
 - `SHOW CREATE TABLE` for views, including information-schema views
 - `SHOW CREATE VIEW`
 - temporary tables and temporary-table shadowing
-- generated columns, partitions, functional indexes, and storage-engine
-  features not yet represented faithfully in MyLite metadata
+- partitions, functional indexes, and storage-engine features not yet
+  represented faithfully in MyLite metadata
 - `sql_quote_show_create = 0`; MyLite always emits default quoted identifiers
   in this slice
 - privilege-sensitive visibility, metadata locks, warnings, and protocol
@@ -57,6 +57,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW CREATE TABLE escaped_literals` for string defaults and comments containing quotes/backslashes | Embedded single quotes render as doubled quotes and embedded backslashes render as escaped backslashes in string literals. |
 | `SHOW CREATE TABLE index_options` for `KEY idx_pre USING BTREE (v)`, `KEY idx_post (v) USING BTREE`, and `KEY idx_hash USING HASH (v)` | Explicit BTREE index type syntax is preserved as `USING BTREE` after the key-part list. Unsupported InnoDB HASH syntax falls back to effective BTREE metadata but does not display a `USING` clause. |
 | `SHOW CREATE TABLE text_defaults` for nullable `TEXT`, explicit `TEXT DEFAULT NULL`, and `TEXT NOT NULL` columns | Nullable text family columns omit implicit and explicit `DEFAULT NULL`; non-null text columns append `NOT NULL`. |
+| `SHOW CREATE TABLE generated_meta` for stored, explicit virtual, and default-virtual generated columns | Generated columns render `GENERATED ALWAYS AS (<expression>)` after nullability, suppress ordinary default rendering, and always display explicit `STORED` or `VIRTUAL`. Default-virtual columns normalize to explicit `VIRTUAL`. |
 | `SHOW CREATE TABLE t_default_col_explicit` for `CREATE TABLE t_default_col_explicit (c VARCHAR(10) COLLATE utf8mb4_bin, d VARCHAR(10)) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci` | Column `c` renders `varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL`; column `d` renders `varchar(10) DEFAULT NULL`. |
 | `SHOW CREATE TABLE t_table_bin` for `CREATE TABLE t_table_bin (c VARCHAR(10), d VARCHAR(10) COLLATE utf8mb4_0900_ai_ci) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin` | Column `c` renders `varchar(10) COLLATE utf8mb4_bin DEFAULT NULL`; column `d` renders `varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL`. |
 | `SHOW CREATE TABLE t` for a table with a supporting FK index, `CONSTRAINT fk_t_parent FOREIGN KEY (...)`, `CONSTRAINT chk_note CHECK (...) NOT ENFORCED`, and generated CHECK constraints | Foreign-key clauses render after keys and before CHECK clauses. Multi-column foreign-key child and referenced column lists use comma-space separators, and FK clauses are ordered by constraint name. CHECK clauses render as `CONSTRAINT <name> CHECK (<stored-clause>)`; since stored clauses are already parenthesized, binary comparisons display as `CHECK ((...))`. `NOT ENFORCED` renders `/*!80016 NOT ENFORCED */`. CHECK clauses are ordered by constraint name. |
@@ -144,6 +145,9 @@ Formatting:
 - Explicit defaults are rendered as `DEFAULT CURRENT_TIMESTAMP` for
   `CURRENT_TIMESTAMP` defaults and as quoted literals for other cataloged
   defaults.
+- Generated columns append `GENERATED ALWAYS AS (<generation-expression>)`,
+  followed by explicit `STORED` or `VIRTUAL`. They do not render ordinary
+  defaults, and default-virtual definitions render with explicit `VIRTUAL`.
 - `auto_increment` in `extra` appends `AUTO_INCREMENT`.
 - `on update CURRENT_TIMESTAMP` in `extra` appends
   `ON UPDATE CURRENT_TIMESTAMP`.
@@ -217,6 +221,7 @@ Runtime coverage:
 - create-time and ALTER-added CHECK clauses, including generated names,
   constraint-name ordering, and `/*!80016 NOT ENFORCED */`
 - text family columns suppressing implicit and explicit `DEFAULT NULL`
+- stored, explicit virtual, and default-virtual generated columns
 - escaped backticks in table, column, and index identifiers
 - missing selected schema diagnostic
 - missing schema diagnostic

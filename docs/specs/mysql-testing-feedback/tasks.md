@@ -213,10 +213,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
       for strict, non-strict, `INSERT IGNORE`, and single-table `UPDATE IGNORE`
       paths. `TINYTEXT` and `TINYBLOB`
       255-byte write limits and plain `TEXT`/`BLOB` 65,535-byte write limits
-      are now covered for strict and non-strict `INSERT ... VALUES`,
-      `INSERT IGNORE`, strict single-table `UPDATE`, and single-table
-      `UPDATE IGNORE`, including UTF-8 boundary truncation for `TINYTEXT` and
-      `TEXT`. Fixed `BINARY(N)` values now right-pad shorter write values with
+      are now covered for strict and non-strict `INSERT ... VALUES`, `REPLACE`,
+      `REPLACE ... SET`, `INSERT IGNORE`, strict single-table `UPDATE`, and
+      single-table `UPDATE IGNORE`, including strict `REPLACE` conflict-row
+      preservation and UTF-8 boundary truncation for `TINYTEXT` and `TEXT`.
+      Fixed `BINARY(N)` values now right-pad shorter write values with
       `0x00` bytes while preserving `VARBINARY(N)` shorter values, and covered
       strict/non-strict/`UPDATE IGNORE` overlength paths truncate or reject
       according to MySQL. Invalid UTF-8 byte sequences assigned to covered

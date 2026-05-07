@@ -58,8 +58,10 @@ Out of scope for the first executable slice:
 - views
 - temporary-table interactions
 - binary logging, replication safety markers, and exact protocol OK-packet text
-- full type conversion, range clipping, string truncation, temporal coercion,
-  and SQL-mode variants beyond the existing insert slices
+- remaining type conversion, range clipping, temporal coercion, and SQL-mode
+  variants beyond the existing insert and string-coercion slices
+- remaining string truncation surfaces beyond the covered `CHAR`/`VARCHAR`,
+  `TINYTEXT`/`TINYBLOB`, and plain `TEXT`/`BLOB` value and SET forms
 - `NO_AUTO_VALUE_ON_ZERO`, `auto_increment_increment`,
   `auto_increment_offset`, and non-InnoDB auto-increment variants
 
@@ -738,6 +740,9 @@ Runtime tests for first executable slice:
   insert id
 - `DELAYED` warning 3005
 - SET assignment-order behavior and lack of access to deleted-row values
+- strict and non-strict `TINYTEXT`/`TINYBLOB` and plain `TEXT`/`BLOB` write
+  limits for `VALUES` and `SET`, including conflict-row preservation before
+  strict candidate-row failures and UTF-8 boundary truncation for text columns
 - auto-increment omitted, `NULL`, `0`, `DEFAULT`, explicit low, explicit high,
   duplicate replacement, sequence consumption, and session last insert id
 - fatal error rollback after earlier inserted/deleted rows
@@ -749,8 +754,8 @@ Deferred runtime tests:
 - partition routing and partition mismatch diagnostics
 - trigger order and trigger side effects
 - generated-column default and conflict behavior
-- type conversion, range clipping, truncation, invalid temporal values, and
-  SQL-mode warning/error variants
+- remaining type conversion, range clipping, truncation, invalid temporal
+  values, and SQL-mode warning/error variants
 - protocol OK-packet information string formatting
 
 MySQL-runtime comparison tests must verify result rows, warning codes/messages,

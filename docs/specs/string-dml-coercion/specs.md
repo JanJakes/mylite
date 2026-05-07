@@ -15,9 +15,11 @@ This slice aligns write-time length coercion for currently supported `CHAR`,
 It also covers the first TEXT/BLOB-family runtime edges:
 
 - `TINYTEXT` and `TINYBLOB` 255-byte write limits for `INSERT ... VALUES`,
-  `INSERT IGNORE`, single-table `UPDATE`, and single-table `UPDATE IGNORE`
+  `REPLACE ... VALUES`, `REPLACE ... SET`, `INSERT IGNORE`,
+  single-table `UPDATE`, and single-table `UPDATE IGNORE`
 - plain `TEXT` and `BLOB` 65,535-byte write limits for `INSERT ... VALUES`,
-  `INSERT IGNORE`, single-table `UPDATE`, and single-table `UPDATE IGNORE`
+  `REPLACE ... VALUES`, `REPLACE ... SET`, `INSERT IGNORE`,
+  single-table `UPDATE`, and single-table `UPDATE IGNORE`
 - invalid UTF-8 byte sequences assigned to `utf8mb4` `VARCHAR` and `TEXT`
   columns for `INSERT ... VALUES`, `INSERT IGNORE`, non-strict inserts, and
   single-table `UPDATE IGNORE`
@@ -62,18 +64,22 @@ truncated binary column.
 For `TINYTEXT` and `TINYBLOB`, MySQL enforces a 255-byte maximum. In strict
 mode, assigning 256 ASCII bytes to `TINYTEXT` and `TINYBLOB` rejects the
 statement at the first overflowing column with error 1406 and leaves rows
-unchanged. In non-strict mode and the covered `IGNORE` forms, MySQL stores 255
-bytes and emits warning 1265 per truncated column. For multibyte `TINYTEXT`,
-non-strict truncation does not store a partial UTF-8 character; 128 two-byte
-characters become 127 characters / 254 bytes with one warning.
+unchanged, including existing rows that a failing `REPLACE` would otherwise
+delete. In non-strict mode, covered `REPLACE` forms, and the covered `IGNORE`
+forms, MySQL stores 255 bytes and emits warning 1265 per truncated column. For
+multibyte `TINYTEXT`, non-strict truncation does not store a partial UTF-8
+character; 128 two-byte characters become 127 characters / 254 bytes with one
+warning.
 
 For plain `TEXT` and `BLOB`, MySQL enforces a 65,535-byte maximum. In strict
 mode, assigning 65,536 ASCII bytes to `TEXT` and `BLOB` rejects the statement at
-the first overflowing column with error 1406 and leaves rows unchanged. In
-non-strict mode and the covered `IGNORE` forms, MySQL stores 65,535 bytes and
-emits warning 1265 per truncated column. For multibyte `TEXT`, non-strict
-truncation does not store a partial UTF-8 character; 32,768 two-byte characters
-become 32,767 characters / 65,534 bytes with one warning.
+the first overflowing column with error 1406 and leaves rows unchanged,
+including existing rows that a failing `REPLACE` would otherwise delete. In
+non-strict mode, covered `REPLACE` forms, and the covered `IGNORE` forms,
+MySQL stores 65,535 bytes and emits warning 1265 per truncated column. For
+multibyte `TEXT`, non-strict truncation does not store a partial UTF-8
+character; 32,768 two-byte characters become 32,767 characters / 65,534 bytes
+with one warning.
 
 For `utf8mb4` `VARCHAR` and `TEXT`, assigning binary bytes that are not valid
 UTF-8 rejects in strict mode with error 1366, `Incorrect string value`, at the
@@ -124,9 +130,14 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
   truncation, and single-table `UPDATE IGNORE` padding/truncation
 - strict rejection, non-strict truncation, `INSERT IGNORE`, and
   single-table `UPDATE IGNORE` for `TINYTEXT` and `TINYBLOB`
+- `REPLACE ... VALUES` and `REPLACE ... SET` truncation behavior for
+  `TINYTEXT` and `TINYBLOB`, including conflict-row preservation on strict
+  failure
 - `TINYTEXT` byte-limit truncation at a complete UTF-8 character boundary
 - strict rejection, non-strict truncation, `INSERT IGNORE`, and
   single-table `UPDATE IGNORE` for `TEXT` and `BLOB`
+- `REPLACE ... VALUES` and `REPLACE ... SET` truncation behavior for `TEXT`
+  and `BLOB`, including conflict-row preservation on strict failure
 - `TEXT` byte-limit truncation at a complete UTF-8 character boundary
 - strict invalid UTF-8 rejection for `utf8mb4` `VARCHAR`/`TEXT`, `INSERT
   IGNORE` and non-strict valid-prefix storage with warning 1366, `UPDATE

@@ -59005,15 +59005,21 @@ static int test_string_dml_coercion_execution(void) {
         "64",
     };
     static const char *const tiny_lob_row1_update_values[] = {"1", "255", "255", "g", "68"};
+    static const char *const tiny_lob_row1_replace_values[] = {"1", "255", "255", "i", "6A"};
+    static const char *const tiny_lob_row2_replace_values[] = {"2", "255", "255", "k", "6C"};
     static const char *const tiny_text_utf8_columns[] = {"id", "t_len", "t_chars"};
     static const char *const tiny_text_utf8_values[] = {"3", "254", "127"};
+    static const char *const tiny_text_utf8_replace_values[] = {"4", "254", "127"};
     static const char *const lob_columns[] = {"id", "t_len", "b_len", "t_last", "b_last"};
     static const char *const lob_row1_insert_values[] = {"1", "65535", "65535", "a", "62"};
     static const char *const lob_insert_ignore_values[] =
         {"1", "65535", "65535", "a", "62", "2", "65535", "65535", "c", "64"};
     static const char *const lob_row1_update_values[] = {"1", "65535", "65535", "x", "79"};
+    static const char *const lob_row1_replace_values[] = {"1", "65535", "65535", "m", "6E"};
+    static const char *const lob_row2_replace_values[] = {"2", "65535", "65535", "o", "70"};
     static const char *const text_utf8_columns[] = {"id", "t_len", "t_chars"};
     static const char *const text_utf8_values[] = {"3", "65534", "32767"};
+    static const char *const text_utf8_replace_values[] = {"4", "65534", "32767"};
     static const char *const binary_columns[] = {"id", "fb_hex", "fb_len", "vb_hex", "vb_len"};
     static const char *const binary_insert_values[] = {"1", "610000", "3", "61", "1"};
     static const char *const binary_update_values[] = {"1", "787900", "3", "7879", "2"};
@@ -59528,7 +59534,74 @@ static int test_string_dml_coercion_execution(void) {
         "tiny lob update ignore clipped values"
     );
 
+    failures += prepare_sql(
+        database,
+        "REPLACE INTO tiny_lobs VALUES (1, REPEAT('i', 256), REPEAT('j', 256))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict tiny text replace length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict tiny text replace length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM tiny_lobs WHERE id = 1",
+        tiny_lob_columns,
+        5,
+        tiny_lob_row1_update_values,
+        1,
+        "strict tiny lob replace preserves row"
+    );
+
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO tiny_lobs VALUES (1, REPEAT('i', 256), REPEAT('j', 256))",
+        2,
+        "non-strict tiny lob replace values"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "tiny lob replace warning count");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM tiny_lobs WHERE id = 1",
+        tiny_lob_columns,
+        5,
+        tiny_lob_row1_replace_values,
+        1,
+        "tiny lob replace clipped values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO tiny_lobs SET id = 2, t = REPEAT('k', 256), b = REPEAT('l', 256)",
+        2,
+        "non-strict tiny lob replace set"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "tiny lob replace set warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM tiny_lobs WHERE id = 2",
+        tiny_lob_columns,
+        5,
+        tiny_lob_row2_replace_values,
+        1,
+        "tiny lob replace set clipped values"
+    );
     failures += execute_sql_expect_done_affected(
         database,
         "INSERT INTO tiny_lobs VALUES (3, REPEAT('\xC3\xA9', 128), REPEAT('z', 255))",
@@ -59550,6 +59623,24 @@ static int test_string_dml_coercion_execution(void) {
         tiny_text_utf8_values,
         1,
         "tinytext multibyte clipped values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO tiny_lobs SET id = 4, t = REPEAT('\xC3\xA9', 128), b = REPEAT('z', 255)",
+        1,
+        "non-strict tinytext multibyte replace set"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "tinytext replace multibyte warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, CHAR_LENGTH(t) AS t_chars "
+        "FROM tiny_lobs WHERE id = 4",
+        tiny_text_utf8_columns,
+        3,
+        tiny_text_utf8_replace_values,
+        1,
+        "tinytext replace multibyte clipped values"
     );
 
     failures += execute_sql(
@@ -59680,7 +59771,74 @@ static int test_string_dml_coercion_execution(void) {
         "lob update ignore clipped values"
     );
 
+    failures += prepare_sql(
+        database,
+        "REPLACE INTO lobs VALUES (1, REPEAT('m', 65536), REPEAT('n', 65536))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "strict text replace length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict text replace length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM lobs WHERE id = 1",
+        lob_columns,
+        5,
+        lob_row1_update_values,
+        1,
+        "strict lob replace preserves row"
+    );
+
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO lobs VALUES (1, REPEAT('m', 65536), REPEAT('n', 65536))",
+        2,
+        "non-strict lob replace values"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "lob replace warning count");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM lobs WHERE id = 1",
+        lob_columns,
+        5,
+        lob_row1_replace_values,
+        1,
+        "lob replace clipped values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO lobs SET id = 2, t = REPEAT('o', 65536), b = REPEAT('p', 65536)",
+        2,
+        "non-strict lob replace set"
+    );
+    failures += expect_int(mylite_warning_count(database), 2, "lob replace set warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM lobs WHERE id = 2",
+        lob_columns,
+        5,
+        lob_row2_replace_values,
+        1,
+        "lob replace set clipped values"
+    );
     failures += execute_sql_expect_done_affected(
         database,
         "INSERT INTO lobs VALUES (3, REPEAT('\xC3\xA9', 32768), '')",
@@ -59701,6 +59859,22 @@ static int test_string_dml_coercion_execution(void) {
         text_utf8_values,
         1,
         "text multibyte clipped values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO lobs SET id = 4, t = REPEAT('\xC3\xA9', 32768), b = ''",
+        1,
+        "non-strict text multibyte replace set"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "text replace multibyte warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, CHAR_LENGTH(t) AS t_chars FROM lobs WHERE id = 4",
+        text_utf8_columns,
+        3,
+        text_utf8_replace_values,
+        1,
+        "text replace multibyte clipped values"
     );
 
     mylite_close(database);

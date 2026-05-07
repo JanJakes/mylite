@@ -237,13 +237,21 @@ identifier column references, optional prefix length, and optional `ASC` or
 ascending or omitted order with `COLLATION='A'`, and prefix lengths in
 `SUB_PART`.
 
-`FULLTEXT` and `SPATIAL` index additions are valid MySQL surfaces with storage
-and type restrictions. Runtime probes observed `FULLTEXT` metadata with
-`INDEX_TYPE='FULLTEXT'`, `COLLATION=NULL`, and an InnoDB warning 124 when
-adding the hidden full-text document id, and `SPATIAL` metadata with
-`INDEX_TYPE='SPATIAL'` over a `POINT NOT NULL SRID 0` column. MyLite should
-parse these forms but return an unsupported diagnostic before mutation until
-full-text and spatial runtimes exist.
+`ADD FULLTEXT` creates metadata-backed full-text indexes for supported
+character and text columns. MySQL reports `INDEX_TYPE='FULLTEXT'`,
+`COLLATION=NULL`, ignores prefix lengths in statistics metadata, preserves
+`COMMENT` and `WITH PARSER` in `SHOW CREATE TABLE`, warns 124 when InnoDB adds
+the hidden full-text document id for the table's first full-text index, rejects
+non-text columns with 1283, rejects explicit key-part order with 1221, and
+rejects multiple full-text creations in one ALTER with 1795. MyLite mirrors
+that metadata and diagnostics while deferring parser-plugin tokenization and
+`MATCH ... AGAINST` search behavior.
+
+`SPATIAL` index additions remain valid MySQL syntax with storage and type
+restrictions. Runtime probes observed `SPATIAL` metadata with
+`INDEX_TYPE='SPATIAL'` over a `POINT NOT NULL SRID 0` column. MyLite still
+parses spatial ALTER index forms but returns an unsupported diagnostic before
+mutation until spatial types and runtime behavior exist.
 
 ### Index drop, rename, and visibility
 
@@ -766,6 +774,8 @@ deferred surfaces:
 | existing `NULL` in added primary key | 1138 / `22004` |
 | missing dropped index/key/foreign key | 1091 / `42000` |
 | dropping index needed by a foreign key | 1553 / `HY000` |
+| non-text column in a full-text index | 1283 / `HY000` |
+| multiple full-text index creations in one ALTER | 1795 / `HY000` |
 | invisible explicit or implicit primary key | 3522 / `HY000` |
 | CHECK violation | 3819 / `HY000` |
 | missing CHECK constraint | 3821 / `HY000` |
@@ -773,7 +783,7 @@ deferred surfaces:
 | foreign-key existing-row violation | 1452 / `23000` |
 | duplicate-index warning | warning 1831 |
 | HASH index fallback note | note 3502 |
-| InnoDB full-text hidden-column warning | warning 124, deferred with FULLTEXT |
+| InnoDB full-text hidden-column warning | warning 124 |
 
 Warnings belong to statement diagnostics and must be inspectable immediately
 after the `ALTER TABLE` statement. A later statement may overwrite the warning
@@ -810,7 +820,11 @@ fixtures should create and drop isolated schemas.
 | `ADD KEY named_b (b DESC)` | Succeeds; `STATISTICS.COLLATION='D'`. |
 | adding an index duplicate by shape with a different name | Succeeds with warning 1831. |
 | adding an index with an existing name | Error 1061; no mutation. |
-| `ADD FULLTEXT INDEX ft_body (body)` | MySQL succeeds with `INDEX_TYPE='FULLTEXT'` and may warn 124; MyLite first slice returns unsupported before mutation. |
+| `ADD FULLTEXT INDEX ft_body (body) WITH PARSER ngram COMMENT 'ft'` | Succeeds for text columns; `STATISTICS.INDEX_TYPE='FULLTEXT'`, `COLLATION=NULL`, `SUB_PART=NULL`; `SHOW INDEX` and `SHOW CREATE TABLE` expose parser/comment metadata; first full-text index warns 124. |
+| adding a second full-text index in a later statement | Succeeds without warning 124 when the table already has full-text metadata. |
+| `ADD FULLTEXT INDEX ft_n (n)` over an integer column | Error 1283; no index metadata is added. |
+| `ADD FULLTEXT INDEX ft_body (body ASC)` | Error 1221; no index metadata is added. |
+| adding two full-text indexes in one ALTER | Error 1795; no index metadata is added. |
 | `ADD SPATIAL INDEX sp_g (g)` over `POINT NOT NULL SRID 0` | MySQL succeeds with `INDEX_TYPE='SPATIAL'`; MyLite first slice returns unsupported before mutation. |
 
 ### Drop, rename, and visibility
@@ -867,7 +881,8 @@ fixtures should create and drop isolated schemas.
 | adding a primary key and renaming a column in one statement | Validation uses the source-order candidate model and commits column/index metadata together. |
 | dropping a column and adding an index on the dropped column in one statement | Fails before mutation with the MySQL-compatible missing-column diagnostic for the final candidate action. |
 | creating an index then renaming it in the same statement | The final metadata contains the renamed index if MySQL accepts the exact source-order shape; tests should pin the verified behavior before implementation. |
-| any unsupported `FULLTEXT` or `SPATIAL` action mixed with supported index actions | The whole statement fails before mutation; no partial index or column changes survive. |
+| unsupported `SPATIAL` action mixed with supported index actions | The whole statement fails before mutation; no partial index or column changes survive. |
+| supported `ADD FULLTEXT` mixed with supported column/index actions | The full statement commits atomically, or rolls back if a later supported action fails validation. |
 | non-default `ALGORITHM` or `LOCK` in the first MyLite slice | Fails before mutation with a deterministic unsupported diagnostic. |
 
 ## Test plan

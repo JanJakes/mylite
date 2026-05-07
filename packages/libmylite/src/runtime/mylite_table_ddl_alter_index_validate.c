@@ -5,6 +5,7 @@
 #include "mylite_span.h"
 #include "mylite_table_ddl.h"
 #include "mylite_table_ddl_alter_index_model.h"
+#include "mylite_table_ddl_index_validate.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +19,19 @@ static int set_alter_table_column_nullable(
 static int set_alter_table_multiple_primary_key_error(mylite_db *database);
 
 static int set_alter_table_missing_key_column_error(mylite_db *database, const char *column_name);
+
+static int set_alter_table_fulltext_creation_limit_error(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+);
+
+static bool alter_table_model_has_changed_fulltext_index(
+    const struct mylite_alter_table_model *model
+);
+
+static bool alter_table_model_has_pending_fulltext_doc_id_warning(
+    const struct mylite_alter_table_model *model
+);
 
 int mylite_table_ddl_validate_alter_table_added_index(
     mylite_db *database,
@@ -64,6 +78,12 @@ int mylite_table_ddl_validate_alter_table_added_index(
                 );
             }
         }
+    }
+    if (index->is_fulltext) {
+        if (alter_table_model_has_changed_fulltext_index(model)) {
+            return set_alter_table_fulltext_creation_limit_error(database, model);
+        }
+        return mylite_table_ddl_validate_fulltext_index(database, model, index);
     }
     return MYLITE_OK;
 }
@@ -204,4 +224,51 @@ static int set_alter_table_missing_key_column_error(mylite_db *database, const c
         mylite_error_message(database)
     );
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_fulltext_creation_limit_error(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model
+) {
+    static const char message[] = "InnoDB presently supports one FULLTEXT index creation at a time";
+    int status = MYLITE_OK;
+
+    if (alter_table_model_has_pending_fulltext_doc_id_warning(model)) {
+        status = mylite_diagnostics_append_warning(
+            database,
+            MYLITE_MYSQL_ER_WARN_INNODB_FT_DOC_ID,
+            "InnoDB rebuilding table to add column FTS_DOC_ID"
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_set_error_message(database, message);
+    }
+    if (status == MYLITE_NOMEM) {
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_INNODB_FT_LIMIT, message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static bool alter_table_model_has_changed_fulltext_index(
+    const struct mylite_alter_table_model *model
+) {
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        if (model->indexes[index].changed &&
+            mylite_ascii_case_equal(model->indexes[index].index_type, "FULLTEXT")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool alter_table_model_has_pending_fulltext_doc_id_warning(
+    const struct mylite_alter_table_model *model
+) {
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        if (model->indexes[index].fulltext_doc_id_warning) {
+            return true;
+        }
+    }
+    return false;
 }

@@ -271,6 +271,7 @@ struct mylite_alter_table_index {
     int non_unique;
     bool changed;
     bool hash_fallback_warning;
+    bool fulltext_doc_id_warning;
     bool display_index_type;
 };
 

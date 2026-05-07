@@ -22,12 +22,23 @@ static bool alter_table_index_parts_match(
 
 static int append_using_hash_warning(mylite_db *database);
 
+static int append_fulltext_doc_id_warning(mylite_db *database);
+
 static int append_duplicate_index_warning(mylite_db *database, const char *index_name);
 
 int mylite_table_ddl_append_alter_table_warnings(
     mylite_db *database,
     const struct mylite_alter_table_model *model
 ) {
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        if (model->indexes[index].fulltext_doc_id_warning) {
+            int status = append_fulltext_doc_id_warning(database);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+    }
     for (size_t index = 0U; index < model->index_count; ++index) {
         if (model->indexes[index].hash_fallback_warning) {
             int status = append_using_hash_warning(database);
@@ -55,6 +66,10 @@ static bool alter_table_indexes_are_duplicate_warning_candidates(
     const struct mylite_alter_table_index *previous
 ) {
     if (!index->changed && !previous->changed) {
+        return false;
+    }
+    if (!mylite_ascii_case_equal(index->index_type, "BTREE") ||
+        !mylite_ascii_case_equal(previous->index_type, "BTREE")) {
         return false;
     }
     if (index->non_unique != previous->non_unique || index->part_count != previous->part_count) {
@@ -96,6 +111,14 @@ static int append_using_hash_warning(mylite_db *database) {
         database,
         MYLITE_MYSQL_ER_WARN_USING_OTHER_HANDLER,
         "This storage engine does not support HASH indexes; using BTREE instead"
+    );
+}
+
+static int append_fulltext_doc_id_warning(mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        database,
+        MYLITE_MYSQL_ER_WARN_INNODB_FT_DOC_ID,
+        "InnoDB rebuilding table to add column FTS_DOC_ID"
     );
 }
 

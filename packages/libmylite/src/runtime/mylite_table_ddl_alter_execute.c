@@ -1141,17 +1141,12 @@ static int apply_alter_table_actions(
         case MYLITE_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY:
         case MYLITE_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX:
         case MYLITE_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX:
+        case MYLITE_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX:
             status = mylite_table_ddl_apply_alter_table_index_action(
                 stmt->database,
                 action,
                 model,
                 &alter_callbacks
-            );
-            break;
-        case MYLITE_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX:
-            status = set_alter_table_unsupported_action_error(
-                stmt->database,
-                "FULLTEXT ALTER TABLE indexes"
             );
             break;
         case MYLITE_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX:

@@ -31,12 +31,6 @@ static bool drop_index_primary_has_auto_increment_column(
     const struct mylite_alter_table_model *model
 );
 
-static int validate_create_fulltext_index(
-    mylite_db *database,
-    const struct mylite_alter_table_model *model,
-    const struct mylite_create_table_index *index
-);
-
 static int set_fulltext_index_column_type_error(mylite_db *database, const char *column_name);
 
 static int set_fulltext_index_order_error(mylite_db *database);
@@ -219,7 +213,7 @@ int mylite_table_ddl_validate_create_index_supported_features(
         return MYLITE_EXEC_ERROR;
     }
     if (plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT) {
-        return validate_create_fulltext_index(database, model, &plan->index);
+        return mylite_table_ddl_validate_fulltext_index(database, model, &plan->index);
     }
     if (plan->index.has_engine_attribute) {
         (void)mylite_diagnostics_set_error_message(
@@ -231,7 +225,7 @@ int mylite_table_ddl_validate_create_index_supported_features(
     return MYLITE_OK;
 }
 
-static int validate_create_fulltext_index(
+int mylite_table_ddl_validate_fulltext_index(
     mylite_db *database,
     const struct mylite_alter_table_model *model,
     const struct mylite_create_table_index *index

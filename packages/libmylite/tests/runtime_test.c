@@ -170,6 +170,7 @@ enum {
     mysql_warning_wrong_parameters_to_native_fct = 1583,
     mysql_warning_unknown_locale = 1649,
     mysql_warning_out_of_range = 1690,
+    mysql_warning_innodb_ft_limit = 1795,
     mysql_warning_foreign_key_column_drop = 1828,
     mysql_warning_foreign_key_parent_column_drop = 1829,
     mysql_warning_duplicate_index = 1831,
@@ -42778,6 +42779,70 @@ static int test_alter_table_key_operations_execution(void) {
     static const char *const mixed_unique_columns[] = {"id", "marker", "u2"};
     static const char *const mixed_unique_values[] =
         {"1", "10", "7", "2", "20", "7", "4", "10", "8"};
+    static const char *const show_index_columns[] = {
+        "Table",
+        "Non_unique",
+        "Key_name",
+        "Seq_in_index",
+        "Column_name",
+        "Collation",
+        "Cardinality",
+        "Sub_part",
+        "Packed",
+        "Null",
+        "Index_type",
+        "Comment",
+        "Index_comment",
+        "Visible",
+        "Expression"
+    };
+    static const char *const alter_fulltext_show_index_values[] = {
+        "alter_fulltext_target",
+        "1",
+        "ft_body",
+        "1",
+        "title",
+        NULL,
+        "0",
+        NULL,
+        NULL,
+        "YES",
+        "FULLTEXT",
+        "",
+        "ft",
+        "YES",
+        NULL,
+        "alter_fulltext_target",
+        "1",
+        "ft_body",
+        "2",
+        "body",
+        NULL,
+        "0",
+        NULL,
+        NULL,
+        "YES",
+        "FULLTEXT",
+        "",
+        "ft",
+        "YES",
+        NULL,
+    };
+    static const char *const show_create_columns[] = {"Table", "Create Table"};
+    static const char alter_fulltext_show_create[] =
+        "CREATE TABLE `alter_fulltext_target` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `title` varchar(20) DEFAULT NULL,\n"
+        "  `body` text,\n"
+        "  `n` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  FULLTEXT KEY `ft_body` (`title`,`body`) COMMENT 'ft' "
+        "/*!50100 WITH PARSER `ngram` */\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const alter_fulltext_show_create_values[] = {
+        "alter_fulltext_target",
+        alter_fulltext_show_create
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -43420,24 +43485,203 @@ static int test_alter_table_key_operations_execution(void) {
     failures +=
         expect_no_information_schema_statistics_index_row(database, "alter_key_base", "idx_algo");
 
+    failures += execute_sql(
+        database,
+        "CREATE TABLE alter_fulltext_target ("
+        "id INT PRIMARY KEY, title VARCHAR(20), body TEXT, n INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_fulltext_target "
+        "ADD FULLTEXT INDEX ft_body (title, body) WITH PARSER ngram COMMENT 'ft'",
+        0,
+        "alter add fulltext index affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "alter fulltext doc id warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_innodb_rebuild_fts_doc_id,
+        "alter fulltext doc id warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "FTS_DOC_ID",
+        "alter fulltext doc id warning message"
+    );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "alter_fulltext_target",
+            .index_name = "ft_body",
+            .seq_in_index = 1,
+            .column_name = "title",
+            .non_unique = 1,
+            .collation = NULL,
+            .sub_part = NULL,
+            .index_type = "FULLTEXT",
+            .index_comment = "ft",
+            .visible = "YES",
+        }
+    );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "alter_fulltext_target",
+            .index_name = "ft_body",
+            .seq_in_index = 2,
+            .column_name = "body",
+            .non_unique = 1,
+            .collation = NULL,
+            .sub_part = NULL,
+            .index_type = "FULLTEXT",
+            .index_comment = "ft",
+            .visible = "YES",
+        }
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW INDEX FROM alter_fulltext_target WHERE Key_name = 'ft_body'",
+        show_index_columns,
+        15,
+        alter_fulltext_show_index_values,
+        2,
+        "show index exposes alter fulltext metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE alter_fulltext_target",
+        show_create_columns,
+        2,
+        alter_fulltext_show_create_values,
+        1,
+        "show create exposes alter fulltext metadata"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_fulltext_target ADD FULLTEXT INDEX ft_title_prefix (title(3))",
+        0,
+        "alter add second fulltext index affected rows"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "alter second fulltext warning count");
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "alter_fulltext_target",
+            .index_name = "ft_title_prefix",
+            .seq_in_index = 1,
+            .column_name = "title",
+            .non_unique = 1,
+            .collation = NULL,
+            .sub_part = NULL,
+            .index_type = "FULLTEXT",
+            .index_comment = "",
+            .visible = "YES",
+        }
+    );
     failures += prepare_sql(
         database,
-        "ALTER TABLE alter_key_base ADD FULLTEXT INDEX ft_body (body)",
+        "ALTER TABLE alter_fulltext_target ADD FULLTEXT INDEX ft_n (n)",
         MYLITE_OK,
         &stmt
     );
-    failures +=
-        expect_status(mylite_step(stmt), MYLITE_UNSUPPORTED, "alter fulltext placeholder rejected");
-    failures += expect_int64(mylite_affected_rows(stmt), -1, "alter fulltext affected rows");
-    failures += expect_contains(
-        mylite_error_message(database),
-        "FULLTEXT",
-        "alter fulltext unsupported error"
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "cannot be part of FULLTEXT index",
+        "alter fulltext rejects non-text columns"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_column_cannot_be_fulltext,
+        "alter fulltext non-text error code"
     );
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += expect_no_information_schema_statistics_index_row(
+        database,
+        "alter_fulltext_target",
+        "ft_n"
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE alter_fulltext_target ADD FULLTEXT INDEX ft_order (title ASC)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect usage of spatial/fulltext/hash index and explicit index order",
+        "alter fulltext rejects explicit order"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_wrong_usage,
+        "alter fulltext explicit order error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_statistics_index_row(
+        database,
+        "alter_fulltext_target",
+        "ft_order"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE alter_fulltext_multi (title VARCHAR(20), body TEXT)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE alter_fulltext_multi "
+        "ADD FULLTEXT INDEX ft_body (body), ADD FULLTEXT INDEX ft_title (title)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "one FULLTEXT index creation at a time",
+        "alter fulltext rejects multiple creations"
+    );
     failures +=
-        expect_no_information_schema_statistics_index_row(database, "alter_key_base", "ft_body");
+        expect_int(mylite_warning_count(database), 2, "alter multiple fulltext warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_innodb_rebuild_fts_doc_id,
+        "alter multiple fulltext doc id warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_innodb_ft_limit,
+        "alter multiple fulltext error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_statistics_index_row(
+        database,
+        "alter_fulltext_multi",
+        "ft_body"
+    );
+    failures += expect_no_information_schema_statistics_index_row(
+        database,
+        "alter_fulltext_multi",
+        "ft_title"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "ALTER TABLE alter_fulltext_target DROP INDEX ft_body",
+        0,
+        "alter drop fulltext index affected rows"
+    );
+    failures += expect_no_information_schema_statistics_index_row(
+        database,
+        "alter_fulltext_target",
+        "ft_body"
+    );
 
     failures += prepare_sql(
         database,

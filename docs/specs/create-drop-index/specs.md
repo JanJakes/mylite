@@ -581,8 +581,9 @@ metadata-only.
 
 ### Compatibility gaps
 
-- Full-text search semantics, `MATCH ... AGAINST`, table-definition
-  `FULLTEXT KEY`, and `ALTER TABLE ... ADD FULLTEXT` remain deferred.
+- Full-text search semantics, `MATCH ... AGAINST`, and table-definition
+  `FULLTEXT KEY` remain deferred. `ALTER TABLE ... ADD FULLTEXT` is covered by
+  the ALTER TABLE key and constraint operations spec.
 - `SPATIAL` standalone index creation can be parsed, but executable metadata
   and runtime spatial semantics are deferred.
 - `WITH PARSER` parser-plugin tokenization semantics are deferred.

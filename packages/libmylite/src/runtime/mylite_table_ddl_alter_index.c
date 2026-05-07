@@ -20,6 +20,8 @@ static int apply_alter_table_add_index(
     bool is_primary
 );
 
+static bool alter_table_model_has_fulltext_index(const struct mylite_alter_table_model *model);
+
 static int apply_alter_table_drop_primary_key(
     mylite_db *database,
     struct mylite_alter_table_model *model
@@ -60,6 +62,7 @@ int mylite_table_ddl_apply_alter_table_index_action(
         return apply_alter_table_drop_primary_key(database, model);
     case MYLITE_ALTER_TABLE_ACTION_ADD_UNIQUE_INDEX:
     case MYLITE_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX:
+    case MYLITE_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX:
         return apply_alter_table_add_index(database, action, model, callbacks, false);
     case MYLITE_ALTER_TABLE_ACTION_DROP_INDEX:
         return apply_alter_table_drop_index(database, action, model);
@@ -75,7 +78,6 @@ int mylite_table_ddl_apply_alter_table_index_action(
     case MYLITE_ALTER_TABLE_ACTION_ALTER_COLUMN_SET_DEFAULT:
     case MYLITE_ALTER_TABLE_ACTION_ALTER_COLUMN_DROP_DEFAULT:
     case MYLITE_ALTER_TABLE_ACTION_RENAME_TABLE:
-    case MYLITE_ALTER_TABLE_ACTION_ADD_FULLTEXT_INDEX:
     case MYLITE_ALTER_TABLE_ACTION_ADD_SPATIAL_INDEX:
     case MYLITE_ALTER_TABLE_ACTION_ADD_CHECK:
     case MYLITE_ALTER_TABLE_ACTION_DROP_CHECK:
@@ -157,6 +159,8 @@ static int apply_alter_table_add_index(
         index_name = NULL;
         table_index.hash_fallback_warning =
             action->index.algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_HASH;
+        table_index.fulltext_doc_id_warning =
+            action->index.is_fulltext && !alter_table_model_has_fulltext_index(model);
         if (is_primary) {
             position = 0U;
         } else {
@@ -169,6 +173,15 @@ static int apply_alter_table_add_index(
     }
     free(index_name);
     return status;
+}
+
+static bool alter_table_model_has_fulltext_index(const struct mylite_alter_table_model *model) {
+    for (size_t index = 0U; index < model->index_count; ++index) {
+        if (mylite_ascii_case_equal(model->indexes[index].index_type, "FULLTEXT")) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int apply_alter_table_drop_primary_key(

@@ -1755,6 +1755,9 @@ struct sqlite3 {
     u32 iMyErrno;               /* MySQL condition code */
     char zSqlState[6];          /* Five-character SQLSTATE plus NUL */
   } myliteCondition;
+  struct MyliteCondition *aMyliteCondition; /* MySQL diagnostics area */
+  int nMyliteCondition;         /* Number of MySQL conditions */
+  int nMyliteConditionAlloc;    /* Allocated MySQL condition slots */
   u64 myliteLastInsertId;       /* MySQL LAST_INSERT_ID() session state */
   i64 mylitePreviousRowCount;   /* MySQL ROW_COUNT() session state */
 #endif
@@ -5434,6 +5437,7 @@ void sqlite3MyliteForceZeroRowCount(Parse*);
 void sqlite3MyliteSetCondition(sqlite3*, u8, u32, const char*);
 void sqlite3MyliteSetConstraintCondition(sqlite3*, int, u8);
 void sqlite3MyliteClearCondition(sqlite3*);
+void sqlite3MyliteFreeConditions(sqlite3*);
 #endif
 char sqlite3CompareAffinity(const Expr *pExpr, char aff2);
 int sqlite3IndexAffinityOk(const Expr *pExpr, char idx_affinity);

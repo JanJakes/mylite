@@ -42,6 +42,8 @@ Implemented fork points:
   `CHECK`, and immediate foreign-key constraint failures
 - structured fork warning publication from configured scalar callbacks,
   beginning with `IF()` condition conversion warnings
+- connection-local fork condition-list storage with count and indexed-read APIs
+  for statements that publish more than one condition
 - connection-local session state backed by SQLite client data, beginning with
   the default-schema value consumed by native `DATABASE()` and `SCHEMA()`
 - connection-local VDBE completion state for native `ROW_COUNT()` and
@@ -267,14 +269,16 @@ Required fork direction:
   `UNIQUE`, `PRIMARY KEY`, and `CHECK`
 - foreign-key counter bytecode carries child-side or parent-side context so the
   statement-level immediate FK error can publish MySQL's `1452` or `1451`
-- scalar callbacks can publish a single successful-statement warning through
-  the fork condition slot; a statement-owned multi-warning collector is still
-  needed for complete MySQL diagnostics
+- scalar callbacks can publish successful-statement warnings through the fork
+  diagnostics bridge; implemented first with an indexed connection-local
+  condition list for statements that publish more than one warning
 - statement-stable functions such as `NOW()` need a VDBE statement timestamp
   or equivalent statement context. Implemented first by exposing SQLite's
   statement clock to MyLite callbacks for native current temporal functions.
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
+- future diagnostics work needs exact condition messages, row/column metadata,
+  and precise statement-lifecycle reset semantics
 
 ### Statement and session completion state
 

@@ -13,6 +13,8 @@ Implemented scope:
 
 - connection-local fork condition storage on the private SQLite handle
 - public fork APIs to read, clear, and publish the most recent fork condition
+- connection-local condition-list storage with public count and indexed read
+  APIs for statements that publish more than one warning
 - `OP_MyliteTypeCheck` publishes MySQL condition codes and SQLSTATE values for
   the first strict assignment failures
 - SQLite-native `NOT NULL`, `UNIQUE`, `PRIMARY KEY`, `CHECK`, and immediate
@@ -35,7 +37,7 @@ Deferred scope:
 - full diagnostics-area shape, including row numbers, column names in MySQL text
   form, condition item fields, and stacked diagnostics
 - warning demotion for `IGNORE` and non-strict SQL modes
-- multiple warning records from one SQLite statement
+- exact message text for fork-collected warnings and errors
 - SQLSTATE exposure through the public MyLite API and wire protocol
 - exact MySQL message rendering for native SQLite constraints
 - structured conditions for deferred foreign-key, generated-column, parser,
@@ -88,20 +90,26 @@ enough for MySQL compatibility because MySQL behavior depends on the structured
 condition code, SQLSTATE, severity, SQL mode, and `IGNORE` handling. Public
 SQLite hooks also run too late or not at all for VDBE opcode failures.
 
-The fork therefore owns a small connection-local condition slot:
+The fork therefore owns a small connection-local diagnostics area:
 
 - `mylite_sqlite_fork_last_condition()` copies the most recent fork condition.
-- `mylite_sqlite_fork_clear_condition()` clears it after the caller consumes it.
+- `mylite_sqlite_fork_condition_count()` returns the number of collected
+  fork conditions.
+- `mylite_sqlite_fork_condition_at()` copies a collected fork condition by
+  zero-based index.
+- `mylite_sqlite_fork_clear_condition()` clears the last-condition slot and
+  collected condition list after the caller consumes them.
 - `mylite_sqlite_fork_set_condition()` lets configured fork callbacks publish
   a warning or error condition when no VDBE opcode is raising a SQLite error.
 - internal fork code calls `sqlite3MyliteSetCondition()` immediately before
   raising the SQLite error.
 
-For this first slice, the condition slot contains one condition. This matches
-the current type-check path, where the VDBE aborts on the first strict
-assignment failure. Later `IGNORE` and non-strict SQL mode work should replace
-the single slot with a statement-owned condition collector that can append
-multiple warnings without aborting execution.
+The most-recent condition slot is preserved for simple SQLite-error mapping and
+compatibility with existing callers. The condition list is the foundation for
+MySQL diagnostics-area behavior and for later `IGNORE` and non-strict SQL mode
+work, where row-level write failures must be demoted, recorded, and execution
+must continue. The first collector stores level, MySQL errno, and SQLSTATE; exact
+condition messages and row/column metadata remain later work.
 
 ## Initial Semantics
 
@@ -142,12 +150,14 @@ The executable tests must cover:
 - direct fork condition readback after native `NOT NULL`, `UNIQUE`,
   `PRIMARY KEY`, `CHECK`, and immediate foreign-key constraint failures
 - direct fork warning readback after successful scalar callback evaluation
+- direct fork condition-count and indexed-read coverage for multiple warnings
+  produced by one SQLite statement
 - existing type-coercion success and failure behavior continuing to pass
 
 ## Compatibility Status
 
 This feature is `🟡` because the first structured bridge exists for fork-owned
-type-check failures, common native constraint failures, and the first scalar
-callback warning, but the full MySQL diagnostics area, warning demotion, exact
-message rendering, multi-warning collection, and wire-protocol condition
-metadata remain incomplete.
+type-check failures, common native constraint failures, and scalar callback
+warnings, and the fork can now collect multiple condition records. The full
+MySQL diagnostics area, warning demotion, exact message rendering, and
+wire-protocol condition metadata remain incomplete.

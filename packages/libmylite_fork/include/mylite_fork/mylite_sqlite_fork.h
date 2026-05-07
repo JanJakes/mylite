@@ -90,6 +90,12 @@ int mylite_sqlite_fork_last_condition(
     sqlite3 *database,
     struct mylite_sqlite_fork_condition *out_condition
 );
+sqlite3_int64 mylite_sqlite_fork_condition_count(sqlite3 *database);
+int mylite_sqlite_fork_condition_at(
+    sqlite3 *database,
+    sqlite3_int64 index,
+    struct mylite_sqlite_fork_condition *out_condition
+);
 int mylite_sqlite_fork_clear_condition(sqlite3 *database);
 int mylite_sqlite_fork_set_condition(
     sqlite3 *database,

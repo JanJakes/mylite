@@ -4,6 +4,7 @@
 
 #include "sqlite3.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -108,6 +109,27 @@ static int expect_fork_warning_condition(
 
 static int expect_fork_condition_level(
     sqlite3 *database,
+    struct expected_fork_condition expectation,
+    enum mylite_sqlite_fork_condition_level level,
+    const char *level_name
+);
+
+static int expect_fork_condition_count(
+    sqlite3 *database,
+    sqlite3_int64 expected,
+    const char *context
+);
+
+static int expect_fork_condition_at(
+    sqlite3 *database,
+    sqlite3_int64 index,
+    struct expected_fork_condition expectation,
+    enum mylite_sqlite_fork_condition_level level,
+    const char *level_name
+);
+
+static int expect_fork_condition_value(
+    const struct mylite_sqlite_fork_condition *condition,
     struct expected_fork_condition expectation,
     enum mylite_sqlite_fork_condition_level level,
     const char *level_name
@@ -434,6 +456,7 @@ static int test_registered_functions(void) {
         database,
         "clear condition before IF truncation warning"
     );
+    failures += expect_fork_condition_count(database, 0, "cleared fork diagnostics area is empty");
     failures += expect_text(
         database,
         (struct expected_text_row){
@@ -449,6 +472,19 @@ static int test_registered_functions(void) {
             .sqlstate = "22007",
             .context = "IF nonnumeric condition publishes truncation warning",
         }
+    );
+    failures +=
+        expect_fork_condition_count(database, 1, "fork diagnostics area records IF warning");
+    failures += expect_fork_condition_at(
+        database,
+        0,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "fork diagnostics area exposes IF warning by index",
+        },
+        MYLITE_SQLITE_FORK_CONDITION_WARNING,
+        "warning"
     );
     failures += expect_sqlite_ok(
         mylite_sqlite_fork_clear_condition(database),
@@ -470,6 +506,59 @@ static int test_registered_functions(void) {
             .sqlstate = "22007",
             .context = "IF trailing text publishes truncation warning",
         }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear IF trailing text warning"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(IF('abc', 'a', 'b'), IF('2x', 'c', 'd'))",
+            .expected = "bc",
+            .context = "one statement can produce multiple scalar warnings",
+        }
+    );
+    failures += expect_fork_condition_count(
+        database,
+        2,
+        "fork diagnostics area accumulates multiple scalar warnings"
+    );
+    failures += expect_fork_condition_at(
+        database,
+        0,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "fork diagnostics area exposes first scalar warning",
+        },
+        MYLITE_SQLITE_FORK_CONDITION_WARNING,
+        "warning"
+    );
+    failures += expect_fork_condition_at(
+        database,
+        1,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "fork diagnostics area exposes second scalar warning",
+        },
+        MYLITE_SQLITE_FORK_CONDITION_WARNING,
+        "warning"
+    );
+    failures += expect_fork_warning_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = mysql_truncated_wrong_value,
+            .sqlstate = "22007",
+            .context = "fork last condition remains the final scalar warning",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear multiple scalar warnings"
     );
     failures += expect_int64(
         database,
@@ -5915,27 +6004,78 @@ static int expect_fork_condition_level(
     if (failures != 0) {
         return failures;
     }
-    if (condition.level != level) {
+    return expect_fork_condition_value(&condition, expectation, level, level_name);
+}
+
+static int expect_fork_condition_count(
+    sqlite3 *database,
+    sqlite3_int64 expected,
+    const char *context
+) {
+    sqlite3_int64 actual = mylite_sqlite_fork_condition_count(database);
+
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected %" PRId64 " fork conditions, got %" PRId64 "\n",
+            context,
+            expected,
+            actual
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_fork_condition_at(
+    sqlite3 *database,
+    sqlite3_int64 index,
+    struct expected_fork_condition expectation,
+    enum mylite_sqlite_fork_condition_level level,
+    const char *level_name
+) {
+    struct mylite_sqlite_fork_condition condition = {0};
+    int failures = expect_sqlite_ok(
+        mylite_sqlite_fork_condition_at(database, index, &condition),
+        database,
+        expectation.context
+    );
+
+    if (failures != 0) {
+        return failures;
+    }
+    return expect_fork_condition_value(&condition, expectation, level, level_name);
+}
+
+static int expect_fork_condition_value(
+    const struct mylite_sqlite_fork_condition *condition,
+    struct expected_fork_condition expectation,
+    enum mylite_sqlite_fork_condition_level level,
+    const char *level_name
+) {
+    int failures = 0;
+
+    if (condition->level != level) {
         fprintf(stderr, "%s: expected fork %s condition\n", expectation.context, level_name);
         ++failures;
     }
-    if (condition.mysql_errno != expectation.mysql_errno) {
+    if (condition->mysql_errno != expectation.mysql_errno) {
         fprintf(
             stderr,
             "%s: expected MySQL errno %u, got %u\n",
             expectation.context,
             expectation.mysql_errno,
-            condition.mysql_errno
+            condition->mysql_errno
         );
         ++failures;
     }
-    if (strcmp(condition.sqlstate, expectation.sqlstate) != 0) {
+    if (strcmp(condition->sqlstate, expectation.sqlstate) != 0) {
         fprintf(
             stderr,
             "%s: expected SQLSTATE %s, got %s\n",
             expectation.context,
             expectation.sqlstate,
-            condition.sqlstate
+            condition->sqlstate
         );
         ++failures;
     }

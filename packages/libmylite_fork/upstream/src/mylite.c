@@ -57,6 +57,14 @@ static int myliteCopyColumnType(
 static void myliteClearColumnTypePayload(sqlite3 *db, MyliteColumnType *pType);
 static const char *myliteSchemaName(const char *zSchema);
 static void myliteRefreshTableTypeFlag(Table *pTab);
+static void myliteCopyCondition(
+  const struct MyliteCondition *pCondition,
+  struct mylite_sqlite_fork_condition *pOut
+);
+static void myliteAppendCondition(
+  sqlite3 *db,
+  const struct MyliteCondition *pCondition
+);
 
 int mylite_sqlite_fork_set_column_type(
   sqlite3 *db,
@@ -162,13 +170,37 @@ int mylite_sqlite_fork_last_condition(
   if( db==0 || pOut==0 ) return SQLITE_MISUSE;
 
   sqlite3_mutex_enter(db->mutex);
-  pOut->level =
-      (enum mylite_sqlite_fork_condition_level)db->myliteCondition.eLevel;
-  pOut->mysql_errno = db->myliteCondition.iMyErrno;
-  memcpy(pOut->sqlstate, db->myliteCondition.zSqlState,
-         sizeof(pOut->sqlstate));
+  myliteCopyCondition(&db->myliteCondition, pOut);
   sqlite3_mutex_leave(db->mutex);
   return SQLITE_OK;
+}
+
+sqlite3_int64 mylite_sqlite_fork_condition_count(sqlite3 *db){
+  sqlite3_int64 nCondition = 0;
+
+  if( db==0 ) return 0;
+  sqlite3_mutex_enter(db->mutex);
+  nCondition = db->nMyliteCondition;
+  sqlite3_mutex_leave(db->mutex);
+  return nCondition;
+}
+
+int mylite_sqlite_fork_condition_at(
+  sqlite3 *db,
+  sqlite3_int64 iCondition,
+  struct mylite_sqlite_fork_condition *pOut
+){
+  int rc = SQLITE_OK;
+
+  if( db==0 || pOut==0 ) return SQLITE_MISUSE;
+  sqlite3_mutex_enter(db->mutex);
+  if( iCondition<0 || iCondition>=db->nMyliteCondition ){
+    rc = SQLITE_RANGE;
+  }else{
+    myliteCopyCondition(&db->aMyliteCondition[iCondition], pOut);
+  }
+  sqlite3_mutex_leave(db->mutex);
+  return rc;
 }
 
 int mylite_sqlite_fork_clear_condition(sqlite3 *db){
@@ -259,6 +291,9 @@ void sqlite3MyliteSetCondition(
     db->myliteCondition.zSqlState[i++] = '0';
   }
   db->myliteCondition.zSqlState[5] = 0;
+  if( eLevel!=MYLITE_CONDITION_NONE ){
+    myliteAppendCondition(db, &db->myliteCondition);
+  }
 }
 
 void sqlite3MyliteSetConstraintCondition(sqlite3 *db, int rc, u8 eConstraint){
@@ -294,6 +329,48 @@ void sqlite3MyliteClearCondition(sqlite3 *db){
   db->myliteCondition.eLevel = MYLITE_CONDITION_NONE;
   db->myliteCondition.iMyErrno = 0;
   db->myliteCondition.zSqlState[0] = 0;
+  db->nMyliteCondition = 0;
+}
+
+void sqlite3MyliteFreeConditions(sqlite3 *db){
+  if( db==0 ) return;
+  sqlite3DbFree(db, db->aMyliteCondition);
+  db->aMyliteCondition = 0;
+  db->nMyliteCondition = 0;
+  db->nMyliteConditionAlloc = 0;
+}
+
+static void myliteCopyCondition(
+  const struct MyliteCondition *pCondition,
+  struct mylite_sqlite_fork_condition *pOut
+){
+  if( pCondition==0 || pOut==0 ) return;
+  pOut->level =
+      (enum mylite_sqlite_fork_condition_level)pCondition->eLevel;
+  pOut->mysql_errno = pCondition->iMyErrno;
+  memcpy(pOut->sqlstate, pCondition->zSqlState, sizeof(pOut->sqlstate));
+}
+
+static void myliteAppendCondition(
+  sqlite3 *db,
+  const struct MyliteCondition *pCondition
+){
+  struct MyliteCondition *aCondition = 0;
+  int nAlloc = 0;
+
+  if( db==0 || pCondition==0 || db->mallocFailed ) return;
+  if( db->nMyliteCondition>=db->nMyliteConditionAlloc ){
+    nAlloc = db->nMyliteConditionAlloc==0 ? 4 : db->nMyliteConditionAlloc*2;
+    aCondition = sqlite3DbRealloc(
+      db,
+      db->aMyliteCondition,
+      sizeof(db->aMyliteCondition[0]) * nAlloc
+    );
+    if( aCondition==0 ) return;
+    db->aMyliteCondition = aCondition;
+    db->nMyliteConditionAlloc = nAlloc;
+  }
+  db->aMyliteCondition[db->nMyliteCondition++] = *pCondition;
 }
 
 void sqlite3MyliteClearColumnType(sqlite3 *db, Column *pCol){

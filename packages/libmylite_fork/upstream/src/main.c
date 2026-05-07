@@ -1463,6 +1463,9 @@ void sqlite3LeaveMutexAndCloseZombie(sqlite3 *db){
   if( db->xAutovacDestr ){
     db->xAutovacDestr(db->pAutovacPagesArg);
   }
+#ifdef SQLITE_ENABLE_MYLITE
+  sqlite3MyliteFreeConditions(db);
+#endif
   sqlite3_mutex_leave(db->mutex);
   db->eOpenState = SQLITE_STATE_CLOSED;
   sqlite3_mutex_free(db->mutex);

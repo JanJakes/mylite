@@ -3406,6 +3406,39 @@ static int test_wordpress_like_crud(void) {
     );
     failures += exec_sql(
         database,
+        "INSERT INTO wp_options_like (option_name, option_value, autoload) "
+        "VALUES ('siteurl', 'https://updated.example.test', 'no') "
+        "ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), autoload = 'no'",
+        "update duplicate option through direct ON DUPLICATE KEY UPDATE"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql =
+                "SELECT CONCAT((SELECT COUNT(*) FROM wp_options_like), ':', option_id, ':', "
+                "option_value, ':', autoload) FROM wp_options_like WHERE option_name = 'siteurl'",
+            .expected = "1:10:https://updated.example.test:no",
+            .context = "direct ON DUPLICATE KEY UPDATE reuses native SQLite upsert",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO wp_options_like (option_name, option_value) "
+        "VALUES ('blogname', 'MyLite Blog') "
+        "ON DUPLICATE KEY UPDATE option_value = VALUES(option_value)",
+        "insert nonduplicate option through direct ON DUPLICATE KEY UPDATE"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT CONCAT(COUNT(*), ':', GROUP_CONCAT(option_name, '|')) "
+                   "FROM (SELECT option_name FROM wp_options_like ORDER BY option_name)",
+            .expected = "2:blogname|siteurl",
+            .context = "direct ON DUPLICATE KEY UPDATE inserts nonconflicting rows",
+        }
+    );
+    failures += exec_sql(
+        database,
         "CREATE TABLE inline_index_forms ("
         "id INTEGER PRIMARY KEY,"
         "name TEXT,"

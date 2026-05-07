@@ -42,6 +42,9 @@ slices:
 - admit MySQL `INSERT IGNORE` in the direct fork parser and lower it to
   SQLite's native conflict-ignore insert mode for duplicate unique-key rows in
   the current CRUD subset
+- admit MySQL `ON DUPLICATE KEY UPDATE` in the direct fork parser and lower it
+  to SQLite's native UPSERT update path for duplicate unique-key rows in the
+  current CRUD subset, including direct `VALUES(column)` assignment references
 - execute the MySQL-runtime-verified WordPress-like CRUD fixture through
   MyLite's public SQL API
 
@@ -454,6 +457,12 @@ This metadata should be updated by SQLite DDL paths, not a parallel DDL engine.
     lowering to SQLite's existing conflict-ignore insert mode for the current
     direct DML subset, with broader MySQL warning demotion still owned by the
     MyLite diagnostics/type-coercion path.
+16. Admit MySQL `ON DUPLICATE KEY UPDATE` syntax in the direct parser.
+    Implemented by lowering to SQLite's existing targetless UPSERT update mode
+    for the current direct DML subset. The common `VALUES(column)` RHS form is
+    mapped to SQLite's `excluded.column` expression. Exact MySQL affected-row
+    counts, duplicate-key warning metadata, row-alias forms, and
+    auto-increment gap behavior remain future fork statement-completion work.
 
 ## Lemon Grammar Direction
 
@@ -467,6 +476,8 @@ opt_table ::= .
 opt_table ::= TABLE.
 
 insert_cmd ::= INSERT IGNORE.
+upsert ::= ON DUPLICATE KEY UPDATE mysql_upsert_setlist.
+mysql_upsert_value ::= VALUES LP column_name RP.
 
 column_constraint ::= AUTO_INCREMENT.
 column_constraint ::= COMMENT string_literal.

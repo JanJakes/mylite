@@ -277,7 +277,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,A,Y);}
 %fallback ID
   ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST COLUMNKW
   CHARACTER CHARSET COMMENTKW CONFLICT DATABASE DEFERRED DESC DETACH DO
-  EACH END ENGINE ENGINE_ATTRIBUTE EXCLUSIVE EXPLAIN FAIL FOR
+  DUPLICATE EACH END ENGINE ENGINE_ATTRIBUTE EXCLUSIVE EXPLAIN FAIL FOR
   IGNORE IMMEDIATE INITIALLY INSTEAD INVISIBLE KEY_BLOCK_SIZE LIKE_KW MATCH
   NO PLAN
   QUERY KEY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW ROWS
@@ -1138,6 +1138,10 @@ cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y) from(F)
 
 %type setlist {ExprList*}
 %destructor setlist {sqlite3ExprListDelete(pParse->db, $$);}
+%type mysql_upsert_setlist {ExprList*}
+%destructor mysql_upsert_setlist {sqlite3ExprListDelete(pParse->db, $$);}
+%type mysql_upsert_value {Expr*}
+%destructor mysql_upsert_value {sqlite3ExprDelete(pParse->db, $$);}
 
 setlist(A) ::= setlist(A) COMMA nm(X) EQ expr(Y). {
   A = sqlite3ExprListAppend(pParse, A, Y);
@@ -1152,6 +1156,25 @@ setlist(A) ::= nm(X) EQ expr(Y). {
 }
 setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
   A = sqlite3ExprListAppendVector(pParse, 0, X, Y);
+}
+mysql_upsert_setlist(A) ::= mysql_upsert_setlist(A) COMMA nm(X) EQ mysql_upsert_value(Y). {
+  A = sqlite3ExprListAppend(pParse, A, Y);
+  sqlite3ExprListSetName(pParse, A, &X, 1);
+}
+mysql_upsert_setlist(A) ::= nm(X) EQ mysql_upsert_value(Y). {
+  A = sqlite3ExprListAppend(pParse, 0, Y);
+  sqlite3ExprListSetName(pParse, A, &X, 1);
+}
+mysql_upsert_value(A) ::= expr(A).
+mysql_upsert_value(A) ::= VALUES LP nm(X) RP. {
+  Token excluded;
+  Expr *pTable;
+  Expr *pColumn;
+  excluded.z = "excluded";
+  excluded.n = 8;
+  pTable = tokenExpr(pParse, TK_ID, excluded);
+  pColumn = tokenExpr(pParse, TK_ID, X);
+  A = sqlite3PExpr(pParse, TK_DOT, pTable, pColumn);
 }
 
 ////////////////////////// The INSERT command /////////////////////////////////
@@ -1183,6 +1206,8 @@ upsert(A) ::= ON CONFLICT DO NOTHING returning.
               { A = sqlite3UpsertNew(pParse->db,0,0,0,0,0); }
 upsert(A) ::= ON CONFLICT DO UPDATE SET setlist(Z) where_opt(W) returning.
               { A = sqlite3UpsertNew(pParse->db,0,0,Z,W,0);}
+upsert(A) ::= ON DUPLICATE KEY UPDATE mysql_upsert_setlist(Z).
+              { A = sqlite3UpsertNew(pParse->db,0,0,Z,0,0);}
 
 returning ::= RETURNING selcollist(X).  {sqlite3AddReturning(pParse,X);}
 returning ::= .

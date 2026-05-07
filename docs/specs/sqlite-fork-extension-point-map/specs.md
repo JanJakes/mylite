@@ -77,6 +77,10 @@ Implemented fork points:
   rowid autoincrement storage for integer-affinity single-column keys
 - direct SQLite parser admission for MySQL `INSERT IGNORE`, lowered to
   SQLite's native conflict-ignore insert mode for the current direct DML subset
+- direct SQLite parser admission for MySQL `ON DUPLICATE KEY UPDATE`, lowered
+  to SQLite's native UPSERT update path for the current direct DML subset,
+  including the common `VALUES(column)` assignment form as an `excluded.column`
+  expression
 - public MyLite DML write-table loading that applies catalog descriptors before
   physical SQLite write statements are prepared
 - public MyLite SELECT table loading that applies value-list descriptors before
@@ -297,6 +301,10 @@ Required fork direction:
   statement clock to MyLite callbacks for native current temporal functions.
 - `IGNORE` and non-strict SQL modes can demote selected write errors to warnings
 - VDBE statement completion can expose MySQL affected-row and warning metadata
+- duplicate-key update needs branch-aware affected-row and auto-increment
+  allocation state because SQLite's UPSERT update branch naturally reports
+  SQLite change counts and rowid allocation behavior, not MySQL's `1`/`2`/`0`
+  affected-row rules or InnoDB-style allocation gaps
 - future diagnostics work needs exact condition messages, row/column metadata,
   and lifecycle exceptions for `SHOW WARNINGS`, `GET DIAGNOSTICS`, and public
   MyLite compound statements

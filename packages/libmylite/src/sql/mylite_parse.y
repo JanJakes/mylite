@@ -68,6 +68,9 @@ statement(A) ::= show_tables_statement(B). {
 statement(A) ::= rename_table_statement(B). {
     A = B;
 }
+statement(A) ::= insert_values_statement(B). {
+    A = B;
+}
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
@@ -95,12 +98,70 @@ rename_table_statement(A) ::= RENAME(R) TABLE table_name(S) TO table_name(T). {
     A = mylite_sql_parser_make_rename_table_statement(state, R, S, T);
 }
 
+insert_values_statement(A) ::=
+    INSERT(I) INTO table_name(T) insert_column_list_opt(C) VALUES insert_row_list(R). {
+    A = mylite_sql_parser_make_insert_statement(state, I, T, C, R);
+}
+
+insert_column_list_opt(A) ::= . {
+    A = mylite_sql_parser_make_identifier_list(state, NULL);
+}
+insert_column_list_opt(A) ::= LPAREN identifier_list(L) RPAREN. {
+    A = L;
+}
+
+identifier_list(A) ::= identifier(B). {
+    A = mylite_sql_parser_make_identifier_list(state, B);
+}
+identifier_list(A) ::= identifier_list(B) COMMA identifier(C). {
+    A = mylite_sql_parser_append_identifier(state, B, C);
+}
+
+insert_row_list(A) ::= insert_row(B). {
+    A = mylite_sql_parser_make_insert_row_list(state, B);
+}
+insert_row_list(A) ::= insert_row_list(B) COMMA insert_row(C). {
+    A = mylite_sql_parser_append_insert_row(state, B, C);
+}
+
+insert_row(A) ::= LPAREN(L) insert_value_list(V) RPAREN(R). {
+    A = mylite_sql_parser_make_insert_row(state, L, V, R);
+}
+
+insert_value_list(A) ::= insert_value(B). {
+    A = mylite_sql_parser_make_insert_row_values(state, B);
+}
+insert_value_list(A) ::= insert_value_list(B) COMMA insert_value(C). {
+    A = mylite_sql_parser_append_insert_value(state, B, C);
+}
+
+insert_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+insert_value(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+insert_value(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+insert_value(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+
 select_statement(A) ::= SELECT(T) select_item_list(B). {
     A = mylite_sql_parser_make_select_statement(state, T, B, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, B, mylite_sql_parser_make_from_dual(state, F, D));
+}
+select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) table_name(N). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N));
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
@@ -110,6 +171,11 @@ select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D));
+}
+select_statement(A) ::= SELECT(T) STAR(S) FROM(F) table_name(N). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_table(state, F, N));
 }
 
 select_item_list(A) ::= select_item(B). {

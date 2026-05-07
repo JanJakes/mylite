@@ -70,6 +70,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_ast_node *source_name,
     struct mylite_sql_ast_node *target_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token insert_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *rows
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard_select_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token wildcard_token
@@ -91,6 +98,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_dual(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token from_token,
     struct mylite_sql_token dual_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_from_table(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token from_token,
+    struct mylite_sql_ast_node *table_name
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
     struct mylite_sql_parser_state *state,
@@ -155,6 +167,39 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
     enum mylite_sql_ast_nullability nullability,
     struct mylite_sql_token first_token,
     struct mylite_sql_token last_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_identifier_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *identifier
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_identifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *identifier
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *row
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_insert_row(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *row
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row_values(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_insert_value(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *row,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_insert_row(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *values,
+    struct mylite_sql_token right_paren
 );
 
 #endif

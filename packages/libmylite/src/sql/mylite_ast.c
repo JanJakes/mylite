@@ -228,6 +228,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "nullability";
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return "rename_table_statement";
+    case MYLITE_SQL_AST_INSERT_STATEMENT:
+        return "insert_statement";
+    case MYLITE_SQL_AST_IDENTIFIER_LIST:
+        return "identifier_list";
+    case MYLITE_SQL_AST_INSERT_ROW_LIST:
+        return "insert_row_list";
+    case MYLITE_SQL_AST_INSERT_ROW:
+        return "insert_row";
+    case MYLITE_SQL_AST_FROM_TABLE:
+        return "from_table";
     }
 
     return "unknown";

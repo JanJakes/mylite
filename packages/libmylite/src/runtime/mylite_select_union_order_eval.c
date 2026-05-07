@@ -92,6 +92,7 @@ static int evaluate_union_order_key(
         struct mylite_expression_eval_context context = {
             .user_data = &user_context,
             .real_as_float = mylite_connection_sql_mode_has_real_as_float(stmt->database),
+            .character_set_connection = mylite_connection_character_set_connection(stmt->database),
             .resolve_identifier = resolve_union_expression_identifier,
             .eval_session_function = evaluate_union_session_function,
         };

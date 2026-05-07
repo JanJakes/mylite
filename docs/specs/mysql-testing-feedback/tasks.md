@@ -237,7 +237,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       positive approximate overflow clipping behavior. Scalar `CAST` and
       `CONVERT` to explicit `utf8mb4`/`utf8mb3` character targets now reject
       invalid byte sequences with warning 1300 and return `NULL`, while
-      binary targets preserve raw bytes.
+      binary targets preserve raw bytes. Default scalar `CHAR` casts and
+      `CONVERT(..., CHAR)` now use the connection character set for the same
+      invalid-byte validation, while `latin1` connection casts preserve raw
+      bytes.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719, FLOAT/DOUBLE target casts, DATE/TIME/DATETIME

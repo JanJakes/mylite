@@ -114,7 +114,8 @@ charset and that charset's default collation. In MyLite's current slice, the
 runtime value preserves the source text bytes and updates charset/collation
 introspection metadata for supported charsets. Explicit `utf8mb4` and
 `utf8mb3` targets validate the resulting byte sequence; invalid input returns
-`NULL` with warning 1300.
+`NULL` with warning 1300. `CONVERT(expr, CHAR)` uses the connection character
+set for the same validation decision.
 
 | SQL | Result |
 | --- | --- |
@@ -127,6 +128,8 @@ introspection metadata for supported charsets. Explicit `utf8mb4` and
 | `HEX(CONVERT(UNHEX('61FF62') USING utf8mb4))` | `NULL`, warning 1300 |
 | `HEX(CONVERT(UNHEX('61E282AC62') USING utf8mb4))` | `61E282AC62` |
 | `HEX(CONVERT(UNHEX('61FF62') USING binary))` | `61FF62` |
+| `SET NAMES utf8mb4; HEX(CONVERT(UNHEX('61FF62'), CHAR))` | `NULL`, warning 1300 |
+| `SET NAMES latin1; HEX(CONVERT(UNHEX('61FF62'), CHAR))` | `61FF62` |
 | `COLLATION(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `latin1_bin` |
 | `COERCIBILITY(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `0` |
 | `COLLATION(CONVERT('abc' USING utf8mb4) COLLATE utf8mb4_bin)` | `utf8mb4_bin` |
@@ -303,7 +306,8 @@ Parser tests:
 - `CONVERT('abc' USING latin1)`, `utf8mb4`, quoted `utf8mb3`, `utf8`, and
   `binary`
 - invalid `utf8mb4` byte validation for `CONVERT(... USING utf8mb4)` and
-  `CONVERT(..., CHAR CHARACTER SET utf8mb4)`
+  `CONVERT(..., CHAR CHARACTER SET utf8mb4)`, plus connection-character-set
+  validation for `CONVERT(..., CHAR)`
 - expression-level `COLLATE` after `CONVERT(... USING ...)` and
   `CONVERT(..., CHAR CHARACTER SET ...)`
 - nested `CONVERT` and `CONVERT` inside `CASE`

@@ -320,6 +320,8 @@ int mylite_user_variable_execute_set_statement(mylite_stmt *stmt) {
     struct mylite_expression_eval_context expression_context = {
         .user_data = &user_context,
         .real_as_float = mylite_connection_sql_mode_has_real_as_float(user_context.database),
+        .character_set_connection =
+            mylite_connection_character_set_connection(user_context.database),
         .resolve_identifier = eval_set_user_variable_identifier,
         .assign_user_variable = eval_set_user_variable_assignment_expression,
     };

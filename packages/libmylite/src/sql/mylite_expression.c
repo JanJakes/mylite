@@ -170,6 +170,7 @@ static const uint32_t mylite_expression_crc32_initial = UINT32_C(0xFFFFFFFF);
 static const uint32_t mylite_expression_crc32_polynomial = UINT32_C(0xEDB88320);
 static const double mylite_expression_round_half = 0.5;
 static const long double mylite_expression_long_double_one = 1.0L;
+static const char mylite_default_connection_charset_name[] = "utf8mb4";
 
 struct numeric_value {
     double real_value;
@@ -874,12 +875,14 @@ static int eval_float_cast(
 static int eval_char_cast(
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
+    const struct mylite_expression_eval_context *context,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 );
 
 static int validate_char_cast_text(
     const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_eval_context *context,
     const char *text,
     size_t text_length,
     struct mylite_expression_warnings *warnings,
@@ -889,6 +892,10 @@ static int validate_char_cast_text(
 static char *copy_cast_target_charset_name(const struct mylite_sql_ast_node *target);
 
 static char *copy_cast_target_charset_span(struct mylite_sql_source_span span);
+
+static const char *default_char_cast_charset_name(
+    const struct mylite_expression_eval_context *context
+);
 
 static bool char_text_invalid_offset_for_charset(
     enum char_function_charset charset,
@@ -5320,7 +5327,7 @@ static int eval_cast_expression(
         );
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
-        status = eval_char_cast(target, &value, warnings, out_value);
+        status = eval_char_cast(target, &value, context, warnings, out_value);
         break;
     case MYLITE_SQL_AST_COLUMN_TYPE_BINARY:
         status = eval_binary_cast(target, &value, warnings, out_value);
@@ -5498,6 +5505,7 @@ static int eval_float_cast(
 static int eval_char_cast(
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
+    const struct mylite_expression_eval_context *context,
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 ) {
@@ -5528,7 +5536,8 @@ static int eval_char_cast(
         }
     }
     if (status == 0) {
-        status = validate_char_cast_text(target, text, text_length, warnings, &null_result);
+        status =
+            validate_char_cast_text(target, context, text, text_length, warnings, &null_result);
     }
     if (status == 0 && null_result) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
@@ -5544,34 +5553,40 @@ static int eval_char_cast(
 
 static int validate_char_cast_text(
     const struct mylite_sql_ast_node *target,
+    const struct mylite_expression_eval_context *context,
     const char *text,
     size_t text_length,
     struct mylite_expression_warnings *warnings,
     bool *out_null_result
 ) {
-    char *charset_name = NULL;
+    char *owned_charset_name = NULL;
+    const char *charset_name = NULL;
     enum char_function_charset charset = CHAR_FUNCTION_CHARSET_UNKNOWN;
     size_t invalid_offset = 0U;
     int status = 0;
 
     *out_null_result = false;
     if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE ||
-        target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR ||
-        !target->has_column_character_set) {
+        target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR) {
         return 0;
     }
 
-    charset_name = copy_cast_target_charset_name(target);
-    if (charset_name == NULL) {
-        return -1;
+    if (target->has_column_character_set) {
+        owned_charset_name = copy_cast_target_charset_name(target);
+        if (owned_charset_name == NULL) {
+            return -1;
+        }
+        charset_name = owned_charset_name;
+    } else {
+        charset_name = default_char_cast_charset_name(context);
     }
     charset = char_function_charset_from_name(charset_name);
     if (charset != CHAR_FUNCTION_CHARSET_UTF8MB4 && charset != CHAR_FUNCTION_CHARSET_UTF8MB3) {
-        free(charset_name);
+        free(owned_charset_name);
         return 0;
     }
     if (!char_text_invalid_offset_for_charset(charset, text, text_length, &invalid_offset)) {
-        free(charset_name);
+        free(owned_charset_name);
         return 0;
     }
 
@@ -5586,7 +5601,7 @@ static int validate_char_cast_text(
     if (status == 0) {
         *out_null_result = true;
     }
-    free(charset_name);
+    free(owned_charset_name);
     return status;
 }
 
@@ -5602,6 +5617,16 @@ static char *copy_cast_target_charset_span(struct mylite_sql_source_span span) {
         return copy_span_text(text + 1U, span.length - 2U);
     }
     return copy_unquoted_identifier_text(span);
+}
+
+static const char *default_char_cast_charset_name(
+    const struct mylite_expression_eval_context *context
+) {
+    if (context == NULL || context->character_set_connection == NULL ||
+        context->character_set_connection[0] == '\0') {
+        return mylite_default_connection_charset_name;
+    }
+    return context->character_set_connection;
 }
 
 static bool char_text_invalid_offset_for_charset(

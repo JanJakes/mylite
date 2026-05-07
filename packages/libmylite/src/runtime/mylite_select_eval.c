@@ -1,5 +1,6 @@
 #include "mylite_select_eval.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_expression.h"
 #include "mylite_runtime.h"
@@ -265,6 +266,10 @@ int mylite_select_eval_constant_predicate(
     const struct mylite_select_eval_callbacks *callbacks
 ) {
     struct mylite_expression_value value = {0};
+    struct mylite_expression_eval_context context = {
+        .real_as_float = mylite_connection_sql_mode_has_real_as_float(stmt->database),
+        .character_set_connection = mylite_connection_character_set_connection(stmt->database),
+    };
     int truth = -1;
     int status = 0;
 
@@ -273,7 +278,12 @@ int mylite_select_eval_constant_predicate(
         return MYLITE_OK;
     }
 
-    status = mylite_expression_eval(stmt->select_predicate, &stmt->database->warnings, &value);
+    status = mylite_expression_eval_with_context(
+        stmt->select_predicate,
+        &context,
+        &stmt->database->warnings,
+        &value
+    );
     if (status == 0) {
         status = mylite_expression_value_truth(&value, &stmt->database->warnings, &truth);
     }

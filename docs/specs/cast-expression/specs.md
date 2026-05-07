@@ -143,6 +143,8 @@ binary-string metadata.
 | `CAST('abc' AS CHAR CHARACTER SET binary)` | `abc` | none |
 | `HEX(CAST(UNHEX('61FF62') AS CHAR CHARACTER SET utf8mb4))` | `NULL` | 1300 invalid character string |
 | `HEX(CAST(UNHEX('61E282AC62') AS CHAR CHARACTER SET utf8mb4))` | `61E282AC62` | none |
+| `SET NAMES utf8mb4; HEX(CAST(UNHEX('61FF62') AS CHAR))` | `NULL` | 1300 invalid character string |
+| `SET NAMES latin1; HEX(CAST(UNHEX('61FF62') AS CHAR))` | `61FF62` | none |
 | `HEX(CAST('a\\0b' AS BINARY))` | `610062` | none |
 | `LENGTH(CAST('a\\0b' AS BINARY))` | `3` | none |
 | `HEX(CAST('a' AS BINARY(3)))` | `610000` | none |

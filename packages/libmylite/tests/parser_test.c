@@ -425,8 +425,7 @@ static int test_table_lifecycle_statements(void) {
     failures += expect_child_count(child_at(statement, 1U), 2U, "insert columns");
     failures += expect_span_text(child_at(child_at(statement, 1U), 0U), "amount", "insert col 1");
     failures += expect_span_text(child_at(child_at(statement, 1U), 1U), "id", "insert col 2");
-    failures +=
-        expect_node(child_at(statement, 2U), MYLITE_SQL_AST_INSERT_ROW_LIST, "insert rows");
+    failures += expect_node(child_at(statement, 2U), MYLITE_SQL_AST_INSERT_ROW_LIST, "insert rows");
     failures += expect_child_count(child_at(statement, 2U), 2U, "insert rows");
     failures += expect_node(
         child_at(child_at(statement, 2U), 0U),
@@ -453,15 +452,19 @@ static int test_table_lifecycle_statements(void) {
     failures += parse_sql("INSERT INTO simple_lifecycle VALUES (1);", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert without columns");
-    failures +=
-        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_IDENTIFIER_LIST, "empty insert columns");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_IDENTIFIER_LIST,
+        "empty insert columns"
+    );
     failures += expect_child_count(child_at(statement, 1U), 0U, "insert has no column list");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT * FROM app.simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_SELECT_STATEMENT, "table wildcard select");
-    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_TABLE, "table select from");
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_TABLE, "table select from");
     failures += expect_span_text(
         child_at(child_at(statement, 1U), 0U),
         "app.simple_lifecycle",
@@ -469,8 +472,7 @@ static int test_table_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("SELECT id, amount FROM simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
+    failures += parse_sql("SELECT id, amount FROM simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_SELECT_STATEMENT, "table projection select");
     failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_TABLE, "projection from");
@@ -568,22 +570,20 @@ static int test_syntax_errors(void) {
         parse_sql("ALTER TABLE old_name RENAME new_name;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("INSERT INTO t VALUES ('text');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("INSERT INTO t VALUES ('text');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("INSERT INTO t VALUES (1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("INSERT INTO t VALUES (1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("INSERT INTO t SET id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("INSERT IGNORE INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures +=
+        parse_sql("INSERT IGNORE INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("SELECT id FROM t WHERE id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT id FROM t WHERE id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

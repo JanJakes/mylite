@@ -51191,6 +51191,13 @@ static int test_show_create_table_execution(void) {
         "  `pdt` datetime(2) DEFAULT (now(2))\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
     static const char *const default_now_values[] = {"default_now", default_now_create};
+    static const char on_update_fsp_create[] =
+        "CREATE TABLE `on_update_fsp` (\n"
+        "  `ts` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3) "
+        "ON UPDATE CURRENT_TIMESTAMP(3),\n"
+        "  `dt` datetime(6) DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP(6)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const on_update_fsp_values[] = {"on_update_fsp", on_update_fsp_create};
     static const char show_create_fk_create[] =
         "CREATE TABLE `child_fk` (\n"
         "  `id` int NOT NULL,\n"
@@ -51406,6 +51413,22 @@ static int test_show_create_table_execution(void) {
         default_now_values,
         1,
         "show create DEFAULT NOW()"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE on_update_fsp ("
+        "ts TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), "
+        "dt DATETIME(6) ON UPDATE CURRENT_TIMESTAMP(6))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE on_update_fsp",
+        columns,
+        2,
+        on_update_fsp_values,
+        1,
+        "show create on update current timestamp fsp"
     );
     failures += execute_sql(database, "CREATE TABLE parent_fk (id INT PRIMARY KEY)", MYLITE_DONE);
     failures += execute_sql(

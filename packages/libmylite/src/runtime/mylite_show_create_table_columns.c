@@ -12,6 +12,7 @@
 #include "sqlite3.h"
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 struct mylite_show_create_column_collation {
@@ -34,6 +35,14 @@ static bool show_create_column_needs_explicit_null_current_timestamp(
 );
 
 static void append_show_create_column_default(sqlite3_str *create_sql, const char *column_default);
+
+static void append_show_create_column_on_update_current_timestamp(
+    sqlite3_str *create_sql,
+    const char *data_type,
+    const char *column_type
+);
+
+static unsigned int show_create_column_datetime_fsp(const char *data_type, const char *column_type);
 
 static bool show_create_column_default_uses_now_function(const char *column_default);
 
@@ -154,7 +163,7 @@ static int append_show_create_table_column(
     }
     if (mylite_text_contains_word(extra, "on") && mylite_text_contains_word(extra, "update") &&
         mylite_text_contains_word(extra, "CURRENT_TIMESTAMP")) {
-        sqlite3_str_appendall(create_sql, " ON UPDATE CURRENT_TIMESTAMP");
+        append_show_create_column_on_update_current_timestamp(create_sql, data_type, column_type);
     }
     if (mylite_text_contains_word(extra, "INVISIBLE")) {
         sqlite3_str_appendall(create_sql, " /*!80023 INVISIBLE */");
@@ -182,6 +191,42 @@ static void append_show_create_column_default(sqlite3_str *create_sql, const cha
         return;
     }
     sqlite3_str_appendall(create_sql, column_default);
+}
+
+static void append_show_create_column_on_update_current_timestamp(
+    sqlite3_str *create_sql,
+    const char *data_type,
+    const char *column_type
+) {
+    unsigned int fsp = show_create_column_datetime_fsp(data_type, column_type);
+
+    sqlite3_str_appendall(create_sql, " ON UPDATE CURRENT_TIMESTAMP");
+    if (fsp > 0U) {
+        sqlite3_str_appendf(create_sql, "(%u)", fsp);
+    }
+}
+
+static unsigned int show_create_column_datetime_fsp(
+    const char *data_type,
+    const char *column_type
+) {
+    const char *open = column_type == NULL ? NULL : strchr(column_type, '(');
+    const char *close = open == NULL ? NULL : strchr(open, ')');
+    char *end = NULL;
+    unsigned long value = 0UL;
+
+    if (!mylite_ascii_case_equal(data_type, "datetime") &&
+        !mylite_ascii_case_equal(data_type, "timestamp")) {
+        return 0U;
+    }
+    if (open == NULL || close == NULL || close <= open + 1) {
+        return 0U;
+    }
+    value = strtoul(open + 1, &end, 10);
+    if (end != close || value > 6UL) {
+        return 0U;
+    }
+    return (unsigned int)value;
 }
 
 static bool show_create_column_default_uses_now_function(const char *column_default) {

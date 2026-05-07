@@ -60474,6 +60474,19 @@ static int test_insert_on_duplicate_key_update_execution(void) {
     static const char *const du_seed_values[] = {"1", "10", "100", "1", "2", "20", "200", "2"};
     static const char *const du_ignore_values[] =
         {"1", "10", "100", "1", "2", "20", "200", "2", "4", "40", "400", "4"};
+    static const char *const odku_ignore_coercion_columns[] = {"id", "i", "d", "v", "dt"};
+    static const char *const odku_ignore_coercion_values[] = {
+        "1",
+        "0",
+        "0.00",
+        "abc",
+        "0000-00-00",
+        "2",
+        "0",
+        "0.00",
+        "abc",
+        "0000-00-00",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     uint64_t last_insert_id = 0U;
@@ -60939,6 +60952,95 @@ static int test_insert_on_duplicate_key_update_execution(void) {
         du_ignore_values,
         3,
         "ODKU IGNORE continuation rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE odku_ignore_coercion ("
+        "id INT PRIMARY KEY, i INT NOT NULL, d DECIMAL(5,2) NOT NULL, "
+        "v VARCHAR(3) NOT NULL, dt DATE NOT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO odku_ignore_coercion VALUES "
+        "(1,10,1.00,'abc','2024-01-01'),"
+        "(2,20,2.00,'def','2024-01-02')",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO odku_ignore_coercion "
+        "VALUES (1,99,9.99,'xxx','2024-02-01'),"
+        "(2,88,8.88,'yyy','2024-02-02') "
+        "ON DUPLICATE KEY UPDATE "
+        "i = 'bad', d = 'bad', v = 'abcdef', dt = 'bad-date'",
+        4,
+        "ODKU IGNORE assignment coercion affected rows"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        8,
+        "ODKU IGNORE assignment coercion warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "ODKU IGNORE integer coercion row 1 warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "column 'i' at row 1",
+        "ODKU IGNORE integer coercion row 1 warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value_for_field,
+        "ODKU IGNORE decimal coercion row 1 warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_data_truncated,
+        "ODKU IGNORE string truncation row 1 warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_data_truncated,
+        "ODKU IGNORE temporal truncation row 1 warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 4),
+        mysql_warning_truncated_wrong_value_for_field,
+        "ODKU IGNORE integer coercion row 2 warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 4),
+        "column 'i' at row 2",
+        "ODKU IGNORE integer coercion row 2 warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 5),
+        mysql_warning_truncated_wrong_value_for_field,
+        "ODKU IGNORE decimal coercion row 2 warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 6),
+        mysql_warning_data_truncated,
+        "ODKU IGNORE string truncation row 2 warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 7),
+        mysql_warning_data_truncated,
+        "ODKU IGNORE temporal truncation row 2 warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, i, d, v, dt FROM odku_ignore_coercion ORDER BY id",
+        odku_ignore_coercion_columns,
+        5,
+        odku_ignore_coercion_values,
+        2,
+        "ODKU IGNORE assignment coercion rows"
     );
 
     failures += execute_sql(

@@ -576,10 +576,14 @@ For the first ODKU implementation, MyLite should support at least:
 - preserving inserts and updates from other source rows in the statement
 - retaining generated auto-increment consumption for the failed update
   candidate
+- demoting covered numeric, string-length, and temporal conversion problems in
+  update assignments through the same warning and coerced-value paths used by
+  insert/update validation, with diagnostics using the source candidate row
+  number
 
 If a broader `INSERT IGNORE` conversion slice has not landed, conversion,
-range, truncation, and temporal demotion remain partial and must be documented
-in `COMPATIBILITY.md`.
+range, truncation, and temporal demotion outside the covered assignment paths
+remain partial and must be documented in `COMPATIBILITY.md`.
 
 ### Diagnostics and warnings
 
@@ -748,6 +752,8 @@ Implemented runtime tests:
   validation tests plus ODKU rollback probes
 - update-branch duplicate-key error with rollback
 - `INSERT IGNORE` update-branch duplicate-key demotion and continuation
+- `INSERT IGNORE` update-assignment numeric, string-length, and temporal
+  coercion demotion with row-numbered warnings
 - warning records for 1287 and demoted 1062, including warning ordering
 - affected rows, warning count, session last insert id, and auto-increment
   catalog state
@@ -760,7 +766,8 @@ Deferred runtime tests:
 - generated-column validation and generated-column `DEFAULT` behavior
 - triggers, foreign keys, views, partitions, priority/delayed modifiers, and
   insert-from-query ODKU sources
-- full conversion/range/truncation demotion under `IGNORE`
+- conversion/range/truncation demotion under `IGNORE` beyond the covered
+  update-assignment coercions
 - explicit `LAST_INSERT_ID(expr)` behavior when the scalar function surface is
   available in ODKU expressions
 

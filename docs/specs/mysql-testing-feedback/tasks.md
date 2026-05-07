@@ -246,6 +246,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       DML numeric coercion now applies the same embedded-NUL handling for
       covered integer and approximate assignments, rejecting in strict mode and
       warning/storing the prefix in non-strict mode.
+      `INSERT IGNORE ... ON DUPLICATE KEY UPDATE` update assignments now demote
+      covered numeric, string-length, and temporal coercion failures through
+      row-numbered warnings and MySQL-compatible coerced values.
       Scalar `CAST` and
       `CONVERT` to explicit `utf8mb4`/`utf8mb3` character targets now reject
       invalid byte sequences with warning 1300 and return `NULL`, while

@@ -16,6 +16,7 @@ static int execute_insert_update_bound_row(
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
     struct mylite_insert_execution_state *state,
+    uint64_t row_number,
     const struct mylite_insert_bound_value *values
 );
 
@@ -76,6 +77,7 @@ int mylite_dml_execute_insert_update_values_row(
             table,
             column_indexes,
             state,
+            row_index + 1U,
             values
         );
     }
@@ -134,6 +136,7 @@ int mylite_dml_execute_insert_update_set_row(
             table,
             row_column_indexes,
             state,
+            1U,
             values
         );
     }
@@ -149,6 +152,7 @@ static int execute_insert_update_bound_row(
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
     struct mylite_insert_execution_state *state,
+    uint64_t row_number,
     const struct mylite_insert_bound_value *values
 ) {
     struct mylite_insert_unique_conflict conflict = {0};
@@ -225,6 +229,7 @@ static int execute_insert_update_bound_row(
             update_plan,
             table,
             column_indexes,
+            row_number,
             values,
             updated_values
         );

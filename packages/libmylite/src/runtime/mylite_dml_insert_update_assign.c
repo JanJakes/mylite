@@ -1,5 +1,6 @@
 #include "mylite_dml.h"
 
+#include "mylite_connection.h"
 #include "mylite_dml_insert_default.h"
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_dml_insert_update_expression.h"
@@ -11,6 +12,7 @@ static int evaluate_insert_update_assignment_value(
     const struct mylite_insert_table *table,
     size_t target_column,
     const struct mylite_insert_row_column_indexes *column_indexes,
+    uint64_t row_number,
     const struct mylite_insert_value *value,
     const struct mylite_insert_bound_value *target_values,
     const struct mylite_insert_bound_value *candidate_values,
@@ -26,6 +28,8 @@ static int resolve_insert_update_default_value(
 static int validate_insert_update_assignment_result(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
+    uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 );
 
@@ -36,6 +40,7 @@ int mylite_dml_apply_insert_update_assignments(
     const struct mylite_insert_duplicate_update_plan *update_plan,
     const struct mylite_insert_table *table,
     const struct mylite_insert_row_column_indexes *column_indexes,
+    uint64_t row_number,
     const struct mylite_insert_bound_value *candidate_values,
     struct mylite_insert_bound_value *updated_values
 ) {
@@ -56,6 +61,7 @@ int mylite_dml_apply_insert_update_assignments(
             table,
             column_index,
             column_indexes,
+            row_number,
             &update_plan->assignments[index].value,
             updated_values,
             candidate_values,
@@ -80,6 +86,7 @@ static int evaluate_insert_update_assignment_value(
     const struct mylite_insert_table *table,
     size_t target_column,
     const struct mylite_insert_row_column_indexes *column_indexes,
+    uint64_t row_number,
     const struct mylite_insert_value *value,
     const struct mylite_insert_bound_value *target_values,
     const struct mylite_insert_bound_value *candidate_values,
@@ -104,7 +111,13 @@ static int evaluate_insert_update_assignment_value(
         );
     }
     if (status == MYLITE_OK) {
-        status = validate_insert_update_assignment_result(database, column, out_value);
+        status = validate_insert_update_assignment_result(
+            database,
+            column,
+            row_number,
+            values_plan->ignore,
+            out_value
+        );
     }
     return status;
 }
@@ -120,6 +133,8 @@ static int resolve_insert_update_default_value(
 static int validate_insert_update_assignment_result(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
+    uint64_t row_number,
+    bool ignore,
     struct mylite_insert_bound_value *value
 ) {
     int64_t integer_value = 0;
@@ -128,18 +143,28 @@ static int validate_insert_update_assignment_result(
         if (column->nullable) {
             return MYLITE_OK;
         }
+        if (ignore || !mylite_connection_sql_mode_is_strict(database)) {
+            int status = mylite_dml_insert_append_null_warning(database, column->name);
+
+            if (status != MYLITE_OK) {
+                return status;
+            }
+            mylite_dml_insert_bound_value_deinit(value);
+            return mylite_dml_resolve_insert_implicit_expression_default(database, column, value);
+        }
         return mylite_dml_set_not_null_column_error(database, column->name);
     }
-    int status = mylite_dml_coerce_insert_temporal_value(database, column, 1U, false, value);
+    int status =
+        mylite_dml_coerce_insert_temporal_value(database, column, row_number, ignore, value);
 
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, false, value);
+    status = mylite_dml_coerce_insert_numeric_value(database, column, row_number, ignore, value);
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_dml_coerce_insert_string_value(database, column, 1U, false, value);
+    status = mylite_dml_coerce_insert_string_value(database, column, row_number, ignore, value);
     if (status != MYLITE_OK) {
         return status;
     }

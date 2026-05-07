@@ -371,8 +371,10 @@ level application surfaces.
        materialization, source-column metadata, duplicate-column diagnostics,
        temporary destinations, affected rows, and implicit commits; explicit
        definition merging and broader `INSERT ... SELECT` remain unfinished.
-45. [ ] `CREATE TEMPORARY TABLE`: session lifecycle, name shadowing, metadata,
-       and cleanup.
+45. [x] `CREATE TEMPORARY TABLE`: session lifecycle, name shadowing, metadata,
+       and cleanup for the supported table-definition subset. Temporary-table
+       privileges, standalone temporary index DDL, and full temporary DDL
+       transaction semantics remain separate compatibility work.
 46. [ ] Views: `CREATE VIEW`, `ALTER VIEW`, `DROP VIEW`, `SHOW CREATE VIEW`,
        algorithms, definers, security, column names, and check options.
 47. [ ] Triggers: `CREATE TRIGGER`, `DROP TRIGGER`, `SHOW TRIGGERS`,

@@ -61,11 +61,12 @@ succeeds with a 1050 note and no error condition.
 table. `DROP TEMPORARY TABLE tbl_name` only drops a temporary table and reports
 unknown table 1051 when only a persistent table exists.
 
-Temporary tables do not appear in `INFORMATION_SCHEMA.TABLES` or `SHOW TABLES`.
-Metadata statements that target the table name, such as `SHOW COLUMNS` and
-`SHOW CREATE TABLE`, resolve the temporary table while it exists.
-`SHOW TABLE STATUS` and `INFORMATION_SCHEMA.TABLES` continue to report the
-persistent table row when a temporary table shadows it.
+Temporary tables do not appear in `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`,
+or `SHOW FULL TABLES`. Metadata statements that target the table name, such as
+`SHOW COLUMNS` and `SHOW CREATE TABLE`, resolve the temporary table while it
+exists. `SHOW TABLE STATUS`, `INFORMATION_SCHEMA.TABLES`, and
+`INFORMATION_SCHEMA.COLUMNS` continue to report the persistent table row when a
+temporary table shadows it.
 
 ## MyLite behavior
 
@@ -147,7 +148,8 @@ rows first.
 
 `SHOW COLUMNS`, `DESCRIBE`, `SHOW INDEX`, and `SHOW CREATE TABLE` resolve the
 temporary catalog first. `SHOW CREATE TABLE` emits `CREATE TEMPORARY TABLE` for
-temporary targets. `SHOW TABLE STATUS` and `INFORMATION_SCHEMA.TABLES` remain
+temporary targets. `SHOW TABLES`, `SHOW FULL TABLES`, `SHOW TABLE STATUS`,
+`INFORMATION_SCHEMA.TABLES`, and `INFORMATION_SCHEMA.COLUMNS` remain
 schema-wide persistent metadata surfaces and do not list temporary tables.
 
 ## Compatibility decisions
@@ -157,3 +159,9 @@ MyLite intentionally does not list temporary tables in `SHOW TABLES` or
 and persistent `AUTO_INCREMENT` state stay independent even when the names
 match; unqualified DML targets the temporary table, while schema-wide metadata
 continues to expose the persistent row.
+
+Runtime tests cover same-connection shadowing, automatic cleanup on close,
+cross-connection invisibility, temporary omission from `SHOW TABLES` and
+`SHOW FULL TABLES`, and persistent metadata visibility through
+`SHOW TABLE STATUS`, `INFORMATION_SCHEMA.TABLES`, and
+`INFORMATION_SCHEMA.COLUMNS` while a temporary table shadows the same name.

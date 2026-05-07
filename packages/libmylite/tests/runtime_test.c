@@ -38215,6 +38215,12 @@ static int test_temporary_table_execution(void) {
     static const char *const show_temp_only_columns[] = {
         "Tables_in_mylite_temp_tables (temp_only)"
     };
+    static const char *const show_full_temp_only_columns[] = {
+        "Tables_in_mylite_temp_tables (temp_only)",
+        "Table_type",
+    };
+    static const char *const column_name_columns[] = {"COLUMN_NAME"};
+    static const char *const shadowed_information_schema_column_values[] = {"id", "note"};
     static const char *const count_columns[] = {"COUNT(*)"};
     static const char *const zero_count[] = {"0"};
     static const char *const temp_altered_columns[] = {"id", "temp_note", "altered"};
@@ -38272,6 +38278,7 @@ static int test_temporary_table_execution(void) {
     };
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
+    mylite_db *other_database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
 
@@ -38512,6 +38519,15 @@ static int test_temporary_table_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SHOW FULL TABLES LIKE 'temp_only'",
+        show_full_temp_only_columns,
+        2,
+        NULL,
+        0,
+        "temporary table omitted from show full tables"
+    );
+    failures += expect_select_rows(
+        database,
         "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
         "WHERE TABLE_SCHEMA = 'mylite_temp_tables' AND TABLE_NAME = 'temp_only'",
         count_columns,
@@ -38520,6 +38536,51 @@ static int test_temporary_table_execution(void) {
         1,
         "temporary table omitted from information schema"
     );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_temp_tables' AND TABLE_NAME = 'shadowed' "
+        "ORDER BY ORDINAL_POSITION",
+        column_name_columns,
+        1,
+        shadowed_information_schema_column_values,
+        2,
+        "information schema columns reports persistent shadowed table"
+    );
+
+    failures += expect_status(
+        mylite_open(path, &other_database),
+        MYLITE_OK,
+        "open second temporary table file"
+    );
+    failures += execute_sql(other_database, "USE mylite_temp_tables", MYLITE_DONE);
+    failures += expect_select_rows(
+        other_database,
+        "SELECT id, note FROM shadowed",
+        base_columns,
+        2,
+        base_values,
+        1,
+        "temporary table invisible to second connection"
+    );
+    failures += expect_prepare_error(
+        other_database,
+        "SELECT * FROM temp_only",
+        MYLITE_EXEC_ERROR,
+        "doesn't exist",
+        "temporary-only table invisible to second connection"
+    );
+    failures += expect_select_rows(
+        other_database,
+        "SHOW TABLES LIKE 'temp_only'",
+        show_temp_only_columns,
+        1,
+        NULL,
+        0,
+        "second connection show tables omits temporary table"
+    );
+    mylite_close(other_database);
+    other_database = NULL;
 
     failures += execute_sql(database, "DROP TABLE shadowed", MYLITE_DONE);
     failures += expect_select_rows(

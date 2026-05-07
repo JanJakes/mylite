@@ -44,6 +44,11 @@ static int apply_catalog_bit_column_descriptor(
     struct mylite_field_descriptor *descriptor
 );
 
+static int apply_catalog_json_column_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+);
+
 static int apply_catalog_temporal_column_descriptor(
     const struct mylite_catalog_column_descriptor_source *source,
     struct mylite_field_descriptor *descriptor
@@ -96,6 +101,10 @@ int mylite_select_catalog_apply_column_type_descriptor(
         return status;
     }
     status = apply_catalog_bit_column_descriptor(source, descriptor);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
+    status = apply_catalog_json_column_descriptor(source, descriptor);
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
@@ -306,6 +315,24 @@ static int apply_catalog_bit_column_descriptor(
     descriptor->type = MYLITE_FIELD_TYPE_BIT;
     descriptor->length = catalog_int64_or_zero(source->select, source->numeric_precision_index);
     descriptor->flags |= MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM;
+    return MYLITE_OK;
+}
+
+static int apply_catalog_json_column_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+) {
+    const char *data_type = source->data_type;
+
+    if (!mylite_ascii_case_equal(data_type, "json")) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    descriptor->type = MYLITE_FIELD_TYPE_JSON;
+    descriptor->length = mylite_mysql_long_text_length;
+    descriptor->decimals = 0U;
+    descriptor->charset_id = mylite_mysql_binary_charset_id;
+    descriptor->flags |= MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY;
     return MYLITE_OK;
 }
 

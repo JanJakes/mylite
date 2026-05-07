@@ -487,6 +487,12 @@ static int myliteCoerceBit(
   u32 *pMyErrno,
   const char **pzSqlState
 );
+static int myliteCoerceJson(
+  Mem *pMem,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
 static int myliteCoerceDate(
   Mem *pMem,
   int bAllowZero,
@@ -860,6 +866,8 @@ static int myliteApplyColumnType(
       return myliteCoerceBit(
           pMem, pCol->myliteType.nPrecision, pzErr, pMyErrno, pzSqlState
       );
+    case MYLITE_COLTYPE_JSON:
+      return myliteCoerceJson(pMem, pzErr, pMyErrno, pzSqlState);
     case MYLITE_COLTYPE_DATE:
       return myliteCoerceDate(
           pMem, (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_ALLOW_ZERO)!=0,
@@ -1556,6 +1564,34 @@ static int myliteBitValueFromBytes(
 static int myliteBitValueFits(u64 value, u8 nBits){
   if( nBits>=64 ) return 1;
   return value < ((u64)1 << nBits);
+}
+
+static int myliteCoerceJson(
+  Mem *pMem,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  int rc;
+  if( (pMem->flags & MEM_Str)==0 || (pMem->flags & MEM_Blob)!=0 ){
+    *pzErr = "invalid JSON text";
+    *pMyErrno = 3140;
+    *pzSqlState = "22032";
+    return SQLITE_MISMATCH;
+  }
+  if( sqlite3VdbeMemNulTerminate(pMem)!=SQLITE_OK ) return SQLITE_NOMEM;
+#ifndef SQLITE_OMIT_JSON
+  rc = sqlite3MyliteJsonTextIsValid(pMem->db, pMem->z, pMem->n);
+  if( rc<0 ) return SQLITE_NOMEM;
+  if( rc==1 ) return SQLITE_OK;
+#else
+  rc = 0;
+#endif
+  (void)rc;
+  *pzErr = "invalid JSON text";
+  *pMyErrno = 3140;
+  *pzSqlState = "22032";
+  return SQLITE_MISMATCH;
 }
 
 static int myliteCoerceDate(

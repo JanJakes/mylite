@@ -53,6 +53,8 @@ static int test_native_year_type_coercion(void);
 
 static int test_native_bit_type_coercion(void);
 
+static int test_native_json_type_coercion(void);
+
 static int test_native_enum_type_coercion(void);
 
 static int test_native_set_type_coercion(void);
@@ -76,6 +78,8 @@ static int test_mylite_time_type_coercion(void);
 static int test_mylite_year_type_coercion(void);
 
 static int test_mylite_bit_type_coercion(void);
+
+static int test_mylite_json_type_coercion(void);
 
 static int test_mylite_collation_unique_semantics(void);
 
@@ -141,6 +145,7 @@ int main(void) {
     failures += test_native_time_type_coercion();
     failures += test_native_year_type_coercion();
     failures += test_native_bit_type_coercion();
+    failures += test_native_json_type_coercion();
     failures += test_native_enum_type_coercion();
     failures += test_native_set_type_coercion();
     failures += test_wordpress_like_crud();
@@ -153,6 +158,7 @@ int main(void) {
     failures += test_mylite_time_type_coercion();
     failures += test_mylite_year_type_coercion();
     failures += test_mylite_bit_type_coercion();
+    failures += test_mylite_json_type_coercion();
     failures += test_mylite_collation_unique_semantics();
 
     return failures == 0 ? 0 : 1;
@@ -1576,6 +1582,97 @@ static int test_native_bit_type_coercion(void) {
             .mysql_errno = bit_out_of_range_error,
             .sqlstate = "22003",
             .context = "negative bit value exposes MySQL condition",
+        }
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_json_type_coercion(void) {
+    enum {
+        json_error = 3140,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE json_direct(id INTEGER PRIMARY KEY, doc TEXT)",
+        "create direct JSON descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "json_direct",
+            "doc",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_JSON,
+            }
+        ),
+        database,
+        "set direct JSON descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO json_direct VALUES "
+        "(1, '{\"a\":1}'), (2, '[1,2]'), (3, 'true'), "
+        "(4, 'null'), (5, '123'), (6, '\"x\"')",
+        "insert direct JSON descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT COUNT(*) || ':' || MIN(json_valid(doc)) || ':' || "
+                   "json_extract((SELECT doc FROM json_direct WHERE id = 1), '$.a') || ':' || "
+                   "json_array_length((SELECT doc FROM json_direct WHERE id = 2)) "
+                   "FROM json_direct",
+            .expected = "6:1:1:2",
+            .context = "direct JSON descriptors accept canonical JSON text",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO json_direct VALUES (7, 'not json')",
+            .message_fragment = "invalid JSON text",
+            .context = "direct JSON descriptor rejects invalid text",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = json_error,
+            .sqlstate = "22032",
+            .context = "invalid JSON text exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear invalid JSON text fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO json_direct VALUES (7, 1)",
+            .message_fragment = "invalid JSON text",
+            .context = "direct JSON descriptor rejects non-text JSON assignment",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = json_error,
+            .sqlstate = "22032",
+            .context = "non-text JSON assignment exposes MySQL condition",
         }
     );
 
@@ -3990,6 +4087,190 @@ static int test_mylite_bit_type_coercion(void) {
             .column_count = bit_remaining_table_column_count,
             .row_count = single_row_count,
             .context = "MyLite bit drop table matches MySQL fixture",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_json_type_coercion(void) {
+    enum {
+        json_after_delete_column_count = 8,
+        json_after_delete_row_count = 2,
+        json_summary_column_count = 3,
+        json_truncate_column_count = 2,
+        json_reinsert_column_count = 5,
+        json_remaining_table_column_count = 1,
+        single_row_count = 1,
+        json_invalid_error = 3140,
+    };
+
+    static const char *const after_delete[] = {
+        "1",
+        "site_meta",
+        "OBJECT",
+        NULL,
+        NULL,
+        "3",
+        "1",
+        "yes",
+        "2",
+        "theme_mods",
+        "OBJECT",
+        "green",
+        "3",
+        "3",
+        "1",
+        "no",
+    };
+    static const char *const summary[] = {"2", "2", "site_meta,theme_mods"};
+    static const char *const after_truncate[] = {"0", "0"};
+    static const char *const after_reinsert[] = {"1", "restored", "ARRAY", "2", "2"};
+    static const char *const remaining_tables[] = {"0"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite JSON CRUD");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_json_column_crud CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite JSON CRUD schema"
+    );
+    failures += exec_mylite_sql(database, "USE mylite_json_column_crud", "use JSON CRUD schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE wp_options_json_like ("
+        "option_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+        "option_name VARCHAR(64) NOT NULL,"
+        "option_value JSON NOT NULL,"
+        "autoload VARCHAR(20) NOT NULL DEFAULT 'yes',"
+        "PRIMARY KEY (option_id),"
+        "UNIQUE KEY option_name (option_name)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite JSON options table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_options_json_like (option_name, option_value, autoload) VALUES "
+        "('site_meta', '{\"blog_id\":1,\"active\":true,\"tags\":[\"cms\",\"blog\"]}', 'yes'),"
+        "('theme_mods', '{\"color\":\"blue\",\"layout\":{\"columns\":2}}', 'no'),"
+        "('empty_flags', '[]', 'yes')",
+        "insert MyLite JSON option rows"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE wp_options_json_like "
+        "SET option_value = '{\"color\":\"green\",\"layout\":{\"columns\":3},\"enabled\":true}' "
+        "WHERE option_name = 'theme_mods'",
+        "update MyLite JSON option row"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "DELETE FROM wp_options_json_like WHERE option_name = 'empty_flags'",
+        "delete MyLite JSON option row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT option_id, option_name, JSON_TYPE(option_value), "
+                   "JSON_UNQUOTE(JSON_EXTRACT(option_value, '$.color')), "
+                   "JSON_EXTRACT(option_value, '$.layout.columns'), "
+                   "JSON_LENGTH(option_value), JSON_VALID(option_value), autoload "
+                   "FROM wp_options_json_like ORDER BY option_id",
+            .values = after_delete,
+            .column_count = json_after_delete_column_count,
+            .row_count = json_after_delete_row_count,
+            .context = "MyLite JSON CRUD rows match MySQL fixture",
+        }
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*), SUM(JSON_VALID(option_value)), "
+                   "GROUP_CONCAT(option_name ORDER BY option_id SEPARATOR ',') "
+                   "FROM wp_options_json_like",
+            .values = summary,
+            .column_count = json_summary_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite JSON aggregate summary matches MySQL fixture",
+        }
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO wp_options_json_like(option_name, option_value) VALUES ('bad_text', 'not "
+        "json')",
+        MYLITE_SQLITE_ERROR,
+        "MyLite JSON coercion rejects invalid text"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        json_invalid_error,
+        "MyLite invalid JSON text condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO wp_options_json_like(option_name, option_value) VALUES ('bad_int', 1)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite JSON coercion rejects non-text assignment"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        json_invalid_error,
+        "MyLite non-text JSON condition"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "TRUNCATE TABLE wp_options_json_like",
+        "truncate MyLite JSON options table"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*), COALESCE(MAX(option_id), 0) FROM wp_options_json_like",
+            .values = after_truncate,
+            .column_count = json_truncate_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite JSON truncate matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_options_json_like(option_name, option_value) "
+        "VALUES ('restored', '[{\"id\":1},{\"id\":2}]')",
+        "reinsert MyLite JSON option row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT option_id, option_name, JSON_TYPE(option_value), "
+                   "JSON_LENGTH(option_value), JSON_EXTRACT(option_value, '$[1].id') "
+                   "FROM wp_options_json_like",
+            .values = after_reinsert,
+            .column_count = json_reinsert_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite JSON reinsert after truncate matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "DROP TABLE wp_options_json_like",
+        "drop MyLite JSON options table"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*) FROM information_schema.tables "
+                   "WHERE table_schema = DATABASE() "
+                   "AND table_name = 'wp_options_json_like'",
+            .values = remaining_tables,
+            .column_count = json_remaining_table_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite JSON drop table matches MySQL fixture",
         }
     );
 

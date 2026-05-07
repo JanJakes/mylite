@@ -2291,6 +2291,7 @@ struct MyliteColumnType {
 # define MYLITE_COLTYPE_ENUM             14
 # define MYLITE_COLTYPE_SET              15
 # define MYLITE_COLTYPE_BIT              16
+# define MYLITE_COLTYPE_JSON             17
 
 # define MYLITE_COLTYPE_FLAG_UNSIGNED    0x0001
 # define MYLITE_COLTYPE_FLAG_ALLOW_ZERO  0x0002
@@ -5286,6 +5287,9 @@ int sqlite3AppendOneUtf8Character(char*, u32);
 void sqlite3RegisterBuiltinFunctions(void);
 void sqlite3RegisterDateTimeFunctions(void);
 void sqlite3RegisterJsonFunctions(void);
+#if defined(SQLITE_ENABLE_MYLITE) && !defined(SQLITE_OMIT_JSON)
+int sqlite3MyliteJsonTextIsValid(sqlite3*,const char*,int);
+#endif
 void sqlite3RegisterPerConnectionBuiltinFunctions(sqlite3*);
 #if !defined(SQLITE_OMIT_VIRTUALTABLE) && !defined(SQLITE_OMIT_JSON)
   Module *sqlite3JsonVtabRegister(sqlite3*,const char*);

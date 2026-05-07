@@ -20,6 +20,8 @@ static int test_create_table_enum_set_columns(void);
 
 static int test_create_table_bit_columns(void);
 
+static int test_create_table_json_columns(void);
+
 static int test_create_table_numeric_columns(void);
 
 static int test_create_table_temporal_columns(void);
@@ -392,6 +394,7 @@ int main(void) {
     failures += test_create_table_string_binary_columns();
     failures += test_create_table_enum_set_columns();
     failures += test_create_table_bit_columns();
+    failures += test_create_table_json_columns();
     failures += test_create_table_numeric_columns();
     failures += test_create_table_temporal_columns();
     failures += test_create_table_column_attributes();
@@ -1571,6 +1574,70 @@ static int test_create_table_bit_columns(void) {
 
     failures += parse_sql(
         "CREATE TABLE bad_bit_overflow (a BIT(18446744073709551616));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_json_columns(void) {
+    enum {
+        expected_column_count = 2,
+        json_column = 0,
+        json_name_column = 1,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures +=
+        parse_sql("CREATE TABLE app.json_types (j JSON, json INT);", MYLITE_SQL_PARSE_OK, &result);
+    columns = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "json columns");
+    failures += expect_child_count(columns, expected_column_count, "json column count");
+
+    column_type = child_at(child_at(columns, json_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_JSON, "json column");
+    failures += expect_span_text(column_type, "JSON", "json span");
+
+    failures += expect_span_text(
+        child_at(child_at(columns, json_name_column), 0U),
+        "json",
+        "json identifier"
+    );
+    failures += expect_column_type(
+        child_at(child_at(columns, json_name_column), 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_INT,
+        "json identifier type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_json_length (j JSON(10));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_json_charset (j JSON CHARACTER SET utf8mb4);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_json_binary (j JSON BINARY);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_json_unsigned (j JSON UNSIGNED);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

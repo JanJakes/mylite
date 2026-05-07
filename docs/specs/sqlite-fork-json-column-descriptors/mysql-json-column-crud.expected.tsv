@@ -1,0 +1,8 @@
+after-delete	1	site_meta	OBJECT	NULL	NULL	3	1	yes
+after-delete	2	theme_mods	OBJECT	green	3	3	1	no
+summary	2	2	site_meta,theme_mods
+after-bad-text	3140	22032
+after-bad-int	3140	22032
+after-truncate	0	0
+after-reinsert	1	restored	ARRAY	2	2
+remaining-tables	0

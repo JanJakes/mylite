@@ -25,6 +25,7 @@ enum mylite_sqlite_fork_column_type_kind {
     MYLITE_SQLITE_FORK_COLUMN_TYPE_ENUM = 14,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_SET = 15,
     MYLITE_SQLITE_FORK_COLUMN_TYPE_BIT = 16,
+    MYLITE_SQLITE_FORK_COLUMN_TYPE_JSON = 17,
 };
 
 enum mylite_sqlite_fork_column_type_flags {

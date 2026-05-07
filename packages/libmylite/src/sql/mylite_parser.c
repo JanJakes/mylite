@@ -65,6 +65,8 @@ static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type 
 
 static bool column_type_uses_bit_descriptor(enum mylite_sql_ast_column_type column_type);
 
+static bool column_type_uses_json_descriptor(enum mylite_sql_ast_column_type column_type);
+
 static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type);
 
 static bool map_lexer_token(
@@ -5297,6 +5299,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_validate_column_type(
         (!column_type_uses_string_binary_descriptor(column_type->column_type) &&
          !column_type_uses_numeric_descriptor(column_type->column_type) &&
          !column_type_uses_bit_descriptor(column_type->column_type) &&
+         !column_type_uses_json_descriptor(column_type->column_type) &&
          !column_type_uses_temporal_descriptor(column_type->column_type))) {
         return column_type;
     }
@@ -5353,6 +5356,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_validate_column_type(
     } else if (column_type_uses_bit_descriptor(column_type->column_type)) {
         status =
             mylite_column_type_describe_bit(type_name, strlen(type_name), attributes, &descriptor);
+    } else if (column_type_uses_json_descriptor(column_type->column_type)) {
+        status =
+            mylite_column_type_describe_json(type_name, strlen(type_name), attributes, &descriptor);
     } else {
         status = mylite_column_type_describe_string_binary(
             type_name,
@@ -7451,6 +7457,8 @@ static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type c
         return "DOUBLE";
     case MYLITE_SQL_AST_COLUMN_TYPE_BIT:
         return "BIT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_JSON:
+        return "JSON";
     case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
         return "DATE";
     case MYLITE_SQL_AST_COLUMN_TYPE_TIME:
@@ -7488,6 +7496,10 @@ static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type 
 
 static bool column_type_uses_bit_descriptor(enum mylite_sql_ast_column_type column_type) {
     return column_type == MYLITE_SQL_AST_COLUMN_TYPE_BIT;
+}
+
+static bool column_type_uses_json_descriptor(enum mylite_sql_ast_column_type column_type) {
+    return column_type == MYLITE_SQL_AST_COLUMN_TYPE_JSON;
 }
 
 static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type) {
@@ -7732,6 +7744,7 @@ static bool lookup_keyword_parser_token(
         {"INVOKER", MYLITE_SQL_PARSE_INVOKER},
         {"IS", MYLITE_SQL_PARSE_IS},
         {"JOIN", MYLITE_SQL_PARSE_JOIN},
+        {"JSON", MYLITE_SQL_PARSE_JSON},
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEYS", MYLITE_SQL_PARSE_KEYS},
         {"KEY_BLOCK_SIZE", MYLITE_SQL_PARSE_KEY_BLOCK_SIZE},

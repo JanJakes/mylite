@@ -452,6 +452,37 @@ enum mylite_column_type_status mylite_column_type_describe_bit(
     return MYLITE_COLUMN_TYPE_OK;
 }
 
+enum mylite_column_type_status mylite_column_type_describe_json(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
+    if (out_descriptor == NULL) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    *out_descriptor = (struct mylite_column_type_descriptor){0};
+
+    if (type_name == NULL || !ascii_case_equal(type_name, type_name_length, "JSON")) {
+        return MYLITE_COLUMN_TYPE_UNKNOWN;
+    }
+    if (attributes.has_display_width || attributes.has_length || attributes.has_precision ||
+        attributes.has_scale || attributes.has_signed || attributes.has_unsigned ||
+        attributes.has_character_set || attributes.has_collation ||
+        attributes.has_binary_attribute || attributes.has_byte_attribute ||
+        attributes.has_zerofill_attribute || attributes.is_national) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+
+    *out_descriptor = (struct mylite_column_type_descriptor){
+        .is_json = true,
+        .canonical_type_name = "JSON",
+        .data_type = "json",
+        .column_type = "json",
+    };
+    return MYLITE_COLUMN_TYPE_OK;
+}
+
 enum mylite_column_type_status mylite_column_type_describe_temporal(
     const char *type_name,
     size_t type_name_length,

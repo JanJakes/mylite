@@ -330,6 +330,7 @@ enum mylite_sql_ast_column_type {
     MYLITE_SQL_AST_COLUMN_TYPE_ENUM = 28,
     MYLITE_SQL_AST_COLUMN_TYPE_SET = 29,
     MYLITE_SQL_AST_COLUMN_TYPE_BIT = 30,
+    MYLITE_SQL_AST_COLUMN_TYPE_JSON = 31,
 };
 
 enum mylite_sql_ast_column_attribute {

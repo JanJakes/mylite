@@ -2092,6 +2092,27 @@ static int jsonConvertTextToBlob(
   return 0;
 }
 
+#ifdef SQLITE_ENABLE_MYLITE
+int sqlite3MyliteJsonTextIsValid(sqlite3 *db, const char *zJson, int nJson){
+  JsonParse sParse;
+  int rc;
+  if( db==0 || zJson==0 || nJson<=0 ) return 0;
+  memset(&sParse, 0, sizeof(sParse));
+  sParse.db = db;
+  sParse.zJson = (char*)zJson;
+  sParse.nJson = nJson;
+  rc = jsonConvertTextToBlob(&sParse, 0);
+  if( rc!=0 ){
+    rc = sParse.oom ? -1 : 0;
+    jsonParseReset(&sParse);
+    return rc;
+  }
+  rc = sParse.hasNonstd ? 0 : 1;
+  jsonParseReset(&sParse);
+  return rc;
+}
+#endif
+
 /*
 ** The input string pStr is a well-formed JSON text string.  Convert
 ** this into the JSONB format and make it the return value of the

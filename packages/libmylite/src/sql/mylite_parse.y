@@ -2759,6 +2759,9 @@ column_type(A) ::= double_column_type(B). {
 column_type(A) ::= temporal_column_type(B). {
     A = B;
 }
+column_type(A) ::= json_column_type(B). {
+    A = B;
+}
 column_type(A) ::= value_list_column_type(B). {
     A = B;
 }
@@ -3113,6 +3116,11 @@ temporal_column_type(A) ::= YEAR(T) opt_year_width(B). {
         mylite_sql_parser_set_column_precision_scale(
             state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_YEAR),
             B));
+}
+
+json_column_type(A) ::= JSON(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_JSON));
 }
 
 value_list_column_type(A) ::= ENUM(T) LPAREN(L) value_list_literals(B) RPAREN(R) character_type_attribute_list(C). {
@@ -5321,6 +5329,9 @@ nonreserved_identifier_keyword(A) ::= AFTER(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= BIT(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= JSON(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= COPY(T). {

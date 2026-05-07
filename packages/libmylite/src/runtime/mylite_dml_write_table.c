@@ -105,6 +105,8 @@ static bool write_table_column_uses_decimal_type(const struct mylite_insert_tabl
 
 static bool write_table_column_uses_bit_type(const struct mylite_insert_table_column *column);
 
+static bool write_table_column_uses_json_type(const struct mylite_insert_table_column *column);
+
 static bool write_table_column_uses_date_type(const struct mylite_insert_table_column *column);
 
 static bool write_table_column_uses_datetime_type(const struct mylite_insert_table_column *column);
@@ -541,6 +543,10 @@ static bool write_table_column_fork_type(
         out_type->numeric_precision = column->numeric_precision;
         return true;
     }
+    if (write_table_column_uses_json_type(column)) {
+        out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_JSON;
+        return true;
+    }
     if (write_table_column_uses_date_type(column)) {
         out_type->kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_DATE;
         if (allow_zero_temporal) {
@@ -705,6 +711,13 @@ static bool write_table_column_uses_bit_type(const struct mylite_insert_table_co
         return false;
     }
     return mylite_ascii_case_equal(column->data_type, "bit");
+}
+
+static bool write_table_column_uses_json_type(const struct mylite_insert_table_column *column) {
+    if (column == NULL) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "json");
 }
 
 static bool write_table_column_uses_date_type(const struct mylite_insert_table_column *column) {

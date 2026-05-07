@@ -87,6 +87,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_token tables_token,
     struct mylite_sql_ast_node *schema_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *schema_name
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token rename_token,

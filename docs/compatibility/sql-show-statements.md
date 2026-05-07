@@ -9,7 +9,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW BINLOG EVENTS` | ❌ | Result shape, filters, privileges |
 | `SHOW CHARACTER SET` | ❌ | Result shape, filters, privileges |
 | `SHOW COLLATION` | ❌ | Result shape, filters, privileges |
-| `SHOW COLUMNS` / `SHOW FIELDS` | ❌ | Result shape, filters, privileges |
+| `SHOW COLUMNS` / `SHOW FIELDS` | 🟡 | Limited descriptor-driven column listing for persistent base tables; supports `FROM`/`IN`, schema-qualified targets, and explicit schema forms with `Field`, `Type`, `Null`, `Key`, `Default`, and `Extra`; no `FULL`, `EXTENDED`, `LIKE`, `WHERE`, views, privileges, indexes, defaults, hidden columns, or `INFORMATION_SCHEMA` |
 | `SHOW COUNT(*) ERRORS` | ❌ | Result shape, filters, privileges |
 | `SHOW COUNT(*) WARNINGS` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE DATABASE` | ❌ | Result shape, filters, privileges |

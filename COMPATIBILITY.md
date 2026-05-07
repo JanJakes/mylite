@@ -544,14 +544,14 @@ tests.
 | --- | :-: | --- | --- |
 | `SHOW CHARACTER SET` | ❌ | Result shape and filters. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW COLLATION` | ❌ | Result shape and filters. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
-| `SHOW COLUMNS` | ❌ | Column metadata result. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
-| `SHOW FIELDS` | ❌ | Alias for `SHOW COLUMNS`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW COLUMNS` | 🟡 | Limited descriptor-driven column listing for persistent base tables with integer-family descriptors; supports `FROM`/`IN`, schema-qualified targets, and explicit schema forms, but no `FULL`, `EXTENDED`, `LIKE`, `WHERE`, views, privileges, indexes, defaults, or hidden columns. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW FIELDS` | 🟡 | Limited alias for the supported `SHOW COLUMNS` subset. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW CREATE TABLE` | ❌ | MySQL-style table DDL. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW DATABASES` | 🟡 | Limited descriptor-driven catalog schema listing; no system schemas, filters, or privileges. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW TABLES` | 🟡 | Limited descriptor-driven table listing with optional `FROM`/`IN` schema; no `FULL`, `EXTENDED`, `LIKE`, `WHERE`, views, privileges, or temporary tables. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW TABLE STATUS` | ❌ | Table metadata result. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
-| `DESCRIBE` | ❌ | Table and column description. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
-| `DESC` | ❌ | Alias for `DESCRIBE`. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
+| `DESCRIBE` | 🟡 | Limited table-column introspection alias for the supported `SHOW COLUMNS` subset; no column filters or execution-plan `EXPLAIN` behavior. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
+| `DESC` | 🟡 | Limited alias for the supported table-only `DESCRIBE` subset. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
 | `EXPLAIN` for tables | ❌ | Table form only; statements excluded. | [SQL utility statements](docs/compatibility/sql-utility-statements.md) |
 
 ### Transactions, Locking, and Maintenance

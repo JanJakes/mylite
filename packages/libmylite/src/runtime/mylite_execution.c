@@ -44,6 +44,7 @@ enum {
     decimal_base = 10,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
+    show_columns_result_column_count = 6,
 };
 
 struct table_name_resolution {
@@ -195,6 +196,16 @@ struct show_tables_context {
     mylite_result *result;
 };
 
+struct show_columns_context {
+    struct mylite_db *database;
+    mylite_result *result;
+};
+
+struct show_columns_target_nodes {
+    const struct mylite_sql_ast_node *table;
+    const struct mylite_sql_ast_node *schema;
+};
+
 struct show_databases_context {
     mylite_result *result;
 };
@@ -271,6 +282,11 @@ static int execute_select_statement(
     mylite_result **out_result
 );
 static int execute_show_tables_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_columns_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -487,6 +503,17 @@ static int resolve_table_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution
+);
+static int resolve_show_columns_table_name(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes,
+    struct table_name_resolution *out_resolution
+);
+static int copy_show_columns_explicit_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    char *destination,
+    size_t destination_size
 );
 static int resolve_truncate_table_name(
     struct mylite_db *database,
@@ -761,6 +788,15 @@ static int is_unqualified_identifier_select_item(
 );
 
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data);
+static int append_show_column(
+    const struct mylite_catalog_column_descriptor *column,
+    void *user_data
+);
+static int show_column_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char **out_type_text
+);
 static int append_show_database(
     const struct mylite_catalog_schema_descriptor *schema,
     void *user_data
@@ -1045,6 +1081,8 @@ static int execute_parsed_statement(
         return execute_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
         return execute_show_tables_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+        return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return execute_show_databases_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SCRIPT:
@@ -1522,6 +1560,70 @@ static int execute_show_tables_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_columns_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[] =
+        {"Field", "Type", "Null", "Key", "Default", "Extra"};
+    struct table_name_resolution target = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    struct show_columns_context context = {0};
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    rc = resolve_show_columns_table_name(
+        database,
+        (struct show_columns_target_nodes){
+            .table = child_at(statement, 0U),
+            .schema = child_at(statement, 1U),
+        },
+        &target
+    );
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &target, &table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < sizeof(result_columns) / sizeof(result_columns[0]);
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        context.database = database;
+        context.result = result;
+        rc = mylite_catalog_for_each_column_in_table(
+            database,
+            table.table_id,
+            append_show_column,
+            &context
+        );
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else if (
+            rc != MYLITE_OK &&
+            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
+        ) {
+            set_runtime_error(database, "failed to build SHOW COLUMNS result");
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_databases_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1585,6 +1687,7 @@ static int64_t row_count_for_completed_statement(
         return 0;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return -1;
     case MYLITE_SQL_AST_SCRIPT:
@@ -3499,6 +3602,77 @@ static int resolve_table_name(
     return MYLITE_ERROR;
 }
 
+static int resolve_show_columns_table_name(
+    struct mylite_db *database,
+    struct show_columns_target_nodes nodes,
+    struct table_name_resolution *out_resolution
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    *out_resolution = (struct table_name_resolution){0};
+    if (nodes.schema == NULL) {
+        rc = resolve_table_name(database, nodes.table, out_resolution);
+    } else {
+        rc = copy_identifier_text(nodes.schema, schema_name, sizeof(schema_name), database);
+        if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
+            set_reserved_name_error(database, "database", schema_name);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = resolve_schema_name(database, schema_name, &out_resolution->schema);
+        }
+        if (rc == MYLITE_OK) {
+            rc = copy_show_columns_explicit_table_name(
+                database,
+                nodes.table,
+                out_resolution->table_name,
+                sizeof(out_resolution->table_name)
+            );
+        }
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_resolution->table_name)) {
+        set_reserved_name_error(database, "table", out_resolution->table_name);
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int copy_show_columns_explicit_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_node,
+    char *destination,
+    size_t destination_size
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (destination == NULL || destination_size < MYLITE_CATALOG_IDENTIFIER_CAPACITY) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = collect_identifier_parts(
+        table_node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 0U || part_count > 2U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    memcpy(destination, parts[part_count - 1U], MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    return MYLITE_OK;
+}
+
 static int resolve_truncate_table_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
@@ -5081,6 +5255,65 @@ static int append_show_table(const struct mylite_catalog_table_descriptor *table
     values[0] = table->name;
 
     return mylite_result_append_text_row(context->result, values);
+}
+
+static int append_show_column(
+    const struct mylite_catalog_column_descriptor *column,
+    void *user_data
+) {
+    struct show_columns_context *context = user_data;
+    const char *type_text = NULL;
+    const char *values[show_columns_result_column_count] = {NULL, NULL, NULL, "", NULL, ""};
+    int rc = MYLITE_OK;
+
+    if (column == NULL || context == NULL || context->result == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = show_column_type_text(context->database, column->logical_type, &type_text);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    values[0] = column->name;
+    values[1] = type_text;
+    values[2] = "NO";
+    if (column->is_nullable) {
+        values[2] = "YES";
+    }
+
+    return mylite_result_append_text_row(context->result, values);
+}
+
+static int show_column_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char **out_type_text
+) {
+    if (logical_type == NULL || out_type_text == NULL) {
+        set_runtime_error(database, "invalid column descriptor");
+        return MYLITE_ERROR;
+    }
+    if (strcmp(logical_type, "INT") == 0 || strcmp(logical_type, "INTEGER") == 0) {
+        *out_type_text = "int";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "INT UNSIGNED") == 0 ||
+        strcmp(logical_type, "INTEGER UNSIGNED") == 0) {
+        *out_type_text = "int unsigned";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "BIGINT") == 0) {
+        *out_type_text = "bigint";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "BIGINT UNSIGNED") == 0) {
+        *out_type_text = "bigint unsigned";
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(database, "SHOW COLUMNS supports only integer column descriptors");
+    return MYLITE_ERROR;
 }
 
 static int append_show_database(

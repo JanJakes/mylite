@@ -315,6 +315,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "connection_id_argument_count_error";
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
         return "count_star_function";
+    case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+        return "show_columns_statement";
     }
 
     return "unknown";

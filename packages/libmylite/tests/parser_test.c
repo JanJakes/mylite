@@ -18,6 +18,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_show_columns_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
 static int test_delete_statement(void);
@@ -98,6 +99,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_show_columns_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
     failures += test_delete_statement();
@@ -1263,6 +1265,84 @@ static int test_schema_lifecycle_statements(void) {
     return failures;
 }
 
+static int test_show_columns_introspection_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW COLUMNS FROM numbers;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "show columns statement");
+    failures += expect_child_count(statement, 1U, "show columns child count");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "show columns table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COLUMNS IN app.numbers;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "show columns in statement");
+    failures += expect_child_count(statement, 1U, "show columns in child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app.numbers", "show columns qualified table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FIELDS FROM numbers IN app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "show fields statement");
+    failures += expect_child_count(statement, 2U, "show fields explicit schema child count");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "show fields table");
+    failures += expect_span_text(child_at(statement, 1U), "app", "show fields schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FIELDS IN numbers FROM app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT,
+        "show fields in from statement"
+    );
+    failures += expect_child_count(statement, 2U, "show fields in from child count");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "show fields in table");
+    failures += expect_span_text(child_at(statement, 1U), "app", "show fields from schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW COLUMNS FROM app.numbers FROM other;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT,
+        "show columns qualified explicit schema"
+    );
+    failures += expect_child_count(statement, 2U, "show columns qualified explicit child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app.numbers", "show columns qualified table");
+    failures += expect_span_text(child_at(statement, 1U), "other", "show columns trailing schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DESCRIBE app.numbers;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "describe table");
+    failures += expect_span_text(child_at(statement, 0U), "app.numbers", "describe target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DESC numbers;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "desc table");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "desc target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE columns (fields INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "columns table name");
+    failures += expect_span_text(child_at(statement, 0U), "columns", "columns identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_select_where_predicates(void) {
     static const struct {
         const char *sql;
@@ -1715,6 +1795,28 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW FULL DATABASES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL COLUMNS FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EXTENDED COLUMNS FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COLUMNS FROM t LIKE 'i%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW COLUMNS FROM t WHERE Field = 'id';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DESCRIBE t id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DESCRIBE SELECT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE TABLE t ();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

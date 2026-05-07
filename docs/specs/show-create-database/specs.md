@@ -59,6 +59,10 @@ collations for `latin1`, `utf8mb3`, and `binary`, but includes
 `utf8mb4_0900_ai_ci` for `utf8mb4`. Non-default collations such as
 `latin1_bin`, `utf8mb3_bin`, and `utf8mb4_bin` are displayed.
 
+The verified result metadata has two non-null `VAR_STRING` columns using
+`utf8mb3` charset id `8`: `Database` has declared length `64` and
+`Create Database` has declared length `1024`. Both report decimals `31`.
+
 ## Syntax
 
 MyLite owns the grammar below; it is intentionally authored for MyLite's Lemon
@@ -101,6 +105,9 @@ Result shape:
 
 - Successful execution returns exactly two columns:
   `Database`, `Create Database`.
+- The result-column descriptors match MySQL 8.4.9: non-null
+  `VAR_STRING(64)` for `Database` and non-null `VAR_STRING(1024)` for
+  `Create Database`, both with charset id `8` and decimals `31`.
 - Successful execution returns one row.
 - Successful execution produces no warnings.
 - `mylite_affected_rows()` remains `-1` because the result is read-only.
@@ -156,6 +163,7 @@ Parser coverage:
 Runtime coverage:
 
 - default user schema result shape and full generated text
+- MySQL 8.4.9-derived result-column descriptors
 - `SCHEMA` synonym with unchanged column names and `CREATE DATABASE` output
 - `IF NOT EXISTS` version-comment formatting
 - latin1 default collation omission and encryption `Y`

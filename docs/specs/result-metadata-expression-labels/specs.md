@@ -46,7 +46,10 @@ include `SHOW DATABASES`, `SHOW TABLES`, `SHOW TABLE STATUS`, and
 `CHECK` / `OPTIMIZE` / `REPAIR TABLE`. The static `SHOW` surfaces covered by
 the same model are `SHOW VARIABLES`, `SHOW STATUS`, `SHOW CHARACTER SET`,
 `SHOW COLLATION`, `SHOW WARNINGS`, `SHOW ERRORS`, `SHOW COUNT(*) WARNINGS`,
-and `SHOW COUNT(*) ERRORS`.
+and `SHOW COUNT(*) ERRORS`. Target-table SHOW surfaces covered by the same
+model are `SHOW COLUMNS` / `SHOW FIELDS`, `DESCRIBE` / `DESC` table metadata,
+`SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS`, `SHOW CREATE DATABASE` /
+`SHOW CREATE SCHEMA`, and `SHOW CREATE TABLE`.
 
 This task should not change SQL grammar meaning except where the parser already
 accepts projection expressions that runtime has not yet executed. It turns

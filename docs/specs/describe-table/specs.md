@@ -20,6 +20,8 @@ This slice implements the table-description form of MySQL's `DESCRIBE`,
 
 The result set is the non-`FULL` `SHOW COLUMNS` shape:
 `Field`, `Type`, `Null`, `Key`, `Default`, `Extra`.
+The C API result-column descriptors match the non-`FULL` `SHOW COLUMNS`
+descriptors for the supported target-table paths.
 
 Deferred or separate surfaces:
 
@@ -71,6 +73,12 @@ The following behavior was verified against MySQL 8.4.9:
 | `DESCRIBE information_schema.missing_info` | Error `1109`, SQLSTATE `42S02`, message `Unknown table 'MISSING_INFO' in information_schema`. |
 | `DESCRIBE meta WHERE Field = 'name'` | Syntax error; the table-description form does not accept `WHERE`. |
 | `EXPLAIN FORMAT=TREE SELECT 1` | Query-plan output; it is separate from the table-description form and now parses as a no-op parser placeholder in MyLite. |
+
+For table-description result metadata, MySQL 8.4.9 reports the same descriptor
+shape as non-`FULL` `SHOW COLUMNS`: `Field` as nullable `VAR_STRING(64)`,
+`Type` as non-null binary `BLOB(16777215)`, `Null` as non-null
+`VAR_STRING(3)`, `Key` as non-null binary enum `STRING(3)`, `Default` as
+nullable binary `BLOB(65535)`, and `Extra` as nullable `VAR_STRING(256)`.
 
 ## Syntax
 
@@ -185,6 +193,7 @@ Parser coverage:
 Runtime coverage:
 
 - selected-schema `DESCRIBE` with exact column names and rows
+- MySQL 8.4.9-derived result-column descriptors
 - `DESC` synonym
 - `EXPLAIN tbl_name` table-description synonym
 - schema-qualified target resolution

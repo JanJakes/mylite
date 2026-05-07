@@ -2,7 +2,10 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_field_descriptor.h"
 #include "mylite_information_schema.h"
+#include "mylite_metadata.h"
+#include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
 #include "mylite_show_index_target.h"
 #include "mylite_show_types.h"
@@ -11,6 +14,7 @@
 #include "sqlite3.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,6 +44,19 @@ static int copy_describe_table_target(
 
 static char *copy_describe_column_pattern(const struct mylite_sql_ast_node *statement);
 
+static int attach_show_columns_result_metadata(mylite_db *database, mylite_stmt *stmt, bool full);
+
+static struct mylite_field_descriptor show_target_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    unsigned int decimals,
+    unsigned int charset_id,
+    bool nullable
+);
+
+static int attach_show_index_result_metadata(mylite_db *database, mylite_stmt *stmt);
+
 int mylite_show_prepare_columns_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -50,6 +67,7 @@ int mylite_show_prepare_columns_statement(
     char *sqlite_sql = NULL;
     int status = copy_show_columns_target(database, statement, &target);
 
+    *out_stmt = NULL;
     if (status == MYLITE_OK) {
         status = mylite_show_validate_columns_target(
             database,
@@ -84,9 +102,17 @@ int mylite_show_prepare_columns_statement(
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
+    if (status == MYLITE_OK) {
+        status =
+            attach_show_columns_result_metadata(database, *out_stmt, statement->show_columns_full);
+    }
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
+    }
+    if (status != MYLITE_OK) {
+        mylite_finalize(*out_stmt);
+        *out_stmt = NULL;
     }
     mylite_show_columns_target_deinit(&target);
     free(like_pattern);
@@ -104,6 +130,7 @@ int mylite_show_prepare_describe_table_statement(
     char *sqlite_sql = NULL;
     int status = copy_describe_table_target(database, statement, &target);
 
+    *out_stmt = NULL;
     if (status == MYLITE_OK) {
         status = mylite_show_validate_columns_target(
             database,
@@ -136,9 +163,16 @@ int mylite_show_prepare_describe_table_statement(
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
+    if (status == MYLITE_OK) {
+        status = attach_show_columns_result_metadata(database, *out_stmt, false);
+    }
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
+    }
+    if (status != MYLITE_OK) {
+        mylite_finalize(*out_stmt);
+        *out_stmt = NULL;
     }
     mylite_show_columns_target_deinit(&target);
     free(column_pattern);
@@ -157,6 +191,7 @@ int mylite_show_prepare_index_statement(
     char *sqlite_sql = NULL;
     int status = mylite_show_index_copy_target(database, statement, &target);
 
+    *out_stmt = NULL;
     if (status == MYLITE_OK) {
         status = mylite_show_index_validate_target(database, &target);
     }
@@ -176,13 +211,354 @@ int mylite_show_prepare_index_statement(
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
+    if (status == MYLITE_OK) {
+        status = attach_show_index_result_metadata(database, *out_stmt);
+    }
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
     }
+    if (status != MYLITE_OK) {
+        mylite_finalize(*out_stmt);
+        *out_stmt = NULL;
+    }
     mylite_show_index_target_deinit(&target);
     sqlite3_free(sqlite_sql);
     return status;
+}
+
+static int attach_show_columns_result_metadata(mylite_db *database, mylite_stmt *stmt, bool full) {
+    const struct mylite_result_column_metadata_spec columns[] = {
+        {.name = "Field",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Field",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             64U,
+             0U,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             true
+         )},
+        {.name = "Type",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Type",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_BLOB,
+             16777215U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+        {.name = "Collation",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Collation",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             64U,
+             0U,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             true
+         )},
+        {.name = "Null",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Null",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             3U,
+             MYLITE_FIELD_FLAG_NOT_NULL,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+        {.name = "Key",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Key",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_STRING,
+             3U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_ENUM |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+        {.name = "Default",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Default",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_BLOB,
+             65535U,
+             MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             true
+         )},
+        {.name = "Extra",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Extra",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             256U,
+             0U,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             true
+         )},
+        {.name = "Privileges",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Privileges",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             154U,
+             0U,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             true
+         )},
+        {.name = "Comment",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Comment",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_BLOB,
+             6144U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+    };
+
+    if (full) {
+        return mylite_result_metadata_attach_columns(
+            database,
+            stmt,
+            columns,
+            sizeof(columns) / sizeof(columns[0])
+        );
+    }
+    const struct mylite_result_column_metadata_spec plain_columns[] = {
+        columns[0],
+        columns[1],
+        columns[3],
+        columns[4],
+        columns[5],
+        columns[6],
+    };
+    return mylite_result_metadata_attach_columns(
+        database,
+        stmt,
+        plain_columns,
+        sizeof(plain_columns) / sizeof(plain_columns[0])
+    );
+}
+
+static struct mylite_field_descriptor show_target_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    unsigned int decimals,
+    unsigned int charset_id,
+    bool nullable
+) {
+    struct mylite_field_descriptor descriptor = {
+        .type = type,
+        .flags = flags,
+        .length = length,
+        .decimals = decimals,
+        .charset_id = charset_id,
+        .nullable = nullable,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
+    return descriptor;
+}
+
+static int attach_show_index_result_metadata(mylite_db *database, mylite_stmt *stmt) {
+    const struct mylite_result_column_metadata_spec columns[] = {
+        {.name = "Table",
+         .table_name = "SHOW_STATISTICS",
+         .origin_table_name = "tables",
+         .origin_column_name = "Table",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             64U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+        {.name = "Non_unique",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Non_unique",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_LONG,
+             2U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+             0U,
+             mylite_mysql_binary_charset_id,
+             false
+         )},
+        {.name = "Key_name",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Key_name",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             64U,
+             0U,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             true
+         )},
+        {.name = "Seq_in_index",
+         .table_name = "SHOW_STATISTICS",
+         .origin_table_name = "index_column_usage",
+         .origin_column_name = "Seq_in_index",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_LONG,
+             10U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_NUM,
+             0U,
+             mylite_mysql_binary_charset_id,
+             false
+         )},
+        {.name = "Column_name",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Column_name",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             64U,
+             0U,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             true
+         )},
+        {.name = "Collation",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Collation",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             1U,
+             0U,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             true
+         )},
+        {.name = "Cardinality",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Cardinality",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_NUM,
+             0U,
+             mylite_mysql_binary_charset_id,
+             true
+         )},
+        {.name = "Sub_part",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Sub_part",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_LONGLONG,
+             21U,
+             MYLITE_FIELD_FLAG_NUM,
+             0U,
+             mylite_mysql_binary_charset_id,
+             true
+         )},
+        {.name = "Packed",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_NULL,
+             0U,
+             MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+             0U,
+             mylite_mysql_binary_charset_id,
+             true
+         )},
+        {.name = "Null",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Null",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             3U,
+             MYLITE_FIELD_FLAG_NOT_NULL,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+        {.name = "Index_type",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Index_type",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             11U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+        {.name = "Comment",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Comment",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             8U,
+             MYLITE_FIELD_FLAG_NOT_NULL,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+        {.name = "Index_comment",
+         .table_name = "SHOW_STATISTICS",
+         .origin_table_name = "indexes",
+         .origin_column_name = "Index_comment",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             2048U,
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                 MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+        {.name = "Visible",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Visible",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_VAR_STRING,
+             3U,
+             MYLITE_FIELD_FLAG_NOT_NULL,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             false
+         )},
+        {.name = "Expression",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Expression",
+         .descriptor = show_target_descriptor(
+             MYLITE_FIELD_TYPE_BLOB,
+             UINT64_C(4294967295),
+             MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+             0U,
+             mylite_mysql_latin1_swedish_ci_charset_id,
+             true
+         )},
+    };
+
+    return mylite_result_metadata_attach_columns(
+        database,
+        stmt,
+        columns,
+        sizeof(columns) / sizeof(columns[0])
+    );
 }
 
 int mylite_show_copy_columns_table_target(

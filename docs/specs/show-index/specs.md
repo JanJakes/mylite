@@ -69,6 +69,28 @@ MySQL `SHOW INDEX ... WHERE Key_name = 'mixedcase'` matched a mixed-case index
 name in the verified runtime. The filter uses the displayed `SHOW INDEX` column
 names.
 
+The verified MySQL 8.4.9 field descriptors for `SHOW INDEX` are also stable for
+newly created tables. MyLite attaches these descriptors for supported
+catalog-backed targets:
+
+| Result column | Field type | Length | Charset | Required metadata flags |
+| --- | --- | --- | --- | --- |
+| `Table` | `VAR_STRING` | `64` | `utf8mb3` (`8`) | `NOT_NULL`, `BINARY`, `NO_DEFAULT_VALUE`; visible table `SHOW_STATISTICS`, origin table `tables`. |
+| `Non_unique` | `LONG` | `2` | binary (`63`) | `NOT_NULL`, `NUM`. |
+| `Key_name` | `VAR_STRING` | `64` | `utf8mb3` (`8`) | Nullable. |
+| `Seq_in_index` | `LONG` | `10` | binary (`63`) | `NOT_NULL`, `UNSIGNED`, `NO_DEFAULT_VALUE`, `NUM`; origin table `index_column_usage`. |
+| `Column_name` | `VAR_STRING` | `64` | `utf8mb3` (`8`) | Nullable. |
+| `Collation` | `VAR_STRING` | `1` | `utf8mb3` (`8`) | Nullable. |
+| `Cardinality` | `LONGLONG` | `21` | binary (`63`) | Nullable, `NUM`. |
+| `Sub_part` | `LONGLONG` | `21` | binary (`63`) | Nullable, `NUM`. |
+| `Packed` | `NULL` | `0` | binary (`63`) | Nullable, `BINARY`, `NUM`. |
+| `Null` | `VAR_STRING` | `3` | `utf8mb3` (`8`) | `NOT_NULL`. |
+| `Index_type` | `VAR_STRING` | `11` | `utf8mb3` (`8`) | `NOT_NULL`, `BINARY`. |
+| `Comment` | `VAR_STRING` | `8` | `utf8mb3` (`8`) | `NOT_NULL`. |
+| `Index_comment` | `VAR_STRING` | `2048` | `utf8mb3` (`8`) | `NOT_NULL`, `BINARY`, `NO_DEFAULT_VALUE`; origin table `indexes`. |
+| `Visible` | `VAR_STRING` | `3` | `utf8mb3` (`8`) | `NOT_NULL`. |
+| `Expression` | `BLOB` | `4294967295` | `utf8mb3` (`8`) | Nullable, `BLOB`, `BINARY`. |
+
 ## Syntax And AST
 
 MyLite grammar accepts the MySQL statement shape and records the spelling only
@@ -185,6 +207,7 @@ Parser tests cover:
 Runtime tests cover:
 
 - no selected schema diagnostic
+- MySQL 8.4.9-derived result-column descriptors
 - primary, unique, nonunique, and multi-part index rows
 - prefix lengths, ascending/descending collation, comments, nullable flag,
   zero cardinality placeholders, index visibility, and index type values

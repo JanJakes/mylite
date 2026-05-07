@@ -23,7 +23,6 @@ diagnostics for missing schema or table context.
 
 Deferred surfaces:
 
-- execution of `SHOW COLUMNS ... WHERE expr`
 - hidden storage-engine columns for `EXTENDED`
 - user views, until `CREATE VIEW` metadata exists
 - temporary tables and temporary-table shadowing
@@ -69,6 +68,21 @@ The following behavior was verified against MySQL 8.4.9:
 On the Linux MySQL runtime used for verification, `lower_case_table_names = 0`.
 Table names are case-sensitive, but `SHOW COLUMNS ... LIKE` matched ASCII
 column-name case-insensitively under the default connection collation.
+
+MySQL 8.4.9 also reports stable result-column descriptors for this statement.
+MyLite attaches the same descriptor shape for the supported target-table paths:
+
+| Result column | Field type | Length | Charset | Required metadata flags |
+| --- | --- | --- | --- | --- |
+| `Field` | `VAR_STRING` | `64` | `utf8mb3` (`8`) | Nullable; visible table `COLUMNS`. |
+| `Type` | `BLOB` | `16777215` | `utf8mb3` (`8`) | `NOT_NULL`, `BLOB`, `BINARY`, `NO_DEFAULT_VALUE`; origin table `columns`. |
+| `Collation` (`FULL` only) | `VAR_STRING` | `64` | `utf8mb3` (`8`) | Nullable; visible table `COLUMNS`. |
+| `Null` | `VAR_STRING` | `3` | `utf8mb3` (`8`) | `NOT_NULL`. |
+| `Key` | `STRING` | `3` | `utf8mb3` (`8`) | `NOT_NULL`, `BINARY`, `ENUM`, `NO_DEFAULT_VALUE`; origin table `columns`. |
+| `Default` | `BLOB` | `65535` | `utf8mb3` (`8`) | Nullable, `BLOB`, `BINARY`; origin table `columns`. |
+| `Extra` | `VAR_STRING` | `256` | `utf8mb3` (`8`) | Nullable. |
+| `Privileges` (`FULL` only) | `VAR_STRING` | `154` | `utf8mb3` (`8`) | Nullable. |
+| `Comment` (`FULL` only) | `BLOB` | `6144` | `utf8mb3` (`8`) | `NOT_NULL`, `BLOB`, `BINARY`. |
 
 ## Syntax
 
@@ -197,6 +211,8 @@ Parser coverage:
 Runtime coverage:
 
 - selected-schema listing with exact non-`FULL` column names and rows
+- MySQL 8.4.9-derived result-column descriptors for standard and `FULL`
+  result sets
 - `FIELDS` synonym
 - `FULL` result shape, collation, privileges, and comments
 - schema-qualified listing via `FROM` and `IN`
@@ -204,7 +220,7 @@ Runtime coverage:
 - `EXTENDED` accepted as current no-op over MyLite's user-column catalog
 - generated-column `Extra` values through `SHOW COLUMNS`, `SHOW FULL COLUMNS`,
   and `DESCRIBE`
-- parsed `WHERE` returns a deterministic unsupported diagnostic
+- `WHERE` filtering over displayed result columns
 - `LIKE` wildcard filtering and case behavior
 - escaped `_` in `LIKE`
 - empty result with stable metadata

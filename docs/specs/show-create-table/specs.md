@@ -67,6 +67,10 @@ The following behavior was verified against MySQL 8.4.9:
 | `SET SESSION sql_quote_show_create = 0; SHOW CREATE TABLE meta` | Removes backticks where not required. MyLite has no session-variable surface for this yet, so the first slice keeps quoted output. |
 | Escaped identifiers such as table ``weird``name``, column ``b``c``, and index ``idx``s`` | Output doubles embedded backticks inside backtick-quoted identifiers. |
 
+The verified result metadata has two non-null `VAR_STRING` columns using
+`utf8mb3` charset id `8`: `Table` has declared length `64` and `Create Table`
+has declared length `1024`. Both report decimals `31`.
+
 ## Syntax
 
 MyLite owns the grammar below; it is intentionally authored for MyLite's Lemon
@@ -108,6 +112,9 @@ Result shape:
 
 - Successful base-table execution returns exactly two columns:
   `Table`, `Create Table`.
+- The result-column descriptors match MySQL 8.4.9: non-null
+  `VAR_STRING(64)` for `Table` and non-null `VAR_STRING(1024)` for
+  `Create Table`, both with charset id `8` and decimals `31`.
 - The row value for `Table` is the unqualified table name.
 - `Create Table` contains one complete statement.
 - Successful execution produces no warnings.
@@ -192,6 +199,7 @@ Parser coverage:
 Runtime coverage:
 
 - selected-schema result shape and simple primary-key formatting
+- MySQL 8.4.9-derived result-column descriptors
 - schema-qualified target
 - full supported metadata formatting with defaults, comments, invisible column,
   primary key, unique key, secondary key, prefix length, descending key part,

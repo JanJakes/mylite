@@ -194,8 +194,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       maintenance result sets now attach MySQL-verified descriptors; static
       `SHOW VARIABLES`, `SHOW STATUS`, `SHOW CHARACTER SET`, `SHOW COLLATION`,
       `SHOW WARNINGS`, `SHOW ERRORS`, and diagnostic count result sets are now
-      covered too. Remaining expression and SQLite-backed result metadata gaps
-      are still tracked here.
+      covered too; `SHOW COLUMNS` / `SHOW FIELDS`, `DESCRIBE`, `SHOW INDEX`,
+      `SHOW CREATE DATABASE`, and `SHOW CREATE TABLE` target result sets are
+      covered as well. Remaining expression and other SQLite-backed result
+      metadata gaps are still tracked here.
 
 ## Test harness classification
 

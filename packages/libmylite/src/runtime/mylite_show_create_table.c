@@ -1,6 +1,9 @@
 #include "mylite_show.h"
 
 #include "mylite_diagnostics.h"
+#include "mylite_field_descriptor.h"
+#include "mylite_metadata.h"
+#include "mylite_metadata_constants.h"
 #include "mylite_runtime.h"
 #include "mylite_show_create_common.h"
 #include "mylite_show_create_table_checks.h"
@@ -14,12 +17,17 @@
 #include "sqlite3.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 static int show_create_table_sql(
     mylite_db *database,
     const struct mylite_show_create_table_target *target,
     char **out_sql
 );
+
+static int attach_show_create_table_result_metadata(mylite_db *database, mylite_stmt *stmt);
+
+static struct mylite_field_descriptor show_create_table_descriptor(uint64_t length);
 
 int mylite_show_prepare_create_table_statement(
     mylite_db *database,
@@ -30,6 +38,7 @@ int mylite_show_prepare_create_table_statement(
     char *sqlite_sql = NULL;
     int status = mylite_show_create_table_copy_target(database, statement, &target);
 
+    *out_stmt = NULL;
     if (status == MYLITE_OK) {
         status = mylite_show_create_table_validate_target(database, &target);
     }
@@ -39,9 +48,16 @@ int mylite_show_prepare_create_table_statement(
     if (status == MYLITE_OK) {
         status = mylite_statement_prepare_sqlite(database, sqlite_sql, out_stmt);
     }
+    if (status == MYLITE_OK) {
+        status = attach_show_create_table_result_metadata(database, *out_stmt);
+    }
 
     if (status == MYLITE_NOMEM) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
+    }
+    if (status != MYLITE_OK) {
+        mylite_finalize(*out_stmt);
+        *out_stmt = NULL;
     }
     mylite_show_create_table_target_deinit(&target);
     sqlite3_free(sqlite_sql);
@@ -111,4 +127,32 @@ static int show_create_table_sql(
     sqlite3_free(create_text);
     mylite_show_create_table_info_deinit(&info);
     return status;
+}
+
+static int attach_show_create_table_result_metadata(mylite_db *database, mylite_stmt *stmt) {
+    const struct mylite_result_column_metadata_spec columns[] = {
+        {.name = "Table", .descriptor = show_create_table_descriptor(64U)},
+        {.name = "Create Table", .descriptor = show_create_table_descriptor(1024U)},
+    };
+
+    return mylite_result_metadata_attach_columns(
+        database,
+        stmt,
+        columns,
+        sizeof(columns) / sizeof(columns[0])
+    );
+}
+
+static struct mylite_field_descriptor show_create_table_descriptor(uint64_t length) {
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = MYLITE_FIELD_FLAG_NOT_NULL,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
+        .nullable = false,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, false);
+    return descriptor;
 }

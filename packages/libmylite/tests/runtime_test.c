@@ -46651,6 +46651,136 @@ static int test_show_columns_execution(void) {
         {"Field", "Type", "Null", "Key", "Default", "Extra"};
     static const char *const full_columns[] =
         {"Field", "Type", "Collation", "Null", "Key", "Default", "Extra", "Privileges", "Comment"};
+    static const struct expected_result_metadata standard_metadata[] = {
+        {.name = "Field",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Field",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Type",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Type",
+         .declared_length = 16777215U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Null",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Null",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Key",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Key",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_ENUM | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Default",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Default",
+         .declared_length = 65535U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Extra",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Extra",
+         .declared_length = 256U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
+    static const struct expected_result_metadata full_metadata[] = {
+        {.name = "Field",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Field",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Type",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Type",
+         .declared_length = 16777215U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Collation",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Collation",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Null",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Null",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Key",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Key",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_ENUM | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Default",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Default",
+         .declared_length = 65535U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Extra",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Extra",
+         .declared_length = 256U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Privileges",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Privileges",
+         .declared_length = 154U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Comment",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Comment",
+         .declared_length = 6144U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set =
+             MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY},
+    };
     static const char *const b_columns[] = {"Field", "Type", "Null", "Key", "Default", "Extra"};
     static const char *const meta_values[] = {
         "id",     "int",           "NO",  "PRI", NULL,   "auto_increment",
@@ -46811,6 +46941,7 @@ static int test_show_columns_execution(void) {
         "VIRTUAL GENERATED",
     };
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -46848,6 +46979,23 @@ static int test_show_columns_execution(void) {
         "default_virtual INT AS (base + 3))",
         MYLITE_DONE
     );
+
+    failures += prepare_sql(database, "SHOW COLUMNS FROM meta", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, standard_metadata, 6, "show columns metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show columns metadata first row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show columns metadata second row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show columns metadata third row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show columns metadata fourth row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show columns metadata fifth row");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show columns metadata sixth row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show columns metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "SHOW FULL COLUMNS FROM meta", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, full_metadata, 9, "show full columns metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show full columns metadata row");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_select_rows(
         database,
@@ -47111,6 +47259,7 @@ static int test_show_columns_execution(void) {
     );
 
     mylite_close(database);
+    mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
@@ -47119,6 +47268,59 @@ static int test_describe_table_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const standard_columns[] =
         {"Field", "Type", "Null", "Key", "Default", "Extra"};
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "Field",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Field",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Type",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Type",
+         .declared_length = 16777215U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Null",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Null",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Key",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Key",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_ENUM | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Default",
+         .table_name = "COLUMNS",
+         .origin_table_name = "columns",
+         .origin_column_name = "Default",
+         .declared_length = 65535U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Extra",
+         .table_name = "COLUMNS",
+         .origin_column_name = "Extra",
+         .declared_length = 256U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
     static const char *const meta_values[] = {
         "id",      "int",         "NO",  "PRI", NULL, "auto_increment",
         "name",    "varchar(20)", "NO",  "MUL", "",   "",
@@ -47188,6 +47390,7 @@ static int test_describe_table_execution(void) {
     static const char *const stored_generated_values[] =
         {"stored_col", "int", "YES", "", NULL, "STORED GENERATED"};
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -47225,6 +47428,12 @@ static int test_describe_table_execution(void) {
         "default_virtual INT AS (base + 3))",
         MYLITE_DONE
     );
+
+    failures += prepare_sql(database, "DESCRIBE meta", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 6, "describe metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "describe metadata row");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_select_rows(
         database,
@@ -47403,6 +47612,7 @@ static int test_describe_table_execution(void) {
     );
 
     mylite_close(database);
+    mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
@@ -47410,6 +47620,20 @@ static int test_describe_table_execution(void) {
 static int test_show_create_database_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"Database", "Create Database"};
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "Database",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Create Database",
+         .declared_length = 1024U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+    };
     static const char default_create[] =
         "CREATE DATABASE `mylite_show_create_db_default` "
         "/*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ "
@@ -47474,6 +47698,7 @@ static int test_show_create_database_execution(void) {
         "/*!80016 DEFAULT ENCRYPTION='N' */";
     static const char *const mysql_values[] = {"mysql", mysql_create};
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures += expect_status(
@@ -47483,6 +47708,17 @@ static int test_show_create_database_execution(void) {
     );
 
     failures += execute_sql(database, "CREATE DATABASE mylite_show_create_db_default", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SHOW CREATE DATABASE mylite_show_create_db_default",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(stmt, metadata, 2, "show create database metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show create database metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show create database metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SHOW CREATE DATABASE mylite_show_create_db_default",
@@ -47661,6 +47897,7 @@ static int test_show_create_database_execution(void) {
     );
 
     mylite_close(database);
+    mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
@@ -47668,6 +47905,20 @@ static int test_show_create_database_execution(void) {
 static int test_show_create_table_execution(void) {
     // NOLINTBEGIN(readability-function-size,readability-magic-numbers)
     static const char *const columns[] = {"Table", "Create Table"};
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "Table",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Create Table",
+         .declared_length = 1024U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .decimals = 31U,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+    };
     static const char simple_create[] = "CREATE TABLE `simple_table` (\n"
                                         "  `id` int NOT NULL,\n"
                                         "  `v` varchar(10) DEFAULT NULL,\n"
@@ -47809,6 +48060,7 @@ static int test_show_create_table_execution(void) {
                                          "COLLATE=utf8mb4_0900_ai_ci";
     static const char *const escaped_values[] = {"weird`name", escaped_create};
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures +=
@@ -47829,6 +48081,12 @@ static int test_show_create_table_execution(void) {
         "CREATE TABLE simple_table (id INT PRIMARY KEY, v VARCHAR(10))",
         MYLITE_DONE
     );
+    failures += prepare_sql(database, "SHOW CREATE TABLE simple_table", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 2, "show create table metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show create table metadata row");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show create table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SHOW CREATE TABLE simple_table",
@@ -48119,6 +48377,7 @@ static int test_show_create_table_execution(void) {
     );
 
     mylite_close(database);
+    mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }
@@ -48617,6 +48876,128 @@ static int test_show_index_execution(void) {
         "Visible",
         "Expression",
     };
+    static const struct expected_result_metadata metadata[] = {
+        {.name = "Table",
+         .table_name = "SHOW_STATISTICS",
+         .origin_table_name = "tables",
+         .origin_column_name = "Table",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Non_unique",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Non_unique",
+         .declared_length = 2U,
+         .field_type = MYLITE_FIELD_TYPE_LONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM},
+        {.name = "Key_name",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Key_name",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Seq_in_index",
+         .table_name = "SHOW_STATISTICS",
+         .origin_table_name = "index_column_usage",
+         .origin_column_name = "Seq_in_index",
+         .declared_length = 10U,
+         .field_type = MYLITE_FIELD_TYPE_LONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_NUM},
+        {.name = "Column_name",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Column_name",
+         .declared_length = 64U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Collation",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Collation",
+         .declared_length = 1U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Cardinality",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Cardinality",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Sub_part",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Sub_part",
+         .declared_length = 21U,
+         .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Packed",
+         .declared_length = 0U,
+         .field_type = MYLITE_FIELD_TYPE_NULL,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+        {.name = "Null",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Null",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Index_type",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Index_type",
+         .declared_length = 11U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY},
+        {.name = "Comment",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Comment",
+         .declared_length = 8U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Index_comment",
+         .table_name = "SHOW_STATISTICS",
+         .origin_table_name = "indexes",
+         .origin_column_name = "Index_comment",
+         .declared_length = 2048U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                      MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE},
+        {.name = "Visible",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Visible",
+         .declared_length = 3U,
+         .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL},
+        {.name = "Expression",
+         .table_name = "SHOW_STATISTICS",
+         .origin_column_name = "Expression",
+         .declared_length = 4294967295U,
+         .field_type = MYLITE_FIELD_TYPE_BLOB,
+         .charset_id = 8U,
+         .flags_set = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+         .nullable = 1},
+    };
     static const char *const meta_values[] = {
         "meta",     "0",     "PRIMARY",
         "1",        "id",    "A",
@@ -48746,6 +49127,7 @@ static int test_show_index_execution(void) {
         NULL,
     };
     mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open show index database");
@@ -48773,6 +49155,17 @@ static int test_show_index_execution(void) {
         "COMMENT 'idx note' INVISIBLE)",
         MYLITE_DONE
     );
+
+    failures += prepare_sql(database, "SHOW INDEX FROM meta", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(
+        stmt,
+        metadata,
+        (int)(sizeof(metadata) / sizeof(metadata[0])),
+        "show index metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "show index metadata row");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_select_rows(
         database,
@@ -48959,6 +49352,7 @@ static int test_show_index_execution(void) {
     );
 
     mylite_close(database);
+    mylite_finalize(stmt);
     // NOLINTEND(readability-function-size,readability-magic-numbers)
     return failures;
 }

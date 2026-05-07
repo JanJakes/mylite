@@ -65,6 +65,9 @@ statement(A) ::= drop_table_statement(B). {
 statement(A) ::= show_tables_statement(B). {
     A = B;
 }
+statement(A) ::= rename_table_statement(B). {
+    A = B;
+}
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
@@ -86,6 +89,10 @@ show_tables_statement(A) ::= SHOW(S) TABLES(T) FROM identifier(D). {
 }
 show_tables_statement(A) ::= SHOW(S) TABLES(T) IN identifier(D). {
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, D);
+}
+
+rename_table_statement(A) ::= RENAME(R) TABLE table_name(S) TO table_name(T). {
+    A = mylite_sql_parser_make_rename_table_statement(state, R, S, T);
 }
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {

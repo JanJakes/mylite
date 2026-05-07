@@ -26,6 +26,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_COLUMN_DEFINITION = 17,
     MYLITE_SQL_AST_INTEGER_TYPE = 18,
     MYLITE_SQL_AST_NULLABILITY = 19,
+    MYLITE_SQL_AST_RENAME_TABLE_STATEMENT = 20,
 };
 
 enum mylite_sql_ast_literal_kind {

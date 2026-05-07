@@ -387,6 +387,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token rename_token,
+    struct mylite_sql_ast_node *source_name,
+    struct mylite_sql_ast_node *target_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&rename_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (target_name != NULL) {
+        span = span_join(span, target_name->span);
+    } else if (source_name != NULL) {
+        span = span_join(span, source_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_RENAME_TABLE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, source_name);
+    mylite_sql_ast_node_append_child(statement, target_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard_select_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token wildcard_token
@@ -827,6 +852,14 @@ static bool map_keyword_token(
     }
     if (token_text_equals(token, "TABLES")) {
         *out_parser_token = MYLITE_SQL_PARSE_TABLES;
+        return true;
+    }
+    if (token_text_equals(token, "RENAME")) {
+        *out_parser_token = MYLITE_SQL_PARSE_RENAME;
+        return true;
+    }
+    if (token_text_equals(token, "TO")) {
+        *out_parser_token = MYLITE_SQL_PARSE_TO;
         return true;
     }
     if (token_text_equals(token, "INT")) {

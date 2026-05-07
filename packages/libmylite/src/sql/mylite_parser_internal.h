@@ -64,6 +64,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_tables_statement(
     struct mylite_sql_token tables_token,
     struct mylite_sql_ast_node *schema_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token rename_token,
+    struct mylite_sql_ast_node *source_name,
+    struct mylite_sql_ast_node *target_name
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard_select_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token wildcard_token

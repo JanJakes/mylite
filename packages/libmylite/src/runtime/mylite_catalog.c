@@ -592,6 +592,85 @@ int mylite_catalog_delete_table_in_mutation(
     return finalize_statement(statement, rc);
 }
 
+int mylite_catalog_update_table_identity_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t schema_id,
+    const char *name,
+    struct mylite_catalog_table_descriptor *out_table
+) {
+    sqlite3_stmt *statement = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    int rc = MYLITE_OK;
+
+    if (out_table != NULL) {
+        *out_table = (struct mylite_catalog_table_descriptor){0};
+    }
+    rc = validate_catalog_ready_database(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(schema_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = read_schema_by_id(database->sqlite, schema_id, &schema);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_tables "
+        "SET schema_id = ?1, name = ?2, descriptor_version = descriptor_version + 1, "
+        "updated_catalog_generation = ?3 "
+        "WHERE table_id = ?4",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, schema_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, 2, name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, 3, mutation->next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 4, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+    rc = finalize_statement(statement, rc);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (out_table != NULL) {
+        return read_table_by_id(database->sqlite, table_id, out_table);
+    }
+
+    return MYLITE_OK;
+}
+
 int mylite_catalog_for_each_table_in_schema(
     struct mylite_db *database,
     int64_t schema_id,

@@ -28,6 +28,7 @@ enum {
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
+    mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_column_name = 1166,
     table_name_part_capacity = 3,
 };
@@ -48,6 +49,11 @@ struct planned_create_table {
     struct table_name_resolution target;
     struct planned_column *columns;
     size_t column_count;
+};
+
+struct planned_rename_table {
+    struct table_name_resolution source;
+    struct table_name_resolution target;
 };
 
 struct dynamic_string {
@@ -77,6 +83,11 @@ static int execute_create_table_statement(
     mylite_result **out_result
 );
 static int execute_drop_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_rename_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -116,6 +127,16 @@ static int execute_physical_create_table(
     const char *physical_name
 );
 static int execute_physical_drop_table(struct mylite_db *database, const char *physical_name);
+
+static int plan_rename_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_rename_table *out_plan
+);
+static int rename_table_from_plan(
+    struct mylite_db *database,
+    const struct planned_rename_table *plan
+);
 
 static int resolve_table_name(
     struct mylite_db *database,
@@ -215,6 +236,11 @@ static void set_no_database_error(struct mylite_db *database);
 static void set_unknown_database_error(struct mylite_db *database, const char *schema_name);
 static void set_table_exists_error(struct mylite_db *database, const char *table_name);
 static void set_unknown_table_error(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+);
+static void set_table_does_not_exist_error(
     struct mylite_db *database,
     const char *schema_name,
     const char *table_name
@@ -331,6 +357,8 @@ static int execute_parsed_statement(
         return execute_create_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
         return execute_drop_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+        return execute_rename_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
         return execute_show_tables_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SELECT_STATEMENT:
@@ -493,6 +521,32 @@ static int execute_drop_table_statement(
     }
 
     ++database->session.sqlite_schema_generation;
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_rename_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_rename_table plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_rename_table(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = rename_table_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
 
     return finish_successful_result(database, result, out_result);
 }
@@ -754,6 +808,87 @@ static int execute_physical_drop_table(struct mylite_db *database, const char *p
     free(sql);
 
     return rc;
+}
+
+static int plan_rename_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_rename_table *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_rename_table){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->source);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->source.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_table_name(database, child_at(statement, 1U), &out_plan->target);
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int rename_table_from_plan(
+    struct mylite_db *database,
+    const struct planned_rename_table *plan
+) {
+    struct mylite_catalog_table_descriptor source = {0};
+    struct mylite_catalog_table_descriptor target = {0};
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = mylite_catalog_read_table_by_name(
+        database,
+        plan->source.schema.schema_id,
+        plan->source.table_name,
+        &source
+    );
+
+    if (rc != MYLITE_OK) {
+        set_table_does_not_exist_error(database, plan->source.schema.name, plan->source.table_name);
+        return MYLITE_ERROR;
+    }
+    if (source.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(database, "RENAME TABLE supports only persistent base tables");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_read_table_by_name(
+        database,
+        plan->target.schema.schema_id,
+        plan->target.table_name,
+        &target
+    );
+    if (rc == MYLITE_OK) {
+        set_table_exists_error(database, plan->target.table_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            source.table_id,
+            plan->target.schema.schema_id,
+            plan->target.table_name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to rename table descriptor");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
 }
 
 static int resolve_table_name(
@@ -1483,6 +1618,26 @@ static void set_unknown_table_error(
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_unknown_table,
+        "42S02",
+        message
+    );
+}
+
+static void set_table_does_not_exist_error(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *table_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Table '%s.%s' doesn't exist", schema_name, table_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_table_does_not_exist,
         "42S02",
         message
     );

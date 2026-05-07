@@ -397,6 +397,20 @@ static int test_table_lifecycle_statements(void) {
     failures += expect_true(child_at(statement, 0U) == NULL, "bare show has no schema child");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "RENAME TABLE app.simple_lifecycle TO archive.renamed_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_RENAME_TABLE_STATEMENT, "rename table statement");
+    failures += expect_child_count(statement, 2U, "rename table statement");
+    failures += expect_span_text(child_at(statement, 0U), "app.simple_lifecycle", "rename source");
+    failures +=
+        expect_span_text(child_at(statement, 1U), "archive.renamed_lifecycle", "rename target");
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -462,6 +476,21 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DROP TABLE a, b;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("RENAME TABLE old_name new_name;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "RENAME TABLE old_name TO new_name, other TO target;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name RENAME new_name;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

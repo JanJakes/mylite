@@ -335,6 +335,7 @@ Representative runtime results:
 | `UPDATE t SET a = a + 1 LIMIT 1 OFFSET 1` | syntax error 1064 / `42000` |
 | `UPDATE t SET a = a + 1 LIMIT 1, 1` | syntax error 1064 / `42000` |
 | `UPDATE t SET a = a + 1 LIMIT -1` | syntax error 1064 / `42000` |
+| `UPDATE t SET a = a + 1 LIMIT 1.5` | syntax error 1064 / `42000` |
 | `UPDATE t SET a = a + 1 LIMIT '1'` | syntax error 1064 / `42000` |
 | `UPDATE t SET a = a + 1 LIMIT NULL` | syntax error 1064 / `42000` |
 | `UPDATE t SET a = a + 1 LIMIT 18446744073709551615` | accepted |
@@ -793,6 +794,7 @@ these cases.
 | `UPDATE t SET a = 1 LIMIT 1 OFFSET 1` | syntax error 1064 |
 | `UPDATE t SET a = 1 LIMIT 1,1` | syntax error 1064 |
 | `UPDATE t SET a = 1 LIMIT -1` | syntax error 1064 |
+| `UPDATE t SET a = 1 LIMIT 1.5` | syntax error 1064 |
 | `UPDATE t SET a = 1 LIMIT '1'` | syntax error 1064 |
 | `UPDATE t SET a = 1 LIMIT NULL` | syntax error 1064 |
 | `UPDATE t SET a = 1 LIMIT 18446744073709551616` | syntax error 1064 |

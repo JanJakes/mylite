@@ -68502,6 +68502,7 @@ static int test_update_single_table_execution(void) {
     };
     static const char *const scalar_subquery_values[] = {"scalar"};
     static const char *const count_columns[] = {"COUNT(*)"};
+    static const char *const zero_count[] = {"0"};
     static const char *const one_count[] = {"1"};
     static const char *const id_a_columns[] = {"id", "a"};
     static const char *const u_columns[] = {"id", "u"};
@@ -68974,6 +68975,26 @@ static int test_update_single_table_execution(void) {
         one_count,
         1,
         "update limit without order changes one row"
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE update_limit_named SET value = 'zero-limit' ORDER BY id LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "update limit zero");
+    failures += expect_int64(mylite_affected_rows(stmt), 0, "update limit zero affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) FROM update_limit_named "
+        "WHERE value = 'zero-limit'",
+        count_columns,
+        1,
+        zero_count,
+        1,
+        "update limit zero changes no rows"
     );
     failures += prepare_sql(
         database,
@@ -69507,6 +69528,12 @@ static int test_update_single_table_execution(void) {
     failures +=
         prepare_sql(database, "UPDATE t SET a = 1 LIMIT 1 OFFSET 1", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "update offset limit parse error");
+    failures += prepare_sql(database, "UPDATE t SET a = 1 LIMIT -1", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "update negative limit parse error");
+    failures += prepare_sql(database, "UPDATE t SET a = 1 LIMIT 1.5", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "update decimal limit parse error");
+    failures += prepare_sql(database, "UPDATE t SET a = 1 LIMIT '1'", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "update string limit parse error");
 
     mylite_close(database);
     return failures;

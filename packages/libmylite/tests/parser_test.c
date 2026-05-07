@@ -7788,6 +7788,9 @@ static int test_update_single_table_syntax(void) {
     failures += parse_sql("UPDATE t SET a = 1 LIMIT -1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("UPDATE t SET a = 1 LIMIT 1.5", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("UPDATE t SET a = 1 LIMIT '1'", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 

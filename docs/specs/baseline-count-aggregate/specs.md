@@ -1,0 +1,336 @@
+# Baseline COUNT Aggregate
+
+## Status
+
+This feature specifies a narrow aggregate-function slice for `COUNT(*)`. It
+builds on `mylite_execute()`, statement context, the MyLite parser scaffold,
+file-backed `.mylite` opening, durable catalog descriptors, schema/table
+lifecycle, integer/`NULL` row values, descriptor-driven single-table `SELECT`,
+and the baseline `WHERE` predicate subset.
+
+The feature is intentionally not full aggregate support. It admits one
+`COUNT(*)` select item only, with either no table source, `FROM DUAL`, or one
+persistent base table with an optional baseline `WHERE` predicate. It does not
+add `GROUP BY`, `HAVING`, aggregate expressions, aliases, window functions, or
+other aggregate functions.
+
+## Sources
+
+- MyLite README architecture: `README.md`
+- MyLite engineering standards:
+  `docs/architecture/engineering-standards.md`
+- Baseline implementation strategy:
+  `docs/specs/baseline-implementation-strategy/specs.md`
+- Runtime handles and statement context:
+  `docs/specs/runtime-handles-statement-context/specs.md`
+- Baseline catalog foundation:
+  `docs/specs/baseline-catalog-foundation/specs.md`
+- Baseline schema lifecycle:
+  `docs/specs/baseline-schema-lifecycle/specs.md`
+- Baseline row values:
+  `docs/specs/baseline-row-values-lifecycle/specs.md`
+- Baseline select where lifecycle:
+  `docs/specs/baseline-select-where-lifecycle/specs.md`
+- Baseline select order limit lifecycle:
+  `docs/specs/baseline-select-order-limit-lifecycle/specs.md`
+- Baseline row count function:
+  `docs/specs/baseline-row-count-function/specs.md`
+- MySQL lexer:
+  `docs/specs/mysql-lexer/specs.md`
+- MySQL parser scaffold:
+  `docs/specs/mysql-parser-scaffold/specs.md`
+- SQLite source snapshot notes: `third_party/sqlite/README.md`
+- MySQL 8.4 Reference Manual, aggregate functions:
+  https://dev.mysql.com/doc/refman/8.4/en/aggregate-functions.html
+- MySQL 8.4 Reference Manual, `SELECT` and `DUAL`:
+  https://dev.mysql.com/doc/refman/8.4/en/select.html
+- MySQL 8.4 Reference Manual, function name parsing:
+  https://dev.mysql.com/doc/refman/8.4/en/function-resolution.html
+
+This specification is independently authored from project documentation,
+official MySQL 8.4 documentation, observed MySQL 8.4.9 runtime behavior,
+public SQLite APIs, and existing MyLite source code. It does not copy MySQL,
+MariaDB, Percona, SQLite implementation internals, or other restrictively
+licensed implementation sources.
+
+## MySQL 8.4.9 Runtime Observations
+
+Observed against the local `mysql:8.4.9` runtime using TCP:
+
+- `COUNT(*)` returns the number of rows retrieved, including rows whose columns
+  are all `NULL` where the table definition permits that.
+- `COUNT(*)` returns `0` for empty tables and no-match predicates.
+- `COUNT(*)` returns a `BIGINT` result according to MySQL documentation.
+- `SELECT COUNT(*)` and `SELECT COUNT(*) FROM DUAL` return `1`.
+- `COUNT(*)` is case-insensitive as a function name and preserves expression
+  spelling in the default result label, except that MySQL inserts a space
+  between a block comment and the `*` in labels such as `COUNT(/*x*/ *)`.
+- Whitespace and comments inside the argument list are accepted, such as
+  `COUNT( * )` and `COUNT(/*x*/*)`.
+- Under the default SQL mode, whitespace or comments between `COUNT` and `(`
+  are rejected as syntax errors. `COUNT (*)` and `COUNT/**/(*)` fail with
+  error `1064`, SQLSTATE `42000`.
+- `COUNT(t.*)`, `COUNT()`, `COUNT(*, *)`, and `COUNT(* + 1)` fail with syntax
+  error `1064`.
+- `COUNT(1)`, `COUNT(column)`, and `COUNT(DISTINCT column)` are valid MySQL
+  aggregates, but remain outside this MyLite slice.
+- `SELECT COUNT(*) FROM table WHERE ...` follows normal MySQL predicate
+  semantics. This slice reuses only the already specified descriptor-driven
+  integer/`NULL` predicate subset.
+- `ORDER BY` without grouping is accepted by MySQL for `COUNT(*)`, but has no
+  visible effect on the single aggregate row. `LIMIT 0` suppresses that row and
+  `LIMIT 1` returns it. This slice rejects `ORDER BY` and `LIMIT` for aggregate
+  selects to avoid widening result-row cardinality semantics.
+- A successful `SELECT COUNT(*)` result set makes the following `ROW_COUNT()`
+  return `-1` and leaves warning count `0`.
+
+## Scope
+
+The implementation must add:
+
+- parser and AST support for no-space `COUNT(*)`;
+- `COUNT` as a nonreserved identifier where identifier grammar admits it;
+- execution of `SELECT COUNT(*)` and `SELECT COUNT(*) FROM DUAL`;
+- descriptor-driven `SELECT COUNT(*) FROM table_name [WHERE predicate]`;
+- unqualified and schema-qualified table-name resolution using the existing
+  selected/default schema policy;
+- one persistent MyLite base-table descriptor source only;
+- reuse of the existing baseline `WHERE` predicate subset and conversion rules;
+- generated SQLite physical `SELECT COUNT(*)` SQL built only from descriptors
+  and stable physical table names;
+- prepared-statement binding for predicate values;
+- one result row with one text column containing the decimal count;
+- MySQL-compatible result column labels for the selected `COUNT(*)`
+  expression;
+- result-set row-count state matching existing `SELECT` behavior;
+- deterministic diagnostics for unsupported aggregate syntax and wider MySQL
+  aggregate/select forms;
+- tests and a MySQL 8.4.9 expectation artifact for supported behavior and
+  deliberately rejected wider forms.
+
+## Non-Goals
+
+This feature must not implement:
+
+- `COUNT(expr)`, `COUNT(DISTINCT expr)`, `COUNT()` with no argument,
+  `COUNT(table.*)`, aggregate arithmetic, aggregate comparisons, aggregate
+  aliases, table-backed mixed projections, multiple aggregate select items, or
+  general expression projection;
+- `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, window `OVER` clauses, joins,
+  CTEs, subqueries, unions, locking clauses, query modifiers, optimizer hints,
+  `INTO`, or arbitrary SQLite SQL pass-through;
+- other aggregate functions, aggregate metadata parity, protocol column flags,
+  exact MySQL optimizer behavior, index-only count planning, transaction
+  isolation beyond existing SQLite statement visibility, temporary tables,
+  views, privileges, collations, SQL modes such as `IGNORE_SPACE`, or SQLite
+  fork patches.
+
+## Ownership Boundary
+
+- The public API remains unchanged. `mylite_execute()` owns public validation,
+  result-handle ownership, statement-boundary row-count state, and failure
+  cleanup.
+- Statement context owns diagnostics reset, warning count, and statement
+  completion. Successful count selects are result-set statements and therefore
+  store `-1` as the connection-local previous row count.
+- Lexer/parser/AST own syntax admission, the no-space `COUNT(` rule, and
+  source spans. They remain independent of runtime, catalog, storage, and
+  SQLite.
+- Analyzer/planner code recognizes the one-item `COUNT(*)` aggregate shape,
+  resolves optional table and predicate descriptors, rejects unsupported shapes,
+  and builds a descriptor-driven count plan.
+- The catalog module remains authoritative for schema/table/column descriptors.
+  `COUNT(*)` reads descriptors for table and predicate resolution but does not
+  mutate catalog rows, descriptor versions, descriptor caches, catalog
+  generation, or `sqlite_schema_generation`.
+- Runtime execution either returns the implicit one-row count for no-source and
+  `DUAL` forms or executes generated SQLite SQL against the descriptor-owned
+  physical table.
+- The result builder owns the one-column text result. Counts are formatted as
+  non-`NULL` decimal integer text.
+- Storage/VFS owns the `.mylite` preamble and shifted SQLite payload boundary.
+  Count queries do not touch byte range `[0, 4096)`.
+
+## Supported SQL Grammar
+
+Supported subset:
+
+```sql
+SELECT COUNT(*)
+SELECT COUNT(*) FROM DUAL
+SELECT COUNT(*) FROM table_name [WHERE predicate]
+```
+
+`table_name` uses the existing table lifecycle subset:
+
+```sql
+table_name:
+    identifier
+  | identifier.identifier
+```
+
+The supported predicate subset is exactly the subset from
+`baseline-select-where-lifecycle`:
+
+```sql
+predicate:
+    column_name comparison_operator signed_integer_literal
+  | column_name IS NULL
+  | column_name IS NOT NULL
+  | ( predicate )
+```
+
+The count function name must be directly adjacent to `(` under the default SQL
+mode. Whitespace and comments are accepted after `(` and before `*`.
+
+MyLite Lemon-syntax grammar snippets:
+
+```lemon
+expression ::= count_star_function.
+
+count_star_function ::= COUNT LPAREN STAR RPAREN.
+```
+
+The parser may admit `COUNT(*)` anywhere the expression grammar is currently
+shared, but the analyzer accepts it only as the sole select item in the
+supported statement shapes. `COUNT` remains usable as an ordinary unquoted
+identifier in identifier positions where the parser admits nonreserved
+keywords. Bare `COUNT` is not an aggregate call.
+
+## Runtime Semantics
+
+`SELECT COUNT(*)` and `SELECT COUNT(*) FROM DUAL` return one result row
+containing `1`.
+
+`SELECT COUNT(*) FROM table_name` returns the number of rows visible to the
+current MyLite handle in the descriptor-owned physical table. With a supported
+`WHERE` predicate, it returns the number of rows that satisfy that predicate.
+Rows are counted regardless of whether projected table columns contain `NULL`.
+
+Successful count selects:
+
+- return one result column;
+- return one result row unless this slice later admits a `LIMIT 0` form;
+- use MySQL-compatible default label text for the selected expression, including
+  the observed space between a block comment and a following `*`;
+- use `affected_rows == 0` under the existing MyLite row-result convention;
+- use `warning_count == 0` for supported forms;
+- set the connection-local previous row count to `-1` after completion because
+  the statement returns a result set.
+
+The count value is represented internally within the signed 64-bit range
+returned by SQLite for `COUNT(*)`. That is sufficient for the current embedded
+baseline and all supported tests. Full MySQL unsigned/protocol metadata parity
+is out of scope.
+
+## Physical SQLite Handling
+
+Table-backed count selects lower to standard SQLite SQL:
+
+```sql
+SELECT COUNT(*) FROM "physical_table" [WHERE "physical_column" op ?]
+```
+
+Rules:
+
+- physical table names come from MyLite table descriptors;
+- predicate column names come from MyLite column descriptors;
+- every generated SQLite identifier is quoted;
+- predicate literals are converted by MyLite before execution and bound as
+  prepared-statement parameters;
+- no user SQL text, user literal text, or SQLite metadata lookup is used as
+  authority;
+- no SQLite optional aggregate extension, custom function, virtual table, VFS
+  change, or fork patch is required.
+
+No-source and `FROM DUAL` count forms do not require SQLite execution.
+
+## Diagnostics
+
+Supported `COUNT(*)` calls do not produce warnings.
+
+Diagnostics follow the existing baseline conventions where MyLite has not yet
+implemented full MySQL expression or metadata behavior:
+
+- `COUNT (*)` and `COUNT/**/(*)` fail with syntax error `1064`, SQLSTATE
+  `42000`, matching observed MySQL default-mode behavior.
+- Unsupported count arguments such as `COUNT(1)`, `COUNT(column)`,
+  `COUNT(DISTINCT column)`, `COUNT()`, `COUNT(table.*)`, and aggregate
+  expressions fail deterministically, either through parse error `1064` or the
+  existing unsupported-statement diagnostic class.
+- Missing default schema, unknown schema, unknown table, reserved
+  `_mylite_*` schema/table names, unsupported object kinds, unknown predicate
+  columns, unsupported predicate shapes, unsupported predicate literals, and
+  predicate conversion range failures reuse existing descriptor-driven
+  `SELECT ... WHERE` diagnostics.
+- Unsupported `ORDER BY`, `LIMIT`, aliases, mixed projections, multiple count
+  items, grouping, having, joins, subqueries, CTEs, and query modifiers fail
+  deterministically before arbitrary SQLite SQL is generated.
+- Allocation failures return `MYLITE_NOMEM` and set the existing out-of-memory
+  diagnostic. Physical SQLite failures use the existing physical-row failure
+  diagnostic unless a narrower diagnostic has already been set.
+- Public API misuse behavior is unchanged.
+
+## Tests
+
+Fast C tests must cover:
+
+- parser acceptance for `COUNT(*)`, lower/mixed case, `COUNT( * )`, comments
+  inside the argument list, parenthesized `COUNT(*)`, no-source, `FROM DUAL`,
+  and table-backed forms;
+- parser/runtime rejection for whitespace or comments between `COUNT` and `(`;
+- runtime no-source and `FROM DUAL` counts;
+- runtime table-backed count over empty and nonempty persistent base tables;
+- count over nullable rows, proving `COUNT(*)` includes rows with `NULL`
+  values;
+- schema-qualified and unqualified table resolution, missing default schema,
+  unknown schema, unknown table, and reserved `_mylite_*` target names;
+- baseline `WHERE` predicate reuse, including comparisons, `<=>` with
+  non-`NULL` integer right operands, `IS NULL`, and `IS NOT NULL`;
+- integer predicate boundary behavior for `INT`, `INTEGER`, `BIGINT`, and
+  their `UNSIGNED` forms within the current physical range;
+- result column labels, one-row/one-column result shape, `warning_count == 0`,
+  `affected_rows == 0`, and following `ROW_COUNT() == -1`;
+- reopen persistence and independent file-backed handles observing their own
+  committed row state;
+- count after table rename and after truncate/drop where applicable;
+- physical `.mylite` preamble preservation;
+- zero-initialized cleanup for any new planner/result objects;
+- unsupported forms: `COUNT(1)`, `COUNT(column)`, `COUNT(DISTINCT column)`,
+  `COUNT()`, `COUNT(table.*)`, multiple count items, mixed projections,
+  aliases, aggregate arithmetic, `ORDER BY`, `LIMIT`, `GROUP BY`, `HAVING`,
+  joins, CTEs, subqueries, window `OVER`, parameters, and unsupported
+  predicate expressions;
+- existing lexer, parser, scalar function, schema lifecycle, table lifecycle,
+  row values, select-where, select-order-limit, delete, update, truncate,
+  result metadata, statement context, file-format, VFS, and SQLite bootstrap
+  tests still pass.
+
+The MySQL expectation artifact must verify the admitted MySQL behavior and
+record intentionally deferred MySQL-accepted forms without guessing.
+
+## Compatibility Documentation
+
+After implementation:
+
+- update `COMPATIBILITY.md` to mark `COUNT()` as limited for `COUNT(*)`;
+- update `docs/compatibility/functions-aggregate.md`;
+- update `docs/compatibility/sql-query-expressions.md` only if the documented
+  select surface changes;
+- do not overclaim `COUNT(expr)`, `COUNT(DISTINCT)`, grouping, having, aliases,
+  window functions, order/limit aggregate semantics, general aggregate
+  expressions, protocol metadata, optimizer behavior, temporary tables, views,
+  privileges, collations, or SQL modes.
+
+## Verification
+
+Before marking this feature done:
+
+1. `cmake --build --preset dev`
+2. Run the new count CTest entry and relevant parser/select lifecycle entries.
+3. Run the MySQL 8.4.9 expectation script for this feature.
+4. `cmake --workflow --preset check`
+5. Review the final diff for parser independence, descriptor authority,
+   generated SQL safety, parameter binding, result/row-count semantics,
+   file-format safety, scope control, compatibility docs, tests, and cleanup on
+   failure.

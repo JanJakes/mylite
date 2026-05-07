@@ -1,6 +1,7 @@
 #include "mylite_dml_insert_copy_value.h"
 
 #include "mylite_span.h"
+#include "sql/mylite_expression.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,11 @@ static int copy_insert_column_reference_parts(
 );
 
 static int copy_insert_literal_value(
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_insert_value *out_value
+);
+
+static int copy_insert_binary_string_literal_value(
     const struct mylite_sql_ast_node *literal,
     struct mylite_insert_value *out_value
 );
@@ -201,27 +207,36 @@ static int copy_insert_literal_value(
     if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
         out_value->kind = MYLITE_INSERT_VALUE_INTEGER;
         out_value->text = mylite_copy_span_text(literal->span.text, literal->span.length);
+        out_value->text_length = literal->span.length;
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
         literal->literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
         out_value->kind = MYLITE_INSERT_VALUE_REAL;
         out_value->text = mylite_copy_span_text(literal->span.text, literal->span.length);
+        out_value->text_length = literal->span.length;
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
         out_value->kind = MYLITE_INSERT_VALUE_TEXT;
         out_value->text = mylite_copy_string_literal_span(literal);
+        out_value->text_length = out_value->text == NULL ? 0U : strlen(out_value->text);
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
+    }
+    if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+        literal->literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        return copy_insert_binary_string_literal_value(literal, out_value);
     }
     if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
         out_value->kind = MYLITE_INSERT_VALUE_INTEGER;
         out_value->text = mylite_copy_span_text("1", 1U);
+        out_value->text_length = 1U;
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
         out_value->kind = MYLITE_INSERT_VALUE_INTEGER;
         out_value->text = mylite_copy_span_text("0", 1U);
+        out_value->text_length = 1U;
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
     if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
@@ -231,6 +246,27 @@ static int copy_insert_literal_value(
 
     *out_value = (struct mylite_insert_value){.kind = MYLITE_INSERT_VALUE_UNSUPPORTED};
     return MYLITE_OK;
+}
+
+static int copy_insert_binary_string_literal_value(
+    const struct mylite_sql_ast_node *literal,
+    struct mylite_insert_value *out_value
+) {
+    struct mylite_expression_warnings warnings = {0};
+    struct mylite_expression_value value = {0};
+    int status = mylite_expression_eval(literal, &warnings, &value);
+
+    mylite_expression_warnings_deinit(&warnings);
+    if (status != 0 || value.kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        mylite_expression_value_deinit(&value);
+        return MYLITE_UNSUPPORTED;
+    }
+
+    out_value->text = mylite_copy_span_text(value.text_value, value.text_length);
+    out_value->text_length = value.text_length;
+    out_value->kind = MYLITE_INSERT_VALUE_TEXT;
+    mylite_expression_value_deinit(&value);
+    return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }
 
 static int copy_insert_unary_value(
@@ -268,6 +304,7 @@ static int copy_insert_unary_value(
         memcpy(out_value->text, sign, sign_length);
         memcpy(out_value->text + sign_length, operand->span.text, operand->span.length);
         out_value->text[sign_length + operand->span.length] = '\0';
+        out_value->text_length = sign_length + operand->span.length;
     }
     return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
 }

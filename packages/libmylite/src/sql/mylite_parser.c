@@ -63,6 +63,8 @@ static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column
 
 static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type column_type);
 
+static bool column_type_uses_bit_descriptor(enum mylite_sql_ast_column_type column_type);
+
 static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type);
 
 static bool map_lexer_token(
@@ -5294,6 +5296,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_validate_column_type(
     if (!is_parse_ok(state) || column_type == NULL ||
         (!column_type_uses_string_binary_descriptor(column_type->column_type) &&
          !column_type_uses_numeric_descriptor(column_type->column_type) &&
+         !column_type_uses_bit_descriptor(column_type->column_type) &&
          !column_type_uses_temporal_descriptor(column_type->column_type))) {
         return column_type;
     }
@@ -5347,6 +5350,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_validate_column_type(
             attributes,
             &descriptor
         );
+    } else if (column_type_uses_bit_descriptor(column_type->column_type)) {
+        status =
+            mylite_column_type_describe_bit(type_name, strlen(type_name), attributes, &descriptor);
     } else {
         status = mylite_column_type_describe_string_binary(
             type_name,
@@ -7443,6 +7449,8 @@ static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type c
         return "FLOAT";
     case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
         return "DOUBLE";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIT:
+        return "BIT";
     case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
         return "DATE";
     case MYLITE_SQL_AST_COLUMN_TYPE_TIME:
@@ -7476,6 +7484,10 @@ static bool column_type_uses_string_binary_descriptor(enum mylite_sql_ast_column
 static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type column_type) {
     return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL &&
             column_type <= MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE) != 0;
+}
+
+static bool column_type_uses_bit_descriptor(enum mylite_sql_ast_column_type column_type) {
+    return column_type == MYLITE_SQL_AST_COLUMN_TYPE_BIT;
 }
 
 static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type) {
@@ -7556,6 +7568,7 @@ static bool lookup_keyword_parser_token(
         {"AT", MYLITE_SQL_PARSE_AT},
         {"AUTO_INCREMENT", MYLITE_SQL_PARSE_AUTO_INCREMENT},
         {"BIGINT", MYLITE_SQL_PARSE_BIGINT},
+        {"BIT", MYLITE_SQL_PARSE_BIT},
         {"BINARY", MYLITE_SQL_PARSE_BINARY},
         {"BETWEEN", MYLITE_SQL_PARSE_BETWEEN},
         {"BEFORE", MYLITE_SQL_PARSE_BEFORE},

@@ -29,6 +29,8 @@ Implemented fork points:
   range checks through column descriptors
 - enum label/index assignment and readback through payload descriptors
 - set label-list/bit-mask assignment and readback through payload descriptors
+- bit-width assignment, fixed-width binary readback, and unsigned numeric
+  context through column descriptors
 - update-mask-aware descriptor checking for SQLite `UPDATE` record creation
 - structured fork diagnostics for MyLite-owned VDBE type-check failures
 - public MyLite DML write-table loading that applies catalog descriptors before
@@ -36,10 +38,12 @@ Implemented fork points:
 - public MyLite SELECT table loading that applies value-list descriptors before
   physical SQLite scan statements are prepared
 - MyLite expression values with a MySQL numeric-context side channel for fork
-  results such as `ENUM` and `SET`, where direct display and arithmetic context
-  intentionally differ
-- materialized SELECT order-key comparison that uses value-list numeric context
-  for `ENUM`/`SET` while leaving generic string comparisons and aggregate
+  results such as `ENUM`, `SET`, and `BIT`, where direct display and arithmetic
+  context intentionally differ
+- public MyLite DML byte-length transport for binary string literals before
+  SQLite placeholder binding
+- materialized SELECT order-key comparison that uses descriptor numeric context
+  for `ENUM`/`SET`/`BIT` while leaving generic string comparisons and aggregate
   extrema lexical
 
 ## Sources
@@ -78,6 +82,8 @@ Implemented fork points:
   `docs/specs/sqlite-fork-enum-type-descriptors/specs.md`
 - SQLite fork SET type descriptors:
   `docs/specs/sqlite-fork-set-type-descriptors/specs.md`
+- SQLite fork BIT column descriptors:
+  `docs/specs/sqlite-fork-bit-column-descriptors/specs.md`
 - SQLite collation prefix uniqueness:
   `docs/specs/sqlite-collation-prefix-unique/specs.md`
 
@@ -155,7 +161,7 @@ Implemented first slice:
 Next likely descriptor families:
 
 - `TIMESTAMP` temporal values with SQL-mode and time-zone behavior
-- JSON and bit values
+- JSON values
 
 `ENUM` establishes a descriptor-payload and read-type boundary: physical
 storage can be compact while selected values expose MySQL's string display and
@@ -163,7 +169,10 @@ numeric index behavior. `SET` reuses that payload ownership pattern with
 bit-mask assignment and comma-list display semantics, including the 64th MySQL
 member bit. MyLite's materialized SELECT layer now consumes that numeric
 context for value-list order keys while preserving lexical behavior for
-string-context comparisons and aggregate extrema.
+string-context comparisons and aggregate extrema. `BIT` confirms the same
+read-type boundary is needed outside value-list descriptors: one stored integer
+must expose fixed-width binary display bytes to string functions and unsigned
+numeric context to arithmetic/order paths.
 
 The next temporal-specific fork points are accepted-assignment warnings,
 SQL-mode-sensitive zero date handling, `TIME_TRUNCATE_FRACTIONAL`,
@@ -171,8 +180,9 @@ SQL-mode-sensitive zero date handling, `TIME_TRUNCATE_FRACTIONAL`,
 SQLite parser/catalog descriptor loading. The next decimal-specific fork points
 are comparison/index ordering and direct SQLite parser numeric-literal
 preservation. The expression side still needs continued MySQL numeric-context
-coercion work for collation-aware value-list string comparisons, cross-column
-descriptor comparisons, and optimizer/index ordering.
+coercion work for collation-aware value-list string comparisons, unsigned
+64-bit bit rendering, cross-column descriptor comparisons, and optimizer/index
+ordering.
 
 ### Diagnostics and warnings
 

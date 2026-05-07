@@ -50,6 +50,7 @@ struct mylite_insert_value {
     enum mylite_sql_ast_operator operator_kind;
     size_t values_function_count;
     char *text;
+    size_t text_length;
     const struct mylite_sql_ast_node *expression;
     struct mylite_insert_column_reference column_reference;
     struct mylite_insert_value *left;
@@ -199,6 +200,7 @@ struct mylite_insert_bound_value {
     int64_t integer_value;
     double real_value;
     char *text_value;
+    size_t text_length;
     bool generated_auto_increment;
 };
 

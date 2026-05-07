@@ -41,7 +41,14 @@ int mylite_dml_bind_insert_bound_value(
     case MYLITE_INSERT_BOUND_REAL:
         return sqlite3_bind_double(stmt, index, value->real_value);
     case MYLITE_INSERT_BOUND_TEXT:
-        return sqlite3_bind_text(stmt, index, value->text_value, -1, sqlite_transient_destructor());
+        return sqlite3_bind_text64(
+            stmt,
+            index,
+            value->text_value,
+            (sqlite3_uint64)value->text_length,
+            sqlite_transient_destructor(),
+            SQLITE_UTF8
+        );
     }
 
     return SQLITE_MISUSE;

@@ -125,6 +125,7 @@ int mylite_expression_descriptor_infer_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
     case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIT:
     case MYLITE_SQL_AST_COLUMN_TYPE_ENUM:
     case MYLITE_SQL_AST_COLUMN_TYPE_SET:
         break;

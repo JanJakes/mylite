@@ -46,10 +46,12 @@ struct mylite_expression_value {
     uint64_t uint64_value;
     double real_value;
     int64_t numeric_context_value;
+    uint64_t numeric_context_uint64_value;
     bool compact_real_text;
     bool suppress_text_numeric_warnings;
     bool preserve_temporal_fraction_digits;
     bool has_numeric_context_value;
+    bool has_unsigned_numeric_context_value;
     enum mylite_expression_temporal_type temporal_type;
     char *text_value;
     size_t text_length;
@@ -158,6 +160,10 @@ int mylite_expression_value_copy(
 void mylite_expression_value_set_numeric_context(
     struct mylite_expression_value *value,
     int64_t numeric_value
+);
+void mylite_expression_value_set_unsigned_numeric_context(
+    struct mylite_expression_value *value,
+    uint64_t numeric_value
 );
 char *mylite_expression_value_to_text(const struct mylite_expression_value *value);
 int64_t mylite_expression_value_to_int64(const struct mylite_expression_value *value);

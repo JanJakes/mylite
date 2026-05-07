@@ -2732,6 +2732,9 @@ column_type(A) ::= integer_column_type(B). {
 column_type(A) ::= boolean_column_type(B). {
     A = B;
 }
+column_type(A) ::= bit_column_type(B). {
+    A = B;
+}
 column_type(A) ::= character_column_type(B). {
     A = B;
 }
@@ -2824,6 +2827,14 @@ boolean_column_type(A) ::= BOOL(T). {
 }
 boolean_column_type(A) ::= BOOLEAN(T). {
     A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN);
+}
+
+bit_column_type(A) ::= BIT(T) opt_column_length(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_length(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BIT),
+            B));
 }
 
 character_column_type(A) ::= CHAR(T) opt_column_length(B) character_type_attribute_list(C). {
@@ -5307,6 +5318,9 @@ nonreserved_identifier_keyword(A) ::= ALGORITHM(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= AFTER(T). {
+    A = T;
+}
+nonreserved_identifier_keyword(A) ::= BIT(T). {
     A = T;
 }
 nonreserved_identifier_keyword(A) ::= COPY(T). {

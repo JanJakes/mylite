@@ -98,6 +98,7 @@ struct mylite_column_type_descriptor {
     bool is_character_string;
     bool is_exact_numeric;
     bool is_approximate_numeric;
+    bool is_bit;
     bool is_enum;
     bool is_set;
     bool is_deprecated_binary_attribute;
@@ -141,6 +142,13 @@ enum mylite_column_type_status mylite_column_type_describe_string_binary(
 );
 
 enum mylite_column_type_status mylite_column_type_describe_numeric(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+enum mylite_column_type_status mylite_column_type_describe_bit(
     const char *type_name,
     size_t type_name_length,
     struct mylite_column_type_attributes attributes,

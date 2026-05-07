@@ -11,10 +11,11 @@ the MyLite lexer and parser already accept:
 - table-backed projection, predicate, and order expression contexts that use
   the shared scalar evaluator
 - scalar functions over those literal values, such as `HEX()` and `LENGTH()`
+- byte-length-preserving INSERT/UPDATE assignment transport into fork-enforced
+  binary-compatible column descriptors, including `BIT`
 
 Out of scope:
 
-- `BIT` column storage semantics
 - bit-literal numeric coercion in every MySQL type-conversion context
 - exact literal metadata for every prepared-statement and protocol surface
 - character-set introducer and SQL-mode interactions outside existing string
@@ -78,12 +79,16 @@ The evaluator:
   embedded NUL bytes survive nested functions such as `HEX()` and `LENGTH()`
 - exposes the byte length through `mylite_column_bytes()` so clients can read
   binary strings that begin with `0x00`
+- preserves byte lengths when DML literal values are lowered into SQLite
+  placeholders, so binary-string assignment into fork descriptors does not fall
+  back to NUL-terminated C strings
 
 No storage or file-format changes are required.
 
 ## Compatibility Status
 
 Hex and bit literal runtime evaluation is supported for the current shared
-scalar expression contexts. The status remains partial until MyLite implements
-full MySQL numeric/string coercion, `BIT` columns, and exact binary-string
-metadata across all protocol and prepared-statement surfaces.
+scalar expression contexts and for current DML assignment transport into
+supported fork descriptors. The status remains partial until MyLite implements
+full MySQL numeric/string coercion and exact binary-string metadata across all
+protocol and prepared-statement surfaces.

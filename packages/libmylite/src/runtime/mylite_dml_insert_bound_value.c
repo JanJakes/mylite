@@ -38,12 +38,13 @@ int mylite_dml_copy_insert_sqlite_column_value(
         return 0;
     case SQLITE_TEXT:
     case SQLITE_BLOB: {
-        const unsigned char *text = sqlite3_column_text(scan, column);
+        const void *text = sqlite3_column_blob(scan, column);
         int bytes = sqlite3_column_bytes(scan, column);
 
         out_value->kind = MYLITE_INSERT_BOUND_TEXT;
         out_value->text_value =
             mylite_copy_span_text((const char *)text, bytes < 0 ? 0U : (size_t)bytes);
+        out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
         return out_value->text_value == NULL ? -1 : 0;
     }
     default:
@@ -63,7 +64,7 @@ int mylite_dml_copy_insert_bound_value(
     *out_value = *value;
     out_value->text_value = NULL;
     if (value->kind == MYLITE_INSERT_BOUND_TEXT && value->text_value != NULL) {
-        out_value->text_value = mylite_copy_span_text(value->text_value, strlen(value->text_value));
+        out_value->text_value = mylite_copy_span_text(value->text_value, value->text_length);
         if (out_value->text_value == NULL) {
             return MYLITE_NOMEM;
         }
@@ -133,6 +134,12 @@ bool mylite_dml_insert_bound_value_is_numeric(
     if (value->kind == MYLITE_INSERT_BOUND_REAL) {
         *out_value = value->real_value;
         return true;
+    }
+    if (value->kind == MYLITE_INSERT_BOUND_TEXT) {
+        if (value->text_value == NULL ||
+            memchr(value->text_value, '\0', value->text_length) != NULL) {
+            return false;
+        }
     }
     if (value->kind == MYLITE_INSERT_BOUND_TEXT &&
         mylite_dml_parse_insert_integer_text(value->text_value, &integer_value)) {

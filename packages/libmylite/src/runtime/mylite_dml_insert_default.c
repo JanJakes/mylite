@@ -14,7 +14,7 @@
 
 static int set_insert_bound_text_value(
     mylite_db *database,
-    const char *text,
+    struct mylite_dml_insert_text_span text,
     struct mylite_insert_bound_value *out_value
 );
 
@@ -82,6 +82,7 @@ int mylite_dml_resolve_insert_default_bound_value(
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_TEXT,
             .text_value = timestamp,
+            .text_length = strlen(timestamp),
         };
         return MYLITE_OK;
     }
@@ -129,7 +130,8 @@ int mylite_dml_resolve_insert_implicit_expression_default(
         }
     }
 
-    out_value->text_value = mylite_copy_span_text(text_default, strlen(text_default));
+    out_value->text_length = strlen(text_default);
+    out_value->text_value = mylite_copy_span_text(text_default, out_value->text_length);
     if (out_value->text_value == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
@@ -156,6 +158,7 @@ int mylite_dml_resolve_insert_current_timestamp_bound_value(
     *out_value = (struct mylite_insert_bound_value){
         .kind = MYLITE_INSERT_BOUND_TEXT,
         .text_value = timestamp,
+        .text_length = strlen(timestamp),
     };
     return MYLITE_OK;
 }
@@ -234,10 +237,33 @@ int mylite_dml_resolve_insert_text_value(
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
 ) {
+    return mylite_dml_resolve_insert_text_span_value(
+        database,
+        column,
+        (struct mylite_dml_insert_text_span){
+            .text = text,
+            .length = text == NULL ? 0U : strlen(text),
+        },
+        statement_row_count,
+        state,
+        out_value
+    );
+}
+
+int mylite_dml_resolve_insert_text_span_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_insert_text_span text,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+) {
+    char *parse_text = NULL;
     int64_t integer_value = 0;
     double real_value = 0.0;
+    bool can_parse_as_c_text = false;
 
-    if (text == NULL) {
+    if (text.text == NULL) {
         if (!column->nullable) {
             return mylite_dml_set_not_null_column_error(database, column->name);
         }
@@ -248,7 +274,16 @@ int mylite_dml_resolve_insert_text_value(
         insert_column_uses_temporal_text_storage(column)) {
         return set_insert_bound_text_value(database, text, out_value);
     }
-    if (mylite_dml_parse_insert_integer_text(text, &integer_value)) {
+    can_parse_as_c_text = memchr(text.text, '\0', text.length) == NULL;
+    if (can_parse_as_c_text) {
+        parse_text = mylite_copy_span_text(text.text, text.length);
+        if (parse_text == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+    }
+    if (parse_text != NULL && mylite_dml_parse_insert_integer_text(parse_text, &integer_value)) {
+        free(parse_text);
         if (integer_value == 0 &&
             mylite_dml_insert_auto_increment_zero_generates(database, column)) {
             return mylite_dml_allocate_insert_auto_increment(
@@ -265,15 +300,18 @@ int mylite_dml_resolve_insert_text_value(
         return MYLITE_OK;
     }
     if (column->auto_increment) {
+        free(parse_text);
         return mylite_dml_insert_set_unsupported_expression_error(database);
     }
-    if (mylite_dml_parse_insert_real_text(text, &real_value)) {
+    if (parse_text != NULL && mylite_dml_parse_insert_real_text(parse_text, &real_value)) {
+        free(parse_text);
         *out_value = (struct mylite_insert_bound_value){
             .kind = MYLITE_INSERT_BOUND_REAL,
             .real_value = real_value,
         };
         return MYLITE_OK;
     }
+    free(parse_text);
 
     return set_insert_bound_text_value(database, text, out_value);
 }
@@ -286,8 +324,29 @@ int mylite_dml_resolve_insert_quoted_text_value(
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
 ) {
-    if (text == NULL || !insert_column_uses_text_storage(column)) {
-        return mylite_dml_resolve_insert_text_value(
+    return mylite_dml_resolve_insert_quoted_text_span_value(
+        database,
+        column,
+        (struct mylite_dml_insert_text_span){
+            .text = text,
+            .length = text == NULL ? 0U : strlen(text),
+        },
+        statement_row_count,
+        state,
+        out_value
+    );
+}
+
+int mylite_dml_resolve_insert_quoted_text_span_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_insert_text_span text,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+) {
+    if (text.text == NULL || !insert_column_uses_text_storage(column)) {
+        return mylite_dml_resolve_insert_text_span_value(
             database,
             column,
             text,
@@ -345,15 +404,16 @@ int mylite_dml_allocate_insert_auto_increment(
 
 static int set_insert_bound_text_value(
     mylite_db *database,
-    const char *text,
+    struct mylite_dml_insert_text_span text,
     struct mylite_insert_bound_value *out_value
 ) {
-    out_value->text_value = mylite_copy_span_text(text, strlen(text));
+    out_value->text_value = mylite_copy_span_text(text.text, text.length);
     if (out_value->text_value == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     out_value->kind = MYLITE_INSERT_BOUND_TEXT;
+    out_value->text_length = text.length;
     return MYLITE_OK;
 }
 

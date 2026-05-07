@@ -32,7 +32,12 @@ static int copy_sqlite_column_value_for_descriptor(
     struct mylite_expression_value *out_value
 );
 
-static bool field_descriptor_has_value_list_type(const struct mylite_field_descriptor *descriptor);
+static bool field_descriptor_has_numeric_display_context(
+    const struct mylite_field_descriptor *descriptor
+);
+static bool field_descriptor_has_unsigned_numeric_context(
+    const struct mylite_field_descriptor *descriptor
+);
 
 int mylite_select_load_join_rowsets(
     mylite_stmt *stmt,
@@ -242,26 +247,47 @@ static int copy_sqlite_column_value_for_descriptor(
 ) {
     int status = 0;
 
-    if (!field_descriptor_has_value_list_type(descriptor)) {
+    if (!field_descriptor_has_numeric_display_context(descriptor)) {
         return mylite_sqlite_copy_column_value(sqlite_stmt, sqlite_column_index, out_value);
     }
 
     status = mylite_sqlite_copy_column_text_value(sqlite_stmt, sqlite_column_index, out_value);
     if (status == 0 && out_value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        mylite_expression_value_set_numeric_context(
-            out_value,
-            sqlite3_column_int64(sqlite_stmt, (int)sqlite_column_index)
-        );
+        if (field_descriptor_has_unsigned_numeric_context(descriptor)) {
+            mylite_expression_value_set_unsigned_numeric_context(
+                out_value,
+                (uint64_t)sqlite3_column_int64(sqlite_stmt, (int)sqlite_column_index)
+            );
+        } else {
+            mylite_expression_value_set_numeric_context(
+                out_value,
+                sqlite3_column_int64(sqlite_stmt, (int)sqlite_column_index)
+            );
+        }
     }
     return status;
 }
 
-static bool field_descriptor_has_value_list_type(const struct mylite_field_descriptor *descriptor) {
+static bool field_descriptor_has_numeric_display_context(
+    const struct mylite_field_descriptor *descriptor
+) {
     if (descriptor == NULL) {
         return false;
     }
     if (descriptor->type == MYLITE_FIELD_TYPE_ENUM) {
         return true;
     }
-    return descriptor->type == MYLITE_FIELD_TYPE_SET;
+    if (descriptor->type == MYLITE_FIELD_TYPE_SET) {
+        return true;
+    }
+    return descriptor->type == MYLITE_FIELD_TYPE_BIT;
+}
+
+static bool field_descriptor_has_unsigned_numeric_context(
+    const struct mylite_field_descriptor *descriptor
+) {
+    if (descriptor == NULL) {
+        return false;
+    }
+    return descriptor->type == MYLITE_FIELD_TYPE_BIT;
 }

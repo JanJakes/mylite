@@ -36,6 +36,8 @@ static bool create_table_column_uses_numeric_descriptor(
     enum mylite_sql_ast_column_type column_type
 );
 
+static bool create_table_column_uses_bit_descriptor(enum mylite_sql_ast_column_type column_type);
+
 static bool create_table_column_uses_temporal_descriptor(
     enum mylite_sql_ast_column_type column_type
 );
@@ -167,6 +169,13 @@ int mylite_table_ddl_describe_create_table_column(
             attributes,
             out_descriptor
         );
+    } else if (create_table_column_uses_bit_descriptor(column->type.ast_type)) {
+        status = mylite_column_type_describe_bit(
+            type_name,
+            strlen(type_name),
+            attributes,
+            out_descriptor
+        );
     } else if (create_table_column_uses_temporal_descriptor(column->type.ast_type)) {
         status = mylite_column_type_describe_temporal(
             type_name,
@@ -274,6 +283,8 @@ static const char *create_table_column_type_name(enum mylite_sql_ast_column_type
         return "FLOAT";
     case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
         return "DOUBLE";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIT:
+        return "BIT";
     case MYLITE_SQL_AST_COLUMN_TYPE_DATE:
         return "DATE";
     case MYLITE_SQL_AST_COLUMN_TYPE_TIME:
@@ -341,6 +352,10 @@ static bool create_table_column_uses_numeric_descriptor(
         return false;
     }
     return true;
+}
+
+static bool create_table_column_uses_bit_descriptor(enum mylite_sql_ast_column_type column_type) {
+    return column_type == MYLITE_SQL_AST_COLUMN_TYPE_BIT;
 }
 
 static bool create_table_column_uses_temporal_descriptor(

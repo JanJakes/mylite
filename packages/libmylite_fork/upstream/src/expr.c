@@ -4492,9 +4492,11 @@ int sqlite3ExprCodeGetColumn(
     if( pOp->opcode==OP_VColumn ) pOp->p5 = (p5 & OPFLAG_NOCHNG);
   }
 #ifdef SQLITE_ENABLE_MYLITE
-  if( p5==0 && pOp->opcode==OP_Column && iColumn>=0 && iColumn<pTab->nCol &&
+  if( (p5 & OPFLAG_NOCHNG)==0 && pOp->opcode==OP_Column &&
+      iColumn>=0 && iColumn<pTab->nCol &&
       (pTab->aCol[iColumn].myliteType.eType==MYLITE_COLTYPE_ENUM ||
-       pTab->aCol[iColumn].myliteType.eType==MYLITE_COLTYPE_SET) ){
+       pTab->aCol[iColumn].myliteType.eType==MYLITE_COLTYPE_SET ||
+       pTab->aCol[iColumn].myliteType.eType==MYLITE_COLTYPE_BIT) ){
     sqlite3VdbeAddOp2(v, OP_MyliteColumnReadType, iReg, iColumn);
     sqlite3VdbeAppendP4(v, pTab, P4_TABLE);
   }

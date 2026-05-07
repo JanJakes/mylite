@@ -4,6 +4,8 @@
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_dml_insert_update_expression.h"
 
+#include <string.h>
+
 static int evaluate_insert_update_assignment_value(
     mylite_db *database,
     const char *selected_schema,
@@ -136,7 +138,8 @@ static int validate_insert_update_assignment_result(
     if (value->kind == MYLITE_INSERT_BOUND_INTEGER && value->integer_value >= 0) {
         return MYLITE_OK;
     }
-    if (value->kind == MYLITE_INSERT_BOUND_TEXT &&
+    if (value->kind == MYLITE_INSERT_BOUND_TEXT && value->text_value != NULL &&
+        memchr(value->text_value, '\0', value->text_length) == NULL &&
         mylite_dml_parse_insert_integer_text(value->text_value, &integer_value) &&
         integer_value >= 0) {
         mylite_dml_insert_bound_value_deinit(value);

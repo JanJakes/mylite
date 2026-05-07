@@ -3,7 +3,13 @@
 
 #include "mylite_dml_types.h"
 
+#include <stddef.h>
 #include <stdint.h>
+
+struct mylite_dml_insert_text_span {
+    const char *text;
+    size_t length;
+};
 
 int mylite_dml_resolve_insert_default_bound_value(
     mylite_db *database,
@@ -49,10 +55,26 @@ int mylite_dml_resolve_insert_text_value(
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
 );
+int mylite_dml_resolve_insert_text_span_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_insert_text_span text,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+);
 int mylite_dml_resolve_insert_quoted_text_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     const char *text,
+    uint64_t statement_row_count,
+    struct mylite_insert_execution_state *state,
+    struct mylite_insert_bound_value *out_value
+);
+int mylite_dml_resolve_insert_quoted_text_span_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_insert_text_span text,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value

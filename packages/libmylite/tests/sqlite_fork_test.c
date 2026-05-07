@@ -51,6 +51,8 @@ static int test_native_time_type_coercion(void);
 
 static int test_native_year_type_coercion(void);
 
+static int test_native_bit_type_coercion(void);
+
 static int test_native_enum_type_coercion(void);
 
 static int test_native_set_type_coercion(void);
@@ -72,6 +74,8 @@ static int test_mylite_temporal_type_coercion(void);
 static int test_mylite_time_type_coercion(void);
 
 static int test_mylite_year_type_coercion(void);
+
+static int test_mylite_bit_type_coercion(void);
 
 static int test_mylite_collation_unique_semantics(void);
 
@@ -136,6 +140,7 @@ int main(void) {
     failures += test_native_temporal_type_coercion();
     failures += test_native_time_type_coercion();
     failures += test_native_year_type_coercion();
+    failures += test_native_bit_type_coercion();
     failures += test_native_enum_type_coercion();
     failures += test_native_set_type_coercion();
     failures += test_wordpress_like_crud();
@@ -147,6 +152,7 @@ int main(void) {
     failures += test_mylite_temporal_type_coercion();
     failures += test_mylite_time_type_coercion();
     failures += test_mylite_year_type_coercion();
+    failures += test_mylite_bit_type_coercion();
     failures += test_mylite_collation_unique_semantics();
 
     return failures == 0 ? 0 : 1;
@@ -1414,6 +1420,162 @@ static int test_native_year_type_coercion(void) {
             .mysql_errno = invalid_year_error,
             .sqlstate = "HY000",
             .context = "invalid year text exposes MySQL condition",
+        }
+    );
+
+    sqlite3_close(database);
+    return failures;
+}
+
+static int test_native_bit_type_coercion(void) {
+    enum {
+        bit1_precision = 1,
+        bit4_precision = 4,
+        bit9_precision = 9,
+        bit64_precision = 64,
+        bit_out_of_range_error = 1264,
+        bit_too_long_error = 1406,
+    };
+
+    sqlite3 *database = NULL;
+    int failures = 0;
+
+    failures += open_configured_database(&database);
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_sql(
+        database,
+        "CREATE TABLE bit_direct("
+        "id INTEGER PRIMARY KEY, b1 INTEGER, b4 INTEGER, b9 INTEGER, b64 INTEGER)",
+        "create direct bit descriptor fixture"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "bit_direct",
+            "b1",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_BIT,
+                .numeric_precision = bit1_precision,
+            }
+        ),
+        database,
+        "set direct bit(1) descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "bit_direct",
+            "b4",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_BIT,
+                .numeric_precision = bit4_precision,
+            }
+        ),
+        database,
+        "set direct bit(4) descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "bit_direct",
+            "b9",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_BIT,
+                .numeric_precision = bit9_precision,
+            }
+        ),
+        database,
+        "set direct bit(9) descriptor"
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_set_column_type(
+            database,
+            NULL,
+            "bit_direct",
+            "b64",
+            &(const struct mylite_sqlite_fork_column_type){
+                .kind = MYLITE_SQLITE_FORK_COLUMN_TYPE_BIT,
+                .numeric_precision = bit64_precision,
+            }
+        ),
+        database,
+        "set direct bit(64) descriptor"
+    );
+    failures += exec_sql(
+        database,
+        "INSERT INTO bit_direct VALUES "
+        "(1, 1, x'05', x'0155', x'ffffffffffffffff'),"
+        "(2, 0, 15.4, x'0001', x'0000000000000001')",
+        "insert direct bit descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT group_concat(id || ':' || hex(b1) || ':' || length(b1) || ':' || "
+                   "(b1 + 0) || ':' || hex(b4) || ':' || length(b4) || ':' || (b4 + 0) || ':' || "
+                   "hex(b9) || ':' || length(b9) || ':' || (b9 + 0) || ':' || "
+                   "hex(b64) || ':' || length(b64), '|') "
+                   "FROM (SELECT id, b1, b4, b9, b64 FROM bit_direct ORDER BY id)",
+            .expected = "1:01:1:1:05:1:5:0155:2:341:FFFFFFFFFFFFFFFF:8|"
+                        "2:00:1:0:0F:1:15:0001:2:1:0000000000000001:8",
+            .context = "direct bit descriptors expose binary display and numeric context",
+        }
+    );
+    failures += exec_sql(
+        database,
+        "UPDATE bit_direct SET b4 = x'0c', b9 = 257 WHERE id = 2",
+        "update direct bit descriptor values"
+    );
+    failures += expect_text(
+        database,
+        (struct expected_text_row){
+            .sql = "SELECT hex(b4) || ':' || (b4 + 0) || ':' || hex(b9) || ':' || (b9 + 0) "
+                   "FROM bit_direct WHERE id = 2",
+            .expected = "0C:12:0101:257",
+            .context = "direct bit update coerces assigned values",
+        }
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO bit_direct VALUES (3, 1, 16, 0, 0)",
+            .message_fragment = "bit value is too long",
+            .context = "direct bit descriptor rejects oversized values",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = bit_too_long_error,
+            .sqlstate = "22001",
+            .context = "oversized bit value exposes MySQL condition",
+        }
+    );
+    failures += expect_sqlite_ok(
+        mylite_sqlite_fork_clear_condition(database),
+        database,
+        "clear oversized bit fork condition"
+    );
+    failures += expect_sqlite_exec_error(
+        database,
+        (struct expected_sqlite_error){
+            .sql = "INSERT INTO bit_direct VALUES (3, 1, -1, 0, 0)",
+            .message_fragment = "bit value is out of range",
+            .context = "direct bit descriptor rejects negative values",
+        }
+    );
+    failures += expect_fork_condition(
+        database,
+        (struct expected_fork_condition){
+            .mysql_errno = bit_out_of_range_error,
+            .sqlstate = "22003",
+            .context = "negative bit value exposes MySQL condition",
         }
     );
 
@@ -3655,6 +3817,180 @@ static int test_mylite_year_type_coercion(void) {
         database,
         invalid_year_error,
         "MyLite invalid YEAR text condition"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_mylite_bit_type_coercion(void) {
+    enum {
+        bit_column_count = 12,
+        bit_after_delete_row_count = 2,
+        bit_summary_column_count = 3,
+        bit_truncate_column_count = 2,
+        bit_reinsert_column_count = 9,
+        bit_remaining_table_column_count = 1,
+        single_row_count = 1,
+        bit_too_long_error = 1406,
+        bit_out_of_range_error = 1264,
+    };
+
+    static const char *const after_delete[] = {
+        "1", "1", "search", "1", "1", "8", "5",  "1", "8", "341", "2", "16",
+        "3", "2", "cache",  "1", "1", "8", "60", "1", "8", "1",   "2", "16",
+    };
+    static const char *const summary[] = {"2", "5", "60"};
+    static const char *const after_truncate[] = {"0", "0"};
+    static const char *const after_reinsert[] =
+        {"1", "3", "restored", "1", "127", "2", "1", "1", "2"};
+    static const char *const remaining_tables[] = {"0"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_mylite_ok(mylite_open_memory(&database), database, "open MyLite bit CRUD");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += exec_mylite_sql(
+        database,
+        "CREATE DATABASE mylite_bit_column_crud CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "create MyLite bit CRUD schema"
+    );
+    failures += exec_mylite_sql(database, "USE mylite_bit_column_crud", "use bit CRUD schema");
+    failures += exec_mylite_sql(
+        database,
+        "CREATE TABLE wp_feature_flags_like ("
+        "flag_id INT NOT NULL AUTO_INCREMENT,"
+        "blog_id BIGINT UNSIGNED NOT NULL,"
+        "flag_key VARCHAR(64) NOT NULL,"
+        "enabled BIT NOT NULL,"
+        "mask BIT(8) NOT NULL,"
+        "rollout BIT(9) DEFAULT NULL,"
+        "PRIMARY KEY (flag_id),"
+        "KEY blog_flag (blog_id, flag_key)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "create MyLite bit feature flags table"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_feature_flags_like (blog_id, flag_key, enabled, mask, rollout) VALUES "
+        "(1, 'search', b'1', b'00000101', b'101010101'),"
+        "(1, 'editor', 0, 15, 257),"
+        "(2, 'cache', b'', '', NULL)",
+        "insert MyLite bit feature flag rows"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "UPDATE wp_feature_flags_like "
+        "SET enabled = b'1', mask = b'00111100', rollout = b'000000001' "
+        "WHERE flag_key = 'cache'",
+        "update MyLite bit feature flag row"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "DELETE FROM wp_feature_flags_like WHERE flag_key = 'editor'",
+        "delete MyLite bit feature flag row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT flag_id, blog_id, flag_key, "
+                   "enabled + 0, LENGTH(enabled), BIT_LENGTH(enabled), "
+                   "mask + 0, LENGTH(mask), BIT_LENGTH(mask), "
+                   "rollout + 0, LENGTH(rollout), BIT_LENGTH(rollout) "
+                   "FROM wp_feature_flags_like ORDER BY mask, flag_id",
+            .values = after_delete,
+            .column_count = bit_column_count,
+            .row_count = bit_after_delete_row_count,
+            .context = "MyLite bit CRUD rows match MySQL fixture",
+        }
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*), MIN(mask + 0), MAX(mask + 0) "
+                   "FROM wp_feature_flags_like",
+            .values = summary,
+            .column_count = bit_summary_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite bit aggregate summary matches MySQL fixture",
+        }
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO wp_feature_flags_like (blog_id, flag_key, enabled, mask) "
+        "VALUES (9, 'too-long', b'1', 256)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite bit coercion rejects oversized values"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        bit_too_long_error,
+        "MyLite oversized bit condition"
+    );
+    failures += expect_mylite_sql_status(
+        database,
+        "INSERT INTO wp_feature_flags_like (blog_id, flag_key, enabled, mask) "
+        "VALUES (9, 'negative', b'1', -1)",
+        MYLITE_SQLITE_ERROR,
+        "MyLite bit coercion rejects negative values"
+    );
+    failures += expect_mylite_error_condition(
+        database,
+        bit_out_of_range_error,
+        "MyLite negative bit condition"
+    );
+    failures += exec_mylite_sql(
+        database,
+        "TRUNCATE TABLE wp_feature_flags_like",
+        "truncate MyLite bit feature flags"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*), COALESCE(MAX(flag_id), 0) FROM wp_feature_flags_like",
+            .values = after_truncate,
+            .column_count = bit_truncate_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite bit truncate matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "INSERT INTO wp_feature_flags_like (blog_id, flag_key, enabled, mask, rollout) "
+        "VALUES (3, 'restored', b'1', X'7f', b'000000010')",
+        "reinsert MyLite bit feature flag row"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT flag_id, blog_id, flag_key, enabled + 0, mask + 0, rollout + 0, "
+                   "LENGTH(enabled), LENGTH(mask), LENGTH(rollout) "
+                   "FROM wp_feature_flags_like",
+            .values = after_reinsert,
+            .column_count = bit_reinsert_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite bit reinsert after truncate matches MySQL fixture",
+        }
+    );
+    failures += exec_mylite_sql(
+        database,
+        "DROP TABLE wp_feature_flags_like",
+        "drop MyLite bit feature flags table"
+    );
+    failures += expect_mylite_rows(
+        database,
+        (struct expected_mylite_rows){
+            .sql = "SELECT COUNT(*) FROM information_schema.tables "
+                   "WHERE table_schema = DATABASE() "
+                   "AND table_name = 'wp_feature_flags_like'",
+            .values = remaining_tables,
+            .column_count = bit_remaining_table_column_count,
+            .row_count = single_row_count,
+            .context = "MyLite bit drop table matches MySQL fixture",
+        }
     );
 
     mylite_close(database);

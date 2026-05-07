@@ -399,6 +399,14 @@ static int myliteMakeColumnType(
       if( pType->flags!=0 ) return SQLITE_MISUSE;
       pOut->eType = MYLITE_COLTYPE_YEAR;
       return SQLITE_OK;
+    case MYLITE_SQLITE_FORK_COLUMN_TYPE_BIT:
+      if( pType->flags!=0 ) return SQLITE_MISUSE;
+      if( pType->numeric_precision<1 || pType->numeric_precision>64 ){
+        return SQLITE_MISUSE;
+      }
+      pOut->eType = MYLITE_COLTYPE_BIT;
+      pOut->nPrecision = (u8)pType->numeric_precision;
+      return SQLITE_OK;
     case MYLITE_SQLITE_FORK_COLUMN_TYPE_ENUM:
       return SQLITE_MISUSE;
     case MYLITE_SQLITE_FORK_COLUMN_TYPE_SET:

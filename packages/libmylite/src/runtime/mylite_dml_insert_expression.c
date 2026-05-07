@@ -353,26 +353,40 @@ static int resolve_insert_expression_text_value(
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
 ) {
-    char *text = mylite_expression_value_to_text(value);
+    char *text = NULL;
+    size_t text_length = 0U;
     int status = MYLITE_OK;
 
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        text = mylite_copy_span_text(value->text_value, value->text_length);
+        text_length = value->text_length;
+    } else {
+        text = mylite_expression_value_to_text(value);
+        text_length = text == NULL ? 0U : strlen(text);
+    }
     if (text == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
     status = value->kind == MYLITE_EXPRESSION_VALUE_TEXT
-                 ? mylite_dml_resolve_insert_quoted_text_value(
+                 ? mylite_dml_resolve_insert_quoted_text_span_value(
                        database,
                        column,
-                       text,
+                       (struct mylite_dml_insert_text_span){
+                           .text = text,
+                           .length = text_length,
+                       },
                        statement_row_count,
                        state,
                        out_value
                    )
-                 : mylite_dml_resolve_insert_text_value(
+                 : mylite_dml_resolve_insert_text_span_value(
                        database,
                        column,
-                       text,
+                       (struct mylite_dml_insert_text_span){
+                           .text = text,
+                           .length = text_length,
+                       },
                        statement_row_count,
                        state,
                        out_value

@@ -480,6 +480,13 @@ static int myliteCoerceDecimal(
   u32 *pMyErrno,
   const char **pzSqlState
 );
+static int myliteCoerceBit(
+  Mem *pMem,
+  u8 nBits,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+);
 static int myliteCoerceDate(
   Mem *pMem,
   int bAllowZero,
@@ -731,6 +738,28 @@ static int myliteValueListFindValue(
 );
 static int myliteEnumSetDisplayValue(Mem *pMem, const MyliteColumnType *pType);
 static int myliteSetSetDisplayValue(Mem *pMem, const MyliteColumnType *pType);
+static int myliteBitDisplayValue(Mem *pMem, const MyliteColumnType *pType);
+static int myliteBitValueFromMem(
+  Mem *pMem,
+  u8 nBits,
+  u64 *pValue,
+  int *pNegative,
+  int *pTooLong
+);
+static int myliteBitValueFromReal(
+  double rValue,
+  u8 nBits,
+  u64 *pValue,
+  int *pNegative,
+  int *pTooLong
+);
+static int myliteBitValueFromBytes(
+  const unsigned char *aByte,
+  int nByte,
+  u64 *pValue,
+  int *pTooLong
+);
+static int myliteBitValueFits(u64 value, u8 nBits);
 static u64 myliteUtf8CharCount(const unsigned char *zText, int nText);
 
 static int myliteApplyColumnType(
@@ -827,6 +856,10 @@ static int myliteApplyColumnType(
           (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_UNSIGNED)!=0,
           pzErr, pMyErrno, pzSqlState
       );
+    case MYLITE_COLTYPE_BIT:
+      return myliteCoerceBit(
+          pMem, pCol->myliteType.nPrecision, pzErr, pMyErrno, pzSqlState
+      );
     case MYLITE_COLTYPE_DATE:
       return myliteCoerceDate(
           pMem, (pCol->myliteType.mFlags & MYLITE_COLTYPE_FLAG_ALLOW_ZERO)!=0,
@@ -856,6 +889,9 @@ static int myliteApplyColumnReadType(Mem *pMem, const Column *pCol){
   }
   if( pCol->myliteType.eType==MYLITE_COLTYPE_SET ){
     return myliteSetSetDisplayValue(pMem, &pCol->myliteType);
+  }
+  if( pCol->myliteType.eType==MYLITE_COLTYPE_BIT ){
+    return myliteBitDisplayValue(pMem, &pCol->myliteType);
   }
   return SQLITE_OK;
 }
@@ -1398,6 +1434,128 @@ static char *myliteDecimalFormat(
   zOut[iOut] = 0;
   *pnOut = iOut;
   return zOut;
+}
+
+static int myliteCoerceBit(
+  Mem *pMem,
+  u8 nBits,
+  const char **pzErr,
+  u32 *pMyErrno,
+  const char **pzSqlState
+){
+  u64 value = 0;
+  int bNegative = 0;
+  int bTooLong = 0;
+  int rc;
+
+  rc = myliteBitValueFromMem(pMem, nBits, &value, &bNegative, &bTooLong);
+  if( rc==SQLITE_NOMEM ) return SQLITE_NOMEM;
+  if( bNegative ){
+    *pzErr = "bit value is out of range";
+    *pMyErrno = 1264;
+    *pzSqlState = "22003";
+    return SQLITE_MISMATCH;
+  }
+  if( rc!=SQLITE_OK || bTooLong || !myliteBitValueFits(value, nBits) ){
+    *pzErr = "bit value is too long";
+    *pMyErrno = 1406;
+    *pzSqlState = "22001";
+    return SQLITE_MISMATCH;
+  }
+  sqlite3VdbeMemSetInt64(pMem, (i64)value);
+  return SQLITE_OK;
+}
+
+static int myliteBitValueFromMem(
+  Mem *pMem,
+  u8 nBits,
+  u64 *pValue,
+  int *pNegative,
+  int *pTooLong
+){
+  if( pMem->flags & MEM_Int ){
+    if( pMem->u.i<0 ){
+      *pNegative = 1;
+      return SQLITE_MISMATCH;
+    }
+    *pValue = (u64)pMem->u.i;
+    return SQLITE_OK;
+  }
+  if( pMem->flags & MEM_IntReal ){
+    return myliteBitValueFromReal(
+        (double)pMem->u.i, nBits, pValue, pNegative, pTooLong
+    );
+  }
+  if( pMem->flags & MEM_Real ){
+    return myliteBitValueFromReal(
+        pMem->u.r, nBits, pValue, pNegative, pTooLong
+    );
+  }
+  if( pMem->flags & (MEM_Str|MEM_Blob) ){
+    if( ExpandBlob(pMem)!=SQLITE_OK ) return SQLITE_NOMEM;
+    return myliteBitValueFromBytes(
+        (const unsigned char*)pMem->z, pMem->n, pValue, pTooLong
+    );
+  }
+  return SQLITE_MISMATCH;
+}
+
+static int myliteBitValueFromReal(
+  double rValue,
+  u8 nBits,
+  u64 *pValue,
+  int *pNegative,
+  int *pTooLong
+){
+  double rLimit;
+  double rAdjusted;
+
+  if( sqlite3IsOverflow(rValue) ) return SQLITE_MISMATCH;
+  if( rValue<0.0 ){
+    *pNegative = 1;
+    return SQLITE_MISMATCH;
+  }
+  if( nBits>=63 ){
+    rLimit = (double)LARGEST_INT64 + 1.0;
+  }else{
+    rLimit = (double)((u64)1 << nBits);
+  }
+  rAdjusted = rValue + 0.5;
+  if( rAdjusted>=rLimit ){
+    *pTooLong = 1;
+    return SQLITE_MISMATCH;
+  }
+  *pValue = (u64)rAdjusted;
+  return SQLITE_OK;
+}
+
+static int myliteBitValueFromBytes(
+  const unsigned char *aByte,
+  int nByte,
+  u64 *pValue,
+  int *pTooLong
+){
+  u64 value = 0;
+  int i = 0;
+
+  if( nByte<0 ) return SQLITE_MISMATCH;
+  for(; i<nByte; i++){
+    if( i<nByte-8 ){
+      if( aByte[i]!=0 ){
+        *pTooLong = 1;
+        return SQLITE_MISMATCH;
+      }
+      continue;
+    }
+    value = (value << 8) | (u64)aByte[i];
+  }
+  *pValue = value;
+  return SQLITE_OK;
+}
+
+static int myliteBitValueFits(u64 value, u8 nBits){
+  if( nBits>=64 ) return 1;
+  return value < ((u64)1 << nBits);
 }
 
 static int myliteCoerceDate(
@@ -2425,6 +2583,44 @@ static int myliteSetSetDisplayValue(Mem *pMem, const MyliteColumnType *pType){
   sqlite3DbFree(pMem->db, zOut);
   if( rc!=SQLITE_OK ) return SQLITE_NOMEM;
   pMem->u.i = myliteSetMaskToInt64(mask);
+  pMem->flags |= MEM_Int;
+  return SQLITE_OK;
+}
+
+static int myliteBitDisplayValue(Mem *pMem, const MyliteColumnType *pType){
+  u64 value = 0;
+  u64 numericValue = 0;
+  int bNegative = 0;
+  int bTooLong = 0;
+  int nByte = ((int)pType->nPrecision + 7) / 8;
+  unsigned char aOut[8];
+  int rc;
+  int i;
+
+  if( pMem->flags & MEM_Null ) return SQLITE_OK;
+  if( pType->nPrecision==64 && (pMem->flags & MEM_Int)!=0 ){
+    value = (u64)pMem->u.i;
+  }else{
+    rc = myliteBitValueFromMem(
+        pMem, pType->nPrecision, &value, &bNegative, &bTooLong
+    );
+    if( rc!=SQLITE_OK || bNegative || bTooLong ){
+      return rc==SQLITE_NOMEM ? SQLITE_NOMEM : SQLITE_OK;
+    }
+  }
+  if( nByte<1 || nByte>(int)sizeof(aOut) ){
+    return SQLITE_OK;
+  }
+  numericValue = value;
+  for(i=nByte-1; i>=0; i--){
+    aOut[i] = (unsigned char)(value & 0xffU);
+    value >>= 8;
+  }
+  rc = sqlite3VdbeMemSetStr(
+      pMem, (const char*)aOut, nByte, 0, SQLITE_TRANSIENT
+  );
+  if( rc!=SQLITE_OK ) return SQLITE_NOMEM;
+  pMem->u.i = (i64)numericValue;
   pMem->flags |= MEM_Int;
   return SQLITE_OK;
 }

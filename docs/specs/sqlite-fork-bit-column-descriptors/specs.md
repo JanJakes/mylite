@@ -2,8 +2,8 @@
 
 ## Status
 
-Started as the next SQLite-fork foundation after value-list read/write
-descriptors.
+Implemented for the first executable SQLite-fork foundation slice. Remaining
+work is limited to the deferred compatibility items listed below.
 
 ## References
 
@@ -42,8 +42,6 @@ Out of scope for this slice:
 - non-strict clipping and warning demotion;
 - exact unsigned 64-bit result rendering for `BIT(64)+0` values above
   `INT64_MAX`;
-- `HEX(bit_col)` numeric dispatch; `HEX(CAST(bit_col AS BINARY))` and binary
-  length behavior define the display baseline for this slice;
 - direct SQLite parser support for MySQL `BIT` syntax;
 - expression planner/index ordering changes beyond the current materialized
   value path.
@@ -90,6 +88,9 @@ strings while preserving the numeric value in the VDBE `Mem` integer slot.
 
 MyLite's materialized SELECT loader treats `BIT` like value-list types for the
 purpose of preserving a numeric-context side channel on the expression value.
+Public MyLite DML now carries byte lengths for binary string literals so
+`b'...'`, `0b...`, and `X'...'` values with embedded zero bytes reach the fork
+descriptor intact.
 
 ## MyLite SQL Integration
 
@@ -125,7 +126,8 @@ is deferred to the expression-value numeric-context extension.
 
 ## Compatibility Status
 
-Before this feature, MyLite supports bit literals as scalar binary-string
-values but not `BIT` column storage. This feature moves `BIT` to partial
-support once executable column declarations, fork assignment checks, readback,
-metadata, and CRUD coverage are implemented.
+MyLite now has partial executable `BIT` support: parser/catalog integration,
+fork assignment checks, fixed-width binary readback, numeric context,
+information-schema metadata, and CRUD coverage are implemented. Non-strict
+demotion, direct SQLite parser MySQL syntax, full unsigned 64-bit expression
+rendering, and broader optimizer/index interactions remain deferred.

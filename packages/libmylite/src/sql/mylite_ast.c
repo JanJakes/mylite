@@ -1231,6 +1231,8 @@ const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type colu
         return "timestamp";
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         return "year";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIT:
+        return "bit";
     case MYLITE_SQL_AST_COLUMN_TYPE_ENUM:
         return "enum";
     case MYLITE_SQL_AST_COLUMN_TYPE_SET:

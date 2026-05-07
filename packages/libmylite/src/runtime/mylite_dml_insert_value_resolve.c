@@ -358,10 +358,13 @@ static int resolve_insert_explicit_value(
             out_value
         );
     case MYLITE_INSERT_VALUE_TEXT:
-        return mylite_dml_resolve_insert_quoted_text_value(
+        return mylite_dml_resolve_insert_quoted_text_span_value(
             database,
             column,
-            value->text,
+            (struct mylite_dml_insert_text_span){
+                .text = value->text,
+                .length = value->text_length,
+            },
             statement_row_count,
             state,
             out_value

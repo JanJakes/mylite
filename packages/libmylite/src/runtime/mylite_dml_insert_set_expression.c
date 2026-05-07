@@ -298,13 +298,13 @@ static int evaluate_insert_set_simple_expression(
         };
         return MYLITE_OK;
     case MYLITE_INSERT_VALUE_TEXT:
-        out_value->text_value =
-            mylite_copy_span_text(value->text, value->text == NULL ? 0U : strlen(value->text));
+        out_value->text_value = mylite_copy_span_text(value->text, value->text_length);
         if (out_value->text_value == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");
             return MYLITE_NOMEM;
         }
         out_value->kind = MYLITE_INSERT_BOUND_TEXT;
+        out_value->text_length = value->text_length;
         return MYLITE_OK;
     case MYLITE_INSERT_VALUE_CURRENT_TIMESTAMP:
         return mylite_dml_resolve_insert_current_timestamp_bound_value(database, out_value);

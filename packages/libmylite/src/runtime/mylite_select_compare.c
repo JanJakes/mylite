@@ -96,6 +96,12 @@ int mylite_select_compare_order_values(
         return 1;
     }
     if (left->has_numeric_context_value && right->has_numeric_context_value) {
+        if (left->has_unsigned_numeric_context_value || right->has_unsigned_numeric_context_value) {
+            uint64_t left_value = left->numeric_context_uint64_value;
+            uint64_t right_value = right->numeric_context_uint64_value;
+
+            return (left_value > right_value) - (left_value < right_value);
+        }
         return (left->numeric_context_value > right->numeric_context_value) -
                (left->numeric_context_value < right->numeric_context_value);
     }

@@ -88,6 +88,7 @@ enum {
     float_binary_precision_cutover = 24U,
     approximate_display_width_max = 255U,
     approximate_scale_max = 30U,
+    bit_precision_max = 64U,
     temporal_fractional_seconds_precision_max = 6U,
     year_display_width = 4U,
 };
@@ -398,6 +399,57 @@ enum mylite_column_type_status mylite_column_type_describe_numeric(
     }
 
     return MYLITE_COLUMN_TYPE_UNKNOWN;
+}
+
+enum mylite_column_type_status mylite_column_type_describe_bit(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
+    uint64_t precision = 1U;
+    int length = 0;
+
+    if (out_descriptor == NULL) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    *out_descriptor = (struct mylite_column_type_descriptor){0};
+
+    if (type_name == NULL || !ascii_case_equal(type_name, type_name_length, "BIT")) {
+        return MYLITE_COLUMN_TYPE_UNKNOWN;
+    }
+    if (attributes.has_display_width || attributes.has_scale || attributes.has_signed ||
+        attributes.has_unsigned || attributes.has_character_set || attributes.has_collation ||
+        attributes.has_binary_attribute || attributes.has_byte_attribute ||
+        attributes.has_zerofill_attribute || attributes.is_national) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (attributes.has_precision) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (attributes.has_length) {
+        precision = attributes.length;
+    }
+    if (precision == 0U || precision > bit_precision_max) {
+        return MYLITE_COLUMN_TYPE_LENGTH_OUT_OF_RANGE;
+    }
+
+    *out_descriptor = (struct mylite_column_type_descriptor){
+        .is_bit = true,
+        .numeric_precision = (unsigned int)precision,
+        .canonical_type_name = "BIT",
+        .data_type = "bit",
+    };
+    length = snprintf(
+        out_descriptor->column_type,
+        sizeof(out_descriptor->column_type),
+        "bit(%llu)",
+        (unsigned long long)precision
+    );
+    if (length < 0 || (size_t)length >= sizeof(out_descriptor->column_type)) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    return MYLITE_COLUMN_TYPE_OK;
 }
 
 enum mylite_column_type_status mylite_column_type_describe_temporal(

@@ -18,7 +18,6 @@ Out of scope:
   `docs/specs/string-make-set-function/specs.md`
 - `SET` column bit-optimized `FIND_IN_SET()` execution
 - binary-string-specific matching and result typing
-- exact binary-collation metadata for all-`NULL` `ELT()` result lists
 - full collation coercibility, accent-insensitive matching, and runtime
   switching between case-insensitive and binary collations
 - exact decimal/real display formatting when non-integer numeric operands are
@@ -196,8 +195,8 @@ coercibility and binary-collation switching.
 nullable metadata, and no numeric or binary flags for ordinary text-coercible
 result lists. Display length is based on the largest list-element display
 length, not the runtime selected element. When every list element is `NULL`,
-observed MySQL reports binary collation id `63`, length `0`, and the `BINARY`
-flag; that narrow metadata shape is deferred in this MyLite slice.
+MyLite reports the observed MySQL binary metadata shape: collation id `63`,
+length `0`, and the `BINARY` flag.
 
 Verified constant metadata:
 
@@ -206,6 +205,7 @@ Verified constant metadata:
 | `ELT(2,'a','bc')` | `utf8mb4` | `VAR_STRING` | `255` | `8` | `31` | none |
 | `ELT(3,'a','bc')` | `utf8mb4` | `VAR_STRING` | `255` | `8` | `31` | none |
 | `ELT(1,1,20)` | `utf8mb4` | `VAR_STRING` | `255` | `12` | `31` | none |
+| `ELT(1,NULL)` | `utf8mb4` | `VAR_STRING` | `63` | `0` | `31` | `BINARY` |
 | `ELT(2,'a','bc')` | `latin1` | `VAR_STRING` | `8` | `2` | `31` | none |
 
 `FIELD()` returns a non-null `LONGLONG` with binary charset id `63`, display
@@ -273,8 +273,8 @@ Add C tests for:
 After implementation and verification, the `ELT()`, `FIELD()`, and
 `FIND_IN_SET()` rows in `COMPATIBILITY.md` should move to partial support. The
 status remains partial because `SET`-column optimization, binary-string
-behavior, all-`NULL` `ELT()` metadata, exact decimal/real string-conversion
-formatting, full collation/coercibility, exact lazy warning ordering for every
-expression-valued argument combination, and exact native arity error-code
-exposure are deferred. `MAKE_SET()` is tracked separately in
+behavior, exact decimal/real string-conversion formatting, full
+collation/coercibility, exact lazy warning ordering for every expression-valued
+argument combination, and exact native arity error-code exposure are deferred.
+`MAKE_SET()` is tracked separately in
 `docs/specs/string-make-set-function/specs.md`.

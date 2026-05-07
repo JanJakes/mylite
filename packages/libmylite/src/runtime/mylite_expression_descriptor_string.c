@@ -11,6 +11,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+static int infer_elt_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static int infer_make_set_function_descriptor(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -140,6 +148,14 @@ int mylite_expression_descriptor_infer_slice_string_function(
     if (!*out_matched) {
         return MYLITE_OK;
     }
+    if (mylite_function_name_is_elt(name)) {
+        int status =
+            infer_elt_function_descriptor(database, plan, expression, out_descriptor, callbacks);
+
+        if (status != MYLITE_UNSUPPORTED) {
+            return status;
+        }
+    }
     if (mylite_function_name_is_make_set(name)) {
         (void)value;
         (void)nullable;
@@ -197,6 +213,41 @@ int mylite_expression_descriptor_infer_concat_function(
         .nullable = nullable,
     };
     mylite_field_descriptor_set_nullable(out_descriptor, nullable);
+    return MYLITE_OK;
+}
+
+static int infer_elt_function_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    bool all_members_null = false;
+    int status = make_set_function_members_are_all_null(
+        database,
+        plan,
+        expression,
+        &all_members_null,
+        callbacks
+    );
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (!all_members_null) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = 0U,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
     return MYLITE_OK;
 }
 

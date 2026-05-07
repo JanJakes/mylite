@@ -8002,6 +8002,35 @@ static int test_scalar_builtin_functions_execution(void) {
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
     };
+    static const char *const elt_all_null_columns[] = {"elt_one_null", "elt_two_nulls"};
+    static const struct expected_result_metadata elt_all_null_metadata[] = {
+        {"elt_one_null",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         0U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"elt_two_nulls",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         0U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
     static const struct expected_result_metadata hex_metadata[] = {
         {"hex_text",
          NULL,
@@ -10765,6 +10794,22 @@ static int test_scalar_builtin_functions_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "scalar metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "scalar metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT ELT(1, NULL) AS elt_one_null, "
+        "ELT(2, NULL, NULL) AS elt_two_nulls",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(stmt, elt_all_null_columns, 2, "ELT all-null metadata columns");
+    failures += expect_result_metadata(stmt, elt_all_null_metadata, 2, "ELT all-null metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "ELT all-null metadata row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "ELT one null value");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "ELT two nulls value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "ELT all-null metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 

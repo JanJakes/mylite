@@ -286,6 +286,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `REGEXP_SUBSTR()` now reports source-shaped nullable string descriptors
       for literal and table-column source expressions instead of defaulting to
       the generic text length.
+      All-`NULL` `ELT()` result lists now report MySQL-shaped binary
+      `VAR_STRING` metadata with length 0, collation id 63, decimals 31, and
+      the `BINARY` flag.
       Table-backed `LPAD()` / `RPAD()` expressions with nonnegative literal
       target lengths and `REPEAT()` expressions with nonnegative literal counts
       now infer MySQL-shaped connection-character-set string widths.

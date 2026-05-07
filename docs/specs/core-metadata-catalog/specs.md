@@ -96,10 +96,10 @@ sources.
 ## Column shape
 
 MyLite exposes the MySQL 8.4.9 column names and order for the catalog-backed
-tables in this spec. `SCHEMATA` and `TABLES` attach MySQL-shaped result
-descriptors through the public MyLite C API for direct wildcard reads. Exact
-field descriptors for `COLUMNS` and `STATISTICS`, plus protocol-level metadata,
-remain part of later result metadata work.
+tables in this spec. `SCHEMATA`, `TABLES`, `COLUMNS`, and `STATISTICS` attach
+MySQL-shaped result descriptors through the public MyLite C API for direct
+wildcard reads. Protocol-level metadata remains part of later result metadata
+work.
 
 `SCHEMATA` columns:
 

@@ -30,6 +30,11 @@ static const uint64_t information_schema_collation_id_length = 20U;
 static const uint64_t information_schema_pad_attribute_length = 9U;
 static const uint64_t information_schema_keyword_word_length = 128U;
 static const uint64_t information_schema_keyword_reserved_length = 11U;
+static const uint64_t information_schema_privileges_length = 154U;
+static const uint64_t information_schema_statistics_collation_length = 1U;
+static const uint64_t information_schema_statistics_non_unique_length = 2U;
+static const uint64_t information_schema_statistics_index_type_length = 11U;
+static const uint64_t information_schema_statistics_comment_length = 8U;
 
 static const char *information_schema_table_name(enum mylite_information_schema_table table);
 
@@ -48,6 +53,14 @@ static struct mylite_field_descriptor information_schema_schemata_column_descrip
 );
 
 static struct mylite_field_descriptor information_schema_tables_column_descriptor(const char *name);
+
+static struct mylite_field_descriptor information_schema_columns_column_descriptor(
+    const char *name
+);
+
+static struct mylite_field_descriptor information_schema_statistics_column_descriptor(
+    const char *name
+);
 
 static struct mylite_field_descriptor information_schema_table_constraints_column_descriptor(
     const char *name
@@ -111,6 +124,16 @@ static struct mylite_field_descriptor information_schema_temporal_descriptor(
     bool nullable
 );
 
+static struct mylite_field_descriptor information_schema_blob_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    unsigned int decimals,
+    bool nullable
+);
+
+static struct mylite_field_descriptor information_schema_null_descriptor(void);
+
 static struct mylite_field_descriptor information_schema_generic_column_descriptor(
     const char *name
 );
@@ -120,6 +143,10 @@ static int information_schema_column_is_integer(const char *name);
 static int information_schema_column_is_not_null_text(const char *name);
 
 static bool information_schema_tables_column_has_empty_origin_schema(const char *name);
+
+static bool information_schema_columns_column_has_empty_origin_schema(const char *name);
+
+static bool information_schema_statistics_column_has_empty_origin_schema(const char *name);
 
 int mylite_information_schema_attach_result_metadata(
     mylite_db *database,
@@ -252,6 +279,14 @@ static const char *information_schema_column_origin_schema(
     if (table == MYLITE_INFORMATION_SCHEMA_SCHEMATA && mylite_ascii_case_equal(name, "SQL_PATH")) {
         return "";
     }
+    if (table == MYLITE_INFORMATION_SCHEMA_COLUMNS &&
+        information_schema_columns_column_has_empty_origin_schema(name)) {
+        return "";
+    }
+    if (table == MYLITE_INFORMATION_SCHEMA_STATISTICS &&
+        information_schema_statistics_column_has_empty_origin_schema(name)) {
+        return "";
+    }
     return "information_schema";
 }
 
@@ -264,6 +299,10 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
         return information_schema_schemata_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_TABLES:
         return information_schema_tables_column_descriptor(name);
+    case MYLITE_INFORMATION_SCHEMA_COLUMNS:
+        return information_schema_columns_column_descriptor(name);
+    case MYLITE_INFORMATION_SCHEMA_STATISTICS:
+        return information_schema_statistics_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS:
         return information_schema_table_constraints_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_KEY_COLUMN_USAGE:
@@ -282,8 +321,6 @@ static struct mylite_field_descriptor information_schema_constraint_column_descr
         return information_schema_collation_character_set_applicability_column_descriptor(name);
     case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
         return information_schema_keywords_column_descriptor(name);
-    case MYLITE_INFORMATION_SCHEMA_COLUMNS:
-    case MYLITE_INFORMATION_SCHEMA_STATISTICS:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         break;
     }
@@ -455,6 +492,269 @@ static struct mylite_field_descriptor information_schema_tables_column_descripto
         return information_schema_text_descriptor(
             information_schema_table_comment_length,
             0U,
+            mylite_mysql_not_fixed_decimals,
+            true
+        );
+    }
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_INVALID,
+    };
+}
+
+static struct mylite_field_descriptor information_schema_columns_column_descriptor(
+    const char *name
+) {
+    const unsigned int not_null_key_flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                                            MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                                            MYLITE_FIELD_FLAG_PART_KEY;
+
+    if (mylite_ascii_case_equal(name, "TABLE_CATALOG")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            not_null_key_flags | MYLITE_FIELD_FLAG_UNIQUE_KEY,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "TABLE_SCHEMA") ||
+        mylite_ascii_case_equal(name, "TABLE_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            not_null_key_flags,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "COLUMN_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            0U,
+            mylite_mysql_not_fixed_decimals,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "ORDINAL_POSITION")) {
+        return information_schema_integer_descriptor(
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "COLUMN_DEFAULT")) {
+        return information_schema_blob_descriptor(
+            MYLITE_FIELD_TYPE_BLOB,
+            mylite_mysql_text_length,
+            MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+            0U,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "IS_NULLABLE")) {
+        return information_schema_text_descriptor(
+            information_schema_yes_no_length,
+            MYLITE_FIELD_FLAG_NOT_NULL,
+            mylite_mysql_not_fixed_decimals,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "DATA_TYPE")) {
+        return information_schema_blob_descriptor(
+            MYLITE_FIELD_TYPE_LONG_BLOB,
+            mylite_mysql_medium_text_length * 3U,
+            MYLITE_FIELD_FLAG_BINARY,
+            mylite_mysql_not_fixed_decimals,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "CHARACTER_MAXIMUM_LENGTH") ||
+        mylite_ascii_case_equal(name, "CHARACTER_OCTET_LENGTH")) {
+        return information_schema_bigint_descriptor(
+            information_schema_tables_bigint_length,
+            MYLITE_FIELD_FLAG_BINARY,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "NUMERIC_PRECISION") ||
+        mylite_ascii_case_equal(name, "NUMERIC_SCALE")) {
+        return information_schema_integer_descriptor(
+            MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "DATETIME_PRECISION")) {
+        return information_schema_integer_descriptor(MYLITE_FIELD_FLAG_UNSIGNED, true);
+    }
+    if (mylite_ascii_case_equal(name, "CHARACTER_SET_NAME") ||
+        mylite_ascii_case_equal(name, "COLLATION_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            0U,
+            mylite_mysql_not_fixed_decimals,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "COLUMN_TYPE")) {
+        return information_schema_blob_descriptor(
+            MYLITE_FIELD_TYPE_BLOB,
+            mylite_mysql_medium_text_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "COLUMN_KEY")) {
+        return information_schema_enum_descriptor(information_schema_yes_no_length);
+    }
+    if (mylite_ascii_case_equal(name, "EXTRA")) {
+        return information_schema_text_descriptor(
+            information_schema_create_options_length,
+            0U,
+            mylite_mysql_not_fixed_decimals,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "PRIVILEGES")) {
+        return information_schema_text_descriptor(
+            information_schema_privileges_length,
+            0U,
+            mylite_mysql_not_fixed_decimals,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "COLUMN_COMMENT")) {
+        return information_schema_text_descriptor(
+            information_schema_table_comment_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+            mylite_mysql_not_fixed_decimals,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "GENERATION_EXPRESSION")) {
+        return information_schema_blob_descriptor(
+            MYLITE_FIELD_TYPE_BLOB,
+            mylite_mysql_long_text_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+            mylite_mysql_not_fixed_decimals,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "SRS_ID")) {
+        return information_schema_integer_descriptor(
+            MYLITE_FIELD_FLAG_MULTIPLE_KEY | MYLITE_FIELD_FLAG_UNSIGNED |
+                MYLITE_FIELD_FLAG_PART_KEY,
+            true
+        );
+    }
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_INVALID,
+    };
+}
+
+static struct mylite_field_descriptor information_schema_statistics_column_descriptor(
+    const char *name
+) {
+    const unsigned int not_null_key_flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                                            MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+                                            MYLITE_FIELD_FLAG_PART_KEY;
+
+    if (mylite_ascii_case_equal(name, "TABLE_CATALOG")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            not_null_key_flags | MYLITE_FIELD_FLAG_UNIQUE_KEY,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "TABLE_SCHEMA") ||
+        mylite_ascii_case_equal(name, "TABLE_NAME") ||
+        mylite_ascii_case_equal(name, "INDEX_SCHEMA")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            not_null_key_flags,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "NON_UNIQUE")) {
+        return information_schema_bigint_descriptor(
+            information_schema_statistics_non_unique_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "INDEX_NAME") ||
+        mylite_ascii_case_equal(name, "COLUMN_NAME")) {
+        return information_schema_text_descriptor(
+            information_schema_identifier_length,
+            0U,
+            mylite_mysql_not_fixed_decimals,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "SEQ_IN_INDEX")) {
+        return information_schema_integer_descriptor(
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_UNSIGNED |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_PART_KEY,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "COLLATION")) {
+        return information_schema_text_descriptor(
+            information_schema_statistics_collation_length,
+            0U,
+            mylite_mysql_not_fixed_decimals,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "CARDINALITY") || mylite_ascii_case_equal(name, "SUB_PART")) {
+        return information_schema_bigint_descriptor(
+            information_schema_tables_bigint_length,
+            MYLITE_FIELD_FLAG_BINARY,
+            true
+        );
+    }
+    if (mylite_ascii_case_equal(name, "PACKED")) {
+        return information_schema_null_descriptor();
+    }
+    if (mylite_ascii_case_equal(name, "NULLABLE") || mylite_ascii_case_equal(name, "IS_VISIBLE")) {
+        return information_schema_text_descriptor(
+            information_schema_yes_no_length,
+            MYLITE_FIELD_FLAG_NOT_NULL,
+            mylite_mysql_not_fixed_decimals,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "INDEX_TYPE")) {
+        return information_schema_text_descriptor(
+            information_schema_statistics_index_type_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+            mylite_mysql_not_fixed_decimals,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "COMMENT")) {
+        return information_schema_text_descriptor(
+            information_schema_statistics_comment_length,
+            MYLITE_FIELD_FLAG_NOT_NULL,
+            mylite_mysql_not_fixed_decimals,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "INDEX_COMMENT")) {
+        return information_schema_text_descriptor(
+            information_schema_table_comment_length,
+            MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+            0U,
+            false
+        );
+    }
+    if (mylite_ascii_case_equal(name, "EXPRESSION")) {
+        return information_schema_blob_descriptor(
+            MYLITE_FIELD_TYPE_BLOB,
+            mylite_mysql_long_text_length,
+            MYLITE_FIELD_FLAG_BINARY,
             mylite_mysql_not_fixed_decimals,
             true
         );
@@ -959,6 +1259,38 @@ static struct mylite_field_descriptor information_schema_temporal_descriptor(
     return descriptor;
 }
 
+static struct mylite_field_descriptor information_schema_blob_descriptor(
+    int type,
+    uint64_t length,
+    unsigned int flags,
+    unsigned int decimals,
+    bool nullable
+) {
+    struct mylite_field_descriptor descriptor = {
+        .type = type,
+        .flags = flags,
+        .length = length,
+        .decimals = decimals,
+        .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
+        .nullable = nullable,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, nullable);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor information_schema_null_descriptor(void) {
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_NULL,
+        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
 static struct mylite_field_descriptor information_schema_generic_column_descriptor(
     const char *name
 ) {
@@ -1040,6 +1372,55 @@ static bool information_schema_tables_column_has_empty_origin_schema(const char 
         "CHECKSUM",
         "CREATE_OPTIONS",
         "TABLE_COMMENT",
+    };
+
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (mylite_ascii_case_equal(name, names[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool information_schema_columns_column_has_empty_origin_schema(const char *name) {
+    static const char *const names[] = {
+        "COLUMN_NAME",
+        "IS_NULLABLE",
+        "DATA_TYPE",
+        "CHARACTER_MAXIMUM_LENGTH",
+        "CHARACTER_OCTET_LENGTH",
+        "NUMERIC_PRECISION",
+        "NUMERIC_SCALE",
+        "CHARACTER_SET_NAME",
+        "COLLATION_NAME",
+        "EXTRA",
+        "PRIVILEGES",
+        "COLUMN_COMMENT",
+        "GENERATION_EXPRESSION",
+    };
+
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (mylite_ascii_case_equal(name, names[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool information_schema_statistics_column_has_empty_origin_schema(const char *name) {
+    static const char *const names[] = {
+        "NON_UNIQUE",
+        "INDEX_NAME",
+        "COLUMN_NAME",
+        "COLLATION",
+        "CARDINALITY",
+        "SUB_PART",
+        "PACKED",
+        "NULLABLE",
+        "INDEX_TYPE",
+        "COMMENT",
+        "IS_VISIBLE",
+        "EXPRESSION",
     };
 
     for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {

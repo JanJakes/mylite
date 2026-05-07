@@ -162,6 +162,13 @@ MySQL 8.4.9 runtime before each item is marked complete.
       string prefixes, strict truncation/incorrect-value rejection, non-strict
       warning coercion, decimal scale rounding notes, and DECIMAL result text
       shape.
+- [x] Align `BIGINT UNSIGNED` DML assignment values above signed 64-bit range
+      for currently supported write paths. Covered behavior includes exact
+      endpoint storage, strict overflow rejection, non-strict and `IGNORE`
+      clipping to `18446744073709551615`, quoted endpoint trailing-character
+      diagnostics, direct integer literals above `UINT64_MAX`, and
+      `CAST(... AS UNSIGNED)` update assignments into narrower unsigned
+      integer columns.
 - [x] Align `CHAR`/`VARCHAR` length coercion in strict and non-strict modes for
       currently supported `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`,
       ODKU update assignments, single-table `UPDATE`, and joined `UPDATE`
@@ -170,16 +177,17 @@ MySQL 8.4.9 runtime before each item is marked complete.
       covered forms.
 - [ ] Align remaining numeric/string casts and coercions in strict and
       non-strict modes, including TEXT/BLOB limits, binary-string byte edge
-      cases, charset-specific string validation, `BIGINT UNSIGNED` values
-      above signed 64-bit physical integer storage, floating-point column edge
-      cases, scalar `CAST`/`CONVERT` value semantics, and conversion/truncation
+      cases, charset-specific string validation, floating-point column edge
+      cases, signed negative `BIGINT` underflow text paths, `BIGINT UNSIGNED`
+      auto-increment and broad unsigned arithmetic beyond signed 64-bit range,
+      scalar `CAST`/`CONVERT` value semantics, and conversion/truncation
       `IGNORE` demotion beyond the currently covered `INSERT IGNORE` invalid
       integer, integer range, invalid date, and `VARCHAR` truncation slice plus
       single-table `UPDATE IGNORE` numeric, temporal, string-length, `NULL`
       not-null, duplicate-key, and foreign-key slices. Signed and unsigned
-      `TINYINT`, `SMALLINT`, `MEDIUMINT`, and `INT` range clipping is covered
-      for strict, non-strict, `INSERT IGNORE`, and single-table `UPDATE IGNORE`
-      paths.
+      `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`, and covered `BIGINT` range
+      clipping is covered for strict, non-strict, `INSERT IGNORE`, and
+      single-table `UPDATE IGNORE` paths.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719.

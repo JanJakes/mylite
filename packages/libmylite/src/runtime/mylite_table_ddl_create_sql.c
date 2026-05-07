@@ -96,6 +96,9 @@ static char *build_create_physical_table_sql(
 static const char *sqlite_affinity_for_descriptor(
     const struct mylite_column_type_descriptor *descriptor
 ) {
+    if (descriptor->integer_type == MYLITE_COLUMN_INTEGER_BIGINT && descriptor->is_unsigned) {
+        return "TEXT";
+    }
     if (descriptor->integer_type != MYLITE_COLUMN_INTEGER_NONE || descriptor->is_boolean_alias) {
         return "INTEGER";
     }

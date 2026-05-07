@@ -13,10 +13,10 @@ decimal columns across these DML paths:
 - joined `UPDATE`
 
 This slice now includes signed and unsigned range clipping for `TINYINT`,
-`SMALLINT`, `MEDIUMINT`, and `INT` write paths. String length truncation,
-`BIGINT UNSIGNED` values above MyLite's current signed 64-bit physical integer
-storage, floating-point column edge cases, `LOAD DATA`, and protocol SQLSTATE
-details remain separate tasks.
+`SMALLINT`, `MEDIUMINT`, `INT`, and `BIGINT` write paths. It also stores exact
+`BIGINT UNSIGNED` assignment values above signed 64-bit range for covered DML
+paths. String length truncation, floating-point column edge cases, `LOAD DATA`,
+and protocol SQLSTATE details remain separate tasks.
 
 ## Sources
 
@@ -52,6 +52,14 @@ Verified clipping endpoints:
 | `SMALLINT` | `-32768` to `32767` | `0` to `65535` |
 | `MEDIUMINT` | `-8388608` to `8388607` | `0` to `16777215` |
 | `INT` / `INTEGER` | `-2147483648` to `2147483647` | `0` to `4294967295` |
+| `BIGINT` | `-9223372036854775808` to `9223372036854775807` | `0` to `18446744073709551615` |
+
+For `BIGINT UNSIGNED`, MySQL accepts `18446744073709551615` and rejects
+`18446744073709551616` in strict mode with error 1264. In non-strict or
+`IGNORE` assignment paths, values above the unsigned endpoint clip to
+`18446744073709551615` with warning 1264. A quoted unsigned endpoint with
+trailing characters, such as `'18446744073709551615x'`, stores the endpoint in
+non-strict mode with warning 1265 and rejects in strict mode with error 1265.
 
 For `DECIMAL(5,2)`, numeric or string `4.567` stores as `4.57` and records note
 1265 in both strict and non-strict modes. String `'4.567x'` rejects with error
@@ -76,8 +84,10 @@ For signed integer-family columns, MyLite:
 - promotes incorrect/truncated values to errors in strict SQL modes and records
   warnings in non-strict modes
 - clips out-of-range signed and unsigned `TINYINT`, `SMALLINT`, `MEDIUMINT`,
-  and `INT` values to the nearest MySQL endpoint in non-strict and `IGNORE`
-  paths
+  `INT`, and `BIGINT` values to the nearest MySQL endpoint in non-strict and
+  `IGNORE` paths
+- stores covered `BIGINT UNSIGNED` values above `INT64_MAX` as canonical
+  decimal text in MyLite's physical store so they can be read back exactly
 - reports range condition 1264 before truncation condition 1265 when both
   apply to the same integer value
 
@@ -95,8 +105,8 @@ For decimal columns, MyLite:
 This slice intentionally does not claim full fixed-point precision. It improves
 observable storage, warnings, and strict/non-strict control for common
 application writes while keeping full decimal arithmetic, floating-point column
-range behavior, and unsigned 64-bit storage beyond `INT64_MAX` tracked
-separately.
+range behavior, `BIGINT UNSIGNED` auto-increment beyond signed 64-bit range,
+and broad unsigned arithmetic tracked separately.
 
 ## Test Expectations
 
@@ -106,8 +116,10 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - strict rejection and non-strict warning coercion for truncated integer strings
 - strict rejection and non-strict warning coercion for incorrect integer strings
 - strict rejection, non-strict clipping, and `INSERT IGNORE` warning demotion
-  for signed and unsigned `TINYINT`, `SMALLINT`, `MEDIUMINT`, and `INT`
-  endpoints
+  for signed and unsigned `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`, and
+  `BIGINT` endpoints
+- exact `BIGINT UNSIGNED` endpoint storage and overflow diagnostics for direct
+  numeric literals, quoted values, and `CAST(... AS UNSIGNED)` assignments
 - decimal scale rounding and stored text shape
 - strict rejection and non-strict note coercion for decimal strings with
   trailing characters

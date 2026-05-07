@@ -32,6 +32,8 @@ enum mylite_dml_numeric_problem {
 };
 
 enum {
+    mylite_dml_decimal_base = 10,
+    mylite_dml_uint64_text_buffer_size = 32,
     mylite_dml_mediumint_signed_bits = 23,
     mylite_dml_mediumint_unsigned_bits = 24,
 };
@@ -43,6 +45,13 @@ struct mylite_dml_numeric_text_parse {
     bool allocation_failed;
 };
 
+struct mylite_dml_unsigned_integer_text_parse {
+    uint64_t value;
+    bool saw_digits;
+    bool overflow;
+    bool trailing_garbage;
+};
+
 struct mylite_dml_numeric_output {
     enum mylite_insert_bound_value_kind insert_kind;
     enum mylite_expression_value_kind expression_kind;
@@ -50,6 +59,15 @@ struct mylite_dml_numeric_output {
     char *text_value;
     size_t text_length;
     bool replace;
+};
+
+struct mylite_dml_integer_uint64_input {
+    enum mylite_dml_numeric_kind kind;
+    uint64_t value;
+    bool overflow;
+    enum mylite_dml_numeric_problem problem;
+    uint64_t row_number;
+    bool ignore;
 };
 
 struct mylite_dml_integer_range {
@@ -107,6 +125,25 @@ static bool integer_range_exceeded(struct mylite_dml_integer_range range, int64_
 
 static int64_t clamp_integer_to_range(struct mylite_dml_integer_range range, int64_t value);
 
+static int coerce_integer_uint64(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_integer_uint64_input input,
+    struct mylite_dml_numeric_output *out_output
+);
+
+static bool integer_uint64_maximum_for_column(
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_kind kind,
+    uint64_t *out_maximum
+);
+
+static bool signed_integer_uint64_maximum_for_type(const char *data_type, uint64_t *out_maximum);
+
+static bool unsigned_integer_uint64_maximum_for_type(const char *data_type, uint64_t *out_maximum);
+
+static int set_integer_uint64_output(uint64_t value, struct mylite_dml_numeric_output *out_output);
+
 static int coerce_numeric_double(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -130,6 +167,11 @@ static int coerce_numeric_text(
 );
 
 static struct mylite_dml_numeric_text_parse parse_numeric_text(const char *text, size_t length);
+
+static struct mylite_dml_unsigned_integer_text_parse parse_unsigned_integer_text_prefix(
+    const char *text,
+    size_t length
+);
 
 static int coerce_integer_double(
     mylite_db *database,
@@ -334,8 +376,21 @@ static int coerce_update_numeric_value(
         );
         break;
     case MYLITE_EXPRESSION_VALUE_UINT64:
-        if (kind == MYLITE_DML_NUMERIC_UNSIGNED_INTEGER) {
-            return MYLITE_OK;
+        if (kind != MYLITE_DML_NUMERIC_DECIMAL) {
+            status = coerce_integer_uint64(
+                database,
+                column,
+                (struct mylite_dml_integer_uint64_input){
+                    .kind = kind,
+                    .value = value->uint64_value,
+                    .overflow = false,
+                    .problem = MYLITE_DML_NUMERIC_PROBLEM_NONE,
+                    .row_number = row_number,
+                    .ignore = ignore,
+                },
+                &output
+            );
+            break;
         }
         status = coerce_numeric_double(
             database,
@@ -471,6 +526,8 @@ static int coerce_numeric_text(
     struct mylite_dml_numeric_output *out_output
 ) {
     struct mylite_dml_numeric_text_parse parsed = parse_numeric_text(text, text_length);
+    struct mylite_dml_unsigned_integer_text_parse unsigned_integer =
+        parse_unsigned_integer_text_prefix(text, text_length);
     enum mylite_dml_numeric_problem problem = MYLITE_DML_NUMERIC_PROBLEM_NONE;
 
     if (parsed.allocation_failed) {
@@ -483,6 +540,31 @@ static int coerce_numeric_text(
     } else if (parsed.trailing_garbage) {
         problem = kind == MYLITE_DML_NUMERIC_DECIMAL ? MYLITE_DML_NUMERIC_PROBLEM_DECIMAL_TRUNCATED
                                                      : MYLITE_DML_NUMERIC_PROBLEM_TRUNCATED;
+    }
+    if (kind != MYLITE_DML_NUMERIC_DECIMAL && unsigned_integer.saw_digits) {
+        bool value_exceeds_int64 = unsigned_integer.value > (uint64_t)INT64_MAX;
+
+        if (unsigned_integer.overflow || value_exceeds_int64) {
+            enum mylite_dml_numeric_problem integer_problem = MYLITE_DML_NUMERIC_PROBLEM_NONE;
+
+            if (unsigned_integer.trailing_garbage) {
+                integer_problem = MYLITE_DML_NUMERIC_PROBLEM_TRUNCATED;
+            }
+
+            return coerce_integer_uint64(
+                database,
+                column,
+                (struct mylite_dml_integer_uint64_input){
+                    .kind = kind,
+                    .value = unsigned_integer.value,
+                    .overflow = unsigned_integer.overflow,
+                    .problem = integer_problem,
+                    .row_number = row_number,
+                    .ignore = ignore,
+                },
+                out_output
+            );
+        }
     }
     return coerce_numeric_double(
         database,
@@ -517,6 +599,43 @@ static struct mylite_dml_numeric_text_parse parse_numeric_text(const char *text,
     }
     parsed.trailing_garbage = parsed.saw_number && end != NULL && *end != '\0';
     free(copy);
+    return parsed;
+}
+
+static struct mylite_dml_unsigned_integer_text_parse parse_unsigned_integer_text_prefix(
+    const char *text,
+    size_t length
+) {
+    struct mylite_dml_unsigned_integer_text_parse parsed = {0};
+    size_t offset = 0U;
+
+    if (text == NULL) {
+        return parsed;
+    }
+    while (offset < length && isspace((unsigned char)text[offset])) {
+        ++offset;
+    }
+    if (offset < length && text[offset] == '+') {
+        ++offset;
+    } else if (offset < length && text[offset] == '-') {
+        return parsed;
+    }
+    while (offset < length && isdigit((unsigned char)text[offset])) {
+        uint64_t digit = (uint64_t)(text[offset] - '0');
+
+        parsed.saw_digits = true;
+        if (parsed.value > (UINT64_MAX - digit) / mylite_dml_decimal_base) {
+            parsed.overflow = true;
+            parsed.value = UINT64_MAX;
+        } else if (!parsed.overflow) {
+            parsed.value = (parsed.value * mylite_dml_decimal_base) + digit;
+        }
+        ++offset;
+    }
+    while (offset < length && isspace((unsigned char)text[offset])) {
+        ++offset;
+    }
+    parsed.trailing_garbage = (parsed.saw_digits && offset < length) != 0;
     return parsed;
 }
 
@@ -557,6 +676,36 @@ static int coerce_integer_double(
         .replace = true,
     };
     return MYLITE_OK;
+}
+
+static int coerce_integer_uint64(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    struct mylite_dml_integer_uint64_input input,
+    struct mylite_dml_numeric_output *out_output
+) {
+    uint64_t maximum = 0U;
+    bool has_maximum = integer_uint64_maximum_for_column(column, input.kind, &maximum);
+    bool out_of_range = input.overflow;
+    int status = MYLITE_OK;
+
+    if (!out_of_range && has_maximum && input.value > maximum) {
+        out_of_range = true;
+    }
+    status = handle_numeric_problem(
+        database,
+        column,
+        integer_problem_for_range(out_of_range, input.problem),
+        input.row_number,
+        input.ignore
+    );
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (out_of_range && has_maximum) {
+        input.value = maximum;
+    }
+    return set_integer_uint64_output(input.value, out_output);
 }
 
 static struct mylite_dml_integer_range integer_range_for_column(
@@ -671,6 +820,104 @@ static int64_t clamp_integer_to_range(struct mylite_dml_integer_range range, int
         }
     }
     return value;
+}
+
+static bool integer_uint64_maximum_for_column(
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_kind kind,
+    uint64_t *out_maximum
+) {
+    if (column == NULL || column->data_type == NULL || out_maximum == NULL) {
+        return false;
+    }
+    if (kind == MYLITE_DML_NUMERIC_SIGNED_INTEGER) {
+        return signed_integer_uint64_maximum_for_type(column->data_type, out_maximum);
+    }
+    if (kind == MYLITE_DML_NUMERIC_UNSIGNED_INTEGER) {
+        return unsigned_integer_uint64_maximum_for_type(column->data_type, out_maximum);
+    }
+    return false;
+}
+
+static bool signed_integer_uint64_maximum_for_type(const char *data_type, uint64_t *out_maximum) {
+    if (mylite_ascii_case_equal(data_type, "tinyint") ||
+        mylite_ascii_case_equal(data_type, "bool") ||
+        mylite_ascii_case_equal(data_type, "boolean")) {
+        *out_maximum = (uint64_t)SCHAR_MAX;
+        return true;
+    }
+    if (mylite_ascii_case_equal(data_type, "smallint")) {
+        *out_maximum = (uint64_t)SHRT_MAX;
+        return true;
+    }
+    if (mylite_ascii_case_equal(data_type, "mediumint")) {
+        *out_maximum = (uint64_t)((INT64_C(1) << mylite_dml_mediumint_signed_bits) - 1);
+        return true;
+    }
+    if (mylite_ascii_case_equal(data_type, "int")) {
+        *out_maximum = (uint64_t)INT_MAX;
+        return true;
+    }
+    if (mylite_ascii_case_equal(data_type, "bigint")) {
+        *out_maximum = (uint64_t)INT64_MAX;
+        return true;
+    }
+    return false;
+}
+
+static bool unsigned_integer_uint64_maximum_for_type(const char *data_type, uint64_t *out_maximum) {
+    if (mylite_ascii_case_equal(data_type, "tinyint") ||
+        mylite_ascii_case_equal(data_type, "bool") ||
+        mylite_ascii_case_equal(data_type, "boolean")) {
+        *out_maximum = UCHAR_MAX;
+        return true;
+    }
+    if (mylite_ascii_case_equal(data_type, "smallint")) {
+        *out_maximum = USHRT_MAX;
+        return true;
+    }
+    if (mylite_ascii_case_equal(data_type, "mediumint")) {
+        *out_maximum = (UINT64_C(1) << mylite_dml_mediumint_unsigned_bits) - UINT64_C(1);
+        return true;
+    }
+    if (mylite_ascii_case_equal(data_type, "int")) {
+        *out_maximum = UINT_MAX;
+        return true;
+    }
+    if (mylite_ascii_case_equal(data_type, "bigint")) {
+        *out_maximum = UINT64_MAX;
+        return true;
+    }
+    return false;
+}
+
+static int set_integer_uint64_output(uint64_t value, struct mylite_dml_numeric_output *out_output) {
+    char buffer[mylite_dml_uint64_text_buffer_size];
+    int length = 0;
+
+    if (value <= (uint64_t)INT64_MAX) {
+        *out_output = (struct mylite_dml_numeric_output){
+            .insert_kind = MYLITE_INSERT_BOUND_INTEGER,
+            .expression_kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .integer_value = (int64_t)value,
+            .replace = true,
+        };
+        return MYLITE_OK;
+    }
+
+    length = snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)value);
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return MYLITE_NOMEM;
+    }
+    out_output->text_value = mylite_copy_span_text(buffer, (size_t)length);
+    if (out_output->text_value == NULL) {
+        return MYLITE_NOMEM;
+    }
+    out_output->insert_kind = MYLITE_INSERT_BOUND_TEXT;
+    out_output->expression_kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_output->text_length = (size_t)length;
+    out_output->replace = true;
+    return MYLITE_OK;
 }
 
 static int coerce_decimal_double(

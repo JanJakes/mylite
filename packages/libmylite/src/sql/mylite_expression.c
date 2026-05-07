@@ -20536,14 +20536,22 @@ static int eval_literal(
         if (text[0] != '-' && strlen(text) >= MYLITE_EXPRESSION_UINT64_DIGITS) {
             unsigned long long unsigned_value =
                 strtoull(text, &end, MYLITE_EXPRESSION_DECIMAL_BASE);
-            if (errno == 0 && end != text && *end == '\0' &&
-                unsigned_value > (unsigned long long)INT64_MAX) {
-                out_value->kind = MYLITE_EXPRESSION_VALUE_UINT64;
-                out_value->uint64_value = (uint64_t)unsigned_value;
-                free(text);
-                return 0;
+            if (end != text && *end == '\0') {
+                if (errno == 0 && unsigned_value > (unsigned long long)INT64_MAX) {
+                    out_value->kind = MYLITE_EXPRESSION_VALUE_UINT64;
+                    out_value->uint64_value = (uint64_t)unsigned_value;
+                    free(text);
+                    return 0;
+                }
+                if (errno == ERANGE) {
+                    out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
+                    out_value->text_value = text;
+                    out_value->text_length = strlen(text);
+                    return 0;
+                }
             }
         }
+        errno = 0;
         out_value->kind = MYLITE_EXPRESSION_VALUE_INT64;
         out_value->int64_value = strtoll(text, NULL, MYLITE_EXPRESSION_DECIMAL_BASE);
         free(text);

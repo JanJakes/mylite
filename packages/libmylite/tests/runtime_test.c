@@ -556,6 +556,8 @@ static int test_numeric_dml_coercion_execution(void);
 
 static int test_integer_range_dml_coercion_execution(void);
 
+static int test_bigint_unsigned_dml_coercion_execution(void);
+
 static int test_string_dml_coercion_execution(void);
 
 static int test_insert_on_duplicate_key_update_execution(void);
@@ -1050,6 +1052,7 @@ int main(void) {
     failures += test_temporal_dml_coercion_execution();
     failures += test_numeric_dml_coercion_execution();
     failures += test_integer_range_dml_coercion_execution();
+    failures += test_bigint_unsigned_dml_coercion_execution();
     failures += test_string_dml_coercion_execution();
     failures += test_insert_on_duplicate_key_update_execution();
     failures += test_foreign_key_insert_execution();
@@ -53847,6 +53850,261 @@ static int test_integer_range_dml_coercion_execution(void) {
         clipped_insert_set_values,
         1,
         "insert set integer range clipped values"
+    );
+
+    mylite_finalize(stmt);
+    mylite_close(database);
+    return failures;
+}
+
+static int test_bigint_unsigned_dml_coercion_execution(void) {
+    enum {
+        bigint_column_count = 4,
+        bigint_overflow_warning_count = 3,
+        bigint_trailing_warning_count = 2,
+    };
+
+    static const char *const bigint_columns[] = {"id", "u", "s", "ui"};
+    static const char *const strict_values[] = {
+        "1",
+        "18446744073709551615",
+        "9223372036854775807",
+        "4294967295",
+    };
+    static const char *const non_strict_values[] = {
+        "1",
+        "18446744073709551615",
+        "9223372036854775807",
+        "4294967295",
+        "2",
+        "18446744073709551615",
+        "9223372036854775807",
+        "4294967295",
+    };
+    static const char *const trailing_values[] = {
+        "3",
+        "18446744073709551615",
+        "9223372036854775807",
+        NULL,
+    };
+    static const char *const update_ignore_values[] = {
+        "4",
+        "18446744073709551615",
+        "9223372036854775807",
+        "4294967295",
+    };
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open bigint unsigned db");
+    failures += execute_sql(database, "CREATE DATABASE mylite_bigint_unsigned", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_bigint_unsigned", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE bigint_unsigned_ranges ("
+        "id INT PRIMARY KEY, u BIGINT UNSIGNED, s BIGINT, ui INT UNSIGNED)",
+        MYLITE_DONE
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ranges VALUES "
+        "(1,18446744073709551615,9223372036854775807,4294967295)",
+        1,
+        "strict bigint unsigned max insert"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,u,s,ui FROM bigint_unsigned_ranges ORDER BY id",
+        bigint_columns,
+        bigint_column_count,
+        strict_values,
+        1,
+        "strict bigint unsigned max values"
+    );
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO bigint_unsigned_ranges(id,u) VALUES (2,18446744073709551616)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 'u' at row 1",
+        "strict bigint unsigned overflow insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict bigint unsigned overflow insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO bigint_unsigned_ranges(id,s) VALUES (2,9223372036854775808)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 's' at row 1",
+        "strict signed bigint overflow insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict signed bigint overflow insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO bigint_unsigned_ranges(id,u) VALUES (2,'18446744073709551615x')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data truncated for column 'u' at row 1",
+        "strict bigint unsigned trailing insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "strict bigint unsigned trailing insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ranges VALUES "
+        "(2,18446744073709551616,9223372036854775808,18446744073709551615)",
+        1,
+        "non-strict bigint overflow insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        bigint_overflow_warning_count,
+        "non-strict bigint overflow warning count"
+    );
+    for (int warning = 0; warning < bigint_overflow_warning_count; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "non-strict bigint overflow warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,u,s,ui FROM bigint_unsigned_ranges ORDER BY id",
+        bigint_columns,
+        bigint_column_count,
+        non_strict_values,
+        2,
+        "non-strict bigint clipped values"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ranges(id,u,s) "
+        "VALUES (3,'18446744073709551615x','9223372036854775807x')",
+        1,
+        "non-strict bigint trailing insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        bigint_trailing_warning_count,
+        "non-strict bigint trailing warning count"
+    );
+    for (int warning = 0; warning < bigint_trailing_warning_count; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_truncated,
+            "non-strict bigint trailing warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,u,s,ui FROM bigint_unsigned_ranges WHERE id = 3",
+        bigint_columns,
+        bigint_column_count,
+        trailing_values,
+        1,
+        "non-strict bigint trailing stored values"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO bigint_unsigned_ranges VALUES (4,0,0,0)",
+        1,
+        "strict bigint update seed"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE bigint_unsigned_ranges SET u=18446744073709551615 WHERE id = 4",
+        1,
+        "strict bigint unsigned max update"
+    );
+
+    failures += prepare_sql(
+        database,
+        "UPDATE bigint_unsigned_ranges SET ui=CAST('4294967296' AS UNSIGNED) WHERE id = 4",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 'ui' at row 1",
+        "strict int unsigned cast update error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict int unsigned cast update code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE bigint_unsigned_ranges "
+        "SET u=18446744073709551616, s=9223372036854775808, "
+        "ui=18446744073709551615 WHERE id = 4",
+        1,
+        "strict update ignore bigint overflow"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        bigint_overflow_warning_count,
+        "update ignore bigint overflow warning count"
+    );
+    for (int warning = 0; warning < bigint_overflow_warning_count; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "update ignore bigint overflow warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,u,s,ui FROM bigint_unsigned_ranges WHERE id = 4",
+        bigint_columns,
+        bigint_column_count,
+        update_ignore_values,
+        1,
+        "update ignore bigint clipped values"
     );
 
     mylite_finalize(stmt);

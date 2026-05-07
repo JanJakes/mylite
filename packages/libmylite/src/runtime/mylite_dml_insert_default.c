@@ -6,6 +6,7 @@
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_span.h"
 
+#include <ctype.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -30,6 +31,23 @@ static bool insert_column_uses_numeric_implicit_default(
     const struct mylite_insert_table_column *column
 );
 
+static bool insert_column_uses_integer_storage(const struct mylite_insert_table_column *column);
+
+static int resolve_insert_large_integer_text_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const char *text,
+    size_t text_length,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+);
+
+static bool insert_text_requires_integer_text_coercion(
+    const struct mylite_insert_table_column *column,
+    const char *text,
+    size_t text_length
+);
+
 static bool insert_plan_coerces_missing_required_default(
     const mylite_db *database,
     const struct mylite_insert_values_plan *plan,
@@ -39,6 +57,8 @@ static bool insert_plan_coerces_missing_required_default(
 static bool insert_column_uses_temporal_storage(const struct mylite_insert_table_column *column);
 
 static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column);
+
+static bool insert_text_integer_prefix_exceeds_int64(const char *text, size_t text_length);
 
 static char *insert_current_timestamp_text(void);
 
@@ -303,6 +323,16 @@ int mylite_dml_resolve_insert_text_value(
     if (column->auto_increment) {
         return mylite_dml_insert_set_unsupported_expression_error(database);
     }
+    if (insert_text_requires_integer_text_coercion(column, text, text_length)) {
+        return resolve_insert_large_integer_text_value(
+            database,
+            column,
+            text,
+            text_length,
+            ignore,
+            out_value
+        );
+    }
     if (mylite_dml_parse_insert_real_text(text, &real_value)) {
         int status = MYLITE_OK;
 
@@ -471,6 +501,59 @@ static bool insert_column_uses_numeric_implicit_default(
     return false;
 }
 
+static bool insert_column_uses_integer_storage(const struct mylite_insert_table_column *column) {
+    static const char *const integer_types[] = {
+        "tinyint",
+        "smallint",
+        "mediumint",
+        "int",
+        "bigint",
+        "bool",
+        "boolean",
+        "year",
+    };
+
+    if (column == NULL || column->data_type == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(integer_types) / sizeof(integer_types[0]); ++index) {
+        if (mylite_ascii_case_equal(column->data_type, integer_types[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int resolve_insert_large_integer_text_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    const char *text,
+    size_t text_length,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+) {
+    int status = set_insert_bound_text_value(database, text, text_length, out_value);
+
+    if (status == MYLITE_OK) {
+        status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value);
+    }
+    return status;
+}
+
+static bool insert_text_requires_integer_text_coercion(
+    const struct mylite_insert_table_column *column,
+    const char *text,
+    size_t text_length
+) {
+    if (!insert_column_uses_integer_storage(column)) {
+        return false;
+    }
+    return insert_text_integer_prefix_exceeds_int64(text, text_length);
+}
+
 static bool insert_column_uses_temporal_storage(const struct mylite_insert_table_column *column) {
     static const char *const temporal_types[] = {
         "date",
@@ -514,6 +597,37 @@ static bool insert_column_uses_text_storage(const struct mylite_insert_table_col
         }
     }
     return false;
+}
+
+static bool insert_text_integer_prefix_exceeds_int64(const char *text, size_t text_length) {
+    enum { decimal_base = 10 };
+
+    uint64_t magnitude = 0U;
+    size_t offset = 0U;
+    bool saw_digit = false;
+
+    if (text == NULL) {
+        return false;
+    }
+    while (offset < text_length && isspace((unsigned char)text[offset])) {
+        ++offset;
+    }
+    if (offset < text_length && text[offset] == '+') {
+        ++offset;
+    } else if (offset < text_length && text[offset] == '-') {
+        return false;
+    }
+    while (offset < text_length && isdigit((unsigned char)text[offset])) {
+        uint64_t digit = (uint64_t)(text[offset] - '0');
+
+        saw_digit = true;
+        if (magnitude > ((uint64_t)INT64_MAX - digit) / decimal_base) {
+            return true;
+        }
+        magnitude = (magnitude * decimal_base) + digit;
+        ++offset;
+    }
+    return (saw_digit && magnitude > (uint64_t)INT64_MAX) != 0;
 }
 
 static char *insert_current_timestamp_text(void) {

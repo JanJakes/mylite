@@ -5,6 +5,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_dml.h"
 #include "mylite_error_codes.h"
+#include "mylite_foreign_key_catalog.h"
 #include "mylite_runtime.h"
 #include "mylite_schema_types.h"
 #include "mylite_span.h"
@@ -28,6 +29,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+struct alter_table_foreign_key_existing_rows_sql_input {
+    const char *child_physical_name;
+    const char *parent_physical_name;
+    const struct mylite_create_table_foreign_key *foreign_key;
+};
 
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
 
@@ -93,12 +100,7 @@ static int ensure_alter_table_foreign_key_constraint_name(
 
 static char *generated_alter_table_foreign_key_constraint_name(mylite_stmt *stmt);
 
-static int alter_table_foreign_key_constraint_exists(
-    mylite_db *database,
-    const char *schema_name,
-    const char *constraint_name,
-    bool *out_exists
-);
+static sqlite3_destructor_type sqlite_transient_destructor(void);
 
 static int validate_alter_table_foreign_key_columns(
     mylite_db *database,
@@ -172,19 +174,12 @@ static int validate_alter_table_foreign_key_existing_rows(
 
 static char *build_alter_table_foreign_key_existing_rows_sql(
     mylite_db *database,
-    const char *child_physical_name,
-    const char *parent_physical_name,
-    const struct mylite_create_table_foreign_key *foreign_key
+    const struct alter_table_foreign_key_existing_rows_sql_input *input
 );
 
 static int insert_alter_table_foreign_key_catalog_rows(
     mylite_stmt *stmt,
     const struct mylite_create_table_foreign_key *foreign_key
-);
-
-static int delete_alter_table_foreign_key_catalog_rows(
-    mylite_stmt *stmt,
-    const char *constraint_name
 );
 
 static int set_alter_table_duplicate_foreign_key_error(
@@ -735,7 +730,7 @@ static int apply_alter_table_add_foreign_key_action(
     int status = ensure_alter_table_foreign_key_constraint_name(stmt, foreign_key);
 
     if (status == MYLITE_OK) {
-        status = alter_table_foreign_key_constraint_exists(
+        status = mylite_foreign_key_catalog_child_constraint_exists(
             stmt->database,
             stmt->alter_table.schema_name,
             foreign_key->constraint_name,
@@ -785,7 +780,7 @@ static int apply_alter_table_drop_foreign_key_action(
     const struct mylite_alter_table_action *action
 ) {
     bool exists = false;
-    int status = alter_table_foreign_key_constraint_exists(
+    int status = mylite_foreign_key_catalog_child_constraint_exists(
         stmt->database,
         stmt->alter_table.schema_name,
         action->old_name,
@@ -801,7 +796,13 @@ static int apply_alter_table_drop_foreign_key_action(
             action->old_name
         );
     }
-    return delete_alter_table_foreign_key_catalog_rows(stmt, action->old_name);
+    return mylite_foreign_key_catalog_delete_child_constraint(
+        stmt->database,
+        stmt->alter_table.schema_name,
+        stmt->alter_table.table_name,
+        action->old_name,
+        false
+    );
 }
 
 static void apply_alter_table_options(mylite_stmt *stmt, struct mylite_alter_table_model *model) {
@@ -859,7 +860,7 @@ static char *generated_alter_table_foreign_key_constraint_name(mylite_stmt *stmt
         if (candidate == NULL) {
             return NULL;
         }
-        status = alter_table_foreign_key_constraint_exists(
+        status = mylite_foreign_key_catalog_child_constraint_exists(
             stmt->database,
             stmt->alter_table.schema_name,
             candidate,
@@ -877,36 +878,6 @@ static char *generated_alter_table_foreign_key_constraint_name(mylite_stmt *stmt
         }
         sqlite3_free(candidate);
     }
-}
-
-static int alter_table_foreign_key_constraint_exists(
-    mylite_db *database,
-    const char *schema_name,
-    const char *constraint_name,
-    bool *out_exists
-) {
-    static const char sql[] =
-        "SELECT 1 FROM __mylite_foreign_key_catalog "
-        "WHERE constraint_schema = ? AND constraint_name = ? COLLATE NOCASE LIMIT 1";
-    sqlite3_stmt *select = NULL;
-    int rc = SQLITE_OK;
-
-    *out_exists = false;
-    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-    sqlite3_bind_text(select, 1, schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 2, constraint_name, -1, SQLITE_TRANSIENT);
-    rc = sqlite3_step(select);
-    if (rc == SQLITE_ROW) {
-        *out_exists = true;
-    } else if (rc != SQLITE_DONE) {
-        sqlite3_finalize(select);
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-    sqlite3_finalize(select);
-    return MYLITE_OK;
 }
 
 static int validate_alter_table_foreign_key_columns(
@@ -1003,8 +974,12 @@ static int resolve_self_referenced_alter_table_unique_constraint(
     *out_found = false;
     for (size_t index = 0U; index < model->index_count; ++index) {
         const struct mylite_alter_table_index *candidate = &model->indexes[index];
-        bool matches = candidate->non_unique == 0 &&
-                       candidate->part_count == foreign_key->referenced_column_count;
+        bool matches = false;
+
+        if (candidate->non_unique == 0 &&
+            candidate->part_count == foreign_key->referenced_column_count) {
+            matches = true;
+        }
 
         for (size_t part = 0U; matches && part < candidate->part_count; ++part) {
             matches = mylite_ascii_case_equal(
@@ -1044,22 +1019,37 @@ static int resolve_referenced_alter_table_unique_constraint(
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, foreign_key->referenced_schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 2, foreign_key->referenced_table_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(
+        select,
+        1,
+        foreign_key->referenced_schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        select,
+        2,
+        foreign_key->referenced_table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
 
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         const char *candidate_name = (const char *)sqlite3_column_text(select, 0);
         bool matches = false;
         int status = MYLITE_OK;
 
-        if (candidate_name != NULL && (status = alter_table_referenced_unique_candidate_matches(
-                                           database,
-                                           candidate_name,
-                                           foreign_key,
-                                           &matches
-                                       )) != MYLITE_OK) {
-            sqlite3_finalize(select);
-            return status;
+        if (candidate_name != NULL) {
+            status = alter_table_referenced_unique_candidate_matches(
+                database,
+                candidate_name,
+                foreign_key,
+                &matches
+            );
+            if (status != MYLITE_OK) {
+                sqlite3_finalize(select);
+                return status;
+            }
         }
         if (candidate_name != NULL && matches) {
             *out_constraint_name = mylite_copy_nonempty_cstring(candidate_name);
@@ -1095,9 +1085,21 @@ static int alter_table_referenced_unique_candidate_matches(
     if (rc != SQLITE_OK) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    sqlite3_bind_text(select, 1, foreign_key->referenced_schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 2, foreign_key->referenced_table_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 3, candidate_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(
+        select,
+        1,
+        foreign_key->referenced_schema_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(
+        select,
+        2,
+        foreign_key->referenced_table_name,
+        -1,
+        sqlite_transient_destructor()
+    );
+    sqlite3_bind_text(select, 3, candidate_name, -1, sqlite_transient_destructor());
 
     while ((rc = sqlite3_step(select)) == SQLITE_ROW) {
         const char *column_name = (const char *)sqlite3_column_text(select, 0);
@@ -1285,12 +1287,12 @@ static int validate_alter_table_foreign_key_existing_rows(
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
         return MYLITE_NOMEM;
     }
-    sql = build_alter_table_foreign_key_existing_rows_sql(
-        stmt->database,
-        model->physical_name,
-        parent_physical_name,
-        foreign_key
-    );
+    const struct alter_table_foreign_key_existing_rows_sql_input input = {
+        .child_physical_name = model->physical_name,
+        .parent_physical_name = parent_physical_name,
+        .foreign_key = foreign_key,
+    };
+    sql = build_alter_table_foreign_key_existing_rows_sql(stmt->database, &input);
     free(parent_physical_name);
     if (sql == NULL) {
         (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
@@ -1324,16 +1326,15 @@ static int validate_alter_table_foreign_key_existing_rows(
 
 static char *build_alter_table_foreign_key_existing_rows_sql(
     mylite_db *database,
-    const char *child_physical_name,
-    const char *parent_physical_name,
-    const struct mylite_create_table_foreign_key *foreign_key
+    const struct alter_table_foreign_key_existing_rows_sql_input *input
 ) {
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
+    const struct mylite_create_table_foreign_key *foreign_key = input->foreign_key;
 
     if (sql == NULL) {
         return NULL;
     }
-    sqlite3_str_appendf(sql, "SELECT 1 FROM \"%w\" AS child WHERE ", child_physical_name);
+    sqlite3_str_appendf(sql, "SELECT 1 FROM \"%w\" AS child WHERE ", input->child_physical_name);
     for (size_t index = 0U; index < foreign_key->column_count; ++index) {
         if (index != 0U) {
             sqlite3_str_appendall(sql, " AND ");
@@ -1343,7 +1344,7 @@ static char *build_alter_table_foreign_key_existing_rows_sql(
     sqlite3_str_appendf(
         sql,
         " AND NOT EXISTS (SELECT 1 FROM \"%w\" AS parent WHERE ",
-        parent_physical_name
+        input->parent_physical_name
     );
     for (size_t index = 0U; index < foreign_key->column_count; ++index) {
         if (index != 0U) {
@@ -1372,35 +1373,6 @@ static int insert_alter_table_foreign_key_catalog_rows(
         foreign_key,
         1U
     );
-}
-
-static int delete_alter_table_foreign_key_catalog_rows(
-    mylite_stmt *stmt,
-    const char *constraint_name
-) {
-    static const char sql[] = "DELETE FROM __mylite_foreign_key_catalog "
-                              "WHERE constraint_schema = ? AND table_schema = ? AND table_name = ? "
-                              "AND constraint_name = ? COLLATE NOCASE";
-    sqlite3_stmt *delete_stmt = NULL;
-    int rc = sqlite3_prepare_v3(
-        stmt->database->sqlite,
-        sql,
-        -1,
-        SQLITE_PREPARE_PERSISTENT,
-        &delete_stmt,
-        NULL
-    );
-
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(stmt->database);
-    }
-    sqlite3_bind_text(delete_stmt, 1, stmt->alter_table.schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(delete_stmt, 2, stmt->alter_table.schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(delete_stmt, 3, stmt->alter_table.table_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(delete_stmt, 4, constraint_name, -1, SQLITE_TRANSIENT);
-    rc = sqlite3_step(delete_stmt);
-    sqlite3_finalize(delete_stmt);
-    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(stmt->database);
 }
 
 static int set_alter_table_duplicate_foreign_key_error(
@@ -1558,4 +1530,9 @@ static int set_alter_table_invalid_null_error(mylite_db *database) {
         mylite_error_message(database)
     );
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static sqlite3_destructor_type sqlite_transient_destructor(void) {
+    // SQLite's public macro intentionally uses this sentinel pointer value.
+    return SQLITE_TRANSIENT; // NOLINT(performance-no-int-to-ptr)
 }

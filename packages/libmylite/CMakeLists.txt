@@ -122,6 +122,7 @@ add_library(mylite STATIC
   src/runtime/mylite_expression_descriptor_union.c
   src/runtime/mylite_expression_validation.c
   src/runtime/mylite_field_descriptor.c
+  src/runtime/mylite_foreign_key_catalog.c
   src/runtime/mylite_function_names_charset.c
   src/runtime/mylite_function_names_compare.c
   src/runtime/mylite_function_names_conversion.c

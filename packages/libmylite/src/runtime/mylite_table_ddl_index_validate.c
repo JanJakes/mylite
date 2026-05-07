@@ -3,6 +3,7 @@
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
+#include "mylite_foreign_key_catalog.h"
 #include "mylite_span.h"
 #include "mylite_table_ddl_alter.h"
 #include "mylite_table_ddl_alter_index_model.h"
@@ -23,15 +24,6 @@ static int validate_index_ddl_target(mylite_db *database, const struct mylite_in
 static int set_duplicate_key_name_error(mylite_db *database, const char *index_name);
 
 static int set_drop_index_missing_error(mylite_db *database, const char *index_name);
-
-static int index_has_foreign_key_dependency(
-    mylite_db *database,
-    const char *schema_name,
-    const char *table_name,
-    const char *index_name,
-    bool temporary,
-    bool *out_has_dependency
-);
 
 static int set_drop_index_foreign_key_dependency_error(mylite_db *database, const char *index_name);
 
@@ -159,7 +151,7 @@ int mylite_table_ddl_validate_index_foreign_key_dependencies(
     bool temporary
 ) {
     bool has_dependency = false;
-    int status = index_has_foreign_key_dependency(
+    int status = mylite_foreign_key_catalog_index_dependency_exists(
         database,
         schema_name,
         table_name,
@@ -334,58 +326,6 @@ static int set_drop_index_missing_error(mylite_db *database, const char *index_n
         "'; check that column/key exists"
     );
     return MYLITE_EXEC_ERROR;
-}
-
-static int index_has_foreign_key_dependency(
-    mylite_db *database,
-    const char *schema_name,
-    const char *table_name,
-    const char *index_name,
-    bool temporary,
-    bool *out_has_dependency
-) {
-    const char *catalog_name = mylite_catalog_foreign_key_catalog_name(temporary);
-    sqlite3_stmt *select = NULL;
-    char *sql = sqlite3_mprintf(
-        "SELECT 1 FROM \"%w\" "
-        "WHERE (constraint_schema = ? COLLATE NOCASE "
-        "AND table_name = ? COLLATE NOCASE "
-        "AND supporting_index_name = ? COLLATE NOCASE) "
-        "OR (unique_constraint_schema = ? COLLATE NOCASE "
-        "AND referenced_table_schema = ? COLLATE NOCASE "
-        "AND referenced_table_name = ? COLLATE NOCASE "
-        "AND unique_constraint_name = ? COLLATE NOCASE) "
-        "LIMIT 1",
-        catalog_name
-    );
-    int rc = SQLITE_OK;
-
-    *out_has_dependency = false;
-    if (sql == NULL) {
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-
-    rc = sqlite3_prepare_v3(database->sqlite, sql, -1, SQLITE_PREPARE_PERSISTENT, &select, NULL);
-    sqlite3_free(sql);
-    if (rc != SQLITE_OK) {
-        return mylite_diagnostics_set_sqlite_error(database);
-    }
-    sqlite3_bind_text(select, 1, schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 2, table_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 3, index_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 4, schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 5, schema_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 6, table_name, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(select, 7, index_name, -1, SQLITE_TRANSIENT);
-
-    rc = sqlite3_step(select);
-    sqlite3_finalize(select);
-    if (rc == SQLITE_ROW) {
-        *out_has_dependency = true;
-        return MYLITE_OK;
-    }
-    return rc == SQLITE_DONE ? MYLITE_OK : mylite_diagnostics_set_sqlite_error(database);
 }
 
 static int set_drop_index_foreign_key_dependency_error(

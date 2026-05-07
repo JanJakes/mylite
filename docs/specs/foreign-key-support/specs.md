@@ -130,6 +130,12 @@ Required catalog fields:
 - match option
 - update and delete rules
 
+Catalog helper APIs centralize table-name selection, child constraint
+lookup/deletion, supporting and parent unique-index dependency lookups, child
+and parent table rename rewrites, generated child-constraint rename rewrites,
+and child/parent column rename rewrites. DDL paths use those helpers so
+metadata cleanup and dependency behavior share one implementation.
+
 Foreign keys apply only to supported persistent base tables in the first
 runtime slices. Temporary table behavior must be verified separately and
 implemented with explicit MySQL-compatible diagnostics before it is marked

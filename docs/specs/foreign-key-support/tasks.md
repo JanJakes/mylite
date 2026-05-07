@@ -8,8 +8,11 @@ commit.
 ## Foundation
 
 - [x] Add a persistent foreign-key catalog with one row per child column part.
-- [ ] Add catalog helper APIs for FK catalog names, cleanup, rename rewrites,
-      and lookup by child constraint or parent unique index.
+- [x] Add catalog helper APIs for FK catalog names, cleanup, rename rewrites,
+      and lookup by child constraint or parent unique index. The shared helper
+      now backs FK child-constraint lookup/deletion, supporting/parent index
+      dependency checks, table rename rewrites, and child/parent column
+      rewrites.
 - [x] Update `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`,
       `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`, and
       `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` to read from the FK catalog.

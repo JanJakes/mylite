@@ -36,6 +36,10 @@ It also covers the first TEXT/BLOB-family runtime edges:
 - invalid UTF-8 byte sequences assigned to `utf8mb4` `LONGTEXT` in the covered
   `INSERT ... VALUES` / `INSERT IGNORE` slice, while paired `LONGBLOB` values
   preserve raw bytes
+- MySQL's length-before-discarded-invalid-byte precedence for covered
+  `utf8mb4` character writes, where invalid UTF-8 bytes beyond the stored
+  `VARCHAR`/`TEXT` boundary do not produce an additional incorrect-string
+  condition
 
 It also covers MySQL-shaped conversion text for approximate numeric values
 stored into `VARCHAR`, `TEXT`, `LONGTEXT`, and `LONGBLOB` columns through
@@ -135,6 +139,16 @@ without validation. The covered MySQL-observed case stores `UNHEX('61C362')`
 into `LONGTEXT` as `0x61` under `INSERT IGNORE`, and stores the paired
 `LONGBLOB` value as `0x61C362`.
 
+When an overlength `utf8mb4` character or text assignment contains invalid
+bytes only in the suffix that length coercion discards, MySQL reports the
+length condition rather than an incorrect-string condition for that column.
+For example, assigning `UNHEX('61FF62')` to `VARCHAR(1)` rejects in strict mode
+with error 1406 and stores `0x61` in non-strict mode with warning 1265 only.
+Assigning `CONCAT(REPEAT('a',255), UNHEX('FF'))` to `TINYTEXT` similarly
+uses the 255-byte length boundary before validating the discarded `0xFF` byte.
+Invalid bytes inside the retained boundary still produce 1366 and store the
+valid prefix in non-strict modes.
+
 ## MyLite Design
 
 MyLite carries `CHARACTER_MAXIMUM_LENGTH` from the catalog into DML write-table
@@ -142,13 +156,14 @@ metadata. String DML coercion runs after temporal and numeric coercion, and
 before SQLite binding.
 
 For character string columns, MyLite counts UTF-8 character starts and truncates
-without splitting continuation bytes. This is compatible with current MyLite
-UTF-8 text handling for covered tests. For `utf8mb4` and `utf8mb3` character
-columns, MyLite validates assigned bytes before length coercion. In strict SQL
-modes invalid UTF-8 raises error 1366. In non-strict modes and covered `IGNORE`
-forms it appends warning 1366 and stores the valid prefix before the first
-invalid sequence. Complete charset-specific character and byte accounting
-remains deferred.
+without splitting valid multibyte sequences. For `utf8mb4` and `utf8mb3`
+character columns, MyLite validates assigned bytes within the target retained
+boundary. In strict SQL modes invalid UTF-8 inside that boundary raises error
+1366. In non-strict modes and covered `IGNORE` forms it appends warning 1366
+and stores the valid prefix before the first invalid sequence. Invalid bytes
+beyond the retained boundary are discarded by length coercion and do not add a
+second incorrect-string condition. Complete charset-specific character and byte
+accounting remains deferred.
 
 For binary string columns, MyLite applies the catalog length as bytes.
 `BINARY(N)` additionally pads shorter values with trailing `0x00` bytes before
@@ -205,3 +220,6 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - strict invalid UTF-8 rejection for `utf8mb4` `LONGTEXT`, `INSERT IGNORE`
   valid-prefix storage with warning 1366, and raw byte preservation for
   `LONGBLOB`
+- strict 1406 and non-strict 1265 length coercion, without extra 1366
+  conditions, when invalid `utf8mb4` bytes occur only in the discarded suffix
+  beyond a `VARCHAR` or `TINYTEXT` retained boundary

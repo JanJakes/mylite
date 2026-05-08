@@ -67777,6 +67777,20 @@ static int test_string_dml_coercion_execution(void) {
         {"1", "", "0", "", "0", "C3", "1"};
     static const char *const invalid_utf8_ignore_update_values[] =
         {"1", "", "0", "", "0", "61C362", "3"};
+    static const char *const invalid_utf8_discarded_columns[] =
+        {"id", "v_hex", "v_len", "tt_len", "tt_last"};
+    static const char *const invalid_utf8_discarded_values[] = {
+        "1",
+        "61",
+        "1",
+        "255",
+        "61",
+        "2",
+        "61",
+        "1",
+        "255",
+        "61",
+    };
     static const char *const invalid_utf8mb3_columns[] = {
         "id",
         "v3_hex",
@@ -68324,6 +68338,91 @@ static int test_string_dml_coercion_execution(void) {
         invalid_utf8_ignore_update_values,
         1,
         "invalid utf8 update ignore stored prefix"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE invalid_utf8_discarded_suffix ("
+        "id INT PRIMARY KEY, v VARCHAR(1), tt TINYTEXT) DEFAULT CHARSET=utf8mb4",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO invalid_utf8_discarded_suffix VALUES "
+        "(1, UNHEX('61FF62'), CONCAT(REPEAT('a',255), UNHEX('FF')))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 'v' at row 1",
+        "strict invalid utf8 discarded varchar suffix length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict invalid utf8 discarded varchar suffix code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "INSERT INTO invalid_utf8_discarded_suffix VALUES "
+        "(2, 'a', CONCAT(REPEAT('a',255), UNHEX('FF')))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 'tt' at row 1",
+        "strict invalid utf8 discarded tinytext suffix length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "strict invalid utf8 discarded tinytext suffix code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM invalid_utf8_discarded_suffix",
+        0,
+        "strict invalid utf8 discarded suffix no inserted row"
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO invalid_utf8_discarded_suffix VALUES "
+        "(1, UNHEX('61FF62'), CONCAT(REPEAT('a',255), UNHEX('FF'))),"
+        "(2, UNHEX('618062'), CONCAT(REPEAT('a',255), UNHEX('80')))",
+        2,
+        "non-strict invalid utf8 discarded suffix insert"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        4,
+        "invalid utf8 discarded suffix warning count"
+    );
+    for (int warning = 0; warning < 4; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_truncated,
+            "invalid utf8 discarded suffix warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(v) AS v_hex, LENGTH(v) AS v_len, "
+        "LENGTH(tt) AS tt_len, HEX(RIGHT(tt,1)) AS tt_last "
+        "FROM invalid_utf8_discarded_suffix",
+        invalid_utf8_discarded_columns,
+        5,
+        invalid_utf8_discarded_values,
+        2,
+        "invalid utf8 discarded suffix clipped values"
     );
 
     failures += execute_sql(

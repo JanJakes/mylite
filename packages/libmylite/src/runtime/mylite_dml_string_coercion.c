@@ -137,6 +137,12 @@ static int coerce_string_text(
     struct mylite_dml_string_output *out_output
 );
 
+static size_t string_text_validation_byte_length(
+    enum mylite_dml_string_kind kind,
+    const struct mylite_dml_string_text *text,
+    uint64_t maximum_length
+);
+
 static int validate_string_text(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -144,6 +150,7 @@ static int validate_string_text(
     uint64_t row_number,
     bool ignore,
     const struct mylite_dml_string_text *text,
+    size_t validation_length,
     struct mylite_dml_string_output *out_output
 );
 
@@ -241,6 +248,13 @@ static size_t string_text_truncated_byte_length(
 static size_t utf8_prefix_for_byte_limit(const char *text, size_t length, uint64_t byte_limit);
 
 static size_t utf8_prefix_byte_length(const char *text, size_t length, uint64_t character_limit);
+
+static bool utf8_valid_sequence_at(
+    const char *text,
+    size_t length,
+    size_t index,
+    size_t *out_sequence_length
+);
 
 static int handle_string_truncation(
     mylite_db *database,
@@ -535,10 +549,21 @@ static int coerce_string_text(
 ) {
     struct mylite_dml_string_output utf8_output = {0};
     struct mylite_dml_string_text effective_text = *text;
+    size_t validation_length =
+        string_text_validation_byte_length(kind, text, column->character_maximum_length);
     size_t truncated_length = 0U;
     int status = MYLITE_OK;
 
-    status = validate_string_text(database, column, kind, row_number, ignore, text, &utf8_output);
+    status = validate_string_text(
+        database,
+        column,
+        kind,
+        row_number,
+        ignore,
+        text,
+        validation_length,
+        &utf8_output
+    );
     if (status != MYLITE_OK) {
         return status;
     }
@@ -595,6 +620,25 @@ static int coerce_string_text(
     return MYLITE_OK;
 }
 
+static size_t string_text_validation_byte_length(
+    enum mylite_dml_string_kind kind,
+    const struct mylite_dml_string_text *text,
+    uint64_t maximum_length
+) {
+    size_t text_length = text == NULL ? 0U : text->length;
+
+    if (text == NULL || !string_text_exceeds_column_length(kind, text, maximum_length)) {
+        return text_length;
+    }
+    if (kind == MYLITE_DML_STRING_TEXT_BYTES) {
+        return maximum_length > (uint64_t)SIZE_MAX ? text_length : (size_t)maximum_length;
+    }
+    if (kind == MYLITE_DML_STRING_CHARACTER) {
+        return utf8_prefix_byte_length(text->text, text->length, maximum_length);
+    }
+    return text_length;
+}
+
 static int validate_string_text(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -602,6 +646,7 @@ static int validate_string_text(
     uint64_t row_number,
     bool ignore,
     const struct mylite_dml_string_text *text,
+    size_t validation_length,
     struct mylite_dml_string_output *out_output
 ) {
     struct mylite_dml_utf8_validation validation = {0};
@@ -619,6 +664,9 @@ static int validate_string_text(
         allow_four_byte
     );
     if (validation.valid) {
+        return MYLITE_OK;
+    }
+    if (validation.invalid_offset >= validation_length) {
         return MYLITE_OK;
     }
     return handle_invalid_utf8_text(
@@ -995,7 +1043,9 @@ static size_t string_text_truncated_byte_length(
 }
 
 static size_t utf8_prefix_for_byte_limit(const char *text, size_t length, uint64_t byte_limit) {
+    size_t limit = 0U;
     size_t index = 0U;
+    size_t prefix = 0U;
 
     if (text == NULL) {
         return 0U;
@@ -1003,11 +1053,22 @@ static size_t utf8_prefix_for_byte_limit(const char *text, size_t length, uint64
     if (byte_limit >= (uint64_t)length) {
         return length;
     }
-    index = byte_limit > (uint64_t)SIZE_MAX ? length : (size_t)byte_limit;
-    while (index > 0U && ((unsigned char)text[index] & 0xC0U) == 0x80U) {
-        --index;
+    limit = byte_limit > (uint64_t)SIZE_MAX ? length : (size_t)byte_limit;
+    while (index < limit) {
+        size_t sequence_length = 1U;
+
+        if (utf8_valid_sequence_at(text, length, index, &sequence_length)) {
+            if (index + sequence_length > limit) {
+                return prefix;
+            }
+            index += sequence_length;
+            prefix = index;
+            continue;
+        }
+        ++index;
+        prefix = index;
     }
-    return index;
+    return prefix;
 }
 
 static size_t utf8_prefix_byte_length(const char *text, size_t length, uint64_t character_limit) {
@@ -1018,16 +1079,48 @@ static size_t utf8_prefix_byte_length(const char *text, size_t length, uint64_t 
         return 0U;
     }
     while (index < length && characters < character_limit) {
-        unsigned char byte = (unsigned char)text[index++];
+        size_t sequence_length = 1U;
 
-        if ((byte & 0xC0U) != 0x80U) {
-            ++characters;
+        if (utf8_valid_sequence_at(text, length, index, &sequence_length)) {
+            index += sequence_length;
+        } else {
+            ++index;
         }
-    }
-    while (index < length && ((unsigned char)text[index] & 0xC0U) == 0x80U) {
-        ++index;
+        ++characters;
     }
     return index;
+}
+
+static bool utf8_valid_sequence_at(
+    const char *text,
+    size_t length,
+    size_t index,
+    size_t *out_sequence_length
+) {
+    const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
+    unsigned char first = index < length ? source[index] : 0U;
+    struct mylite_dml_utf8_sequence sequence = {0};
+
+    if (out_sequence_length == NULL || text == NULL || index >= length) {
+        return false;
+    }
+    if (first <= MYLITE_DML_ASCII_MAX) {
+        *out_sequence_length = 1U;
+        return true;
+    }
+    if (!utf8_sequence_from_first(first, true, &sequence) || index + sequence.length > length ||
+        source[index + MYLITE_DML_UTF8_SECOND_BYTE_OFFSET] < sequence.second_min ||
+        source[index + MYLITE_DML_UTF8_SECOND_BYTE_OFFSET] > sequence.second_max) {
+        return false;
+    }
+    for (size_t offset = MYLITE_DML_UTF8_CONTINUATION_START_OFFSET; offset < sequence.length;
+         ++offset) {
+        if (!utf8_continuation_byte(source[index + offset])) {
+            return false;
+        }
+    }
+    *out_sequence_length = sequence.length;
+    return true;
 }
 
 static int handle_string_truncation(

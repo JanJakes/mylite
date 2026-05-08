@@ -5,6 +5,7 @@
 #include "mylite_dml.h"
 #include "mylite_dml_binary_literal.h"
 #include "mylite_dml_insert_diagnostics.h"
+#include "mylite_error_codes.h"
 #include "mylite_span.h"
 #include "mylite_uint64_text.h"
 #include "sql/mylite_parser.h"
@@ -18,6 +19,13 @@
 #include <time.h>
 
 static int set_insert_bound_text_value(
+    mylite_db *database,
+    const char *text,
+    size_t text_length,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int set_insert_bound_blob_value(
     mylite_db *database,
     const char *text,
     size_t text_length,
@@ -45,6 +53,16 @@ static int resolve_insert_binary_literal_numeric_value(
     size_t text_length,
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+);
+
+static int resolve_insert_binary_literal_bit_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_binary_literal_kind literal_kind,
+    const char *text,
+    size_t text_length,
     bool ignore,
     struct mylite_insert_bound_value *out_value
 );
@@ -84,6 +102,8 @@ static bool insert_plan_coerces_missing_required_default(
 
 static bool insert_column_uses_temporal_storage(const struct mylite_insert_table_column *column);
 
+static bool insert_column_uses_bit_storage(const struct mylite_insert_table_column *column);
+
 static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column);
 
 static bool insert_text_integer_prefix_exceeds_int64(const char *text, size_t text_length);
@@ -98,6 +118,39 @@ static unsigned int insert_column_current_timestamp_fsp(
 static unsigned int insert_column_temporal_fsp(const struct mylite_insert_table_column *column);
 
 static bool parse_insert_column_type_fsp(const char *column_type, unsigned int *out_fsp);
+
+static bool parse_insert_column_type_bit_width(const char *column_type, unsigned int *out_width);
+
+static bool bit_literal_bytes_to_uint64(const char *text, size_t text_length, uint64_t *out_value);
+
+static bool bit_value_exceeds_width(uint64_t value, unsigned int width);
+
+static uint64_t clipped_bit_value(unsigned int width);
+
+static int handle_bit_value_too_long(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    unsigned int width,
+    bool ignore,
+    uint64_t *value
+);
+
+static int set_bit_value_too_long_error(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column
+);
+
+static int append_bit_value_too_long_warning(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column
+);
+
+static int set_insert_bit_bound_value(
+    mylite_db *database,
+    uint64_t value,
+    unsigned int width,
+    struct mylite_insert_bound_value *out_value
+);
 
 static int resolve_insert_generated_default_bound_value(
     mylite_db *database,
@@ -575,6 +628,17 @@ int mylite_dml_resolve_insert_binary_literal_value(
     if (literal_kind == MYLITE_DML_BINARY_LITERAL_NONE || value->text == NULL) {
         return mylite_dml_insert_set_unsupported_expression_error(database);
     }
+    if (insert_column_uses_bit_storage(column)) {
+        return resolve_insert_binary_literal_bit_value(
+            database,
+            column,
+            literal_kind,
+            value->text,
+            value->text_length,
+            ignore,
+            out_value
+        );
+    }
     if (insert_column_uses_numeric_implicit_default(column)) {
         return resolve_insert_binary_literal_numeric_value(
             database,
@@ -663,6 +727,22 @@ static int set_insert_bound_text_value(
         return MYLITE_NOMEM;
     }
     out_value->kind = MYLITE_INSERT_BOUND_TEXT;
+    out_value->text_length = text_length;
+    return MYLITE_OK;
+}
+
+static int set_insert_bound_blob_value(
+    mylite_db *database,
+    const char *text,
+    size_t text_length,
+    struct mylite_insert_bound_value *out_value
+) {
+    out_value->text_value = mylite_copy_span_text(text, text_length);
+    if (out_value->text_value == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    out_value->kind = MYLITE_INSERT_BOUND_BLOB;
     out_value->text_length = text_length;
     return MYLITE_OK;
 }
@@ -807,6 +887,54 @@ static int resolve_insert_binary_literal_numeric_value(
     return status;
 }
 
+static int resolve_insert_binary_literal_bit_value(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_binary_literal_kind literal_kind,
+    const char *text,
+    size_t text_length,
+    bool ignore,
+    struct mylite_insert_bound_value *out_value
+) {
+    char *decoded_text = NULL;
+    size_t decoded_length = 0U;
+    unsigned int width = 0U;
+    uint64_t value = 0U;
+    int status = MYLITE_OK;
+
+    if (!parse_insert_column_type_bit_width(column->column_type, &width)) {
+        return mylite_dml_insert_set_unsupported_expression_error(database);
+    }
+
+    status = mylite_dml_binary_literal_decode(
+        literal_kind,
+        text,
+        text_length,
+        &decoded_text,
+        &decoded_length
+    );
+    if (status != MYLITE_OK) {
+        if (status == MYLITE_NOMEM) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return status;
+        }
+        return mylite_dml_insert_set_unsupported_expression_error(database);
+    }
+
+    if (!bit_literal_bytes_to_uint64(decoded_text, decoded_length, &value) ||
+        bit_value_exceeds_width(value, width)) {
+        status = handle_bit_value_too_long(database, column, width, ignore, &value);
+        if (status != MYLITE_OK) {
+            free(decoded_text);
+            return status;
+        }
+    }
+
+    status = set_insert_bit_bound_value(database, value, width, out_value);
+    free(decoded_text);
+    return status;
+}
+
 static int resolve_insert_binary_literal_text_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -895,6 +1023,11 @@ static bool insert_column_uses_temporal_storage(const struct mylite_insert_table
         }
     }
     return false;
+}
+
+static bool insert_column_uses_bit_storage(const struct mylite_insert_table_column *column) {
+    return column != NULL && column->data_type != NULL &&
+           mylite_ascii_case_equal(column->data_type, "bit");
 }
 
 static bool insert_column_uses_text_storage(const struct mylite_insert_table_column *column) {
@@ -1052,4 +1185,142 @@ static bool parse_insert_column_type_fsp(const char *column_type, unsigned int *
         *out_fsp = fsp;
     }
     return true;
+}
+
+static bool parse_insert_column_type_bit_width(const char *column_type, unsigned int *out_width) {
+    const char *open = column_type == NULL ? NULL : strchr(column_type, '(');
+    const char *close = open == NULL ? NULL : strchr(open, ')');
+    unsigned int width = 0U;
+
+    if (out_width != NULL) {
+        *out_width = 0U;
+    }
+    if (open == NULL || close == NULL || close <= open + 1) {
+        return false;
+    }
+    for (const char *cursor = open + 1; cursor < close; ++cursor) {
+        if (!isdigit((unsigned char)*cursor)) {
+            return false;
+        }
+        width = (width * 10U) + (unsigned int)(*cursor - '0');
+        if (width > 64U) {
+            return false;
+        }
+    }
+    if (width == 0U) {
+        return false;
+    }
+    if (out_width != NULL) {
+        *out_width = width;
+    }
+    return true;
+}
+
+static bool bit_literal_bytes_to_uint64(const char *text, size_t text_length, uint64_t *out_value) {
+    size_t offset = 0U;
+    uint64_t value = 0U;
+
+    if (text == NULL || out_value == NULL) {
+        return false;
+    }
+    while (offset < text_length && text[offset] == '\0') {
+        ++offset;
+    }
+    if (text_length - offset > sizeof(uint64_t)) {
+        return false;
+    }
+    while (offset < text_length) {
+        value = (value << 8U) | (uint64_t)(unsigned char)text[offset];
+        ++offset;
+    }
+    *out_value = value;
+    return true;
+}
+
+static bool bit_value_exceeds_width(uint64_t value, unsigned int width) {
+    if (width >= 64U) {
+        return false;
+    }
+    return (value >> width) != 0U;
+}
+
+static uint64_t clipped_bit_value(unsigned int width) {
+    if (width >= 64U) {
+        return UINT64_MAX;
+    }
+    return (UINT64_C(1) << width) - UINT64_C(1);
+}
+
+static int handle_bit_value_too_long(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    unsigned int width,
+    bool ignore,
+    uint64_t *value
+) {
+    int status = MYLITE_OK;
+
+    if (!ignore && mylite_connection_sql_mode_is_strict(database)) {
+        return set_bit_value_too_long_error(database, column);
+    }
+    status = append_bit_value_too_long_warning(database, column);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *value = clipped_bit_value(width);
+    return MYLITE_OK;
+}
+
+static int set_bit_value_too_long_error(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column
+) {
+    char *message = sqlite3_mprintf("Data too long for column '%q' at row 1", column->name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_DATA_TOO_LONG, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int append_bit_value_too_long_warning(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column
+) {
+    char *message = sqlite3_mprintf("Data too long for column '%q' at row 1", column->name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_DATA_TOO_LONG, message);
+    sqlite3_free(message);
+    return status;
+}
+
+static int set_insert_bit_bound_value(
+    mylite_db *database,
+    uint64_t value,
+    unsigned int width,
+    struct mylite_insert_bound_value *out_value
+) {
+    enum { bits_per_byte = 8U };
+
+    char bytes[sizeof(uint64_t)];
+    size_t storage_bytes = (width + (bits_per_byte - 1U)) / bits_per_byte;
+
+    for (size_t index = 0U; index < storage_bytes; ++index) {
+        unsigned int shift = (unsigned int)((storage_bytes - index - 1U) * bits_per_byte);
+
+        bytes[index] = (char)((value >> shift) & 0xFFU);
+    }
+    return set_insert_bound_blob_value(database, bytes, storage_bytes, out_value);
 }

@@ -387,6 +387,7 @@ int mylite_dml_copy_insert_bound_value_to_expression(
         };
         return MYLITE_OK;
     case MYLITE_INSERT_BOUND_TEXT:
+    case MYLITE_INSERT_BOUND_BLOB:
         out_value->text_length = value->text_value == NULL ? 0U : value->text_length;
         out_value->text_value = mylite_copy_span_text(value->text_value, out_value->text_length);
         if (out_value->text_value == NULL) {

@@ -2947,6 +2947,7 @@ static int append_alter_table_foreign_key_child_value_sql(
         sqlite3_str_appendf(sql, "%!.17g", value.real_value);
         break;
     case MYLITE_INSERT_BOUND_TEXT:
+    case MYLITE_INSERT_BOUND_BLOB:
         sqlite3_str_appendf(sql, "%Q", value.text_value == NULL ? "" : value.text_value);
         break;
     }

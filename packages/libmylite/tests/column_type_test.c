@@ -12,6 +12,9 @@ static const unsigned int bigint_unsigned_precision = 20U;
 static const unsigned int bigint_storage_bytes = 8U;
 static const unsigned int display_width_max = 255U;
 static const unsigned int display_width_out_of_range = 256U;
+static const unsigned int bit_default_precision = 1U;
+static const unsigned int bit_max_precision = 64U;
+static const unsigned int bit_nine_storage_bytes = 2U;
 static const unsigned long long tiny_string_capacity = 255ULL;
 static const unsigned long long regular_string_capacity = 65535ULL;
 static const unsigned long long long_string_capacity = 4294967295ULL;
@@ -55,6 +58,8 @@ static int test_integer_aliases(void);
 
 static int test_display_width_metadata(void);
 
+static int test_bit_type_metadata(void);
+
 static int test_string_binary_type_metadata(void);
 
 static int test_string_binary_aliases_and_charsets(void);
@@ -85,6 +90,13 @@ static int describe_type(
 );
 
 static int describe_string_binary_type(
+    const char *type_name,
+    struct mylite_column_type_attributes attributes,
+    enum mylite_column_type_status expected_status,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static int describe_bit_type(
     const char *type_name,
     struct mylite_column_type_attributes attributes,
     enum mylite_column_type_status expected_status,
@@ -123,6 +135,7 @@ int main(void) {
     failures += test_integer_type_metadata();
     failures += test_integer_aliases();
     failures += test_display_width_metadata();
+    failures += test_bit_type_metadata();
     failures += test_string_binary_type_metadata();
     failures += test_string_binary_aliases_and_charsets();
     failures += test_text_blob_length_mapping();
@@ -310,6 +323,61 @@ static int test_display_width_metadata(void) {
     );
     failures += expect_bool(descriptor.is_unsigned, true, "mixed signedness unsigned wins");
     failures += expect_string(descriptor.column_type, "int unsigned", "mixed signedness type");
+
+    return failures;
+}
+
+static int test_bit_type_metadata(void) {
+    struct mylite_column_type_descriptor descriptor;
+    struct mylite_column_type_attributes attributes = no_column_type_attributes();
+    int failures = 0;
+
+    failures += describe_bit_type("BIT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_bool(descriptor.is_bit, true, "bit descriptor flag");
+    failures += expect_string(descriptor.data_type, "bit", "bit data type");
+    failures += expect_string(descriptor.column_type, "bit(1)", "bit default column type");
+    failures += expect_uint(descriptor.numeric_precision, bit_default_precision, "bit precision");
+    failures += expect_bool(descriptor.has_numeric_scale, false, "bit numeric scale null");
+    failures += expect_uint(descriptor.storage_bytes, 1U, "bit storage bytes");
+    failures += expect_bool(descriptor.is_binary_string, false, "bit is not binary string");
+    failures += expect_bool(descriptor.is_character_string, false, "bit is not character string");
+
+    attributes.has_precision = true;
+    attributes.precision = 9ULL;
+    failures += describe_bit_type("BIT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "bit(9)", "bit(9) column type");
+    failures += expect_uint(descriptor.numeric_precision, 9U, "bit(9) precision");
+    failures += expect_uint(descriptor.storage_bytes, bit_nine_storage_bytes, "bit(9) storage");
+
+    attributes.precision = bit_max_precision;
+    failures += describe_bit_type("BIT", attributes, MYLITE_COLUMN_TYPE_OK, &descriptor);
+    failures += expect_string(descriptor.column_type, "bit(64)", "bit(64) column type");
+    failures += expect_uint(descriptor.storage_bytes, 8U, "bit(64) storage");
+
+    attributes.precision = 0ULL;
+    failures += describe_bit_type(
+        "BIT",
+        attributes,
+        MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE,
+        &descriptor
+    );
+
+    attributes.precision = bit_max_precision + 1U;
+    failures += describe_bit_type(
+        "BIT",
+        attributes,
+        MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE,
+        &descriptor
+    );
+
+    attributes = no_column_type_attributes();
+    attributes.has_unsigned = true;
+    failures +=
+        describe_bit_type("BIT", attributes, MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+
+    attributes = character_set_attribute("utf8mb4");
+    failures +=
+        describe_bit_type("BIT", attributes, MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
 
     return failures;
 }
@@ -1472,6 +1540,28 @@ static int describe_string_binary_type(
         attributes,
         out_descriptor
     );
+
+    if (actual != expected_status) {
+        fprintf(
+            stderr,
+            "%s: expected %s, got %s\n",
+            type_name,
+            mylite_column_type_status_name(expected_status),
+            mylite_column_type_status_name(actual)
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int describe_bit_type(
+    const char *type_name,
+    struct mylite_column_type_attributes attributes,
+    enum mylite_column_type_status expected_status,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
+    enum mylite_column_type_status actual =
+        mylite_column_type_describe_bit(type_name, strlen(type_name), attributes, out_descriptor);
 
     if (actual != expected_status) {
         fprintf(

@@ -183,7 +183,7 @@ static void mylite_sql_parser_stack_free(void *pointer, void *context)
 %right KEY.
 %left REFERENCE_END.
 %left MATCH ON.
-%fallback IDENTIFIER ADDDATE AFTER AGGREGATE AT AUTO_INCREMENT BEGIN BOOL BOOLEAN BTREE CATALOG_NAME
+%fallback IDENTIFIER ADDDATE AFTER AGGREGATE AT AUTO_INCREMENT BEGIN BIT BOOL BOOLEAN BTREE CATALOG_NAME
     CHAIN CHARSET CLASS_ORIGIN COLLATION COLUMN_FORMAT COLUMN_NAME COMMENT COMMIT COMPLETION
     CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS COUNT CURRENT
     CURSOR_NAME DATA DATE DATETIME DATE_ADD DATE_SUB DAY DEFINER DISABLE DISK DO DYNAMIC ENABLE ENDS
@@ -2934,6 +2934,9 @@ column_type(A) ::= integer_column_type(B). {
 column_type(A) ::= boolean_column_type(B). {
     A = B;
 }
+column_type(A) ::= bit_column_type(B). {
+    A = B;
+}
 column_type(A) ::= character_column_type(B). {
     A = B;
 }
@@ -3030,6 +3033,21 @@ boolean_column_type(A) ::= BOOL(T). {
 }
 boolean_column_type(A) ::= BOOLEAN(T). {
     A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN);
+}
+
+bit_column_type(A) ::= BIT(T) opt_bit_precision(B). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_set_column_precision_scale(
+            state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_BIT),
+            B));
+}
+
+opt_bit_precision(A) ::= . {
+    A = NULL;
+}
+opt_bit_precision(A) ::= column_precision(B). {
+    A = B;
 }
 
 character_column_type(A) ::= CHAR(T) opt_column_length(B) character_type_attribute_list(C). {

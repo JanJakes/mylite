@@ -108,6 +108,9 @@ static const char *sqlite_affinity_for_descriptor(
     if (descriptor->is_exact_numeric) {
         return "NUMERIC";
     }
+    if (descriptor->is_bit) {
+        return "BLOB";
+    }
     if (descriptor->is_binary_string) {
         return "BLOB";
     }

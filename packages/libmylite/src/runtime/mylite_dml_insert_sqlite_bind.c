@@ -53,6 +53,17 @@ int mylite_dml_bind_insert_bound_value(
             (int)value->text_length,
             sqlite_transient_destructor()
         );
+    case MYLITE_INSERT_BOUND_BLOB:
+        if (value->text_length > (size_t)INT_MAX) {
+            return SQLITE_TOOBIG;
+        }
+        return sqlite3_bind_blob(
+            stmt,
+            index,
+            value->text_value,
+            (int)value->text_length,
+            sqlite_transient_destructor()
+        );
     }
 
     return SQLITE_MISUSE;

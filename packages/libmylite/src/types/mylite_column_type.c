@@ -82,6 +82,8 @@ struct mylite_precision_scale_limits {
 
 enum {
     display_width_max = 255U,
+    bit_precision_default = 1U,
+    bit_precision_max = 64U,
     decimal_precision_max = 65U,
     decimal_scale_max = 30U,
     float_binary_precision_max = 53U,
@@ -166,6 +168,11 @@ static void format_integer_column_type(
     struct mylite_column_type_attributes attributes,
     char *out_column_type,
     size_t column_type_size
+);
+
+static void fill_bit_descriptor(
+    unsigned int precision,
+    struct mylite_column_type_descriptor *out_descriptor
 );
 
 static enum mylite_column_type_status describe_decimal(
@@ -314,6 +321,40 @@ enum mylite_column_type_status mylite_column_type_describe_integer(
 
     is_unsigned = attributes.has_unsigned;
     fill_integer_descriptor(info, is_unsigned, is_boolean_alias, attributes, out_descriptor);
+    return MYLITE_COLUMN_TYPE_OK;
+}
+
+enum mylite_column_type_status mylite_column_type_describe_bit(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
+    uint64_t precision = bit_precision_default;
+
+    if (out_descriptor == NULL) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    *out_descriptor = (struct mylite_column_type_descriptor){0};
+
+    if (type_name == NULL || !ascii_case_equal(type_name, type_name_length, "BIT")) {
+        return MYLITE_COLUMN_TYPE_UNKNOWN;
+    }
+    if (attributes.has_display_width || attributes.has_length || attributes.has_scale ||
+        attributes.has_signed || attributes.has_unsigned || attributes.has_character_set ||
+        attributes.has_collation || attributes.has_binary_attribute ||
+        attributes.has_byte_attribute || attributes.has_zerofill_attribute ||
+        attributes.is_national) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    if (attributes.has_precision) {
+        precision = attributes.precision;
+    }
+    if (precision == 0ULL || precision > bit_precision_max) {
+        return MYLITE_COLUMN_TYPE_PRECISION_OUT_OF_RANGE;
+    }
+
+    fill_bit_descriptor((unsigned int)precision, out_descriptor);
     return MYLITE_COLUMN_TYPE_OK;
 }
 
@@ -914,6 +955,26 @@ static void format_integer_column_type(
     }
 
     (void)snprintf(out_column_type, column_type_size, "%s", info->canonical_type_name);
+}
+
+static void fill_bit_descriptor(
+    unsigned int precision,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
+    *out_descriptor = (struct mylite_column_type_descriptor){
+        .is_bit = true,
+        .storage_bytes = (precision + 7U) / 8U,
+        .numeric_precision = precision,
+        .has_numeric_scale = false,
+        .canonical_type_name = "bit",
+        .data_type = "bit",
+    };
+    (void)snprintf(
+        out_descriptor->column_type,
+        sizeof(out_descriptor->column_type),
+        "bit(%u)",
+        precision
+    );
 }
 
 static enum mylite_column_type_status describe_decimal(

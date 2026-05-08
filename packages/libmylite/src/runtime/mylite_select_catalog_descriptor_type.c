@@ -17,6 +17,11 @@ static int apply_catalog_integer_column_descriptor(
     struct mylite_field_descriptor *descriptor
 );
 
+static int apply_catalog_bit_column_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+);
+
 static int apply_catalog_character_column_descriptor(
     mylite_db *database,
     const struct mylite_catalog_column_descriptor_source *source,
@@ -68,6 +73,10 @@ int mylite_select_catalog_apply_column_type_descriptor(
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
+    status = apply_catalog_bit_column_descriptor(source, descriptor);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
     status = apply_catalog_character_column_descriptor(database, source, descriptor);
     if (status != MYLITE_UNSUPPORTED) {
         return status;
@@ -116,6 +125,20 @@ static int apply_catalog_integer_column_descriptor(
     } else {
         return MYLITE_UNSUPPORTED;
     }
+    return MYLITE_OK;
+}
+
+static int apply_catalog_bit_column_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+) {
+    if (!mylite_ascii_case_equal(source->data_type, "bit")) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    descriptor->type = MYLITE_FIELD_TYPE_BIT;
+    descriptor->length = catalog_int64_or_zero(source->select, source->numeric_precision_index);
+    descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
     return MYLITE_OK;
 }
 

@@ -39,6 +39,7 @@ enum mylite_insert_bound_value_kind {
     MYLITE_INSERT_BOUND_INTEGER = 1,
     MYLITE_INSERT_BOUND_REAL = 2,
     MYLITE_INSERT_BOUND_TEXT = 3,
+    MYLITE_INSERT_BOUND_BLOB = 4,
 };
 
 struct mylite_insert_column_reference {

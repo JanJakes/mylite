@@ -109,6 +109,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Attach MySQL-specific duplicate DDL error codes for supported
       `CREATE TABLE` duplicate table, column, key-name, and primary-key
       validation failures instead of falling back to generic 1105 diagnostics.
+- [x] Support first-slice `BIT` column DDL and metadata, including `BIT`,
+      `BIT(n)` widths `1..64`, `INFORMATION_SCHEMA.COLUMNS`, `SHOW COLUMNS`,
+      `SHOW CREATE TABLE`, table-backed result metadata, and bit/hex literal
+      inserts with strict/`IGNORE` width diagnostics.
 
 ## DML
 
@@ -154,6 +158,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       scalar `LIKE`, explicit `LIKE ... ESCAPE`, and `SHOW ... LIKE` patterns
       now follow MySQL 8.4.9-observed behavior.
 - [x] Fix binary literal evaluation such as `SELECT 0b000000001`.
+- [x] Store bit and hex literals into `BIT` columns with MySQL-compatible byte
+      width, zero padding, and overflow handling for covered insert paths.
 - [x] Preserve string values containing null bytes instead of truncating at
       `\0`. Scalar `SELECT` literals and DML storage/update paths now preserve
       embedded NUL byte lengths, and scalar `LIKE` matching is length-aware for

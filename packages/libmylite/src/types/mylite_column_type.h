@@ -94,6 +94,7 @@ struct mylite_column_type_descriptor {
     enum mylite_column_temporal_type temporal_type;
     bool is_unsigned;
     bool is_boolean_alias;
+    bool is_bit;
     bool is_binary_string;
     bool is_character_string;
     bool is_exact_numeric;
@@ -125,6 +126,13 @@ struct mylite_column_type_descriptor {
 };
 
 enum mylite_column_type_status mylite_column_type_describe_integer(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+enum mylite_column_type_status mylite_column_type_describe_bit(
     const char *type_name,
     size_t type_name_length,
     struct mylite_column_type_attributes attributes,

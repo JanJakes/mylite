@@ -238,6 +238,7 @@ static int append_alter_table_added_column_value_literal(
         sqlite3_str_appendf(sql, "%.15g", value.real_value);
         break;
     case MYLITE_INSERT_BOUND_TEXT:
+    case MYLITE_INSERT_BOUND_BLOB:
         sqlite3_str_appendf(sql, "%Q", value.text_value);
         break;
     }

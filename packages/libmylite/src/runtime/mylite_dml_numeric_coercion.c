@@ -408,6 +408,8 @@ static int coerce_insert_numeric_value(
             &output
         );
         break;
+    case MYLITE_INSERT_BOUND_BLOB:
+        return MYLITE_OK;
     case MYLITE_INSERT_BOUND_NULL:
         return MYLITE_OK;
     }

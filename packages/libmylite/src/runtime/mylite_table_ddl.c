@@ -29,6 +29,8 @@ static bool create_table_column_uses_integer_descriptor(
     enum mylite_sql_ast_column_type column_type
 );
 
+static bool create_table_column_uses_bit_descriptor(enum mylite_sql_ast_column_type column_type);
+
 static bool create_table_column_uses_string_binary_descriptor(
     enum mylite_sql_ast_column_type column_type
 );
@@ -180,6 +182,13 @@ int mylite_table_ddl_describe_create_table_column(
             attributes,
             out_descriptor
         );
+    } else if (create_table_column_uses_bit_descriptor(column->type.ast_type)) {
+        status = mylite_column_type_describe_bit(
+            type_name,
+            strlen(type_name),
+            attributes,
+            out_descriptor
+        );
     } else if (create_table_column_uses_string_binary_descriptor(column->type.ast_type)) {
         status = mylite_column_type_describe_string_binary(
             type_name,
@@ -271,6 +280,8 @@ static const char *create_table_column_type_name(enum mylite_sql_ast_column_type
         return "BIGINT";
     case MYLITE_SQL_AST_COLUMN_TYPE_SERIAL:
         return "BIGINT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIT:
+        return "BIT";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
         return "BOOL";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
@@ -335,6 +346,10 @@ static bool create_table_column_uses_integer_descriptor(
         return false;
     }
     return true;
+}
+
+static bool create_table_column_uses_bit_descriptor(enum mylite_sql_ast_column_type column_type) {
+    return column_type == MYLITE_SQL_AST_COLUMN_TYPE_BIT;
 }
 
 static bool create_table_column_uses_string_binary_descriptor(

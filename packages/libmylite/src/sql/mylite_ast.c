@@ -1231,6 +1231,8 @@ const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type colu
         return "bigint";
     case MYLITE_SQL_AST_COLUMN_TYPE_SERIAL:
         return "serial";
+    case MYLITE_SQL_AST_COLUMN_TYPE_BIT:
+        return "bit";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
         return "bool";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:

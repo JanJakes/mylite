@@ -14,6 +14,8 @@ static int test_connection_charset_statements(void);
 
 static int test_create_table_integer_boolean_columns(void);
 
+static int test_create_table_bit_columns(void);
+
 static int test_create_table_string_binary_columns(void);
 
 static int test_create_table_numeric_columns(void);
@@ -393,6 +395,7 @@ int main(void) {
     failures += test_schema_lifecycle_statements();
     failures += test_connection_charset_statements();
     failures += test_create_table_integer_boolean_columns();
+    failures += test_create_table_bit_columns();
     failures += test_create_table_string_binary_columns();
     failures += test_create_table_numeric_columns();
     failures += test_create_table_temporal_columns();
@@ -1160,6 +1163,98 @@ static int test_create_table_integer_boolean_columns(void) {
     failures += parse_sql(
         "CREATE TABLE supported_attributes (a INT NOT NULL);",
         MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_bit_columns(void) {
+    enum {
+        expected_column_count = 4,
+        bit_one_column = 1,
+        bit_eight_column = 2,
+        bit_sixty_four_column = 3,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE app.bit_types (a BIT, b BIT(1), c BIT(8), d BIT(64));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    columns = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "bit column list");
+    failures += expect_child_count(columns, expected_column_count, "bit column count");
+
+    column_type = child_at(child_at(columns, 0U), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_BIT, "bit default");
+    if (column_type != NULL && column_type->has_column_precision) {
+        fprintf(stderr, "default BIT unexpectedly recorded explicit precision\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, bit_one_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_BIT, "bit(1)");
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != 1ULL)) {
+        fprintf(stderr, "BIT(1) precision was not recorded as 1\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, bit_eight_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_BIT, "bit(8)");
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != 8ULL)) {
+        fprintf(stderr, "BIT(8) precision was not recorded as 8\n");
+        failures = 1;
+    }
+
+    column_type = child_at(child_at(columns, bit_sixty_four_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_BIT, "bit(64)");
+    if (column_type != NULL &&
+        (!column_type->has_column_precision || column_type->column_precision != 64ULL)) {
+        fprintf(stderr, "BIT(64) precision was not recorded as 64\n");
+        failures = 1;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bit_keyword_names (bit INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE bad_bit_zero (a BIT(0));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_bit_overflow (a BIT(65));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_bit_negative (a BIT(-1));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_bit_unsigned (a BIT UNSIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_bit_charset (a BIT CHARACTER SET utf8mb4);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

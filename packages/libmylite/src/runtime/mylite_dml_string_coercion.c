@@ -431,6 +431,7 @@ static int insert_value_to_string_text(
 
     switch (value->kind) {
     case MYLITE_INSERT_BOUND_TEXT:
+    case MYLITE_INSERT_BOUND_BLOB:
         *out_text = (struct mylite_dml_string_text){
             .text = value->text_value,
             .length = value->text_length,

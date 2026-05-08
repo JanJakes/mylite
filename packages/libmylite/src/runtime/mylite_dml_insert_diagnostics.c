@@ -212,6 +212,7 @@ static char *copy_insert_duplicate_entry_value(
             sqlite3_str_appendf(text, "%.15g", value->real_value);
             break;
         case MYLITE_INSERT_BOUND_TEXT:
+        case MYLITE_INSERT_BOUND_BLOB:
             sqlite3_str_append(
                 text,
                 value->text_value == NULL ? "" : value->text_value,

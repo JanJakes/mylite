@@ -40493,6 +40493,52 @@ static int test_create_table_base_execution(void) {
         "serial_alias_attr",
         serial_attr_create
     };
+    static const char *const bit_metadata_columns[] = {
+        "COLUMN_NAME",
+        "DATA_TYPE",
+        "COLUMN_TYPE",
+        "IS_NULLABLE",
+        "CHARACTER_MAXIMUM_LENGTH",
+        "CHARACTER_OCTET_LENGTH",
+        "NUMERIC_PRECISION",
+        "NUMERIC_SCALE",
+        "CHARACTER_SET_NAME",
+        "COLLATION_NAME",
+    };
+    static const char *const bit_metadata_values[] = {
+        "b",   "bit", "bit(1)",  "YES", NULL, NULL, "1",  NULL, NULL, NULL,
+        "b8",  "bit", "bit(8)",  "YES", NULL, NULL, "8",  NULL, NULL, NULL,
+        "b9",  "bit", "bit(9)",  "YES", NULL, NULL, "9",  NULL, NULL, NULL,
+        "b64", "bit", "bit(64)", "YES", NULL, NULL, "64", NULL, NULL, NULL,
+    };
+    static const char *const bit_show_columns[] =
+        {"Field", "Type", "Null", "Key", "Default", "Extra"};
+    static const char *const bit_show_values[] = {
+        "b",  "bit(1)", "YES", "", NULL, "", "b8",  "bit(8)",  "YES", "", NULL, "",
+        "b9", "bit(9)", "YES", "", NULL, "", "b64", "bit(64)", "YES", "", NULL, "",
+    };
+    static const char bit_show_create[] =
+        "CREATE TABLE `bit_columns` (\n"
+        "  `b` bit(1) DEFAULT NULL,\n"
+        "  `b8` bit(8) DEFAULT NULL,\n"
+        "  `b9` bit(9) DEFAULT NULL,\n"
+        "  `b64` bit(64) DEFAULT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin";
+    static const char *const bit_show_create_values[] = {"bit_columns", bit_show_create};
+    static const unsigned char bit_b_value[] = {0x01U};
+    static const unsigned char bit_b8_value[] = {0xAAU};
+    static const unsigned char bit_b9_value[] = {0x01U, 0x55U};
+    static const unsigned char bit_b64_value[] = {
+        0xFFU,
+        0xFFU,
+        0xFFU,
+        0xFFU,
+        0xFFU,
+        0xFFU,
+        0xFFU,
+        0xFFU,
+    };
+    static const unsigned char bit_b9_padded_one[] = {0x00U, 0x01U};
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -40701,6 +40747,149 @@ static int test_create_table_base_execution(void) {
         serial_insert_values,
         2,
         "SERIAL DEFAULT VALUE insert generation"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE bit_columns (b BIT, b8 BIT(8), b9 BIT(9), b64 BIT(64))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, "
+        "CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
+        "NUMERIC_PRECISION, NUMERIC_SCALE, CHARACTER_SET_NAME, COLLATION_NAME "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bit_columns' "
+        "ORDER BY ORDINAL_POSITION",
+        bit_metadata_columns,
+        10,
+        bit_metadata_values,
+        4,
+        "BIT column metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW COLUMNS FROM bit_columns",
+        bit_show_columns,
+        6,
+        bit_show_values,
+        4,
+        "BIT show columns"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE bit_columns",
+        serial_show_create_columns,
+        2,
+        bit_show_create_values,
+        1,
+        "BIT show create"
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO bit_columns VALUES ("
+        "b'1', b'10101010', b'101010101', X'FFFFFFFFFFFFFFFF')",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "SELECT b, b8, b9, b64 FROM bit_columns WHERE b IS NOT NULL",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_int(
+        mylite_column_field_type(stmt, 2),
+        MYLITE_FIELD_TYPE_BIT,
+        "BIT column result metadata type"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "BIT stored row");
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 0),
+        (int64_t)sizeof(bit_b_value),
+        "BIT(1) stored byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 0),
+        bit_b_value,
+        sizeof(bit_b_value),
+        "BIT(1) stored bytes"
+    );
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 1),
+        (int64_t)sizeof(bit_b8_value),
+        "BIT(8) stored byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 1),
+        bit_b8_value,
+        sizeof(bit_b8_value),
+        "BIT(8) stored bytes"
+    );
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 2),
+        (int64_t)sizeof(bit_b9_value),
+        "BIT(9) stored byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 2),
+        bit_b9_value,
+        sizeof(bit_b9_value),
+        "BIT(9) stored bytes"
+    );
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 3),
+        (int64_t)sizeof(bit_b64_value),
+        "BIT(64) stored byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 3),
+        bit_b64_value,
+        sizeof(bit_b64_value),
+        "BIT(64) stored bytes"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "BIT stored done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "INSERT INTO bit_columns (b9) VALUES (b'1')", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "SELECT b9 FROM bit_columns WHERE b IS NULL", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "BIT padded row");
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 0),
+        (int64_t)sizeof(bit_b9_padded_one),
+        "BIT(9) padded byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 0),
+        bit_b9_padded_one,
+        sizeof(bit_b9_padded_one),
+        "BIT(9) padded bytes"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "BIT padded done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "INSERT INTO bit_columns (b9) VALUES (b'1000000000')",
+        MYLITE_EXEC_ERROR
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Data too long for column 'b9' at row 1",
+        "BIT width overflow error"
+    );
+    failures += execute_sql(
+        database,
+        "INSERT IGNORE INTO bit_columns (b9) VALUES (b'1000000000')",
+        MYLITE_DONE
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "BIT ignore overflow warning code"
     );
 
     failures += execute_sql(

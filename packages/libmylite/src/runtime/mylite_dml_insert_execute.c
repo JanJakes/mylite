@@ -451,6 +451,7 @@ static bool insert_bound_values_equal(
     case MYLITE_INSERT_BOUND_REAL:
         return left->real_value == right->real_value;
     case MYLITE_INSERT_BOUND_TEXT:
+    case MYLITE_INSERT_BOUND_BLOB:
         if (left->text_value == NULL || right->text_value == NULL) {
             return left->text_value == right->text_value;
         }

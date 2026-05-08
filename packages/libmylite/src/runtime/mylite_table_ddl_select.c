@@ -115,6 +115,11 @@ static void set_create_select_decimal_attributes(
     struct mylite_create_table_column *column
 );
 
+static void set_create_select_bit_precision_attribute(
+    const struct mylite_create_select_origin_type *origin,
+    struct mylite_create_table_column *column
+);
+
 static void set_create_select_datetime_precision_attribute(
     const struct mylite_create_select_origin_type *origin,
     struct mylite_create_table_column *column
@@ -599,6 +604,7 @@ static int assign_create_select_type_from_data_type(
 
     set_create_select_character_length_attribute(origin, column);
     set_create_select_decimal_attributes(origin, column);
+    set_create_select_bit_precision_attribute(origin, column);
     set_create_select_datetime_precision_attribute(origin, column);
     if (origin->column_type != NULL &&
         create_select_text_contains(origin->column_type, "unsigned")) {
@@ -617,6 +623,7 @@ static bool create_select_lookup_ast_type(
         {"mediumint", MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT},
         {"int", MYLITE_SQL_AST_COLUMN_TYPE_INT},
         {"bigint", MYLITE_SQL_AST_COLUMN_TYPE_BIGINT},
+        {"bit", MYLITE_SQL_AST_COLUMN_TYPE_BIT},
         {"char", MYLITE_SQL_AST_COLUMN_TYPE_CHAR},
         {"varchar", MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR},
         {"binary", MYLITE_SQL_AST_COLUMN_TYPE_BINARY},
@@ -690,6 +697,22 @@ static void set_create_select_decimal_attributes(
     }
 }
 
+static void set_create_select_bit_precision_attribute(
+    const struct mylite_create_select_origin_type *origin,
+    struct mylite_create_table_column *column
+) {
+    enum { select_numeric_precision = 4 };
+    struct mylite_column_type_attributes *attributes = &column->type.attributes;
+
+    if (origin->select == NULL || column->type.ast_type != MYLITE_SQL_AST_COLUMN_TYPE_BIT ||
+        sqlite3_column_type(origin->select, select_numeric_precision) == SQLITE_NULL) {
+        return;
+    }
+    attributes->has_precision = true;
+    attributes->precision =
+        (uint64_t)sqlite3_column_int64(origin->select, select_numeric_precision);
+}
+
 static void set_create_select_datetime_precision_attribute(
     const struct mylite_create_select_origin_type *origin,
     struct mylite_create_table_column *column
@@ -752,6 +775,11 @@ static int assign_create_select_type_from_descriptor(
         break;
     case MYLITE_FIELD_TYPE_LONGLONG:
         column->type.ast_type = MYLITE_SQL_AST_COLUMN_TYPE_BIGINT;
+        break;
+    case MYLITE_FIELD_TYPE_BIT:
+        column->type.ast_type = MYLITE_SQL_AST_COLUMN_TYPE_BIT;
+        column->type.attributes.has_precision = true;
+        column->type.attributes.precision = descriptor->length == 0U ? 1U : descriptor->length;
         break;
     case MYLITE_FIELD_TYPE_FLOAT:
         column->type.ast_type = MYLITE_SQL_AST_COLUMN_TYPE_FLOAT;

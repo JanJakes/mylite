@@ -38,10 +38,13 @@ int mylite_dml_copy_insert_sqlite_column_value(
         return 0;
     case SQLITE_TEXT:
     case SQLITE_BLOB: {
-        const unsigned char *text = sqlite3_column_text(scan, column);
+        const void *text = sqlite_type == SQLITE_BLOB
+                               ? sqlite3_column_blob(scan, column)
+                               : (const void *)sqlite3_column_text(scan, column);
         int bytes = sqlite3_column_bytes(scan, column);
 
-        out_value->kind = MYLITE_INSERT_BOUND_TEXT;
+        out_value->kind =
+            sqlite_type == SQLITE_BLOB ? MYLITE_INSERT_BOUND_BLOB : MYLITE_INSERT_BOUND_TEXT;
         out_value->text_length = bytes < 0 ? 0U : (size_t)bytes;
         out_value->text_value = mylite_copy_span_text((const char *)text, out_value->text_length);
         return out_value->text_value == NULL ? -1 : 0;
@@ -62,7 +65,8 @@ int mylite_dml_copy_insert_bound_value(
 
     *out_value = *value;
     out_value->text_value = NULL;
-    if (value->kind == MYLITE_INSERT_BOUND_TEXT && value->text_value != NULL) {
+    if ((value->kind == MYLITE_INSERT_BOUND_TEXT || value->kind == MYLITE_INSERT_BOUND_BLOB) &&
+        value->text_value != NULL) {
         out_value->text_value = mylite_copy_span_text(value->text_value, value->text_length);
         if (out_value->text_value == NULL) {
             return MYLITE_NOMEM;

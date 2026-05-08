@@ -873,7 +873,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `sort_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `source_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
 | `sql_auto_is_null` | 🟡 | Limited read-only scalar `SELECT @@sql_auto_is_null` with no scope, `session`, `local`, or `global`; returns MyLite's fixed disabled value `0`; no `SET`, mutable global/session state, `AUTO_INCREMENT` metadata, `LAST_INSERT_ID()` interaction, special `IS NULL` lookup behavior, changed predicates, `SHOW VARIABLES`, or Performance Schema variable tables |
-| `sql_big_selects` | ❌ | Value, scope, SET, diagnostics |
+| `sql_big_selects` | 🟡 | Limited read-only scalar `SELECT @@sql_big_selects` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; no `SET`, mutable global/session state, `max_join_size`, optimizer row-estimate aborts, changed `SELECT` behavior, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `sql_buffer_result` | 🟡 | Limited read-only scalar `SELECT @@sql_buffer_result` with no scope, `session`, `local`, or `global`; returns MyLite's fixed disabled value `0`; no `SET`, mutable global/session state, temporary result tables, lock-release behavior, optimizer effects, changed `SELECT` behavior, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `sql_generate_invisible_primary_key` | ❌ | Value, scope, SET, diagnostics |
 | `sql_log_bin` | ❌ | Value, scope, SET, diagnostics |

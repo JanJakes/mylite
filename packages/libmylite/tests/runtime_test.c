@@ -8635,6 +8635,34 @@ static int test_json_scalar_foundation_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
+    static const struct expected_result_metadata longtext_metadata[] = {
+        {"ju_long",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967295),
+         MYLITE_FIELD_TYPE_LONG_BLOB,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"jq_long",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967295),
+         MYLITE_FIELD_TYPE_LONG_BLOB,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
     static const char *const id_columns[] = {"id"};
     static const char *const valid_ids[] = {"1", "2"};
     static const char *const arrow_match_ids[] = {"2"};
@@ -8775,6 +8803,25 @@ static int test_json_scalar_foundation_execution(void) {
     }
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "json metadata done");
     failures += expect_column_names(stmt, metadata_columns, 11, "json metadata columns");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "CREATE TABLE json_longtext_items (doc LONGTEXT)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT JSON_UNQUOTE(doc) AS ju_long, JSON_QUOTE(doc) AS jq_long "
+        "FROM json_longtext_items LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        longtext_metadata,
+        (int)(sizeof(longtext_metadata) / sizeof(longtext_metadata[0])),
+        "json longtext metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "json longtext metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 

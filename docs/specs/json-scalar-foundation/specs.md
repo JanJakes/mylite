@@ -116,10 +116,14 @@ Observed metadata for a projection containing all six functions:
 
 - `JSON_VALID()`: nullable `LONGLONG`, display length `21`, binary collation,
   decimals `0`, numeric and binary flags.
-- `JSON_TYPE()`, `JSON_QUOTE()`, and plain-string `JSON_UNQUOTE()`:
-  nullable `VAR_STRING`, decimals `31`, binary flag, connection-compatible
-  character metadata, and MySQL-derived display lengths based on the argument
-  shape.
+- `JSON_TYPE()`, small `JSON_QUOTE()` results, and small plain-string
+  `JSON_UNQUOTE()` results: nullable `VAR_STRING`, decimals `31`, binary flag,
+  connection-compatible character metadata, and MySQL-derived display lengths
+  based on the argument shape.
+- `JSON_QUOTE()` and plain-string `JSON_UNQUOTE()` over LONGTEXT-sized
+  arguments: nullable `LONG_BLOB`, decimals `31`, binary flag,
+  connection-compatible character metadata, and MySQL-derived long-text display
+  length.
 - `JSON_UNQUOTE(JSON_EXTRACT(...))`: nullable `LONG_BLOB`, decimals `31`,
   binary flag, connection-compatible character metadata, and MySQL-derived
   long-text display length.
@@ -223,7 +227,8 @@ as error-level expression conditions.
 
 `JSON_TYPE()`, `JSON_QUOTE()`, and `JSON_UNQUOTE()`:
 
-- field type: `VAR_STRING`
+- field type: `VAR_STRING`, or `LONG_BLOB` for LONGTEXT-sized
+  `JSON_QUOTE()` / plain-string `JSON_UNQUOTE()` results
 - charset/collation: current connection character metadata
 - decimals: `31`
 - binary flag set

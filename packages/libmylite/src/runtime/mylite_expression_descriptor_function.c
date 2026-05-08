@@ -179,6 +179,8 @@ static bool infer_common_scalar_function_descriptor(
 
 static struct mylite_field_descriptor json_text_descriptor(mylite_db *database, uint64_t length);
 
+static int json_text_result_type(uint64_t length);
+
 static struct mylite_field_descriptor json_document_descriptor(mylite_db *database, bool nullable);
 
 static struct mylite_field_descriptor json_unquote_json_descriptor(mylite_db *database);
@@ -955,7 +957,7 @@ static int infer_json_function_descriptor(
 
 static struct mylite_field_descriptor json_text_descriptor(mylite_db *database, uint64_t length) {
     struct mylite_field_descriptor descriptor = {
-        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .type = json_text_result_type(length),
         .flags = MYLITE_FIELD_FLAG_BINARY,
         .length = length,
         .decimals = mylite_mysql_not_fixed_decimals,
@@ -965,6 +967,11 @@ static struct mylite_field_descriptor json_text_descriptor(mylite_db *database, 
 
     mylite_field_descriptor_set_nullable(&descriptor, true);
     return descriptor;
+}
+
+static int json_text_result_type(uint64_t length) {
+    return length > mylite_mysql_medium_text_length ? MYLITE_FIELD_TYPE_LONG_BLOB
+                                                    : MYLITE_FIELD_TYPE_VAR_STRING;
 }
 
 static struct mylite_field_descriptor json_document_descriptor(mylite_db *database, bool nullable) {

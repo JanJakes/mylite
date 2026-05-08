@@ -26,7 +26,9 @@ int mylite_table_ddl_init_alter_table_index_from_create_index(
     bool is_primary,
     struct mylite_alter_table_index *out_index
 ) {
-    const char *index_type = source->is_fulltext ? "FULLTEXT" : "BTREE";
+    const char *index_type = source->is_spatial    ? "SPATIAL"
+                             : source->is_fulltext ? "FULLTEXT"
+                                                   : "BTREE";
     const char *comment = "";
     const char *index_comment = source->comment == NULL ? "" : source->comment;
     const char *parser_name = source->parser_name == NULL ? "" : source->parser_name;
@@ -49,7 +51,8 @@ int mylite_table_ddl_init_alter_table_index_from_create_index(
         out_index->non_unique = 0;
     }
     out_index->changed = true;
-    out_index->display_index_type = !source->is_fulltext && source->display_index_type &&
+    out_index->display_index_type = !source->is_fulltext && !source->is_spatial &&
+                                    source->display_index_type &&
                                     source->algorithm == MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE;
     if (out_index->index_schema == NULL || out_index->index_type == NULL ||
         out_index->comment == NULL || out_index->index_comment == NULL ||
@@ -141,7 +144,10 @@ static int init_alter_table_index_part_from_key_part(
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
-    if (!index->is_fulltext && source->has_prefix_length) {
+    if (index->is_spatial) {
+        out_part->has_sub_part = true;
+        out_part->sub_part = 32;
+    } else if (!index->is_fulltext && source->has_prefix_length) {
         out_part->has_sub_part = true;
         out_part->sub_part = (int64_t)source->prefix_length;
     }

@@ -28,11 +28,18 @@ Full feature surface:
 - interaction with `INSERT`, `INSERT ... ON DUPLICATE KEY UPDATE`, `REPLACE`,
   `UPDATE`, and future optimizer/index-hint behavior
 
-First executable implementation slice:
+Executable implementation slice:
 
 - execute `CREATE [UNIQUE] INDEX [index_type] index_name [index_type]
   ON table_name (identifier_key_parts) [index_option ...]
   [algorithm_option | lock_option] ...`
+- execute `CREATE FULLTEXT INDEX` for metadata-backed text/character
+  full-text indexes, including parser/comment metadata and MySQL-compatible
+  column/order diagnostics
+- execute `CREATE SPATIAL INDEX` for metadata-backed single-column spatial
+  indexes over `NOT NULL` spatial columns, including `SPATIAL`
+  `INFORMATION_SCHEMA.STATISTICS`, `SHOW INDEX`, `SHOW CREATE TABLE`, and
+  `DROP INDEX` cleanup
 - execute `DROP INDEX index_name ON table_name
   [algorithm_option | lock_option] ...`
 - support existing MyLite base tables in user schemas only
@@ -51,10 +58,10 @@ First executable implementation slice:
 - implement statement-level atomicity for catalog updates and any physical
   SQLite index changes
 
-Deferred from the first slice:
+Deferred from the current slice:
 
-- executable `FULLTEXT` and `SPATIAL` indexes
-- `WITH PARSER` runtime behavior
+- full-text search and `WITH PARSER` runtime behavior beyond metadata
+- spatial search, optimizer support, and physical spatial index structures
 - functional key parts and multi-valued indexes
 - optimizer use and index hints
 - complete type/prefix/collation validation and storage-engine warning fidelity

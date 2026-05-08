@@ -102,7 +102,9 @@ static int insert_index_catalog_part(
         mylite_table_ddl_find_create_table_column(plan, part->column_name);
     int non_unique = 1;
     const char *nullable = "";
-    const char *index_type = index->is_fulltext ? "FULLTEXT" : "BTREE";
+    const char *index_type = index->is_spatial    ? "SPATIAL"
+                             : index->is_fulltext ? "FULLTEXT"
+                                                  : "BTREE";
     const char *is_visible = "NO";
     int rc = SQLITE_OK;
 
@@ -142,7 +144,9 @@ static int insert_index_catalog_part(
             SQLITE_STATIC
         );
     }
-    if (part->has_prefix_length && !index->is_fulltext) {
+    if (index->is_spatial) {
+        sqlite3_bind_int64(insert, bind_sub_part, 32);
+    } else if (part->has_prefix_length && !index->is_fulltext) {
         sqlite3_bind_int64(insert, bind_sub_part, (sqlite3_int64)part->prefix_length);
     } else {
         sqlite3_bind_null(insert, bind_sub_part);

@@ -120,8 +120,10 @@ enum {
     mysql_warning_duplicate_entry = 1062,
     mysql_warning_invalid_default = 1067,
     mysql_warning_multiple_primary = 1068,
+    mysql_warning_too_many_key_parts = 1070,
     mysql_warning_key_column_missing = 1072,
     mysql_warning_wrong_auto_key = 1075,
+    mysql_warning_wrong_sub_key = 1089,
     mysql_warning_unknown_table = 1109,
     mysql_warning_invalid_null = 1138,
     mysql_warning_no_such_table = 1146,
@@ -145,6 +147,7 @@ enum {
     mysql_warning_subquery_no_1_row = 1242,
     mysql_warning_unknown_stmt_handler = 1243,
     mysql_warning_table_name_not_allowed = 1250,
+    mysql_warning_spatial_cant_have_null = 1252,
     mysql_warning_group_concat_cut = 1260,
     mysql_warning_data_out_of_range = 1264,
     mysql_warning_data_truncated = 1265,
@@ -167,6 +170,7 @@ enum {
     mysql_warning_no_referenced_row = 1452,
     mysql_warning_drop_index_foreign_key = 1553,
     mysql_warning_deprecated_syntax_no_replacement = 1681,
+    mysql_warning_spatial_must_have_geom_col = 1687,
     mysql_warning_truncate_foreign_key = 1701,
     mysql_warning_wrong_paramcount_to_native_fct = 1582,
     mysql_warning_wrong_parameters_to_native_fct = 1583,
@@ -46452,6 +46456,23 @@ static int test_create_drop_index_execution(void) {
         NULL,           "0", NULL,      NULL,  "YES",
         "FULLTEXT",     "",  "ft",      "YES", NULL,
     };
+    static const char *const spatial_show_index_values[] = {
+        "idx_spatial",
+        "1",
+        "sp_g",
+        "1",
+        "g",
+        "A",
+        "0",
+        "32",
+        NULL,
+        "",
+        "SPATIAL",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
     static const char *const show_create_columns[] = {"Table", "Create Table"};
     static const char fulltext_show_create[] =
         "CREATE TABLE `idx_fulltext` (\n"
@@ -46464,6 +46485,17 @@ static int test_create_drop_index_execution(void) {
         "/*!50100 WITH PARSER `ngram` */\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
     static const char *const fulltext_show_create_values[] = {"idx_fulltext", fulltext_show_create};
+    static const char spatial_show_create[] =
+        "CREATE TABLE `idx_spatial` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `g` geometry NOT NULL /*!80003 SRID 0 */,\n"
+        "  `p` point NOT NULL /*!80003 SRID 0 */,\n"
+        "  `opt` geometry /*!80003 SRID 0 */ DEFAULT NULL,\n"
+        "  `n` int DEFAULT NULL,\n"
+        "  PRIMARY KEY (`id`),\n"
+        "  SPATIAL KEY `sp_g` (`g`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const spatial_show_create_values[] = {"idx_spatial", spatial_show_create};
     mylite_db *database = NULL;
     mylite_db *no_schema_database = NULL;
     mylite_stmt *stmt = NULL;
@@ -47133,18 +47165,167 @@ static int test_create_drop_index_execution(void) {
     );
     failures +=
         expect_no_information_schema_statistics_index_row(database, "idx_fulltext", "ft_body");
+    failures += execute_sql(
+        database,
+        "CREATE TABLE idx_spatial ("
+        "id INT PRIMARY KEY, g GEOMETRY NOT NULL SRID 0, p POINT NOT NULL SRID 0, "
+        "opt GEOMETRY SRID 0, n INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE SPATIAL INDEX sp_g ON idx_spatial (g)",
+        0,
+        "create spatial index"
+    );
+    failures += expect_information_schema_statistics_row(
+        database,
+        &(const struct expected_statistics_row){
+            .table_name = "idx_spatial",
+            .index_name = "sp_g",
+            .seq_in_index = 1,
+            .column_name = "g",
+            .non_unique = 1,
+            .collation = "A",
+            .sub_part = "32",
+            .index_type = "SPATIAL",
+            .index_comment = "",
+            .visible = "YES",
+        }
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW INDEX FROM idx_spatial WHERE Key_name = 'sp_g'",
+        show_index_columns,
+        15,
+        spatial_show_index_values,
+        1,
+        "show index exposes spatial metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE idx_spatial",
+        show_create_columns,
+        2,
+        spatial_show_create_values,
+        1,
+        "show create table exposes spatial metadata"
+    );
+    failures += prepare_sql(
+        database,
+        "CREATE SPATIAL INDEX sp_multi ON idx_spatial (g,p)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Too many key parts specified; max 1 parts allowed",
+        "spatial create index rejects multiple columns"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_too_many_key_parts,
+        "spatial multiple columns error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "CREATE SPATIAL INDEX sp_order ON idx_spatial (g DESC)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect usage of spatial/fulltext/hash index and explicit index order",
+        "spatial create index rejects explicit order"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_wrong_usage,
+        "spatial explicit order error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "CREATE SPATIAL INDEX sp_prefix ON idx_spatial (g(3))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect prefix key",
+        "spatial create index rejects prefix"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_wrong_sub_key,
+        "spatial prefix error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "CREATE SPATIAL INDEX sp_n ON idx_spatial (n)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "A SPATIAL index may only contain a geometrical type column",
+        "spatial create index rejects non-spatial columns"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_spatial_must_have_geom_col,
+        "spatial non-spatial column error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "CREATE SPATIAL INDEX sp_opt ON idx_spatial (opt)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "All parts of a SPATIAL index must be NOT NULL",
+        "spatial create index rejects nullable columns"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_spatial_cant_have_null,
+        "spatial nullable column error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_spatial", "sp_multi");
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_spatial", "sp_order");
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_spatial", "sp_prefix");
+    failures += expect_no_information_schema_statistics_index_row(database, "idx_spatial", "sp_n");
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_spatial", "sp_opt");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "DROP INDEX sp_g ON idx_spatial",
+        0,
+        "drop spatial index"
+    );
+    failures += expect_no_information_schema_statistics_index_row(database, "idx_spatial", "sp_g");
     failures +=
         prepare_sql(database, "CREATE SPATIAL INDEX sp_b ON idx_base (b)", MYLITE_OK, &stmt);
-    failures += expect_status(
-        mylite_step(stmt),
-        MYLITE_UNSUPPORTED,
-        "spatial create index deferred unsupported"
-    );
-    failures += expect_int64(mylite_affected_rows(stmt), -1, "spatial create index affected rows");
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "spatial non-spatial create");
     failures += expect_contains(
         mylite_error_message(database),
-        "Unsupported standalone index class",
-        "spatial create index unsupported error"
+        "A SPATIAL index may only contain a geometrical type column",
+        "spatial create index non-spatial error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_spatial_must_have_geom_col,
+        "spatial create index non-spatial code"
     );
     mylite_finalize(stmt);
     stmt = NULL;

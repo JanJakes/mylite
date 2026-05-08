@@ -37,6 +37,22 @@ static int set_fulltext_index_order_error(mylite_db *database);
 
 static bool column_supports_fulltext_index(const struct mylite_alter_table_column *column);
 
+static int validate_spatial_index(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+);
+
+static int set_spatial_index_part_count_error(mylite_db *database);
+
+static int set_spatial_index_prefix_error(mylite_db *database);
+
+static int set_spatial_index_column_type_error(mylite_db *database);
+
+static int set_spatial_index_nullable_error(mylite_db *database);
+
+static bool column_supports_spatial_index(const struct mylite_alter_table_column *column);
+
 static char *build_create_unique_index_duplicate_sql(
     mylite_db *database,
     const struct mylite_alter_table_model *model,
@@ -201,10 +217,6 @@ int mylite_table_ddl_validate_create_index_supported_features(
     const struct mylite_index_ddl_plan *plan,
     const struct mylite_alter_table_model *model
 ) {
-    if (plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_SPATIAL) {
-        (void)mylite_diagnostics_set_error_message(database, "Unsupported standalone index class");
-        return MYLITE_UNSUPPORTED;
-    }
     if (plan->index.has_with_parser && plan->index_class != MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT) {
         (void)mylite_diagnostics_set_error_message(
             database,
@@ -214,6 +226,9 @@ int mylite_table_ddl_validate_create_index_supported_features(
     }
     if (plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT) {
         return mylite_table_ddl_validate_fulltext_index(database, model, &plan->index);
+    }
+    if (plan->index_class == MYLITE_SQL_AST_INDEX_CLASS_SPATIAL) {
+        return validate_spatial_index(database, model, &plan->index);
     }
     if (plan->index.has_engine_attribute) {
         (void)mylite_diagnostics_set_error_message(
@@ -294,6 +309,106 @@ static bool column_supports_fulltext_index(const struct mylite_alter_table_colum
            mylite_ascii_case_equal(column->data_type, "text") ||
            mylite_ascii_case_equal(column->data_type, "mediumtext") ||
            mylite_ascii_case_equal(column->data_type, "longtext");
+}
+
+static int validate_spatial_index(
+    mylite_db *database,
+    const struct mylite_alter_table_model *model,
+    const struct mylite_create_table_index *index
+) {
+    const struct mylite_alter_table_column *column = NULL;
+
+    if (index->has_engine_attribute) {
+        (void)mylite_diagnostics_set_error_message(
+            database,
+            "Storage engine 'InnoDB' does not support ENGINE_ATTRIBUTE"
+        );
+        return MYLITE_EXEC_ERROR;
+    }
+    if (index->part_count != 1U) {
+        return set_spatial_index_part_count_error(database);
+    }
+    if (index->parts[0].order != MYLITE_SQL_AST_KEY_PART_ORDER_NONE) {
+        return set_fulltext_index_order_error(database);
+    }
+    if (index->parts[0].has_prefix_length) {
+        return set_spatial_index_prefix_error(database);
+    }
+
+    column = mylite_table_ddl_find_alter_table_column(model, index->parts[0].column_name);
+    if (!column_supports_spatial_index(column)) {
+        return set_spatial_index_column_type_error(database);
+    }
+    if (column->nullable) {
+        return set_spatial_index_nullable_error(database);
+    }
+    return MYLITE_OK;
+}
+
+static int set_spatial_index_part_count_error(mylite_db *database) {
+    static const char message[] = "Too many key parts specified; max 1 parts allowed";
+    int status = mylite_diagnostics_set_error_message(database, message);
+
+    if (status == MYLITE_OK) {
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_TOO_MANY_KEY_PARTS, message);
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_spatial_index_prefix_error(mylite_db *database) {
+    static const char message[] =
+        "Incorrect prefix key; the used key part isn't a string, the used length is longer than "
+        "the key part, or the storage engine doesn't support unique prefix keys";
+    int status = mylite_diagnostics_set_error_message(database, message);
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_SUB_KEY, message);
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_spatial_index_column_type_error(mylite_db *database) {
+    static const char message[] = "A SPATIAL index may only contain a geometrical type column";
+    int status = mylite_diagnostics_set_error_message(database, message);
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_SPATIAL_MUST_HAVE_GEOM_COL,
+            message
+        );
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_spatial_index_nullable_error(mylite_db *database) {
+    static const char message[] = "All parts of a SPATIAL index must be NOT NULL";
+    int status = mylite_diagnostics_set_error_message(database, message);
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_SPATIAL_CANT_HAVE_NULL,
+            message
+        );
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static bool column_supports_spatial_index(const struct mylite_alter_table_column *column) {
+    if (column == NULL || column->data_type == NULL) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "geometry") ||
+           mylite_ascii_case_equal(column->data_type, "point") ||
+           mylite_ascii_case_equal(column->data_type, "linestring") ||
+           mylite_ascii_case_equal(column->data_type, "polygon") ||
+           mylite_ascii_case_equal(column->data_type, "multipoint") ||
+           mylite_ascii_case_equal(column->data_type, "multilinestring") ||
+           mylite_ascii_case_equal(column->data_type, "multipolygon") ||
+           mylite_ascii_case_equal(column->data_type, "geomcollection") ||
+           mylite_ascii_case_equal(column->data_type, "geometrycollection");
 }
 
 int mylite_table_ddl_validate_create_unique_index_values(

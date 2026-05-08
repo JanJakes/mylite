@@ -110,6 +110,8 @@ static int append_show_create_table_index(sqlite3_str *create_sql, sqlite3_stmt 
     } else {
         if (mylite_ascii_case_equal(index_type, "FULLTEXT")) {
             sqlite3_str_appendall(create_sql, "FULLTEXT ");
+        } else if (mylite_ascii_case_equal(index_type, "SPATIAL")) {
+            sqlite3_str_appendall(create_sql, "SPATIAL ");
         } else if (non_unique == 0) {
             sqlite3_str_appendall(create_sql, "UNIQUE ");
         }
@@ -183,7 +185,8 @@ static int append_show_create_table_key_parts(
         }
         first_part = false;
         mylite_show_create_append_identifier(create_sql, column_name);
-        if (sqlite3_column_type(parts, sub_part_column) != SQLITE_NULL) {
+        if (sqlite3_column_type(parts, sub_part_column) != SQLITE_NULL &&
+            !mylite_ascii_case_equal(index_type, "SPATIAL")) {
             sqlite3_str_appendf(create_sql, "(%lld)", sqlite3_column_int64(parts, sub_part_column));
         }
         if (mylite_ascii_case_equal(collation, "D")) {

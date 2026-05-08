@@ -60,6 +60,7 @@ struct mylite_create_table_index {
     bool is_primary;
     bool is_unique;
     bool is_fulltext;
+    bool is_spatial;
     bool is_visible;
     bool explicit_name;
     bool has_engine_attribute;

@@ -216,6 +216,7 @@ int mylite_table_ddl_copy_create_table_index(
 
     index.is_primary = index_node->kind == MYLITE_SQL_AST_PRIMARY_KEY_CONSTRAINT;
     index.is_fulltext = index_node->index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT;
+    index.is_spatial = index_node->index_class == MYLITE_SQL_AST_INDEX_CLASS_SPATIAL;
     if (index.is_primary) {
         index.is_unique = true;
     } else {

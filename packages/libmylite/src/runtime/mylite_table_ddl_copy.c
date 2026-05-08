@@ -66,6 +66,7 @@ int mylite_table_ddl_copy_create_index_statement(
         .algorithm = MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE,
         .is_unique = statement->index_class == MYLITE_SQL_AST_INDEX_CLASS_UNIQUE,
         .is_fulltext = statement->index_class == MYLITE_SQL_AST_INDEX_CLASS_FULLTEXT,
+        .is_spatial = statement->index_class == MYLITE_SQL_AST_INDEX_CLASS_SPATIAL,
         .is_visible = true,
         .explicit_name = true,
     };

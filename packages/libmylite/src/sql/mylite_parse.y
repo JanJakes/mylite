@@ -77,6 +77,9 @@ statement(A) ::= show_tables_statement(B). {
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
+statement(A) ::= show_index_statement(B). {
+    A = B;
+}
 statement(A) ::= show_create_table_statement(B). {
     A = B;
 }
@@ -232,6 +235,29 @@ show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) FROM identifier(D)
 show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
 }
+
+show_index_statement(A) ::= SHOW(S) show_index_keyword FROM table_name(T). {
+    A = mylite_sql_parser_make_show_index_statement(state, S, T, NULL);
+}
+show_index_statement(A) ::= SHOW(S) show_index_keyword IN table_name(T). {
+    A = mylite_sql_parser_make_show_index_statement(state, S, T, NULL);
+}
+show_index_statement(A) ::= SHOW(S) show_index_keyword FROM table_name(T) FROM identifier(D). {
+    A = mylite_sql_parser_make_show_index_statement(state, S, T, D);
+}
+show_index_statement(A) ::= SHOW(S) show_index_keyword FROM table_name(T) IN identifier(D). {
+    A = mylite_sql_parser_make_show_index_statement(state, S, T, D);
+}
+show_index_statement(A) ::= SHOW(S) show_index_keyword IN table_name(T) FROM identifier(D). {
+    A = mylite_sql_parser_make_show_index_statement(state, S, T, D);
+}
+show_index_statement(A) ::= SHOW(S) show_index_keyword IN table_name(T) IN identifier(D). {
+    A = mylite_sql_parser_make_show_index_statement(state, S, T, D);
+}
+
+show_index_keyword ::= INDEX.
+show_index_keyword ::= INDEXES.
+show_index_keyword ::= KEYS.
 
 show_databases_statement(A) ::= SHOW(S) DATABASES(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_databases_statement(state, S, D, L);
@@ -725,6 +751,9 @@ identifier(A) ::= COLUMNS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIELDS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= INDEXES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ENGINE(T). {

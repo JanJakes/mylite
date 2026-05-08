@@ -48,6 +48,7 @@ enum {
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
     show_columns_result_column_count = 6,
+    show_index_result_column_count = 15,
     show_create_table_result_column_count = 2,
     show_engines_result_column_count = 6,
 };
@@ -331,6 +332,11 @@ static int execute_show_tables_statement(
     mylite_result **out_result
 );
 static int execute_show_columns_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_index_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -1299,6 +1305,8 @@ static int execute_parsed_statement(
         return execute_show_tables_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
+        return execute_show_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
         return execute_show_create_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
@@ -1940,6 +1948,65 @@ static int execute_show_columns_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_index_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_index_result_column_count] = {
+        "Table",
+        "Non_unique",
+        "Key_name",
+        "Seq_in_index",
+        "Column_name",
+        "Collation",
+        "Cardinality",
+        "Sub_part",
+        "Packed",
+        "Null",
+        "Index_type",
+        "Comment",
+        "Index_comment",
+        "Visible",
+        "Expression",
+    };
+    struct table_name_resolution target = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    rc = resolve_show_columns_table_name(
+        database,
+        (struct show_columns_target_nodes){
+            .table = child_at(statement, 0U),
+            .schema = child_at(statement, 1U),
+        },
+        &target
+    );
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &target, &table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < show_index_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_create_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -2291,6 +2358,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:

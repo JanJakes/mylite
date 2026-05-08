@@ -337,6 +337,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "insert_assignment";
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
         return "alter_table_rename_statement";
+    case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
+        return "show_index_statement";
     }
 
     return "unknown";

@@ -597,6 +597,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_index_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *schema_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&show_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (schema_name != NULL) {
+        span = span_join(span, schema_name->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_INDEX_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, schema_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_databases_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
@@ -1743,6 +1768,9 @@ static bool map_keyword_token(
         {"TABLES", MYLITE_SQL_PARSE_TABLES},
         {"COLUMNS", MYLITE_SQL_PARSE_COLUMNS},
         {"FIELDS", MYLITE_SQL_PARSE_FIELDS},
+        {"INDEX", MYLITE_SQL_PARSE_INDEX},
+        {"INDEXES", MYLITE_SQL_PARSE_INDEXES},
+        {"KEYS", MYLITE_SQL_PARSE_KEYS},
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
         {"ENGINES", MYLITE_SQL_PARSE_ENGINES},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},

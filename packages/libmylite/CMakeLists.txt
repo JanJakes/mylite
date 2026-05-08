@@ -249,6 +249,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_show_columns_introspection_test)
 
+  add_executable(mylite_runtime_show_index_empty_introspection_test
+    tests/runtime_show_index_empty_introspection_test.c
+  )
+  target_link_libraries(mylite_runtime_show_index_empty_introspection_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_show_index_empty_introspection_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_show_index_empty_introspection_test)
+
   add_executable(mylite_runtime_show_like_filters_test
     tests/runtime_show_like_filters_test.c
   )
@@ -495,6 +506,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.show_columns_introspection
     COMMAND mylite_runtime_show_columns_introspection_test
+  )
+  add_test(
+    NAME libmylite.runtime.show_index_empty_introspection
+    COMMAND mylite_runtime_show_index_empty_introspection_test
   )
   add_test(
     NAME libmylite.runtime.show_like_filters

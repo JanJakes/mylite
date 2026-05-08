@@ -19,6 +19,7 @@ static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_show_columns_introspection_statements(void);
+static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
 static int test_delete_statement(void);
@@ -100,6 +101,7 @@ int main(void) {
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
     failures += test_show_columns_introspection_statements();
+    failures += test_show_index_empty_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
     failures += test_delete_statement();
@@ -1664,6 +1666,64 @@ static int test_show_columns_introspection_statements(void) {
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "columns table name");
     failures += expect_span_text(child_at(statement, 0U), "columns", "columns identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_index_empty_introspection_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW INDEX FROM numbers;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_INDEX_STATEMENT, "show index");
+    failures += expect_child_count(statement, 1U, "show index child count");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "show index table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW INDEX IN app.numbers;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_INDEX_STATEMENT, "show index in");
+    failures += expect_child_count(statement, 1U, "show index in child count");
+    failures += expect_span_text(child_at(statement, 0U), "app.numbers", "show index in table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW INDEXES FROM numbers FROM app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_INDEX_STATEMENT, "show indexes");
+    failures += expect_child_count(statement, 2U, "show indexes child count");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "show indexes table");
+    failures += expect_span_text(child_at(statement, 1U), "app", "show indexes schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW KEYS IN app.numbers IN other;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_INDEX_STATEMENT, "show keys");
+    failures += expect_child_count(statement, 2U, "show keys child count");
+    failures += expect_span_text(child_at(statement, 0U), "app.numbers", "show keys table");
+    failures += expect_span_text(child_at(statement, 1U), "other", "show keys schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE indexes (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "indexes table");
+    failures += expect_span_text(child_at(statement, 0U), "indexes", "indexes identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW INDEX;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW EXTENDED INDEX FROM numbers;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW INDEX FROM numbers WHERE Key_name = 'idx';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

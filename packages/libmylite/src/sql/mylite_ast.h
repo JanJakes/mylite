@@ -70,6 +70,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST = 61,
     MYLITE_SQL_AST_INSERT_ASSIGNMENT = 62,
     MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT = 63,
+    MYLITE_SQL_AST_SHOW_INDEX_STATEMENT = 64,
 };
 
 enum mylite_sql_ast_literal_kind {

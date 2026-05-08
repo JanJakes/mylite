@@ -27,6 +27,10 @@ It also covers the first TEXT/BLOB-family runtime edges:
 - invalid UTF-8 byte sequences assigned to `utf8mb4` `VARCHAR` and `TEXT`
   columns for `INSERT ... VALUES`, `INSERT IGNORE`, non-strict inserts, and
   single-table `UPDATE IGNORE`
+- four-byte UTF-8 sequences assigned to `utf8mb3` `VARCHAR` and `TEXT`
+  columns for strict `INSERT ... VALUES`, `INSERT IGNORE`, non-strict inserts,
+  strict single-table `UPDATE`, and single-table `UPDATE IGNORE`, while paired
+  `utf8mb4` and binary columns preserve the same source bytes
 - invalid UTF-8 byte sequences assigned to `utf8mb4` `LONGTEXT` in the covered
   `INSERT ... VALUES` / `INSERT IGNORE` slice, while paired `LONGBLOB` values
   preserve raw bytes
@@ -113,6 +117,14 @@ MySQL stores the valid UTF-8 prefix before the first invalid byte sequence and
 emits warning 1366 for each affected character column. Binary columns such as
 `VARBINARY` preserve the raw bytes and do not emit these warnings.
 
+For `utf8mb3` `VARCHAR` and `TEXT`, four-byte UTF-8 sequences are invalid even
+when the same bytes are valid `utf8mb4` text. MySQL rejects strict inserts and
+updates with error 1366 at the first affected `utf8mb3` column. In non-strict
+inserts, `INSERT IGNORE`, and `UPDATE IGNORE`, MySQL stores the valid prefix
+before the four-byte sequence and emits warning 1366 for each affected
+`utf8mb3` character column. Paired `utf8mb4` and binary columns preserve the
+full byte sequence.
+
 For the covered `LONGTEXT`/`LONGBLOB` slice, MySQL applies the same invalid
 UTF-8 handling to `LONGTEXT` while `LONGBLOB` stores the same source bytes
 without validation. The covered MySQL-observed case stores `UNHEX('61C362')`
@@ -181,6 +193,9 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - strict invalid UTF-8 rejection for `utf8mb4` `VARCHAR`/`TEXT`, `INSERT
   IGNORE` and non-strict valid-prefix storage with warning 1366, `UPDATE
   IGNORE` demotion, and raw byte preservation for binary columns
+- strict rejection and valid-prefix warning demotion for four-byte UTF-8
+  assigned to `utf8mb3` `VARCHAR`/`TEXT`, including paired `utf8mb4` and
+  binary-column byte preservation
 - strict invalid UTF-8 rejection for `utf8mb4` `LONGTEXT`, `INSERT IGNORE`
   valid-prefix storage with warning 1366, and raw byte preservation for
   `LONGBLOB`

@@ -62816,6 +62816,39 @@ static int test_string_dml_coercion_execution(void) {
         {"1", "", "0", "", "0", "C3", "1"};
     static const char *const invalid_utf8_ignore_update_values[] =
         {"1", "", "0", "", "0", "61C362", "3"};
+    static const char *const invalid_utf8mb3_columns[] = {
+        "id",
+        "v3_hex",
+        "v3_len",
+        "t3_hex",
+        "t3_len",
+        "v4_hex",
+        "v4_len",
+        "b_hex",
+        "b_len",
+    };
+    static const char *const invalid_utf8mb3_prefix_values[] = {
+        "1",
+        "61",
+        "1",
+        "61",
+        "1",
+        "61F09F988062",
+        "6",
+        "61F09F988062",
+        "6",
+    };
+    static const char *const invalid_utf8mb3_update_ignore_values[] = {
+        "1",
+        "63",
+        "1",
+        "63",
+        "1",
+        "63F09F988064",
+        "6",
+        "63F09F988064",
+        "6",
+    };
     static const char *const invalid_long_lob_columns[] =
         {"id", "lt_hex", "lt_len", "lb_hex", "lb_len"};
     static const char *const invalid_long_lob_insert_ignore_values[] =
@@ -63330,6 +63363,160 @@ static int test_string_dml_coercion_execution(void) {
         invalid_utf8_ignore_update_values,
         1,
         "invalid utf8 update ignore stored prefix"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE invalid_utf8mb3_values ("
+        "id INT PRIMARY KEY, "
+        "v3 VARCHAR(8) CHARACTER SET utf8mb3, "
+        "t3 TEXT CHARACTER SET utf8mb3, "
+        "v4 VARCHAR(8) CHARACTER SET utf8mb4, "
+        "b VARBINARY(8))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "INSERT INTO invalid_utf8mb3_values VALUES "
+        "(1, UNHEX('F09F9880'), UNHEX('F09F9880'), UNHEX('F09F9880'), UNHEX('F09F9880'))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_exec_error(stmt, database, "for column 'v3' at row 1", "strict utf8mb3 insert");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "strict utf8mb3 insert warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM invalid_utf8mb3_values",
+        0,
+        "strict utf8mb3 no inserted row"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO invalid_utf8mb3_values VALUES "
+        "(1, UNHEX('61F09F988062'), UNHEX('61F09F988062'), "
+        "UNHEX('61F09F988062'), UNHEX('61F09F988062'))",
+        1,
+        "insert ignore invalid utf8mb3"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "invalid utf8mb3 insert ignore warnings");
+    for (int warning = 0; warning < 2; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_truncated_wrong_value_for_field,
+            "invalid utf8mb3 insert ignore warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(v3) AS v3_hex, LENGTH(v3) AS v3_len, "
+        "HEX(t3) AS t3_hex, LENGTH(t3) AS t3_len, "
+        "HEX(v4) AS v4_hex, LENGTH(v4) AS v4_len, "
+        "HEX(b) AS b_hex, LENGTH(b) AS b_len "
+        "FROM invalid_utf8mb3_values",
+        invalid_utf8mb3_columns,
+        9,
+        invalid_utf8mb3_prefix_values,
+        1,
+        "invalid utf8mb3 insert ignore stored prefix"
+    );
+
+    failures += execute_sql(database, "DELETE FROM invalid_utf8mb3_values", MYLITE_DONE);
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO invalid_utf8mb3_values VALUES "
+        "(1, UNHEX('61F09F988062'), UNHEX('61F09F988062'), "
+        "UNHEX('61F09F988062'), UNHEX('61F09F988062'))",
+        1,
+        "non-strict invalid utf8mb3"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "invalid utf8mb3 non-strict warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(v3) AS v3_hex, LENGTH(v3) AS v3_len, "
+        "HEX(t3) AS t3_hex, LENGTH(t3) AS t3_len, "
+        "HEX(v4) AS v4_hex, LENGTH(v4) AS v4_len, "
+        "HEX(b) AS b_hex, LENGTH(b) AS b_len "
+        "FROM invalid_utf8mb3_values",
+        invalid_utf8mb3_columns,
+        9,
+        invalid_utf8mb3_prefix_values,
+        1,
+        "invalid utf8mb3 non-strict stored prefix"
+    );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "UPDATE invalid_utf8mb3_values "
+        "SET v3 = UNHEX('63F09F988064'), t3 = UNHEX('63F09F988064'), "
+        "v4 = UNHEX('63F09F988064'), b = UNHEX('63F09F988064')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_exec_error(stmt, database, "for column 'v3' at row 1", "strict utf8mb3 update");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "strict utf8mb3 update warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(v3) AS v3_hex, LENGTH(v3) AS v3_len, "
+        "HEX(t3) AS t3_hex, LENGTH(t3) AS t3_len, "
+        "HEX(v4) AS v4_hex, LENGTH(v4) AS v4_len, "
+        "HEX(b) AS b_hex, LENGTH(b) AS b_len "
+        "FROM invalid_utf8mb3_values",
+        invalid_utf8mb3_columns,
+        9,
+        invalid_utf8mb3_prefix_values,
+        1,
+        "strict utf8mb3 update preserves row"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE IGNORE invalid_utf8mb3_values "
+        "SET v3 = UNHEX('63F09F988064'), t3 = UNHEX('63F09F988064'), "
+        "v4 = UNHEX('63F09F988064'), b = UNHEX('63F09F988064')",
+        1,
+        "update ignore invalid utf8mb3"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "invalid utf8mb3 update ignore warnings");
+    for (int warning = 0; warning < 2; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_truncated_wrong_value_for_field,
+            "invalid utf8mb3 update ignore warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(v3) AS v3_hex, LENGTH(v3) AS v3_len, "
+        "HEX(t3) AS t3_hex, LENGTH(t3) AS t3_len, "
+        "HEX(v4) AS v4_hex, LENGTH(v4) AS v4_len, "
+        "HEX(b) AS b_hex, LENGTH(b) AS b_len "
+        "FROM invalid_utf8mb3_values",
+        invalid_utf8mb3_columns,
+        9,
+        invalid_utf8mb3_update_ignore_values,
+        1,
+        "invalid utf8mb3 update ignore stored prefix"
     );
 
     failures += execute_sql(

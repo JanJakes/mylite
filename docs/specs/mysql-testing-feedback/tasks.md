@@ -263,7 +263,12 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `utf8mb4` `VARCHAR` and `TEXT` columns now reject in strict mode and
       store the valid prefix with warning 1366 in non-strict and
       single-table `UPDATE IGNORE` paths, while binary columns preserve raw
-      bytes. Scalar `CAST`/`CONVERT` to `DECIMAL(M,D)` now covers
+      bytes. Four-byte UTF-8 assigned to `utf8mb3` `VARCHAR` and `TEXT`
+      columns now rejects in strict insert/update paths and stores the valid
+      prefix with warning 1366 in non-strict, `INSERT IGNORE`, and
+      single-table `UPDATE IGNORE` paths, while paired `utf8mb4` and binary
+      columns preserve the full byte sequence. Scalar `CAST`/`CONVERT` to
+      `DECIMAL(M,D)` now covers
       target-scale rounding, out-of-range endpoint clipping with warning 1264,
       truncated decimal strings with warning 1292 before range warning 1264,
       and non-finite decimal strings returning formatted zero with warning 1292.

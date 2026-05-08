@@ -51,6 +51,9 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW TABLE STATUS FROM information_schema LIKE 'tables'` | Returns a row named `TABLES`. |
 | `SHOW TABLE STATUS FROM Information_Schema LIKE 'tables'` | Returns a row named `TABLES`. |
 | `SHOW TABLE STATUS WHERE Name = 'simple'` | Filters rows by the displayed `Name` column. |
+| `SHOW TABLE STATUS WHERE Name LIKE 'camel%'` with table `CamelCase` | No row on the local Linux runtime. |
+| `SHOW TABLE STATUS WHERE Name LIKE 'Camel%'` with table `CamelCase` | Returns `CamelCase`. |
+| `SHOW TABLE STATUS WHERE Name LIKE 'beta\_%'` with table `beta_1` | Returns `beta_1`. |
 | `SHOW TABLE STATUS WHERE LOWER(Name) = 'alpha'` | Filters through a one-argument scalar function over the displayed `Name` column. |
 | ``SHOW TABLE STATUS WHERE `Rows` + 1 > 0`` | Filters through arithmetic over a reserved displayed column when quoted. |
 | `SHOW TABLE STATUS LIKE 1` | Syntax error. |
@@ -115,6 +118,9 @@ Rows:
 - Rows are ordered by table name using bytewise order.
 - `SHOW TABLE STATUS ... WHERE expr` is evaluated over displayed status
   columns.
+- `WHERE Name LIKE ...` uses the same case-sensitive table-name matching as
+  top-level `SHOW TABLE STATUS LIKE` on the local Linux runtime, including
+  backslash escapes for `%` and `_` wildcard literals.
 - Unknown displayed-column identifiers return MySQL error `1054`.
 - Broader SHOW `WHERE` expressions remain deferred to the shared filter.
 

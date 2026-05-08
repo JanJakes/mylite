@@ -48,6 +48,13 @@ statement.
 `LIKE` and `WHERE` remain mutually exclusive in the grammar for the covered
 SHOW statements.
 
+SHOW predicates follow the collation behavior of the displayed values. For
+`SHOW TABLE STATUS`, table names are case-sensitive on the verified Linux
+runtime, so `WHERE Name LIKE 'Camel%'` can match `CamelCase` while
+`WHERE Name LIKE 'camel%'` does not. Literal SHOW-WHERE `LIKE` patterns are
+translated to bytewise SQLite `GLOB` patterns to preserve that behavior and
+default backslash escaping for `%` and `_`.
+
 ## Runtime
 
 The implementation renders the supported predicate subset into the SQLite query

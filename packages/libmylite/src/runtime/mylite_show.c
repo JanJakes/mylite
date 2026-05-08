@@ -91,6 +91,31 @@ static int append_show_where_between_expression(
     size_t column_count
 );
 
+static int append_show_where_like_expression(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_sql_ast_node *expression,
+    const char *const *column_names,
+    size_t column_count
+);
+
+static int show_where_like_glob_pattern(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *pattern,
+    const struct mylite_sql_ast_node *escape,
+    char **out_pattern
+);
+
+static int show_where_like_escape_char(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *pattern,
+    const struct mylite_sql_ast_node *escape,
+    bool *out_has_escape,
+    char *out_escape
+);
+
+static void append_show_where_glob_literal(sqlite3_str *glob, char character);
+
 static int append_show_where_identifier(
     mylite_db *database,
     sqlite3_str *sql,
@@ -754,6 +779,21 @@ static int append_show_where_expression(
             return status;
         }
 
+        if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE ||
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE) {
+            int status = append_show_where_like_expression(
+                database,
+                sql,
+                expression,
+                column_names,
+                column_count
+            );
+
+            if (status != MYLITE_UNSUPPORTED) {
+                return status;
+            }
+        }
+
         operator_sql = show_where_binary_operator_sql(expression->operator_kind);
         if (operator_sql == NULL) {
             return MYLITE_UNSUPPORTED;
@@ -816,6 +856,159 @@ static int append_show_where_expression(
         );
     default:
         return MYLITE_UNSUPPORTED;
+    }
+}
+
+static int append_show_where_like_expression(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_sql_ast_node *expression,
+    const char *const *column_names,
+    size_t column_count
+) {
+    const struct mylite_sql_ast_node *left = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *pattern = mylite_ast_child_at(expression, 1U);
+    const struct mylite_sql_ast_node *escape = mylite_ast_child_at(expression, 2U);
+    char *glob_pattern = NULL;
+    char *fragment_sql = NULL;
+    sqlite3_str *fragment = NULL;
+    int status = show_where_like_glob_pattern(database, pattern, escape, &glob_pattern);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    fragment = sqlite3_str_new(database->sqlite);
+    if (fragment == NULL) {
+        sqlite3_free(glob_pattern);
+        return MYLITE_NOMEM;
+    }
+    sqlite3_str_appendall(fragment, "(");
+    status = append_show_where_expression(database, fragment, left, column_names, column_count);
+    if (status == MYLITE_OK) {
+        sqlite3_str_appendall(
+            fragment,
+            expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_LIKE ? " NOT GLOB " : " GLOB "
+        );
+        sqlite3_str_appendf(fragment, "%Q", glob_pattern);
+    }
+    if (status == MYLITE_OK) {
+        sqlite3_str_appendall(fragment, ")");
+    }
+    fragment_sql = sqlite3_str_finish(fragment);
+    if (status == MYLITE_OK && fragment_sql == NULL) {
+        status = MYLITE_NOMEM;
+    }
+    if (status == MYLITE_OK) {
+        sqlite3_str_appendall(sql, fragment_sql);
+    }
+    sqlite3_free(fragment_sql);
+    sqlite3_free(glob_pattern);
+    return status;
+}
+
+static int show_where_like_glob_pattern(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *pattern,
+    const struct mylite_sql_ast_node *escape,
+    char **out_pattern
+) {
+    sqlite3_str *glob = NULL;
+    char *like_pattern = NULL;
+    bool has_escape = false;
+    char escape_character = '\0';
+    int status =
+        show_where_like_escape_char(database, pattern, escape, &has_escape, &escape_character);
+
+    *out_pattern = NULL;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    like_pattern = mylite_copy_string_literal_span(pattern);
+    if (like_pattern == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    glob = sqlite3_str_new(database->sqlite);
+    if (glob == NULL) {
+        free(like_pattern);
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; like_pattern[index] != '\0'; ++index) {
+        char character = like_pattern[index];
+
+        if (has_escape && character == escape_character && like_pattern[index + 1U] != '\0') {
+            append_show_where_glob_literal(glob, like_pattern[++index]);
+        } else if (character == '%') {
+            sqlite3_str_append(glob, "*", 1);
+        } else if (character == '_') {
+            sqlite3_str_append(glob, "?", 1);
+        } else {
+            append_show_where_glob_literal(glob, character);
+        }
+    }
+    free(like_pattern);
+    *out_pattern = sqlite3_str_finish(glob);
+    return *out_pattern == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static int show_where_like_escape_char(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *pattern,
+    const struct mylite_sql_ast_node *escape,
+    bool *out_has_escape,
+    char *out_escape
+) {
+    char *escape_text = NULL;
+
+    if (pattern == NULL || pattern->kind != MYLITE_SQL_AST_LITERAL ||
+        pattern->literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        return MYLITE_UNSUPPORTED;
+    }
+    *out_has_escape = !pattern->no_backslash_escapes;
+    *out_escape = '\\';
+    if (escape == NULL) {
+        return MYLITE_OK;
+    }
+    if (escape->kind != MYLITE_SQL_AST_LITERAL ||
+        escape->literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        return MYLITE_UNSUPPORTED;
+    }
+    escape_text = mylite_copy_string_literal_span(escape);
+    if (escape_text == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    if (escape_text[0] == '\0' || escape_text[1] != '\0') {
+        free(escape_text);
+        return MYLITE_UNSUPPORTED;
+    }
+    *out_has_escape = true;
+    *out_escape = escape_text[0];
+    free(escape_text);
+    return MYLITE_OK;
+}
+
+static void append_show_where_glob_literal(sqlite3_str *glob, char character) {
+    char literal[1] = {character};
+
+    switch (character) {
+    case '*':
+        sqlite3_str_append(glob, "[*]", 3);
+        break;
+    case '?':
+        sqlite3_str_append(glob, "[?]", 3);
+        break;
+    case '[':
+        sqlite3_str_append(glob, "[[]", 3);
+        break;
+    case ']':
+        sqlite3_str_append(glob, "[]]", 3);
+        break;
+    default:
+        sqlite3_str_append(glob, literal, 1);
+        break;
     }
 }
 

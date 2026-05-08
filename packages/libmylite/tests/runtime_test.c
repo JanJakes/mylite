@@ -51750,6 +51750,51 @@ static int test_show_table_status_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SHOW TABLE STATUS WHERE Name LIKE 'a%'",
+        columns,
+        18,
+        alpha_values,
+        1,
+        "show table status where like alpha"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE Name LIKE 'A%'",
+        columns,
+        18,
+        NULL,
+        0,
+        "show table status where like alpha is case-sensitive"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE Name LIKE 'camel%'",
+        columns,
+        18,
+        NULL,
+        0,
+        "show table status where like camel is case-sensitive"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE Name LIKE 'Camel%'",
+        columns,
+        18,
+        camel_values,
+        1,
+        "show table status where like Camel"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE Name LIKE 'beta\\_%'",
+        columns,
+        18,
+        beta_values,
+        1,
+        "show table status where like escaped underscore"
+    );
+    failures += expect_select_rows(
+        database,
         "SHOW TABLE STATUS WHERE LOWER(Name) = 'alpha'",
         columns,
         18,

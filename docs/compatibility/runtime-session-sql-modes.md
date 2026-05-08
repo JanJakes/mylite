@@ -9,7 +9,7 @@ Session-local MySQL state and SQL modes that affect parsing, coercion, diagnosti
 | Default schema | ❌ | Current schema state |
 | Connection character set state | ❌ | Connection charset/collation state |
 | Time zone state | ❌ | Time zone variables and conversion |
-| Autocommit state | ❌ | Autocommit and transaction boundaries |
+| Autocommit state | 🟡 | Limited scalar `@@autocommit` reads report fixed enabled value `1`; no mutable `SET autocommit`, transaction boundaries, commit/rollback behavior, or protocol status flags |
 | Last insert id | ❌ | Insert-id state and packets |
 | Affected rows | ❌ | Found/changed row counts |
 | Warnings and diagnostics | ❌ | Warnings, errors, diagnostics area |

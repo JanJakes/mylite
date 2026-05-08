@@ -81,7 +81,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `auto_generate_certs` | ❌ | Value, scope, SET, diagnostics |
 | `auto_increment_increment` | ❌ | Value, scope, SET, diagnostics |
 | `auto_increment_offset` | ❌ | Value, scope, SET, diagnostics |
-| `autocommit` | ❌ | Value, scope, SET, diagnostics |
+| `autocommit` | 🟡 | Limited read-only scalar `SELECT @@autocommit` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled autocommit baseline `1`; no `SET`, mutable global/session state, explicit transaction boundaries, session-state tracking, protocol status flags, or `SHOW VARIABLES` |
 | `automatic_sp_privileges` | ❌ | Value, scope, SET, diagnostics |
 | `back_log` | ❌ | Value, scope, SET, diagnostics |
 | `basedir` | ❌ | Value, scope, SET, diagnostics |

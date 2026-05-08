@@ -434,6 +434,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `GROUP_CONCAT()` over `VARBINARY` and mixed binary/text argument lists now
       reports MySQL-shaped binary metadata with byte-counted lengths, while
       numeric arguments remain connection-text results.
+      `SHA2()` now derives result metadata widths from cacheable constant
+      length expressions even when the digest result is `NULL`, and hash
+      functions now have binary-connection descriptor coverage.
       `EXTRACT(QUARTER FROM ...)` and `EXTRACT(MICROSECOND FROM ...)` now parse
       and execute with MySQL-shaped signed `LONGLONG` descriptors, including the
       MySQL-observed `EXTRACT(MICROSECOND...)` display width.

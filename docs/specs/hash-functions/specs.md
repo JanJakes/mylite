@@ -74,6 +74,8 @@ Observed declared lengths under `utf8mb4`:
 - `SHA2(..., 384)` length: `384`
 - `SHA2(..., 512)` length: `512`
 - `SHA2()` with invalid or `NULL` literal length: `256`
+- `SHA2()` with a cacheable constant length expression uses the converted
+  length value; unsupported or `NULL` converted lengths declare `256`
 - `SHA2()` with a nonconstant length expression: `512`
 
 Under `latin1`, the corresponding lengths are the number of hexadecimal

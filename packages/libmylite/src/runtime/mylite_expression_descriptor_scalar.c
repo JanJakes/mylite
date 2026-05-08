@@ -42,6 +42,11 @@ static uint64_t sha2_function_result_chars(
     const struct mylite_expression_value *value
 );
 
+static bool sha2_constant_hash_length(
+    const struct mylite_sql_ast_node *argument,
+    uint64_t *out_bits
+);
+
 static bool sha2_literal_hash_length(
     const struct mylite_sql_ast_node *argument,
     uint64_t *out_bits
@@ -349,6 +354,9 @@ static uint64_t sha2_function_result_chars(
     if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return value->text_length;
     }
+    if (sha2_constant_hash_length(length_argument, &bits)) {
+        return sha2_result_chars_from_bits(bits);
+    }
     if (sha2_literal_hash_length(length_argument, &bits)) {
         return sha2_result_chars_from_bits(bits);
     }
@@ -356,6 +364,37 @@ static uint64_t sha2_function_result_chars(
         return MYLITE_DIGEST_SHA2_256_HEX_LENGTH;
     }
     return MYLITE_DIGEST_SHA2_512_HEX_LENGTH;
+}
+
+static bool sha2_constant_hash_length(
+    const struct mylite_sql_ast_node *argument,
+    uint64_t *out_bits
+) {
+    struct mylite_expression_warnings warnings = {0};
+    struct mylite_expression_value value = {0};
+    int64_t bits = 0;
+
+    if (argument == NULL || out_bits == NULL ||
+        !mylite_expression_is_cacheable_no_table(argument)) {
+        return false;
+    }
+    if (mylite_expression_eval(argument, &warnings, &value) != 0) {
+        mylite_expression_value_deinit(&value);
+        mylite_expression_warnings_deinit(&warnings);
+        return false;
+    }
+    if (value.kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        *out_bits = UINT64_MAX;
+        mylite_expression_value_deinit(&value);
+        mylite_expression_warnings_deinit(&warnings);
+        return true;
+    }
+
+    bits = mylite_expression_value_to_int64(&value);
+    *out_bits = bits < 0 ? UINT64_MAX : (uint64_t)bits;
+    mylite_expression_value_deinit(&value);
+    mylite_expression_warnings_deinit(&warnings);
+    return true;
 }
 
 static bool sha2_literal_hash_length(

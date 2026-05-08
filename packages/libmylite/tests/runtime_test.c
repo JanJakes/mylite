@@ -9377,6 +9377,60 @@ static int test_scalar_builtin_functions_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          1},
     };
+    static const struct expected_result_metadata hash_expression_metadata[] = {
+        {"sha2_expr_224",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         224U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"sha2_null_expr_224",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         224U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"sha2_expr_bad",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         256U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"sha2_cast_null",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         256U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+    };
     static const struct expected_result_metadata nullable_search_metadata[] = {
         {"ascii_null",
          NULL,
@@ -10053,6 +10107,47 @@ static int test_scalar_builtin_functions_execution(void) {
          8U,
          0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         1},
+    };
+    static const struct expected_result_metadata hash_binary_metadata[] = {
+        {"md5_binary",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         32U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"sha1_binary",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         40U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+        {"sha2_256_binary",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
          1},
     };
     static const struct expected_result_metadata quote_table_metadata[] = {
@@ -12020,6 +12115,35 @@ static int test_scalar_builtin_functions_execution(void) {
 
     failures += prepare_sql(
         database,
+        "SELECT SHA2('abc',224+0) AS sha2_expr_224, "
+        "SHA2(NULL,224+0) AS sha2_null_expr_224, "
+        "SHA2('abc',128+0) AS sha2_expr_bad, "
+        "SHA2('abc',CAST(NULL AS UNSIGNED)) AS sha2_cast_null",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        hash_expression_metadata,
+        (int)(sizeof(hash_expression_metadata) / sizeof(hash_expression_metadata[0])),
+        "hash expression utf8mb4 metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "hash expression metadata row");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "hash expression metadata warning count");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_wrong_parameters_to_native_fct,
+            "hash expression metadata warning code"
+        );
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hash expression metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
         "SELECT ASCII(NULL) AS ascii_null, "
         "LOCATE('a', NULL) AS locate_null, "
         "INSERT('abc', NULL, 1, 'x') AS insert_null, "
@@ -12238,6 +12362,26 @@ static int test_scalar_builtin_functions_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "hash latin1 metadata row");
     failures += expect_int(mylite_warning_count(database), 0, "hash latin1 metadata warnings");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hash latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET NAMES binary", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT MD5('abc') AS md5_binary, "
+        "SHA1('abc') AS sha1_binary, "
+        "SHA2('abc',256) AS sha2_256_binary",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        hash_binary_metadata,
+        (int)(sizeof(hash_binary_metadata) / sizeof(hash_binary_metadata[0])),
+        "hash binary metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "hash binary metadata row");
+    failures += expect_int(mylite_warning_count(database), 0, "hash binary metadata warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hash binary metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);

@@ -22176,7 +22176,6 @@ static int eval_literal(
         free(text);
         return 0;
     case MYLITE_SQL_AST_LITERAL_DECIMAL:
-    case MYLITE_SQL_AST_LITERAL_FLOAT:
         text = copy_span_text(node->span.text, node->span.length);
         if (text == NULL) {
             return -1;
@@ -22189,6 +22188,17 @@ static int eval_literal(
         out_value->real_value = strtod(text, NULL);
         out_value->text_value = text;
         out_value->text_length = strlen(text);
+        return 0;
+    case MYLITE_SQL_AST_LITERAL_FLOAT:
+        text = copy_span_text(node->span.text, node->span.length);
+        if (text == NULL) {
+            return -1;
+        }
+        out_value->kind = MYLITE_EXPRESSION_VALUE_REAL;
+        out_value->real_value = strtod(text, NULL);
+        out_value->text_value = text;
+        out_value->text_length = strlen(text);
+        out_value->compact_real_text = true;
         return 0;
     case MYLITE_SQL_AST_LITERAL_STRING:
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
@@ -23908,6 +23918,7 @@ static int set_unary_real_value(
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_REAL,
         .real_value = real_value,
+        .compact_real_text = operand != NULL && operand->compact_real_text,
         .text_value = signed_text,
         .text_length = signed_text == NULL ? 0U : signed_length,
     };

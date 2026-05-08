@@ -444,6 +444,9 @@ Literal descriptors should be inferred without reading rows:
   byte length equal to literal byte length, and `BINARY`
 - decimal literals should produce `NEWDECIMAL` with precision/scale-derived
   length and decimals once decimal literal metadata is implemented
+- exponent-form approximate literals such as `1e2` produce `DOUBLE` metadata
+  with display length equal to the literal token length, decimals `31`, and
+  `BINARY NUM NOT_NULL` flags
 
 ### Operators
 

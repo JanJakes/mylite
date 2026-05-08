@@ -375,6 +375,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Scalar `CAST`/`CONVERT` to `FLOAT`, including `REAL` under
       `REAL_AS_FLOAT`, now normalize positive exponent display without the
       optional plus sign, matching MySQL's `3.40282e38` text form.
+      Exponent-form numeric literals now evaluate as approximate `DOUBLE`
+      literals and use MySQL-shaped compact display text such as `100`,
+      `-100`, `0.01`, `1e20`, and `1e-20`.
       `TRUNCATE()` now duplicates truncated scale warnings for exact DECIMAL
       value arguments while retaining single-warning behavior for approximate
       and mixed text conversions.
@@ -560,6 +563,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       covered `INSERT ... VALUES` and single-table `UPDATE` paths now use
       MySQL-shaped compact DOUBLE display text, including lowercase exponent
       markers without positive exponent plus signs.
+      Exponent-form numeric literals such as `1e2`, `1.25e2`, and `1e-2`
+      now expose direct scalar `DOUBLE` result metadata with token-length
+      display widths, decimals `31`, and `BINARY NUM NOT_NULL` flags instead
+      of exact-decimal descriptors.
       Remaining expression and other SQLite-backed result metadata gaps are
       still tracked here.
 

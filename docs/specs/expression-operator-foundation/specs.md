@@ -333,6 +333,11 @@ Task 16 must introduce a reusable value model that can represent at least:
 - byte strings with charset/collation metadata placeholders
 - boolean result values as integer `0` or `1`
 
+Exponent-form numeric literals are approximate `DOUBLE` values. Scalar result
+text uses MySQL-shaped compact double formatting, for example `1e2` displays
+as `100`, unary `-1e2` as `-100`, `1e-2` as `0.01`, and large/small values
+keep lowercase exponent markers without a positive exponent plus sign.
+
 Numeric conversion of strings should preserve MySQL's prefix-number behavior
 and warning records for truncated nonnumeric suffixes. Full range clipping,
 invalid temporal comparison diagnostics, JSON comparison order, and complete

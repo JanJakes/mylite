@@ -30,6 +30,10 @@ static struct mylite_field_descriptor binary_string_literal_descriptor(
     const struct mylite_expression_value *value
 );
 
+static struct mylite_field_descriptor float_literal_descriptor(
+    const struct mylite_sql_ast_node *expression
+);
+
 static uint64_t hex_literal_byte_length(const struct mylite_sql_ast_node *expression);
 
 static uint64_t bit_literal_byte_length(const struct mylite_sql_ast_node *expression);
@@ -62,10 +66,12 @@ int mylite_expression_descriptor_infer_literal(
         }
         break;
     case MYLITE_SQL_AST_LITERAL_DECIMAL:
-    case MYLITE_SQL_AST_LITERAL_FLOAT:
         descriptor = mylite_expression_descriptor_decimal(false);
         descriptor.decimals = mylite_expression_descriptor_literal_decimal_scale(expression);
         descriptor.length = expression->span.length + 1U;
+        break;
+    case MYLITE_SQL_AST_LITERAL_FLOAT:
+        descriptor = float_literal_descriptor(expression);
         break;
     case MYLITE_SQL_AST_LITERAL_STRING:
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
@@ -100,6 +106,19 @@ int mylite_expression_descriptor_infer_literal(
 
     *out_descriptor = descriptor;
     return MYLITE_OK;
+}
+
+static struct mylite_field_descriptor float_literal_descriptor(
+    const struct mylite_sql_ast_node *expression
+) {
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_DOUBLE,
+        .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .length = expression == NULL ? 0U : expression->span.length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = false,
+    };
 }
 
 static struct mylite_field_descriptor hex_literal_descriptor(

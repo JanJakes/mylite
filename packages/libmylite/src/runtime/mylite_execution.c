@@ -319,6 +319,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT = 26,
     SESSION_SYSTEM_VARIABLE_SQL_NOTES = 27,
     SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT = 28,
+    SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN = 29,
 };
 
 struct system_variable_component {
@@ -6105,6 +6106,7 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
     case SESSION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
+    case SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN:
         rc = format_uint64(database, 1U, out_cell->integer_text, sizeof(out_cell->integer_text));
         if (rc == MYLITE_OK) {
             out_cell->value = out_cell->integer_text;
@@ -6261,6 +6263,7 @@ static bool resolve_system_variable_kind(
         {"sql_buffer_result", SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT},
         {"sql_generate_invisible_primary_key",
          SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY},
+        {"sql_log_bin", SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN},
         {"sql_safe_updates", SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES},
         {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT},
         {"sql_notes", SESSION_SYSTEM_VARIABLE_SQL_NOTES},

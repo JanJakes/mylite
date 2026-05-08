@@ -7,7 +7,7 @@ actions.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `ALTER TABLE` | ❌ | See [ALTER TABLE actions](#alter-table-actions) |
+| `ALTER TABLE` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]` only; see [ALTER TABLE actions](#alter-table-actions) |
 | `CREATE TABLE` | 🟡 | Limited persistent base-table creation: explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, `NULL`/`NOT NULL`, optional explicit `ENGINE [=] InnoDB`, and optional fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table charset/collation options; no other options, keys, defaults, temporary tables, or `IF NOT EXISTS` |
 | `CREATE TEMPORARY TABLE` | ❌ | Session-scoped table lifecycle and name shadowing |
 | `CREATE TABLE ... LIKE` | ❌ | Exact metadata cloning rules |
@@ -15,7 +15,7 @@ actions.
 | `DROP TABLE` | 🟡 | Limited single persistent base-table drop without `IF EXISTS`, `TEMPORARY`, multi-table drop, `RESTRICT`, or `CASCADE` |
 | `RENAME TABLE` | 🟡 | Limited single-pair persistent base-table rename from `baseline-table-rename-lifecycle`, including unqualified, schema-qualified, and cross-schema names; no multi-table rename, temporary tables, views, triggers, or privilege semantics |
 | `TRUNCATE TABLE` | 🟡 | Limited persistent base-table `TRUNCATE [TABLE] table_name` for unqualified and schema-qualified descriptor targets; empties physical rows, preserves descriptors, and reports zero affected rows; no implicit commits, temporary tables, partitions, foreign keys, triggers, auto-increment reset, locks, privileges, or physical storage rebuild semantics |
-| Atomic DDL | 🟡 | Catalog descriptor rows and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename subsets only |
+| Atomic DDL | 🟡 | Catalog descriptor rows and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename/truncate and single-action alter-rename subsets only |
 | Implicit commit boundaries | ❌ | Implicit commit boundaries |
 | `IMPORT TABLE` | ❌ | Transportable tablespace import syntax, diagnostics |
 
@@ -50,7 +50,7 @@ actions.
 | `ALTER COLUMN SET DEFAULT` | ❌ | Default mutation semantics |
 | `ALTER COLUMN DROP DEFAULT` | ❌ | Default removal semantics |
 | `ALTER COLUMN SET VISIBLE` / `SET INVISIBLE` | ❌ | Column visibility changes and restrictions |
-| `RENAME TO` | ❌ | Table rename via ALTER TABLE |
+| `RENAME TO` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]` through descriptor rename; supports unqualified, schema-qualified, cross-schema, and same-object no-op forms; no combined actions, temporary tables, views, triggers, options, locks, algorithms, privileges, or metadata side effects |
 | `ORDER BY` | ❌ | Physical row ordering syntax and embedded behavior |
 | `CONVERT TO CHARACTER SET` | ❌ | Column/table charset and collation conversion semantics |
 | `DEFAULT CHARACTER SET` / `COLLATE` | ❌ | Table default charset/collation changes |

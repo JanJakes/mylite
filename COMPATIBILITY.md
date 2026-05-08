@@ -64,13 +64,13 @@ tests.
 | `MODIFY COLUMN` | ❌ | Definition change without rename. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `ALTER COLUMN SET DEFAULT` | ❌ | Default mutation. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `ALTER COLUMN DROP DEFAULT` | ❌ | Default removal. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| `RENAME TO` | ❌ | Table rename via `ALTER TABLE`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `RENAME TO` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]` with unqualified, schema-qualified, and cross-schema names; no combined `ALTER TABLE` actions, temporary tables, views, triggers, options, locks, algorithms, or privilege semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `ORDER BY` | ❌ | Accepted table-rebuild syntax. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `DEFAULT CHARACTER SET` / `COLLATE` | ❌ | Table default charset and collation changes. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
 | `TRUNCATE TABLE` | 🟡 | Limited persistent base-table `TRUNCATE [TABLE] table_name` empties descriptor-backed physical rows and reports zero affected rows; no implicit commits, temporary tables, partitions, foreign keys, triggers, auto-increment reset, locks, privileges, or storage rebuild semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `DROP TABLE` | 🟡 | Limited single persistent base-table drop without `IF EXISTS`, `TEMPORARY`, multi-table drop, `RESTRICT`, or `CASCADE`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `RENAME TABLE` | 🟡 | Limited single-pair persistent base-table rename with unqualified, schema-qualified, and cross-schema names; no multi-table rename, temporary tables, views, triggers, or privilege semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| Atomic DDL | 🟡 | Catalog descriptors and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename subsets only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Atomic DDL | 🟡 | Catalog descriptors and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename/truncate and single-action alter-rename subsets only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Implicit commit boundaries | ❌ | MySQL DDL commit behavior. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [SQL transactions](docs/compatibility/sql-transactions.md) |
 
 ### Auto Increment

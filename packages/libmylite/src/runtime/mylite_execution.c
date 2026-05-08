@@ -309,6 +309,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_AUTOCOMMIT = 16,
     SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE = 17,
     SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS = 18,
+    SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS = 19,
 };
 
 struct system_variable_component {
@@ -6089,6 +6090,7 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+    case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
         rc = format_uint64(database, 1U, out_cell->integer_text, sizeof(out_cell->integer_text));
         if (rc == MYLITE_OK) {
             out_cell->value = out_cell->integer_text;
@@ -6217,6 +6219,7 @@ static bool resolve_system_variable_kind(
         {"autocommit", SESSION_SYSTEM_VARIABLE_AUTOCOMMIT},
         {"sql_quote_show_create", SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE},
         {"foreign_key_checks", SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS},
+        {"unique_checks", SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS},
         {"version", SESSION_SYSTEM_VARIABLE_VERSION},
         {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT},
     };
@@ -6247,6 +6250,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
+    case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
         return true;

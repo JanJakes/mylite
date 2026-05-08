@@ -48,7 +48,7 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 | `mysql.component` | ❌ | Registry: server components installed with INSTALL COMPONENT |
 | `mysql.func` | ❌ | Registry: loadable functions installed with CREATE FUNCTION |
 | `mysql.plugin` | ❌ | Registry: server-side plugins installed with INSTALL PLUGIN |
-| `mysql.general_log` | ❌ | CSV log table for the general query log |
+| `mysql.general_log` | ❌ | CSV log table for the general query log; limited `@@sql_log_off` scalar reads do not create or write this table |
 | `mysql.slow_log` | ❌ | CSV log table for the slow query log |
 | `mysql.help_category` | ❌ | HELP category table |
 | `mysql.help_keyword` | ❌ | HELP keyword table |

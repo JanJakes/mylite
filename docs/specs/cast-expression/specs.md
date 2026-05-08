@@ -27,6 +27,8 @@ The current implementation supports the application-facing CAST slice:
   path
 - `CAST(expr AS DATE)`, `CAST(expr AS TIME)`, `CAST(expr AS TIME(fsp))`,
   `CAST(expr AS DATETIME)`, and `CAST(expr AS DATETIME(fsp))`
+- `CAST(expr AS YEAR)`, including MySQL-compatible two-digit-year pivots,
+  string-zero handling, range diagnostics, warnings, and result metadata
 
 The expression must work everywhere the current supported scalar expression
 subset works:
@@ -44,8 +46,8 @@ The following behavior is deferred:
   operator is specified in
   `docs/specs/expression-operator-foundation/specs.md`
 - `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
-  `YEAR`, `JSON`, spatial casts, and `CAST(... AT TIME ZONE ... AS DATETIME)`
-  remain deferred
+  `JSON`, spatial casts, and `CAST(... AT TIME ZONE ... AS DATETIME)` remain
+  deferred
 - multi-valued-index `ARRAY` casts
 - exhaustive overflow/range clipping and every SQL-mode variant
 
@@ -77,6 +79,8 @@ Floating-point target behavior, including `REAL_AS_FLOAT` for `REAL` targets,
 was additionally checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 Integer target overflow behavior for approximate inputs was additionally
 checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
+YEAR target behavior was additionally checked on 2026-05-07 against the same
+MySQL 8.4.9 runtime.
 
 Table-backed `DECIMAL` string coercions were additionally checked on
 2026-05-07 against the same MySQL 8.4.9 runtime with `DECIMAL(10,2)` values
@@ -512,8 +516,8 @@ conversion engine. The main known differences are:
   semantics remain deferred beyond length-aware preservation of source bytes
   for the supported `CAST(... AS BINARY)` form
 - connection charset metadata is limited to the current MyLite charset registry
-- `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; `YEAR`,
-  JSON, spatial, and timezone-aware casts are separate tasks
+- `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; JSON,
+  spatial, and timezone-aware casts are separate tasks
 - `REAL_AS_FLOAT` is applied to expression-level `REAL` cast targets, but
   broader approximate-numeric DDL and storage-mode behavior remains deferred
 - overflow and SQL-mode diagnostics are not exhaustive

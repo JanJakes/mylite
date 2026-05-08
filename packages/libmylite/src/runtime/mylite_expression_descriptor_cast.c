@@ -49,6 +49,8 @@ static struct mylite_field_descriptor cast_datetime_descriptor(
     const struct mylite_sql_ast_node *target
 );
 
+static struct mylite_field_descriptor cast_year_descriptor(void);
+
 static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target);
 
 static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target);
@@ -132,6 +134,9 @@ int mylite_expression_descriptor_infer_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
         *out_descriptor = cast_datetime_descriptor(target);
         return MYLITE_OK;
+    case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
+        *out_descriptor = cast_year_descriptor();
+        return MYLITE_OK;
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
     case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
@@ -160,7 +165,6 @@ int mylite_expression_descriptor_infer_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB:
     case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
     case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
-    case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         break;
     }
 
@@ -297,6 +301,19 @@ static struct mylite_field_descriptor cast_datetime_descriptor(
         .length = decimals == 0U ? mylite_mysql_datetime_display_length
                                  : mylite_mysql_datetime_fraction_display_base + decimals,
         .decimals = decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor cast_year_descriptor(void) {
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_YEAR,
+        .flags = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .length = mylite_mysql_year_display_length,
         .charset_id = mylite_mysql_binary_charset_id,
         .nullable = true,
     };

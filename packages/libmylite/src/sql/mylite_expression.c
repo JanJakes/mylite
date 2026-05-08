@@ -31,6 +31,7 @@ enum {
     MYLITE_WARNING_DIVISION_BY_ZERO = 1365,
     MYLITE_WARNING_INCORRECT_STRING_VALUE = 1411,
     MYLITE_WARNING_DATETIME_FUNCTION_OVERFLOW = 1441,
+    MYLITE_WARNING_INCORRECT_YEAR_VALUE = 1525,
     MYLITE_WARNING_WRONG_PARAMCOUNT_TO_NATIVE_FCT = 1582,
     MYLITE_WARNING_WRONG_PARAMETERS_TO_NATIVE_FCT = 1583,
     MYLITE_WARNING_UNKNOWN_LOCALE = 1649,
@@ -81,6 +82,8 @@ enum {
     MYLITE_TEMPORAL_TWO_DIGIT_YEAR_PIVOT = 70,
     MYLITE_TEMPORAL_TWO_DIGIT_YEAR_HIGH_CENTURY = 1900,
     MYLITE_TEMPORAL_TWO_DIGIT_YEAR_LOW_CENTURY = 2000,
+    MYLITE_YEAR_MIN = 1901,
+    MYLITE_YEAR_MAX = 2155,
     MYLITE_EXPRESSION_UINT64_DIGITS = 19,
     MYLITE_EXPRESSION_BITS_PER_BYTE = 8,
     MYLITE_EXPRESSION_BITS_PER_UINT64 = 64,
@@ -190,6 +193,13 @@ struct numeric_text_parse_input {
     char *text;
     char *start;
     char *end;
+};
+
+struct year_cast_text_parse {
+    uint64_t magnitude;
+    bool saw_digit;
+    bool overflow;
+    bool truncated;
 };
 
 struct between_truth {
@@ -1021,6 +1031,34 @@ static int eval_datetime_cast(
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 );
+
+static int eval_year_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_year_text_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int eval_year_numeric_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
+static int set_year_cast_result(
+    int64_t value,
+    bool zero_is_year_2000,
+    struct mylite_expression_value *out_value
+);
+
+static bool coerce_year_value(int64_t value, bool zero_is_year_2000, uint64_t *out_year);
+
+static struct year_cast_text_parse parse_year_cast_text(const char *text, size_t text_length);
 
 static unsigned int cast_temporal_fsp(const struct mylite_sql_ast_node *target);
 
@@ -4121,6 +4159,23 @@ static int append_cast_truncation_warning(
     const char *text
 );
 
+static int append_incorrect_year_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+);
+
+static int append_truncated_year_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+);
+
+static int append_truncated_year_integer_warning(
+    struct mylite_expression_warnings *warnings,
+    int64_t value
+);
+
 static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings);
 
 static int append_exp_out_of_range_error(struct mylite_expression_warnings *warnings);
@@ -5440,6 +5495,9 @@ static int eval_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_DATETIME:
         status = eval_datetime_cast(target, &value, warnings, out_value);
         break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
+        status = eval_year_cast(&value, warnings, out_value);
+        break;
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
     case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
@@ -5468,7 +5526,6 @@ static int eval_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMBLOB:
     case MYLITE_SQL_AST_COLUMN_TYPE_LONGBLOB:
     case MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP:
-    case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         status = -1;
         break;
     }
@@ -6352,6 +6409,131 @@ static int eval_datetime_cast(
     date.fraction_digits = fsp;
     date.preserve_fraction_digits = fsp != 0U;
     return set_temporal_datetime_text_value(&date, out_value);
+}
+
+static int eval_year_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return eval_year_text_cast(value, warnings, out_value);
+    }
+    return eval_year_numeric_cast(value, warnings, out_value);
+}
+
+static int eval_year_text_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    const char *text = value->text_value == NULL ? "" : value->text_value;
+    size_t text_length = value->text_value == NULL ? 0U : value->text_length;
+    struct year_cast_text_parse parsed = parse_year_cast_text(text, text_length);
+    int64_t integer = 0;
+    int status = 0;
+
+    if (!parsed.saw_digit || parsed.overflow) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return append_incorrect_year_warning(warnings, text, text_length);
+    }
+    if (parsed.magnitude > (uint64_t)INT64_MAX) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return append_incorrect_year_warning(warnings, text, text_length);
+    }
+    integer = (int64_t)parsed.magnitude;
+    status = set_year_cast_result(integer, true, out_value);
+    if (status != 0) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return append_truncated_year_warning(warnings, text, text_length);
+    }
+    if (parsed.truncated) {
+        status = append_truncated_year_warning(warnings, text, text_length);
+    }
+    return status;
+}
+
+static int eval_year_numeric_cast(
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    int64_t integer = 0;
+    int status = cast_value_to_signed_integer(value, NULL, &integer);
+
+    if (status != 0) {
+        return status;
+    }
+    status = set_year_cast_result(integer, false, out_value);
+    if (status != 0) {
+        *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+        return append_truncated_year_integer_warning(warnings, integer);
+    }
+    return status;
+}
+
+static int set_year_cast_result(
+    int64_t value,
+    bool zero_is_year_2000,
+    struct mylite_expression_value *out_value
+) {
+    uint64_t year = 0U;
+
+    if (!coerce_year_value(value, zero_is_year_2000, &year)) {
+        return -1;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_UINT64,
+        .uint64_value = year,
+    };
+    return 0;
+}
+
+static bool coerce_year_value(int64_t value, bool zero_is_year_2000, uint64_t *out_year) {
+    if (value == 0) {
+        *out_year = zero_is_year_2000 ? MYLITE_TEMPORAL_TWO_DIGIT_YEAR_LOW_CENTURY : 0U;
+        return true;
+    }
+    if (value > 0 && value < MYLITE_TEMPORAL_TWO_DIGIT_YEAR_PIVOT) {
+        *out_year = (uint64_t)(MYLITE_TEMPORAL_TWO_DIGIT_YEAR_LOW_CENTURY + value);
+        return true;
+    }
+    if (value >= MYLITE_TEMPORAL_TWO_DIGIT_YEAR_PIVOT && value < 100) {
+        *out_year = (uint64_t)(MYLITE_TEMPORAL_TWO_DIGIT_YEAR_HIGH_CENTURY + value);
+        return true;
+    }
+    if (value >= MYLITE_YEAR_MIN && value <= MYLITE_YEAR_MAX) {
+        *out_year = (uint64_t)value;
+        return true;
+    }
+    return false;
+}
+
+static struct year_cast_text_parse parse_year_cast_text(const char *text, size_t text_length) {
+    const char *start = text == NULL ? "" : text;
+    const char *end = start + text_length;
+    const char *scan = start;
+    struct year_cast_text_parse parsed = {0};
+
+    while (scan < end && isspace((unsigned char)*scan)) {
+        ++scan;
+    }
+    if (scan < end && *scan == '+') {
+        ++scan;
+    }
+    while (scan < end && isdigit((unsigned char)*scan)) {
+        uint64_t digit = (uint64_t)(*scan - '0');
+
+        parsed.saw_digit = true;
+        if (parsed.magnitude > (UINT64_MAX - digit) / MYLITE_EXPRESSION_DECIMAL_BASE) {
+            parsed.overflow = true;
+        } else if (!parsed.overflow) {
+            parsed.magnitude = (parsed.magnitude * MYLITE_EXPRESSION_DECIMAL_BASE) + digit;
+        }
+        ++scan;
+    }
+    parsed.truncated = parsed.saw_digit && scan < end;
+    return parsed;
 }
 
 static unsigned int cast_temporal_fsp(const struct mylite_sql_ast_node *target) {
@@ -25392,6 +25574,65 @@ static int append_cast_truncation_warning(
         return -1;
     }
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
+static int append_incorrect_year_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+) {
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int preview_length = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             : (int)text_length;
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect YEAR value: '%.*s'",
+        preview_length,
+        text == NULL ? "" : text
+    );
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_INCORRECT_YEAR_VALUE, message);
+}
+
+static int append_truncated_year_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *text,
+    size_t text_length
+) {
+    char message[MYLITE_EXPRESSION_WARNING_MESSAGE_SIZE];
+    int preview_length = text_length > MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             ? MYLITE_EXPRESSION_WARNING_TEXT_PREVIEW
+                             : (int)text_length;
+    int length = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect YEAR value: '%.*s'",
+        preview_length,
+        text == NULL ? "" : text
+    );
+
+    if (length < 0) {
+        return -1;
+    }
+    return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
+static int append_truncated_year_integer_warning(
+    struct mylite_expression_warnings *warnings,
+    int64_t value
+) {
+    char text[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
+    int length = snprintf(text, sizeof(text), "%lld", (long long)value);
+
+    if (length < 0 || (size_t)length >= sizeof(text)) {
+        return -1;
+    }
+    return append_truncated_year_warning(warnings, text, (size_t)length);
 }
 
 static int append_power_out_of_range_error(struct mylite_expression_warnings *warnings) {

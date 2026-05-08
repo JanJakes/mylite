@@ -24,6 +24,8 @@ This task implements:
   `REAL_AS_FLOAT`, `REAL` uses the `FLOAT` value and metadata path
 - `CONVERT(expr, DATE)`, `CONVERT(expr, TIME)`, `CONVERT(expr, TIME(fsp))`,
   `CONVERT(expr, DATETIME)`, and `CONVERT(expr, DATETIME(fsp))`
+- `CONVERT(expr, YEAR)`, sharing the `CAST(... AS YEAR)` value, warning, and
+  metadata behavior
 - `CONVERT(expr USING charset_name)` for the current MyLite expression-level
   charset set: `binary`, `latin1`, `utf8mb3` / `utf8`, `utf8mb4`, and `ascii`
 
@@ -41,7 +43,7 @@ The following behavior is deferred with the same compatibility boundaries as
 `docs/specs/cast-expression/specs.md`:
 
 - `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
-  `YEAR`, JSON, spatial, and timezone-aware casts remain deferred
+  JSON, spatial, and timezone-aware casts remain deferred
 - multi-valued-index `ARRAY` casts
 - full byte transcoding between character sets beyond the covered scalar
   `latin1` to UTF-8 and UTF-8 to `latin1` slice
@@ -72,6 +74,9 @@ using:
 - `docker exec -i mylite-mysql-849 mysql -h127.0.0.1 -uroot --batch --raw --show-warnings`
 - `docker exec -i mylite-mysql-849 mysql -h127.0.0.1 -uroot --column-type-info -vvv`
 - `docker exec -i mylite-mysql-849 mysql -h127.0.0.1 -uroot --force --batch --raw --show-warnings`
+
+YEAR target behavior was additionally checked on 2026-05-07 against the same
+MySQL 8.4.9 runtime through the shared CAST-family implementation.
 
 Temporal target behavior was additionally checked on 2026-05-07 against the
 same MySQL 8.4.9 runtime.
@@ -383,8 +388,8 @@ transcoding project. Known differences after this implementation:
   and UTF-8 to `latin1` values
 - binary strings cannot yet preserve embedded NUL bytes through every public
   text-value path
-- `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; `YEAR`,
-  JSON, spatial, and timezone-aware casts are separate tasks
+- `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; JSON,
+  spatial, and timezone-aware casts are separate tasks
 - `REAL_AS_FLOAT` is applied to expression-level `REAL` cast targets, but
   broader approximate-numeric DDL and storage-mode behavior remains deferred
 - overflow and SQL-mode diagnostics remain incomplete in the same places as

@@ -11728,7 +11728,8 @@ static int test_cast_expression_syntax(void) {
     failures += parse_sql(
         "SELECT CAST('2024-01-02' AS DATE), "
         "CAST('03:04:05.987654' AS TIME(2)), "
-        "CAST('2024-01-02 03:04:05.987654' AS DATETIME(6));",
+        "CAST('2024-01-02 03:04:05.987654' AS DATETIME(6)), "
+        "CAST('2024' AS YEAR);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -11754,6 +11755,12 @@ static int test_cast_expression_syntax(void) {
         fprintf(stderr, "DATETIME CAST did not record precision 6\n");
         failures = 1;
     }
+    cast_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_column_type(
+        child_at(cast_expression, 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_YEAR,
+        "YEAR CAST target"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

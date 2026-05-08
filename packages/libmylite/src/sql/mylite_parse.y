@@ -5305,6 +5305,10 @@ cast_target_type(A) ::= DATETIME(T) opt_temporal_fsp(B). {
             state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_DATETIME),
             B));
 }
+cast_target_type(A) ::= YEAR(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_YEAR));
+}
 
 opt_integer_keyword ::= .
 opt_integer_keyword ::= INTEGERKW.

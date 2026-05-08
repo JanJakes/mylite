@@ -162,6 +162,7 @@ enum {
     mysql_error_data_too_long = 1406,
     mysql_warning_incorrect_string_value = 1411,
     mysql_warning_datetime_function_overflow = 1441,
+    mysql_warning_incorrect_year_value = 1525,
     mysql_warning_row_is_referenced = 1451,
     mysql_warning_no_referenced_row = 1452,
     mysql_warning_drop_index_foreign_key = 1553,
@@ -36632,6 +36633,47 @@ static int test_cast_expression_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
+    static const struct expected_result_metadata year_cast_metadata[] = {
+        {"y4",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         4U,
+         MYLITE_FIELD_TYPE_YEAR,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"ny",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         4U,
+         MYLITE_FIELD_TYPE_YEAR,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"cy",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         4U,
+         MYLITE_FIELD_TYPE_YEAR,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
     static const char *const id_column[] = {"id"};
     static const char *const id_text_columns[] = {"id", "n_text"};
     static const char *const table_projection_values[] = {"1", "1", "2", "2"};
@@ -37019,6 +37061,113 @@ static int test_cast_expression_execution(void) {
     failures += expect_null_text(mylite_column_text(stmt, 5), "CAST null datetime");
     failures += expect_int(mylite_warning_count(database), 0, "CAST temporal warning count");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST temporal done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('2024' AS YEAR) AS y4, "
+        "CAST(NULL AS YEAR) AS ny, "
+        "CONVERT('2024', YEAR) AS cy",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        year_cast_metadata,
+        (int)(sizeof(year_cast_metadata) / sizeof(year_cast_metadata[0])),
+        "CAST YEAR metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST YEAR row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024", "CAST YEAR string value");
+    failures += expect_null_text(mylite_column_text(stmt, 1), "CAST YEAR null value");
+    failures += expect_string(mylite_column_text(stmt, 2), "2024", "CONVERT YEAR value");
+    failures += expect_int(mylite_warning_count(database), 0, "CAST YEAR warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST YEAR done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('24' AS YEAR), CAST(0 AS YEAR), CAST('0' AS YEAR), "
+        "CAST(69 AS YEAR), CAST(70 AS YEAR), CAST(2024.5 AS YEAR), "
+        "CAST('2024.5' AS YEAR)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST YEAR coercion row");
+    failures += expect_string(mylite_column_text(stmt, 0), "2024", "CAST YEAR two digit text");
+    failures += expect_string(mylite_column_text(stmt, 1), "0", "CAST YEAR numeric zero");
+    failures += expect_string(mylite_column_text(stmt, 2), "2000", "CAST YEAR text zero");
+    failures += expect_string(mylite_column_text(stmt, 3), "2069", "CAST YEAR pivot low");
+    failures += expect_string(mylite_column_text(stmt, 4), "1970", "CAST YEAR pivot high");
+    failures += expect_string(mylite_column_text(stmt, 5), "2025", "CAST YEAR real rounded");
+    failures += expect_string(mylite_column_text(stmt, 6), "2024", "CAST YEAR text truncated");
+    failures += expect_int(mylite_warning_count(database), 1, "CAST YEAR coercion warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CAST YEAR text truncation warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "2024.5",
+        "CAST YEAR text truncation warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST YEAR coercion done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('bad' AS YEAR), CONVERT('2024-05-06', YEAR), "
+        "CAST(100 AS YEAR), CAST('100' AS YEAR), CAST('-1' AS YEAR)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST invalid YEAR row");
+    failures += expect_null_text(mylite_column_text(stmt, 0), "CAST invalid YEAR text null");
+    failures += expect_string(mylite_column_text(stmt, 1), "2024", "CONVERT YEAR date text");
+    failures += expect_null_text(mylite_column_text(stmt, 2), "CAST invalid YEAR numeric null");
+    failures += expect_null_text(mylite_column_text(stmt, 3), "CAST invalid YEAR string null");
+    failures += expect_null_text(mylite_column_text(stmt, 4), "CAST invalid YEAR negative text");
+    failures += expect_int(mylite_warning_count(database), 5, "CAST invalid YEAR warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_incorrect_year_value,
+        "CAST incorrect YEAR warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "bad",
+        "CAST incorrect YEAR warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT YEAR truncated warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 1),
+        "2024-05-06",
+        "CONVERT YEAR truncated warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_truncated_wrong_value,
+        "CAST YEAR numeric out-of-range warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_truncated_wrong_value,
+        "CAST YEAR text out-of-range warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 4),
+        mysql_warning_incorrect_year_value,
+        "CAST YEAR negative text warning code"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST invalid YEAR done");
     mylite_finalize(stmt);
     stmt = NULL;
 

@@ -237,6 +237,8 @@ explicitly when asserting byte lengths.
 | `DOUBLE` | `DOUBLE` | length `22`, decimals `31` | `NUM` |
 | `DATETIME(3)` | `DATETIME` | length `23`, decimals `3` | `BINARY` |
 | `TIMESTAMP` | `TIMESTAMP` | length `19`, decimals `0` | `BINARY` |
+| `TIMESTAMP DEFAULT CURRENT_TIMESTAMP` | `TIMESTAMP` | length `19`, decimals `0` | `BINARY TIMESTAMP` |
+| `TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` | `TIMESTAMP` | length `19`, decimals `0` | `BINARY TIMESTAMP ON_UPDATE_NOW` |
 
 Task 23 should map all column descriptors already accepted by the column-type
 tasks. Unsupported column families should stay deferred rather than guessed.

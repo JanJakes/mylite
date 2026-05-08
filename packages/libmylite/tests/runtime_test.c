@@ -80759,6 +80759,60 @@ static int test_result_metadata_expression_labels_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
+    static const struct expected_result_metadata timestamp_flag_metadata[] = {
+        {"ts_plain",
+         "mylite_task23_metadata",
+         "timestamp_flags",
+         "mylite_task23_metadata",
+         "timestamp_flags",
+         "ts_plain",
+         19U,
+         MYLITE_FIELD_TYPE_TIMESTAMP,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_TIMESTAMP | MYLITE_FIELD_FLAG_ON_UPDATE_NOW,
+         1},
+        {"ts_def",
+         "mylite_task23_metadata",
+         "timestamp_flags",
+         "mylite_task23_metadata",
+         "timestamp_flags",
+         "ts_def",
+         19U,
+         MYLITE_FIELD_TYPE_TIMESTAMP,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_TIMESTAMP,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_ON_UPDATE_NOW,
+         1},
+        {"ts_up",
+         "mylite_task23_metadata",
+         "timestamp_flags",
+         "mylite_task23_metadata",
+         "timestamp_flags",
+         "ts_up",
+         19U,
+         MYLITE_FIELD_TYPE_TIMESTAMP,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_TIMESTAMP | MYLITE_FIELD_FLAG_ON_UPDATE_NOW,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"dt_up",
+         "mylite_task23_metadata",
+         "timestamp_flags",
+         "mylite_task23_metadata",
+         "timestamp_flags",
+         "dt_up",
+         19U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_TIMESTAMP | MYLITE_FIELD_FLAG_ON_UPDATE_NOW,
+         1},
+    };
     static const struct expected_result_metadata in_predicate_metadata[] = {
         {"in_plain",
          NULL,
@@ -82412,6 +82466,15 @@ static int test_result_metadata_expression_labels_execution(void) {
         "KEY n_idx(n))",
         MYLITE_DONE
     );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE timestamp_flags ("
+        "ts_plain TIMESTAMP NULL, "
+        "ts_def TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+        "ts_up TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP, "
+        "dt_up DATETIME NULL ON UPDATE CURRENT_TIMESTAMP)",
+        MYLITE_DONE
+    );
 
     failures += prepare_sql(
         database,
@@ -82458,6 +82521,22 @@ static int test_result_metadata_expression_labels_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "empty table metadata done");
     failures += expect_int(mylite_warning_count(database), 0, "empty table metadata warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT ts_plain, ts_def, ts_up, dt_up FROM timestamp_flags LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        timestamp_flag_metadata,
+        (int)(sizeof(timestamp_flag_metadata) / sizeof(timestamp_flag_metadata[0])),
+        "timestamp flag metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "timestamp flag metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 

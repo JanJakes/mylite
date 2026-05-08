@@ -306,14 +306,18 @@ MySQL 8.4.9 runtime before each item is marked complete.
       truncated decimal strings with warning 1292 before range warning 1264,
       overflowed exponent strings with MySQL's prefix/full-text/range warning
       order, and non-finite decimal strings returning formatted zero with
-      warning 1292.
+      warning 1292. Exact decimal string inputs such as `.5`, `-.5`, and
+      `+.5` now round half away from zero at scale 0 for `CAST` and `CONVERT`.
       Scalar unsigned integer arithmetic now covers exact `BIGINT UNSIGNED`
       addition, subtraction, multiplication, `/`, `DIV`, and modulo above
       signed 64-bit range, including MySQL-style 1690 overflow/underflow
       diagnostics. Scalar `CAST`/`CONVERT` to signed and unsigned integer
       targets now reject negative approximate values below the signed 64-bit
       floor with MySQL-style 1690 diagnostics while preserving MySQL's
-      positive approximate overflow clipping behavior. Scalar `FLOAT` cast
+      positive approximate overflow clipping behavior. Negative-zero string
+      casts such as `CAST('-0' AS UNSIGNED)` now keep MySQL's warning 1105
+      complement diagnostic even when the resulting unsigned value is zero.
+      Scalar `FLOAT` cast
       range errors now include MySQL-shaped rendered `cast(... as float)`
       expression text in error 1690 diagnostics. Hex and bit literal
       `CAST` / `CONVERT` plus covered arithmetic, comparison, and bitwise

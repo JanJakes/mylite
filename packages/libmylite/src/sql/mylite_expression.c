@@ -4125,6 +4125,24 @@ static uint64_t unsigned_complement_from_magnitude(uint64_t magnitude);
 
 static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target);
 
+static int eval_exact_decimal_text_cast(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    unsigned int precision,
+    unsigned int scale,
+    struct mylite_expression_value *out_value,
+    bool *out_handled
+);
+
+static int copy_exact_decimal_cast_text(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length,
+    bool *out_exact
+);
+
 static int cast_value_to_decimal_double(
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
@@ -5848,9 +5866,22 @@ static int eval_decimal_cast(
     double number = 0.0;
     bool overflow_to_infinity = false;
     bool range_warning = false;
+    bool exact_text_handled = false;
     int length = 0;
-    int status = cast_value_to_decimal_double(value, warnings, &number, &overflow_to_infinity);
+    int status = eval_exact_decimal_text_cast(
+        expression,
+        value,
+        warnings,
+        precision,
+        scale,
+        out_value,
+        &exact_text_handled
+    );
 
+    if (status != 0 || exact_text_handled) {
+        return status;
+    }
+    status = cast_value_to_decimal_double(value, warnings, &number, &overflow_to_infinity);
     if (status != 0) {
         return status;
     }
@@ -5882,6 +5913,128 @@ static int eval_decimal_cast(
         }
     }
     return set_text_value(buffer, (size_t)length, out_value);
+}
+
+static int eval_exact_decimal_text_cast(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    unsigned int precision,
+    unsigned int scale,
+    struct mylite_expression_value *out_value,
+    bool *out_handled
+) {
+    char limit[MYLITE_EXPRESSION_DECIMAL_TEXT_BUFFER_SIZE];
+    char *text = NULL;
+    size_t text_length = 0U;
+    struct mylite_expression_value rounded = {0};
+    bool exact = false;
+    int status = 0;
+
+    if (out_handled == NULL) {
+        return -1;
+    }
+    *out_handled = false;
+    if (value == NULL || value->kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        return 0;
+    }
+
+    status = copy_exact_decimal_cast_text(
+        value->text_value == NULL ? "" : value->text_value,
+        value->text_value == NULL ? 0U : value->text_length,
+        &text,
+        &text_length,
+        &exact
+    );
+    if (status != 0 || !exact) {
+        return status;
+    }
+
+    status = round_exact_decimal_text(text, text_length, &rounded, (int)scale);
+    if (status == 0 &&
+        decimal_cast_result_exceeds_precision(rounded.text_value, precision, scale)) {
+        status = append_decimal_cast_out_of_range_warning(warnings, expression);
+        if (status == 0) {
+            int length = set_decimal_cast_limit_text(
+                limit,
+                sizeof(limit),
+                rounded.text_value != NULL && rounded.text_value[0] == '-',
+                precision,
+                scale
+            );
+
+            if (length < 0) {
+                status = -1;
+            } else {
+                mylite_expression_value_deinit(&rounded);
+                status = set_text_value(limit, (size_t)length, out_value);
+            }
+        }
+    } else if (status == 0) {
+        *out_value = rounded;
+        rounded = (struct mylite_expression_value){0};
+    }
+    if (status == 0) {
+        *out_handled = true;
+    }
+
+    mylite_expression_value_deinit(&rounded);
+    free(text);
+    return status;
+}
+
+static int copy_exact_decimal_cast_text(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length,
+    bool *out_exact
+) {
+    const char *start = text == NULL ? "" : text;
+    const char *end = start + (text == NULL ? 0U : text_length);
+    const char *scan = NULL;
+    bool saw_digit = false;
+    bool saw_dot = false;
+
+    if (out_text == NULL || out_length == NULL || out_exact == NULL) {
+        return -1;
+    }
+    *out_text = NULL;
+    *out_length = 0U;
+    *out_exact = false;
+
+    while (start < end && isspace((unsigned char)*start)) {
+        ++start;
+    }
+    while (end > start && isspace((unsigned char)*(end - 1))) {
+        --end;
+    }
+    scan = start;
+    if (scan < end && (*scan == '+' || *scan == '-')) {
+        ++scan;
+    }
+    for (; scan < end; ++scan) {
+        if (isdigit((unsigned char)*scan)) {
+            saw_digit = true;
+            continue;
+        }
+        if (*scan == '.' && !saw_dot) {
+            saw_dot = true;
+            continue;
+        }
+        return 0;
+    }
+    if (!saw_digit) {
+        return 0;
+    }
+
+    *out_text = copy_span_text(start, (size_t)(end - start));
+    if (*out_text == NULL) {
+        return -1;
+    }
+    *out_length = (size_t)(end - start);
+    *out_exact = true;
+    return 0;
 }
 
 static int eval_float_cast(
@@ -25572,7 +25725,7 @@ static int cast_string_to_unsigned_integer(
     }
     if (parsed.negative) {
         *out_integer = unsigned_complement_from_magnitude(parsed.magnitude);
-        if (!parsed.overflow && parsed.magnitude != 0U) {
+        if (!parsed.overflow && parsed.saw_digit) {
             return append_unsigned_complement_warning(warnings);
         }
         return 0;

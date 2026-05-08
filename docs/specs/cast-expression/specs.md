@@ -128,7 +128,9 @@ warning. Negative string inputs wrap and also emit warning 1105.
 | `CAST(1e20 AS UNSIGNED)` | `9223372036854775807` | none |
 | `CAST(-1e20 AS UNSIGNED)` | error | 1690 out of range |
 | `CAST('-1' AS UNSIGNED)` | `18446744073709551615` | 1105 negative-to-unsigned |
+| `CAST('-0' AS UNSIGNED)` | `0` | 1105 negative-to-unsigned |
 | `CAST('-1.5' AS UNSIGNED)` | `18446744073709551615` | 1292 truncated integer, 1105 negative-to-unsigned |
+| `CAST('-0.5' AS UNSIGNED)` | `0` | 1292 truncated integer, 1105 negative-to-unsigned |
 | `CAST('x' AS UNSIGNED)` | `0` | 1292 truncated integer |
 | `CAST('12\\03' AS UNSIGNED)` | `12` | 1292 truncated integer |
 | `CAST(X'3132' AS UNSIGNED)` | `12594` | none |
@@ -136,20 +138,24 @@ warning. Negative string inputs wrap and also emit warning 1105.
 
 Decimal casts default to precision 10 and scale 0. `DECIMAL(M)` uses scale 0,
 and `DECIMAL(M,D)` uses the supplied scale. Values are rounded to the target
-scale. When the rounded result does not fit the requested precision and scale,
-the value is clipped to the nearest representable endpoint and warning 1264 is
-emitted. Invalid, non-finite, or truncated string inputs emit warning 1292 with
-a decimal message. Invalid and literal non-finite strings such as `nan` and
-`inf` produce a zero value formatted at the target scale. Overflowed exponent
-strings emit one warning for the decimal prefix and one warning for the full
-string, then clip to the target range with warning 1264. Other truncated strings
-keep their parsed numeric prefix before range validation.
+scale. Exact decimal string inputs use decimal half-away rounding, so `.5`
+rounds to `1` and `-.5` rounds to `-1` at scale 0. When the rounded result does
+not fit the requested precision and scale, the value is clipped to the nearest
+representable endpoint and warning 1264 is emitted. Invalid, non-finite, or
+truncated string inputs emit warning 1292 with a decimal message. Invalid and
+literal non-finite strings such as `nan` and `inf` produce a zero value
+formatted at the target scale. Overflowed exponent strings emit one warning for
+the decimal prefix and one warning for the full string, then clip to the target
+range with warning 1264. Other truncated strings keep their parsed numeric
+prefix before range validation.
 
 | SQL | Result | Warnings |
 | --- | --- | --- |
 | `CAST(12.345 AS DECIMAL)` | `12` | none |
 | `CAST(12.345 AS DECIMAL(5))` | `12` | none |
 | `CAST(12.345 AS DECIMAL(5,2))` | `12.35` | none |
+| `CAST('.5' AS DECIMAL(10,0))` | `1` | none |
+| `CAST('-.5' AS DECIMAL(10,0))` | `-1` | none |
 | `CAST('x' AS DECIMAL(5,2))` | `0.00` | 1292 truncated decimal |
 | `CAST('12\\03' AS DECIMAL(6,2))` | `12.00` | 1292 truncated decimal |
 | `CAST(999999 AS DECIMAL(5,2))` | `999.99` | 1264 out of range |
@@ -534,9 +540,9 @@ Runtime tests:
 - no-table `SELECT` results for every supported target
 - `NULL` input propagation
 - signed numeric rounding and string truncation warnings
-- unsigned wrapping and negative-string warning
+- unsigned wrapping and negative-string warnings, including negative-zero text
 - decimal default precision/scale, explicit scale rounding, invalid string
-  warning, and result text formatting
+  warning, exact `.5` string rounding, and result text formatting
 - character truncation and `CHAR(0)` warnings
 - `CHAR ASCII` charset, collation, and coercibility introspection
 - floating `FLOAT`/`DOUBLE`/`REAL`/`FLOAT4`/`FLOAT8` values, truncation

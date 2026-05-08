@@ -106,8 +106,10 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT('12.5', SIGNED)` | `12` | 1292 truncated integer |
 | `CONVERT(-1e20, SIGNED)` | error | 1690 out of range |
 | `CONVERT('-1', UNSIGNED)` | `18446744073709551615` | 1105 negative-to-unsigned |
+| `CONVERT('-0e1', UNSIGNED)` | `0` | 1292 truncated integer, 1105 negative-to-unsigned |
 | `CONVERT(-1e20, UNSIGNED)` | error | 1690 out of range |
 | `CONVERT('12.345', DECIMAL(5,2))` | `12.35` | none |
+| `CONVERT('+.5', DECIMAL(10,0))` | `1` | none |
 | `CONVERT(999999, DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CONVERT('999999x', DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |
 | `CONVERT('1e309', DECIMAL(10,2))` | `99999999.99` | 1292 truncated decimal prefix, 1292 truncated decimal, 1264 out of range |
@@ -383,8 +385,8 @@ Runtime tests:
   charset
 - `NULL` input propagation for both forms
 - signed string truncation warnings
-- unsigned negative-string complement warnings
-- decimal scale rounding
+- unsigned negative-string complement warnings, including negative-zero text
+- decimal scale rounding, including exact `.5` string inputs at scale 0
 - floating `FLOAT`/`DOUBLE`/`REAL`/`FLOAT4`/`FLOAT8` values, truncation
   warnings, `NULL` propagation, and metadata
 - char truncation and `CHAR(0)` warnings

@@ -39125,6 +39125,54 @@ static int test_cast_expression_execution(void) {
 
     failures += prepare_sql(
         database,
+        "SELECT CAST('-0' AS UNSIGNED) AS uz, "
+        "CAST('-0.5' AS UNSIGNED) AS uh, "
+        "CONVERT('-0e1', UNSIGNED) AS ue",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST negative zero unsigned row");
+    failures += expect_string(mylite_column_text(stmt, 0), "0", "CAST negative zero unsigned");
+    failures += expect_string(mylite_column_text(stmt, 1), "0", "CAST negative half unsigned");
+    failures += expect_string(mylite_column_text(stmt, 2), "0", "CONVERT negative zero exponent");
+    failures +=
+        expect_int(mylite_warning_count(database), 5, "CAST negative zero unsigned warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_unknown,
+        "CAST negative zero unsigned complement code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "CAST negative half unsigned truncation code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_unknown,
+        "CAST negative half unsigned complement code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT negative zero exponent truncation code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 4),
+        mysql_warning_unknown,
+        "CONVERT negative zero exponent complement code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "negative integer",
+        "CAST negative zero unsigned complement warning"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST negative zero unsigned done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
         "SELECT CAST('18446744073709551615' AS UNSIGNED) AS value",
         MYLITE_OK,
         &stmt
@@ -39337,6 +39385,25 @@ static int test_cast_expression_execution(void) {
         "DECIMAL",
         "CAST bad decimal warning message"
     );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('.5' AS DECIMAL(10,0)) AS pos0, "
+        "CAST('-.5' AS DECIMAL(10,0)) AS neg0, "
+        "CONVERT('+.5', DECIMAL(10,0)) AS plus0, "
+        "CAST('-.4' AS DECIMAL(10,0)) AS neg_zero",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST decimal half string row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1", "CAST decimal positive half");
+    failures += expect_string(mylite_column_text(stmt, 1), "-1", "CAST decimal negative half");
+    failures += expect_string(mylite_column_text(stmt, 2), "1", "CONVERT decimal positive half");
+    failures += expect_string(mylite_column_text(stmt, 3), "0", "CAST decimal negative zero");
+    failures += expect_int(mylite_warning_count(database), 0, "CAST decimal half warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST decimal half string done");
     mylite_finalize(stmt);
     stmt = NULL;
 

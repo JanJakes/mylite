@@ -27,7 +27,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW ENGINE STATUS` | ❌ | Result shape, filters, privileges |
 | `SHOW ENGINES` | 🟡 | Limited `SHOW [STORAGE] ENGINES` exposes one embedded InnoDB default row with MySQL 8.4.9 column labels; no alternate engines, filters, privileges, plugins, or `INFORMATION_SCHEMA.ENGINES` |
 | `SHOW ERRORS` | ❌ | Result shape, filters, privileges |
-| `SHOW EVENTS` | ❌ | Result shape, filters, privileges |
+| `SHOW EVENTS` | 🟡 | Limited empty event introspection with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; unknown explicit schemas are empty successes; no NUL-producing pattern escapes, event descriptors, event rows, event DDL, `SHOW CREATE EVENT`, `WHERE`, Event Scheduler, privileges, or `INFORMATION_SCHEMA.EVENTS` |
 | `SHOW FUNCTION CODE` | ❌ | Debug-only routine bytecode listing |
 | `SHOW FUNCTION STATUS` | ❌ | Result shape, filters, privileges |
 | `SHOW GRANTS` | ❌ | Result shape, filters, privileges |

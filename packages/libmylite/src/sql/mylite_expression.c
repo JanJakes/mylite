@@ -4340,6 +4340,12 @@ char *mylite_expression_value_to_text(const struct mylite_expression_value *valu
             value->text_value == NULL ? 0U : value->text_length
         );
     }
+    if (value->preserve_real_text && value->text_value != NULL &&
+        (value->kind == MYLITE_EXPRESSION_VALUE_INT64 ||
+         value->kind == MYLITE_EXPRESSION_VALUE_UINT64 ||
+         value->kind == MYLITE_EXPRESSION_VALUE_REAL)) {
+        return copy_span_text(value->text_value, value->text_length);
+    }
     if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
         int length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);
         return length <= 0 || (size_t)length >= sizeof(buffer)
@@ -4353,11 +4359,6 @@ char *mylite_expression_value_to_text(const struct mylite_expression_value *valu
                    ? NULL
                    : copy_span_text(buffer, (size_t)length);
     }
-    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL && value->preserve_real_text &&
-        value->text_value != NULL) {
-        return copy_span_text(value->text_value, value->text_length);
-    }
-
     int length = value->compact_real_text
                      ? format_compact_real_text(value->real_value, buffer, sizeof(buffer))
                      : snprintf(buffer, sizeof(buffer), "%.4f", value->real_value);
@@ -16485,6 +16486,12 @@ static int base64_argument_to_text(
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return value_to_string_with_length(value, out_text, out_length);
     }
+    if (value->preserve_real_text && value->text_value != NULL &&
+        (value->kind == MYLITE_EXPRESSION_VALUE_INT64 ||
+         value->kind == MYLITE_EXPRESSION_VALUE_UINT64 ||
+         value->kind == MYLITE_EXPRESSION_VALUE_REAL)) {
+        return value_to_string_with_length(value, out_text, out_length);
+    }
 
     switch (value->kind) {
     case MYLITE_EXPRESSION_VALUE_INT64:
@@ -24872,6 +24879,17 @@ static int cast_value_to_string_with_length(
     }
     *out_text = NULL;
     *out_length = 0U;
+    if (value->preserve_real_text && value->text_value != NULL &&
+        (value->kind == MYLITE_EXPRESSION_VALUE_INT64 ||
+         value->kind == MYLITE_EXPRESSION_VALUE_UINT64 ||
+         value->kind == MYLITE_EXPRESSION_VALUE_REAL)) {
+        *out_text = copy_span_text(value->text_value, value->text_length);
+        if (*out_text == NULL) {
+            return -1;
+        }
+        *out_length = value->text_length;
+        return 0;
+    }
     switch (value->kind) {
     case MYLITE_EXPRESSION_VALUE_INT64:
         length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->int64_value);

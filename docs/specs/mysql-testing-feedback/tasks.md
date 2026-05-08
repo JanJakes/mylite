@@ -224,6 +224,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `REPLACE ... SET`, `INSERT IGNORE`, strict single-table `UPDATE`, and
       single-table `UPDATE IGNORE`, including strict `REPLACE` conflict-row
       preservation and UTF-8 boundary truncation for `TINYTEXT` and `TEXT`.
+      Table-backed `DECIMAL` column stringification is now covered for
+      `CAST(... AS CHAR)`, `CONCAT`, `HEX(CAST(... AS CHAR))`, `TO_BASE64`,
+      and single-table `UPDATE` expression assignment.
       `MEDIUMTEXT` and `MEDIUMBLOB` 16,777,215-byte write limits are now
       covered for strict and non-strict `INSERT ... VALUES`, `INSERT ... SET`,
       `INSERT IGNORE`, `REPLACE ... VALUES`, `REPLACE ... SET`, strict and

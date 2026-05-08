@@ -84,12 +84,9 @@ int mylite_select_copy_current_sqlite_column_value(
     status = mylite_sqlite_copy_column_value(stmt->sqlite_stmt, column_index, out_value);
     if (status == 0) {
         column = mylite_select_plan_column_const(&stmt->select_plan, column_index, NULL);
-        out_value->preserve_temporal_fraction_digits =
-            mylite_field_descriptor_preserves_temporal_fraction_digits(
-                column == NULL ? NULL : &column->descriptor
-            );
-        out_value->temporal_type = mylite_field_descriptor_expression_temporal_type(
-            column == NULL ? NULL : &column->descriptor
+        status = mylite_field_descriptor_apply_expression_value_metadata(
+            column == NULL ? NULL : &column->descriptor,
+            out_value
         );
     }
     return status;
@@ -198,6 +195,14 @@ static int append_table_select_join_scan_row(
 
     for (size_t index = 0U; index < row.value_count; ++index) {
         if (mylite_sqlite_copy_column_value(scan, index + 1U, &row.values[index]) != 0) {
+            mylite_select_row_deinit(&row);
+            (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        if (mylite_field_descriptor_apply_expression_value_metadata(
+                &table->columns[index].descriptor,
+                &row.values[index]
+            ) != 0) {
             mylite_select_row_deinit(&row);
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;

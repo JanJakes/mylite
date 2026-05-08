@@ -76,6 +76,10 @@ was additionally checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 Integer target overflow behavior for approximate inputs was additionally
 checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 
+Table-backed `DECIMAL` string coercions were additionally checked on
+2026-05-07 against the same MySQL 8.4.9 runtime with `DECIMAL(10,2)` values
+inserted as integers, quoted integers, quoted decimals, and exponent notation.
+
 ## MySQL observations
 
 `CAST(NULL AS <supported type>)` returns `NULL` with the target type's metadata.
@@ -165,6 +169,10 @@ truncate by byte count, right-pad shorter values with `0x00`, and use
 | `HEX(CAST('abcdef' AS BINARY(3)))` | `616263` | 1292 truncated binary |
 | `LENGTH(CAST('x' AS BINARY(0)))` | `0` | 1292 truncated binary |
 | `HEX(CAST('a\\0b' AS CHAR))` | `610062` | none |
+| `CAST(decimal_col AS CHAR)` where `decimal_col DECIMAL(10,2)` stores `100` | `100.00` | none |
+| `CONCAT(decimal_col)` for the same column value | `100.00` | none |
+| `HEX(CAST(decimal_col AS CHAR))` for the same column value | `3130302E3030` | none |
+| `TO_BASE64(decimal_col)` for the same column value | `MTAwLjAw` | none |
 
 Floating-point casts parse values through MySQL's DOUBLE conversion path.
 `FLOAT` and `FLOAT4` round to single-precision values unless a binary

@@ -36056,6 +36056,23 @@ static int test_cast_expression_execution(void) {
     static const char *const n_7[] = {"7"};
     static const char *const ids_2_3[] = {"2", "3"};
     static const char *const id_3[] = {"3"};
+    static const char *const decimal_string_columns[] = {
+        "id",
+        "d",
+        "cast_d",
+        "concat_d",
+        "hex_d",
+        "base64_d",
+    };
+    static const char *const decimal_string_values[] = {
+        "1", "100.00", "100.00", "100.00", "3130302E3030", "MTAwLjAw",
+        "2", "100.00", "100.00", "100.00", "3130302E3030", "MTAwLjAw",
+        "3", "100.00", "100.00", "100.00", "3130302E3030", "MTAwLjAw",
+        "4", "100.00", "100.00", "100.00", "3130302E3030", "MTAwLjAw",
+        "5", NULL,     NULL,     NULL,     NULL,           NULL,
+    };
+    static const char *const txt_column[] = {"txt"};
+    static const char *const txt_100_00[] = {"100.00"};
     static const char *const decimal_range_columns[] = {"d1", "d2", "s2", "n1"};
     static const char *const decimal_range_values[] = {"999.99", "999.99", "999.99", "-0.99"};
     static const char *const decimal_nonfinite_columns[] = {"nan_value", "inf_value"};
@@ -37041,6 +37058,44 @@ static int test_cast_expression_execution(void) {
         order_values,
         3,
         "CAST table order"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE decimal_strings ("
+        "id INT PRIMARY KEY, d DECIMAL(10,2), txt VARCHAR(20))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO decimal_strings (id, d) VALUES "
+        "(1,100),(2,'100'),(3,'100.00'),(4,'1e2'),(5,NULL)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, d, CAST(d AS CHAR) AS cast_d, CONCAT(d) AS concat_d, "
+        "HEX(CAST(d AS CHAR)) AS hex_d, TO_BASE64(d) AS base64_d "
+        "FROM decimal_strings ORDER BY id",
+        decimal_string_columns,
+        (int)(sizeof(decimal_string_columns) / sizeof(decimal_string_columns[0])),
+        decimal_string_values,
+        5,
+        "CAST table decimal string coercions"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE decimal_strings SET txt = CONCAT(d) WHERE id = 1",
+        1,
+        "CAST decimal string update assignment"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT txt FROM decimal_strings WHERE id = 1",
+        txt_column,
+        1,
+        txt_100_00,
+        1,
+        "CAST decimal string update assignment value"
     );
 
     failures += execute_sql_expect_done_affected(

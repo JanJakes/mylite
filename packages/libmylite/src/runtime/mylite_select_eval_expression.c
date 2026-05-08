@@ -15,6 +15,7 @@
 #include <stdlib.h>
 
 static int copy_table_select_row_value(
+    const mylite_stmt *stmt,
     const struct mylite_table_select_row *row,
     size_t column_index,
     struct mylite_expression_value *out_value
@@ -171,7 +172,7 @@ int mylite_select_eval_output_value(
     const struct mylite_select_output_column *output = &stmt->select_plan.outputs[output_index];
 
     if (output->kind == MYLITE_SELECT_OUTPUT_COLUMN) {
-        if (copy_table_select_row_value(row, output->column_index, out_value) != 0) {
+        if (copy_table_select_row_value(stmt, row, output->column_index, out_value) != 0) {
             (void)mylite_diagnostics_set_error_message(stmt->database, "out of memory");
             return MYLITE_NOMEM;
         }
@@ -222,14 +223,29 @@ int mylite_select_eval_map_expression_status(
 }
 
 static int copy_table_select_row_value(
+    const mylite_stmt *stmt,
     const struct mylite_table_select_row *row,
     size_t column_index,
     struct mylite_expression_value *out_value
 ) {
+    const struct mylite_select_column *column = NULL;
+    int status = 0;
+
     if (row == NULL || column_index >= row->value_count) {
         return -1;
     }
-    return mylite_expression_value_copy(&row->values[column_index], out_value);
+    status = mylite_expression_value_copy(&row->values[column_index], out_value);
+    if (status == 0 && stmt != NULL) {
+        column = mylite_select_plan_column_const(&stmt->select_plan, column_index, NULL);
+        status = mylite_field_descriptor_apply_expression_value_metadata(
+            column == NULL ? NULL : &column->descriptor,
+            out_value
+        );
+        if (status != 0) {
+            mylite_expression_value_deinit(out_value);
+        }
+    }
+    return status;
 }
 
 static int evaluate_table_select_cached_constant_expression(
@@ -562,7 +578,7 @@ static int resolve_table_select_expression_identifier(
         return -1;
     }
     if (context->row != NULL) {
-        return copy_table_select_row_value(context->row, column_index, out_value);
+        return copy_table_select_row_value(context->stmt, context->row, column_index, out_value);
     }
     return copy_table_select_column_value(context->stmt, column_index, callbacks, out_value);
 }
@@ -584,12 +600,9 @@ static int copy_table_select_column_value(
     status = callbacks->copy_column_value(stmt, column_index, out_value);
     if (status == 0) {
         column = mylite_select_plan_column_const(&stmt->select_plan, column_index, NULL);
-        out_value->preserve_temporal_fraction_digits =
-            mylite_field_descriptor_preserves_temporal_fraction_digits(
-                column == NULL ? NULL : &column->descriptor
-            );
-        out_value->temporal_type = mylite_field_descriptor_expression_temporal_type(
-            column == NULL ? NULL : &column->descriptor
+        status = mylite_field_descriptor_apply_expression_value_metadata(
+            column == NULL ? NULL : &column->descriptor,
+            out_value
         );
     }
     return status;

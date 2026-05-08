@@ -33,6 +33,10 @@ void mylite_field_descriptor_set_not_null(
     struct mylite_field_descriptor *descriptor,
     bool not_null
 );
+int mylite_field_descriptor_apply_expression_value_metadata(
+    const struct mylite_field_descriptor *descriptor,
+    struct mylite_expression_value *value
+);
 bool mylite_field_descriptor_preserves_temporal_fraction_digits(
     const struct mylite_field_descriptor *descriptor
 );

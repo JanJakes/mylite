@@ -297,6 +297,8 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION = 4,
     SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS = 5,
     SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION = 6,
+    SESSION_SYSTEM_VARIABLE_VERSION = 7,
+    SESSION_SYSTEM_VARIABLE_VERSION_COMMENT = 8,
 };
 
 struct system_variable_component {
@@ -713,7 +715,12 @@ static int resolve_session_system_variable(
     const struct mylite_sql_ast_node *expression,
     enum session_system_variable_kind *out_kind
 );
+static bool resolve_system_variable_kind(
+    const struct system_variable_component *name,
+    enum session_system_variable_kind *out_kind
+);
 static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind);
+static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind);
 static int parse_system_variable_component(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
@@ -732,6 +739,7 @@ static bool system_variable_component_equals(
 );
 static bool system_variable_component_is_empty(const struct system_variable_component *component);
 static void set_session_variable_only_error(struct mylite_db *database, const char *variable_name);
+static void set_global_variable_only_error(struct mylite_db *database, const char *variable_name);
 static void set_unknown_system_variable_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
@@ -6037,6 +6045,12 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
         out_cell->value = database->session.collation_connection;
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_VERSION:
+        out_cell->value = mylite_version();
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
+        out_cell->value = "MyLite";
+        return MYLITE_OK;
     default:
         break;
     }
@@ -6101,19 +6115,7 @@ static int resolve_session_system_variable(
         return MYLITE_ERROR;
     }
 
-    if (system_variable_component_equals(name, "warning_count")) {
-        *out_kind = SESSION_SYSTEM_VARIABLE_WARNING_COUNT;
-    } else if (system_variable_component_equals(name, "error_count")) {
-        *out_kind = SESSION_SYSTEM_VARIABLE_ERROR_COUNT;
-    } else if (system_variable_component_equals(name, "character_set_client")) {
-        *out_kind = SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT;
-    } else if (system_variable_component_equals(name, "character_set_connection")) {
-        *out_kind = SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION;
-    } else if (system_variable_component_equals(name, "character_set_results")) {
-        *out_kind = SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS;
-    } else if (system_variable_component_equals(name, "collation_connection")) {
-        *out_kind = SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION;
-    } else {
+    if (!resolve_system_variable_kind(name, out_kind)) {
         set_unknown_system_variable_error(database, expression);
         return MYLITE_ERROR;
     }
@@ -6130,11 +6132,44 @@ static int resolve_session_system_variable(
     }
     if (system_variable_component_equals(&first, "session") ||
         system_variable_component_equals(&first, "local")) {
+        if (!system_variable_kind_allows_session_scope(*out_kind)) {
+            set_global_variable_only_error(database, name->text);
+            return MYLITE_ERROR;
+        }
         return MYLITE_OK;
     }
 
     set_unknown_system_variable_error(database, expression);
     return MYLITE_ERROR;
+}
+
+static bool resolve_system_variable_kind(
+    const struct system_variable_component *name,
+    enum session_system_variable_kind *out_kind
+) {
+    struct system_variable_name {
+        const char *name;
+        enum session_system_variable_kind kind;
+    };
+    static const struct system_variable_name names[] = {
+        {"warning_count", SESSION_SYSTEM_VARIABLE_WARNING_COUNT},
+        {"error_count", SESSION_SYSTEM_VARIABLE_ERROR_COUNT},
+        {"character_set_client", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT},
+        {"character_set_connection", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION},
+        {"character_set_results", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS},
+        {"collation_connection", SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION},
+        {"version", SESSION_SYSTEM_VARIABLE_VERSION},
+        {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT},
+    };
+
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (system_variable_component_equals(name, names[index].name)) {
+            *out_kind = names[index].kind;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind) {
@@ -6143,9 +6178,21 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
     case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+    case SESSION_SYSTEM_VARIABLE_VERSION:
+    case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
         return true;
     default:
         return false;
+    }
+}
+
+static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind) {
+    switch (kind) {
+    case SESSION_SYSTEM_VARIABLE_VERSION:
+    case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
+        return false;
+    default:
+        return true;
     }
 }
 
@@ -10073,6 +10120,23 @@ static void set_session_variable_only_error(struct mylite_db *database, const ch
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
         snprintf(message, sizeof(message), "Variable '%s' is a SESSION variable", variable_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_session_variable_only,
+        "HY000",
+        message
+    );
+}
+
+static void set_global_variable_only_error(struct mylite_db *database, const char *variable_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Variable '%s' is a GLOBAL variable", variable_name);
 
     if (written < 0) {
         message[0] = '\0';

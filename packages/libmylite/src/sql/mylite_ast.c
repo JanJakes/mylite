@@ -1785,6 +1785,8 @@ const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind ki
         return "time";
     case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
         return "timestamp";
+    case MYLITE_SQL_AST_LITERAL_BINARY_STRING:
+        return "binary_string";
     }
 
     return "unknown";

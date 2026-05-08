@@ -5747,6 +5747,9 @@ literal(A) ::= STRING(T). {
 literal(A) ::= NATIONAL_STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NATIONAL_STRING);
 }
+literal(A) ::= BINARY_STRING_INTRODUCER(B) STRING(T). {
+    A = mylite_sql_parser_make_binary_string_literal(state, B, T);
+}
 literal(A) ::= HEX_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
 }

@@ -133,6 +133,7 @@ static uint64_t format_literal_result_character_length(const struct mylite_sql_a
         return mylite_format_float_character_length;
     case MYLITE_SQL_AST_LITERAL_STRING:
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
+    case MYLITE_SQL_AST_LITERAL_BINARY_STRING:
         return argument->span.length >= 2U
                    ? argument->span.length - 2U + mylite_format_literal_extra_length
                    : mylite_format_literal_extra_length;

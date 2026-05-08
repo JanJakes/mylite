@@ -15351,7 +15351,7 @@ static int test_unary_and_parenthesized_expression(void) {
 }
 
 static int test_literal_categories(void) {
-    enum { expected_literal_item_count = 5 };
+    enum { expected_literal_item_count = 6 };
 
     enum { expected_temporal_literal_item_count = 3 };
     struct mylite_sql_parse_result result;
@@ -15359,7 +15359,11 @@ static int test_literal_categories(void) {
     const struct mylite_sql_ast_node *literal = NULL;
     int failures = 0;
 
-    failures += parse_sql("SELECT 0xabc, b'10', .25, 1e+3, N'a';", MYLITE_SQL_PARSE_OK, &result);
+    failures += parse_sql(
+        "SELECT 0xabc, b'10', .25, 1e+3, N'a', _binary 'Az';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     select_list = child_at(child_at(result.root, 0U), 0U);
     failures += expect_child_count(select_list, expected_literal_item_count, "literal select list");
     failures += expect_literal(
@@ -15386,6 +15390,11 @@ static int test_literal_categories(void) {
         child_at(child_at(select_list, 4U), 0U),
         MYLITE_SQL_AST_LITERAL_NATIONAL_STRING,
         "national literal"
+    );
+    failures += expect_literal(
+        child_at(child_at(select_list, 5U), 0U),
+        MYLITE_SQL_AST_LITERAL_BINARY_STRING,
+        "binary string literal"
     );
     mylite_sql_parse_result_deinit(&result);
 

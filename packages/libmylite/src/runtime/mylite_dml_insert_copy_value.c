@@ -211,7 +211,8 @@ static int copy_insert_literal_value(
         out_value->text = mylite_copy_span_text(literal->span.text, literal->span.length);
         return out_value->text == NULL ? MYLITE_NOMEM : MYLITE_OK;
     }
-    if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+    if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+        literal->literal_kind == MYLITE_SQL_AST_LITERAL_BINARY_STRING) {
         out_value->kind = MYLITE_INSERT_VALUE_TEXT;
         out_value->text =
             mylite_copy_string_literal_span_with_length(literal, &out_value->text_length);

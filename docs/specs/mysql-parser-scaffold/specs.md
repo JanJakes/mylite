@@ -272,7 +272,8 @@ Fast C tests must cover:
 - successful parse of simple `SELECT` lists
 - `FROM DUAL`
 - expression precedence and parentheses
-- `TRUE`, `FALSE`, `NULL`, string, numeric, hex, and bit literal nodes
+- `TRUE`, `FALSE`, `NULL`, string, numeric, hex, bit, and `_binary` string
+  literal nodes
 - qualified identifier structure, including a reserved keyword after `.`
 - comment skipping
 - lexer error propagation

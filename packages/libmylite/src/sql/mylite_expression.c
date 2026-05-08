@@ -4440,6 +4440,7 @@ static bool expression_is_supported_no_table(
         case MYLITE_SQL_AST_LITERAL_FLOAT:
         case MYLITE_SQL_AST_LITERAL_STRING:
         case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
+        case MYLITE_SQL_AST_LITERAL_BINARY_STRING:
         case MYLITE_SQL_AST_LITERAL_HEX:
         case MYLITE_SQL_AST_LITERAL_BIT:
         case MYLITE_SQL_AST_LITERAL_DATE:
@@ -21807,8 +21808,12 @@ static int eval_literal(
         return 0;
     case MYLITE_SQL_AST_LITERAL_STRING:
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
+    case MYLITE_SQL_AST_LITERAL_BINARY_STRING:
         out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
         out_value->text_value = decode_string_literal(node, &out_value->text_length);
+        if (node->literal_kind == MYLITE_SQL_AST_LITERAL_BINARY_STRING) {
+            out_value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
+        }
         return out_value->text_value == NULL ? -1 : 0;
     case MYLITE_SQL_AST_LITERAL_HEX:
         return eval_hex_literal(node, out_value);
@@ -25552,6 +25557,14 @@ static char *decode_string_literal(const struct mylite_sql_ast_node *node, size_
     ) {
         start = 2U;
         end = length - 1U;
+    } else if (node->literal_kind == MYLITE_SQL_AST_LITERAL_BINARY_STRING) {
+        for (size_t index = 0U; index < length; ++index) {
+            if (text[index] == '\'' || text[index] == '"') {
+                start = index + 1U;
+                end = length > 0U && text[length - 1U] == text[index] ? length - 1U : length;
+                break;
+            }
+        }
     }
 
     decoded = malloc(end >= start ? end - start + 1U : 1U);

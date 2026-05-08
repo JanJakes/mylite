@@ -222,16 +222,24 @@ char *mylite_copy_string_literal_span_with_length(
     if (text == NULL) {
         return NULL;
     }
-    if (length < 2U || ((text[0] != '\'' && text[0] != '"') &&
-                        (length < 3U || (text[0] != 'N' && text[0] != 'n') ||
-                         (text[1] != '\'' && text[1] != '"')))) {
+    if (node->kind == MYLITE_SQL_AST_LITERAL &&
+        node->literal_kind == MYLITE_SQL_AST_LITERAL_BINARY_STRING) {
+        for (size_t index = 0U; index < length; ++index) {
+            if (text[index] == '\'' || text[index] == '"') {
+                start = index + 1U;
+                break;
+            }
+        }
+    } else if (
+        length < 2U ||
+        ((text[0] != '\'' && text[0] != '"') &&
+         (length < 3U || (text[0] != 'N' && text[0] != 'n') || (text[1] != '\'' && text[1] != '"')))
+    ) {
         if (out_length != NULL) {
             *out_length = length;
         }
         return mylite_copy_span_text(text, length);
-    }
-
-    if (text[0] == 'N' || text[0] == 'n') {
+    } else if (text[0] == 'N' || text[0] == 'n') {
         start = 2U;
     }
     quote = text[start - 1U];

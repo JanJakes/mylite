@@ -6656,6 +6656,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_literal(
     return literal;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_binary_string_literal(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token introducer_token,
+    struct mylite_sql_token string_token
+) {
+    struct mylite_sql_ast_node *literal = make_node(
+        state,
+        MYLITE_SQL_AST_LITERAL,
+        span_join(span_from_token(&introducer_token), span_from_token(&string_token))
+    );
+    if (literal == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_literal_kind(literal, MYLITE_SQL_AST_LITERAL_BINARY_STRING);
+    if ((state->modes & MYLITE_SQL_MODE_NO_BACKSLASH_ESCAPES) != 0U) {
+        mylite_sql_ast_node_set_no_backslash_escapes(literal);
+    }
+    return literal;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_temporal_literal(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token keyword_token,
@@ -7781,7 +7802,9 @@ static bool map_lexer_token(
     switch (token->kind) {
     case MYLITE_SQL_TOKEN_IDENTIFIER:
         parser_token = MYLITE_SQL_PARSE_IDENTIFIER;
-        if (token_text_equals(token, "POSITION")) {
+        if (token_text_equals(token, "_BINARY")) {
+            parser_token = MYLITE_SQL_PARSE_BINARY_STRING_INTRODUCER;
+        } else if (token_text_equals(token, "POSITION")) {
             parser_token = MYLITE_SQL_PARSE_POSITION;
         }
         break;

@@ -25,9 +25,16 @@ static struct mylite_field_descriptor bit_literal_descriptor(
     const struct mylite_sql_ast_node *expression
 );
 
+static struct mylite_field_descriptor binary_string_literal_descriptor(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value
+);
+
 static uint64_t hex_literal_byte_length(const struct mylite_sql_ast_node *expression);
 
 static uint64_t bit_literal_byte_length(const struct mylite_sql_ast_node *expression);
+
+static uint64_t binary_string_literal_byte_length(const struct mylite_sql_ast_node *expression);
 
 static size_t literal_digit_count(const struct mylite_sql_ast_node *expression);
 
@@ -67,6 +74,9 @@ int mylite_expression_descriptor_infer_literal(
         descriptor.decimals = mylite_mysql_not_fixed_decimals;
         descriptor.charset_id = mylite_expression_descriptor_connection_charset_id(database);
         mylite_field_descriptor_set_not_null(&descriptor, true);
+        break;
+    case MYLITE_SQL_AST_LITERAL_BINARY_STRING:
+        descriptor = binary_string_literal_descriptor(expression, value);
         break;
     case MYLITE_SQL_AST_LITERAL_HEX:
         descriptor = hex_literal_descriptor(expression);
@@ -118,6 +128,24 @@ static struct mylite_field_descriptor bit_literal_descriptor(
     };
 }
 
+static struct mylite_field_descriptor binary_string_literal_descriptor(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_expression_value *value
+) {
+    uint64_t length = value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT
+                          ? (uint64_t)value->text_length
+                          : binary_string_literal_byte_length(expression);
+
+    return (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_VAR_STRING,
+        .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = false,
+    };
+}
+
 static uint64_t hex_literal_byte_length(const struct mylite_sql_ast_node *expression) {
     size_t digits = literal_digit_count(expression);
 
@@ -128,6 +156,50 @@ static uint64_t bit_literal_byte_length(const struct mylite_sql_ast_node *expres
     size_t digits = literal_digit_count(expression);
 
     return (uint64_t)((digits + 7U) / 8U);
+}
+
+static uint64_t binary_string_literal_byte_length(const struct mylite_sql_ast_node *expression) {
+    const char *text = expression == NULL ? NULL : expression->span.text;
+    size_t length = expression == NULL ? 0U : expression->span.length;
+    size_t start = 0U;
+    size_t end = length;
+    char quote = '\0';
+    uint64_t output = 0U;
+
+    if (text == NULL) {
+        return 0U;
+    }
+    for (size_t index = 0U; index < length; ++index) {
+        if (text[index] == '\'' || text[index] == '"') {
+            quote = text[index];
+            start = index + 1U;
+            end = length > 0U && text[length - 1U] == quote ? length - 1U : length;
+            break;
+        }
+    }
+    for (size_t index = start; index < end; ++index) {
+        if (!expression->no_backslash_escapes && text[index] == '\\' && index + 1U < end) {
+            switch (text[index + 1U]) {
+            case '\'':
+            case '"':
+            case '\\':
+            case '0':
+            case 'b':
+            case 'n':
+            case 'r':
+            case 't':
+            case 'Z':
+                ++index;
+                break;
+            default:
+                break;
+            }
+        } else if (text[index] == quote && index + 1U < end && text[index + 1U] == quote) {
+            ++index;
+        }
+        ++output;
+    }
+    return output;
 }
 
 static size_t literal_digit_count(const struct mylite_sql_ast_node *expression) {

@@ -1,4 +1,4 @@
-# Hex and bit literals
+# Hex, bit, and binary string literals
 
 ## Scope
 
@@ -7,6 +7,8 @@ the MyLite lexer and parser already accept:
 
 - `0x...`, `x'...'`, and `X'...'`
 - `0b...`, `b'...'`, and `B'...'`
+- `_binary '...'` and `_binary "..."` character-set introducer string
+  literals
 - no-table scalar `SELECT`
 - table-backed projection, predicate, and order expression contexts that use
   the shared scalar evaluator
@@ -23,8 +25,8 @@ Out of scope:
   paths
 - broader prepared-statement and protocol metadata outside the current result
   column descriptor path
-- character-set introducer and SQL-mode interactions outside existing string
-  literal handling
+- character-set introducers other than `_binary`
+- complete introducer/collation grammar such as `_utf8mb4 'x' COLLATE ...`
 
 ## Sources
 
@@ -34,6 +36,8 @@ Out of scope:
   https://dev.mysql.com/doc/refman/8.4/en/bit-value-literals.html
 - MySQL 8.4 Reference Manual, String Functions and Operators:
   https://dev.mysql.com/doc/refman/8.4/en/string-functions.html
+- MySQL 8.4 Reference Manual, Character Set Introducers:
+  https://dev.mysql.com/doc/refman/8.4/en/charset-introducer.html
 - Observed MySQL 8.4.9 runtime behavior from Docker container
   `mylite-mysql-849`.
 
@@ -71,11 +75,22 @@ Representative results:
 | `CAST(X'3132' AS UNSIGNED)` | `12594` |
 | `CAST(0b1010 AS SIGNED)` | `10` |
 | `CAST(B'1010' AS UNSIGNED)` | `10` |
+| `HEX(_binary 'a\0b')` | `610062` |
+| `LENGTH(_binary 'a\0b')` | `3` |
+| `CHARSET(_binary 'abc')` | `binary` |
+| `COLLATION(_binary 'abc')` | `binary` |
+| `COERCIBILITY(_binary 'abc')` | `4` |
 
 In supported DML assignment paths, numeric target columns receive the literal's
 numeric value, while character and binary string targets receive decoded bytes.
 For example, `INSERT INTO t(n, vb) VALUES (0x41, X'4100')` stores numeric `65`
 in `n` and bytes `41 00` in `vb`.
+
+The `_binary` introducer keeps ordinary MySQL string-literal escape handling,
+including embedded NUL escapes, but assigns the resulting value the binary
+character set and binary collation. Other character-set introducers remain
+deferred until MyLite implements the broader introducer and explicit collation
+grammar.
 
 ## Metadata
 
@@ -88,13 +103,32 @@ when a table-backed query returns zero rows:
 | `x''` | `VAR_STRING` | `0` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY` |
 | `0b0100000101111010` | `VAR_STRING` | `2` | `0` | `binary` | `NOT_NULL BINARY` |
 | `0b000000001` | `VAR_STRING` | `2` | `0` | `binary` | `NOT_NULL BINARY` |
+| `_binary 'abc'` | `VAR_STRING` | `3` | `31` | `binary` | `NOT_NULL BINARY` |
+| `_binary 'a\0b'` | `VAR_STRING` | `3` | `31` | `binary` | `NOT_NULL BINARY` |
+
+## Grammar
+
+The first character-set-introducer slice adds only the binary introducer token:
+
+```lemon
+literal(A) ::= BINARY_STRING_INTRODUCER(B) STRING(T). {
+    A = mylite_sql_parser_make_binary_string_literal(state, B, T);
+}
+```
+
+The lexer continues to report `_binary` as an unquoted identifier token; the
+parser maps that spelling to `BINARY_STRING_INTRODUCER` before Lemon receives
+it. This keeps ordinary `IDENTIFIER STRING` alias syntax out of the literal
+production.
 
 ## Runtime Design
 
 The parser continues to produce `MYLITE_SQL_AST_LITERAL_HEX` and
-`MYLITE_SQL_AST_LITERAL_BIT`. Runtime support lives in the shared scalar
-expression evaluator so literal bytes are available consistently to scalar
-`SELECT`, table-backed projections, and existing scalar functions.
+`MYLITE_SQL_AST_LITERAL_BIT` for hex and bit literals, and produces
+`MYLITE_SQL_AST_LITERAL_BINARY_STRING` for `_binary` string literals. Runtime
+support lives in the shared scalar expression evaluator so literal bytes are
+available consistently to scalar `SELECT`, table-backed projections, and
+existing scalar functions.
 
 The evaluator:
 
@@ -114,13 +148,17 @@ The evaluator:
 - uses a target-aware DML literal resolver for covered write paths so numeric
   columns receive unsigned literal numeric values and text/binary columns
   receive byte-decoded values before normal column coercion
+- decodes `_binary` string literals with the same escape rules as ordinary
+  string literals, but marks their expression values and metadata as binary
+  string results
 
 No storage or file-format changes are required.
 
 ## Compatibility Status
 
-Hex and bit literal runtime evaluation is supported for the current shared
-scalar expression contexts, explicit signed and unsigned integer casts, and the
-covered DML assignment paths. The status remains partial until MyLite implements
-full MySQL numeric/string coercion, `BIT` columns, and exact binary-string
-metadata across all protocol and prepared-statement surfaces.
+Hex, bit, and `_binary` string literal runtime evaluation is supported for the
+current shared scalar expression contexts, explicit signed and unsigned integer
+casts, and the covered DML assignment paths. The status remains partial until
+MyLite implements full MySQL numeric/string coercion, additional character-set
+introducers, `BIT` columns, and exact binary-string metadata across all protocol
+and prepared-statement surfaces.

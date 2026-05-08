@@ -37,6 +37,9 @@ int mylite_expression_infer_literal_collation_info(
         *out_info =
             mylite_expression_utf8mb3_general_collation_info(mylite_mysql_coercibility_coercible);
         return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_BINARY_STRING:
+        *out_info = mylite_expression_binary_collation_info(mylite_mysql_coercibility_coercible);
+        return MYLITE_OK;
     case MYLITE_SQL_AST_LITERAL_INTEGER:
     case MYLITE_SQL_AST_LITERAL_DECIMAL:
     case MYLITE_SQL_AST_LITERAL_FLOAT:

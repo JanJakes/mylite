@@ -979,6 +979,7 @@ static int append_show_where_literal(
         return append_show_where_raw_span(sql, expression);
     case MYLITE_SQL_AST_LITERAL_STRING:
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
+    case MYLITE_SQL_AST_LITERAL_BINARY_STRING:
         text = mylite_copy_string_literal_span(expression);
         if (text == NULL) {
             (void)mylite_diagnostics_set_error_message(database, "out of memory");

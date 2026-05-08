@@ -1842,6 +1842,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_literal(
     struct mylite_sql_token token,
     enum mylite_sql_ast_literal_kind literal_kind
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_binary_string_literal(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token introducer_token,
+    struct mylite_sql_token string_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_temporal_literal(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token keyword_token,

@@ -14971,6 +14971,11 @@ static int test_hex_bit_literal_execution(void) {
     static const char *const bit_padding_columns[] =
         {"one", "two", "three", "eight", "nine_length", "nine_hex"};
     static const char *const bit_padding_values[] = {"01", "01", "01", "01", "2", "0001"};
+    static const char *const binary_string_columns[] =
+        {"binary_hex", "binary_len", "binary_charset", "binary_collation", "binary_coercibility"};
+    static const char *const binary_string_values[] = {"610062", "3", "binary", "binary", "4"};
+    static const char *const binary_string_store_columns[] = {"binary_hex", "binary_len", "text"};
+    static const char *const binary_string_store_values[] = {"610062", "3", "Az"};
     static const char *const binary_cast_columns[] = {
         "binary_prefix_hex",
         "binary_prefix_len",
@@ -15039,6 +15044,19 @@ static int test_hex_bit_literal_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
          0},
+        {"binary_string",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         3U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         0},
     };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -15084,6 +15102,19 @@ static int test_hex_bit_literal_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SELECT HEX(_binary 'a\\0b') AS binary_hex, "
+        "LENGTH(_binary 'a\\0b') AS binary_len, "
+        "CHARSET(_binary 'abc') AS binary_charset, "
+        "COLLATION(_binary 'abc') AS binary_collation, "
+        "COERCIBILITY(_binary 'abc') AS binary_coercibility",
+        binary_string_columns,
+        (int)(sizeof(binary_string_columns) / sizeof(binary_string_columns[0])),
+        binary_string_values,
+        1,
+        "binary string introducer preserves bytes and collation"
+    );
+    failures += expect_select_rows(
+        database,
         "SELECT HEX(BINARY 'a\\0b') AS binary_prefix_hex, "
         "LENGTH(BINARY 'a\\0b') AS binary_prefix_len, "
         "HEX(CAST('a\\0b' AS BINARY)) AS cast_binary_hex, "
@@ -15119,13 +15150,34 @@ static int test_hex_bit_literal_execution(void) {
 
     failures += execute_sql(database, "CREATE DATABASE literal_metadata_db", MYLITE_DONE);
     failures += execute_sql(database, "USE literal_metadata_db", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE binary_string_store (id INT, b VARBINARY(8), s VARCHAR(8))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO binary_string_store VALUES (1, _binary 'a\\0b', _binary 'Az')",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(b) AS binary_hex, LENGTH(b) AS binary_len, s AS text "
+        "FROM binary_string_store",
+        binary_string_store_columns,
+        (int)(sizeof(binary_string_store_columns) / sizeof(binary_string_store_columns[0])),
+        binary_string_store_values,
+        1,
+        "binary string introducer DML stores bytes"
+    );
     failures += execute_sql(database, "CREATE TABLE literal_metadata_empty (id INT)", MYLITE_DONE);
     failures += prepare_sql(
         database,
         "SELECT 0x417a AS prefixed_hex, "
         "x'' AS empty_hex, "
         "0b0100000101111010 AS prefixed_bit, "
-        "0b000000001 AS odd_bit "
+        "0b000000001 AS odd_bit, "
+        "_binary 'a\\0b' AS binary_string "
         "FROM literal_metadata_empty WHERE id = 1",
         MYLITE_OK,
         &stmt

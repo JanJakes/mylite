@@ -2142,7 +2142,11 @@ static int eval_quote_function(
     struct mylite_expression_value *out_value
 );
 
-static int quote_text_value(const char *text, struct mylite_expression_value *out_value);
+static int quote_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+);
 
 static int eval_repeat_function(
     const struct mylite_sql_ast_node *arguments,
@@ -2153,6 +2157,7 @@ static int eval_repeat_function(
 
 static int repeat_text_value(
     const char *text,
+    size_t text_length,
     int64_t count,
     struct mylite_expression_value *out_value
 );
@@ -2173,7 +2178,11 @@ static int eval_reverse_function(
     struct mylite_expression_value *out_value
 );
 
-static int reverse_text_value(const char *text, struct mylite_expression_value *out_value);
+static int reverse_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+);
 
 static int eval_pad_function(
     enum mylite_scalar_function_id function_id,
@@ -14568,6 +14577,7 @@ static int eval_quote_function(
 ) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
+    size_t text_length = 0U;
     int status = eval_node(arguments->first_child, context, warnings, &value);
 
     if (status != 0) {
@@ -14578,9 +14588,9 @@ static int eval_quote_function(
         goto cleanup;
     }
 
-    status = value_to_string(&value, &text);
+    status = value_to_string_with_length(&value, &text, &text_length);
     if (status == 0) {
-        status = quote_text_value(text, out_value);
+        status = quote_text_value(text, text_length, out_value);
     }
 
 cleanup:
@@ -14589,9 +14599,12 @@ cleanup:
     return status;
 }
 
-static int quote_text_value(const char *text, struct mylite_expression_value *out_value) {
+static int quote_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+) {
     const unsigned char *source = (const unsigned char *)(text == NULL ? "" : text);
-    size_t source_length = strlen((const char *)source);
     char *result = copy_span_text("'", 1U);
     size_t result_length = 1U;
     int status = 0;
@@ -14599,10 +14612,13 @@ static int quote_text_value(const char *text, struct mylite_expression_value *ou
     if (result == NULL) {
         return -1;
     }
-    for (size_t index = 0U; index < source_length; ++index) {
+    for (size_t index = 0U; index < text_length; ++index) {
         char escaped[2] = {'\\', (char)source[index]};
 
         if (source[index] == '\'' || source[index] == '\\') {
+            status = append_text(&result, &result_length, escaped, sizeof(escaped));
+        } else if (source[index] == '\0') {
+            escaped[1] = '0';
             status = append_text(&result, &result_length, escaped, sizeof(escaped));
         } else if (source[index] == MYLITE_ASCII_CONTROL_Z) {
             escaped[1] = 'Z';
@@ -14638,6 +14654,7 @@ static int eval_repeat_function(
     struct mylite_expression_value text_value = {0};
     struct mylite_expression_value count_value = {0};
     char *text = NULL;
+    size_t text_length = 0U;
     int64_t count = 0;
     int status = eval_node(child_at(arguments, 0U), context, warnings, &text_value);
 
@@ -14654,9 +14671,9 @@ static int eval_repeat_function(
         goto cleanup;
     }
 
-    status = value_to_string(&text_value, &text);
+    status = value_to_string_with_length(&text_value, &text, &text_length);
     if (status == 0) {
-        status = repeat_text_value(text, count, out_value);
+        status = repeat_text_value(text, text_length, count, out_value);
     }
 
 cleanup:
@@ -14668,31 +14685,31 @@ cleanup:
 
 static int repeat_text_value(
     const char *text,
+    size_t text_length,
     int64_t count,
     struct mylite_expression_value *out_value
 ) {
     const char *source = text == NULL ? "" : text;
-    size_t source_length = strlen(source);
     size_t output_length = 0U;
     char *result = NULL;
     char *cursor = NULL;
 
-    if (count < 1 || source_length == 0U) {
+    if (count < 1 || text_length == 0U) {
         return set_text_value("", 0U, out_value);
     }
-    if ((uint64_t)count > (uint64_t)(((size_t)PTRDIFF_MAX - 1U) / source_length)) {
+    if ((uint64_t)count > (uint64_t)(((size_t)PTRDIFF_MAX - 1U) / text_length)) {
         return -1;
     }
 
-    output_length = source_length * (size_t)count;
+    output_length = text_length * (size_t)count;
     result = malloc(output_length + 1U);
     if (result == NULL) {
         return -1;
     }
     cursor = result;
     for (int64_t index = 0; index < count; ++index) {
-        memcpy(cursor, source, source_length); // NOLINT(bugprone-not-null-terminated-result)
-        cursor += source_length;
+        memcpy(cursor, source, text_length); // NOLINT(bugprone-not-null-terminated-result)
+        cursor += text_length;
     }
     result[output_length] = '\0';
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
@@ -14756,6 +14773,7 @@ static int eval_reverse_function(
 ) {
     struct mylite_expression_value value = {0};
     char *text = NULL;
+    size_t text_length = 0U;
     int status = eval_node(arguments->first_child, context, warnings, &value);
 
     if (status != 0 || is_null(&value)) {
@@ -14766,21 +14784,24 @@ static int eval_reverse_function(
         return status;
     }
 
-    status = value_to_string(&value, &text);
+    status = value_to_string_with_length(&value, &text, &text_length);
     if (status == 0) {
-        status = reverse_text_value(text, out_value);
+        status = reverse_text_value(text, text_length, out_value);
     }
     free(text);
     mylite_expression_value_deinit(&value);
     return status;
 }
 
-static int reverse_text_value(const char *text, struct mylite_expression_value *out_value) {
+static int reverse_text_value(
+    const char *text,
+    size_t text_length,
+    struct mylite_expression_value *out_value
+) {
     const char *source = text == NULL ? "" : text;
-    size_t source_length = strlen(source);
-    size_t read_offset = source_length;
+    size_t read_offset = text_length;
     size_t output_offset = 0U;
-    char *result = malloc(source_length + 1U);
+    char *result = malloc(text_length + 1U);
 
     if (result == NULL) {
         return -1;

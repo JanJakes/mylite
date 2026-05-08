@@ -11112,6 +11112,8 @@ static int test_scalar_builtin_functions_execution(void) {
         "from_empty_len", "from_null",       "from_utf8",         "from_ws",
         "from_num",       "to_nul_literal",  "from_nul_literal",  "from_nul_length",
         "from_binary",    "from_binary_len", "from_nonzero_pad2", "from_nonzero_pad1",
+        "repeat_nul_hex", "repeat_nul_len",  "reverse_nul_hex",   "reverse_nul_len",
+        "quote_nul_hex",  "quote_nul_len",
     };
     static const char *const base64_values[] = {
         "YWJj",
@@ -11138,7 +11140,16 @@ static int test_scalar_builtin_functions_execution(void) {
         "2",
         "00",
         "0000",
+        "61006100",
+        "4",
+        "620061",
+        "3",
+        "27615C306227",
+        "6",
     };
+    static const unsigned char base64_zero_byte[] = {0x00};
+    static const unsigned char base64_nul_text[] = {'a', 0x00, 'b'};
+    static const unsigned char unhex_leading_nul[] = {0x00, 'A'};
     static const char *const base64_invalid_columns[] = {
         "bad_chars",
         "missing_pad",
@@ -12850,7 +12861,13 @@ static int test_scalar_builtin_functions_execution(void) {
         "HEX(FROM_BASE64(TO_BASE64(CHAR(0,255 USING binary)))) AS from_binary, "
         "LENGTH(FROM_BASE64(TO_BASE64(CHAR(0,255 USING binary)))) AS from_binary_len, "
         "HEX(FROM_BASE64('AB==')) AS from_nonzero_pad2, "
-        "HEX(FROM_BASE64('AAB=')) AS from_nonzero_pad1",
+        "HEX(FROM_BASE64('AAB=')) AS from_nonzero_pad1, "
+        "HEX(REPEAT(FROM_BASE64(TO_BASE64('a\\0')),2)) AS repeat_nul_hex, "
+        "LENGTH(REPEAT(FROM_BASE64(TO_BASE64('a\\0')),2)) AS repeat_nul_len, "
+        "HEX(REVERSE(FROM_BASE64(TO_BASE64('a\\0b')))) AS reverse_nul_hex, "
+        "LENGTH(REVERSE(FROM_BASE64(TO_BASE64('a\\0b')))) AS reverse_nul_len, "
+        "HEX(QUOTE(FROM_BASE64(TO_BASE64('a\\0b')))) AS quote_nul_hex, "
+        "LENGTH(QUOTE(FROM_BASE64(TO_BASE64('a\\0b')))) AS quote_nul_len",
         base64_columns,
         (int)(sizeof(base64_columns) / sizeof(base64_columns[0])),
         base64_values,
@@ -12858,6 +12875,51 @@ static int test_scalar_builtin_functions_execution(void) {
         "string Base64 scalar values"
     );
     failures += expect_int(mylite_warning_count(database), 0, "Base64 scalar warning count");
+    failures += prepare_sql(
+        database,
+        "SELECT FROM_BASE64('AA==') AS zero_byte, "
+        "FROM_BASE64(TO_BASE64('a\\0b')) AS nul_text, "
+        "UNHEX('0041') AS unhex_leading_nul",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "Base64 raw NUL row");
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 0),
+        (int64_t)sizeof(base64_zero_byte),
+        "Base64 zero byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 0),
+        base64_zero_byte,
+        sizeof(base64_zero_byte),
+        "Base64 zero byte raw value"
+    );
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 1),
+        (int64_t)sizeof(base64_nul_text),
+        "Base64 embedded NUL length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 1),
+        base64_nul_text,
+        sizeof(base64_nul_text),
+        "Base64 embedded NUL raw value"
+    );
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 2),
+        (int64_t)sizeof(unhex_leading_nul),
+        "UNHEX leading NUL length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 2),
+        unhex_leading_nul,
+        sizeof(unhex_leading_nul),
+        "UNHEX leading NUL raw value"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "Base64 raw NUL done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_select_rows(
         database,

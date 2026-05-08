@@ -16,7 +16,8 @@ scalar built-ins: no-table `SELECT`, current table-backed projection, `WHERE`,
 
 Out of scope:
 
-- binary-string runtime behavior beyond the current value model
+- remaining binary-string runtime behavior beyond the covered length-aware
+  `REPEAT()` and `REVERSE()` paths
 - `max_allowed_packet` result-size enforcement
 - full collation aggregation and coercibility
 - exact warning promotion parity for every string-to-integer coercion path
@@ -77,6 +78,8 @@ Verified examples:
 | `REPEAT('ab', NULL)` | `NULL` |
 | `REPEAT('x', 2.4)` | `xx` |
 | `REPEAT('x', 2.5)` | `xxx` |
+| `HEX(REPEAT(FROM_BASE64(TO_BASE64('a\0')),2))` | `61006100` |
+| `LENGTH(REPEAT(FROM_BASE64(TO_BASE64('a\0')),2))` | `4` |
 
 `REPEAT('a')` and `REPEAT('a',2,3)` are syntax errors in MySQL 8.4.9.
 
@@ -111,6 +114,8 @@ Verified examples:
 | `REVERSE('abc')` | `cba` |
 | `REVERSE('海豚猫')` | `猫豚海` |
 | `REVERSE(NULL)` | `NULL` |
+| `HEX(REVERSE(FROM_BASE64(TO_BASE64('a\0b'))))` | `620061` |
+| `LENGTH(REVERSE(FROM_BASE64(TO_BASE64('a\0b'))))` | `3` |
 
 `REVERSE()` and `REVERSE('a','b')` are syntax errors in MySQL 8.4.9.
 
@@ -270,6 +275,7 @@ Add C tests for:
 - binding rejection for `SPACE`, `LPAD`, and `RPAD` wrong-arity calls
 - no-table scalar results for the verified examples above
 - decimal and string length/count coercion examples
+- length-aware embedded `NUL` handling for `REPEAT()` and `REVERSE()`
 - metadata for constant results under `utf8mb4` and `latin1`
 - table-backed projection, `WHERE`, and `ORDER BY`
 - single-table `UPDATE` assignment/predicate and `DELETE` predicate paths
@@ -280,5 +286,6 @@ Add C tests for:
 After implementation and verification, the `REPEAT()`, `SPACE()`,
 `REVERSE()`, `LPAD()`, and `RPAD()` rows in `COMPATIBILITY.md` should move to
 partial support. The status remains partial because binary-string runtime
-behavior, `max_allowed_packet`, complete collation/coercibility behavior, and
-full MySQL diagnostic fidelity are deferred.
+behavior outside the covered `REPEAT()` / `REVERSE()` byte-preserving paths,
+`max_allowed_packet`, complete collation/coercibility behavior, and full MySQL
+diagnostic fidelity are deferred.

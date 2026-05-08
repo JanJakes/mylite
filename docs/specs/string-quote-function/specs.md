@@ -12,7 +12,6 @@ built-ins: no-table `SELECT`, current table-backed projection, `WHERE`,
 
 Out of scope:
 
-- length-aware embedded `NUL` storage in MyLite expression values
 - binary-string-specific result typing and display behavior
 - `max_allowed_packet` result-size enforcement
 - full collation aggregation and coercibility
@@ -86,12 +85,9 @@ Escaping rules observed in MySQL 8.4.9:
   surrounding quotes
 - UTF-8 bytes pass through unchanged except for the bytes above
 
-MyLite's current text expression value stores C strings without an explicit
-byte length. This first slice implements every rule representable by that value
-model, including single quote, backslash, Control+Z, newline, tab, carriage
-return, empty strings, numeric/string conversion, UTF-8 pass-through, and
-`NULL` input. Embedded `NUL` escaping is documented and deferred until MyLite's
-expression values become length-aware.
+MyLite implements these escaping rules over length-aware expression values,
+including embedded `NUL` bytes produced by string literals and binary-returning
+functions such as `FROM_BASE64()` and `UNHEX()`.
 
 Wrong arity raises MySQL native error 1582:
 
@@ -181,6 +177,7 @@ Add C tests for:
 - no-table scalar results for ordinary text, empty text, UTF-8 text, numeric
   input, single quote, backslash, Control+Z, newline, tab, carriage return, and
   SQL `NULL`
+- embedded `NUL` escaping through length-aware scalar values
 - `QUOTE(NULL) IS NULL` and `LENGTH(QUOTE(NULL))`
 - metadata for verified `utf8mb4` and `latin1` constant cases
 - wrong-arity rejection through the existing scalar binding path
@@ -190,7 +187,6 @@ Add C tests for:
 ## Compatibility status
 
 After implementation and verification, the `QUOTE()` row in `COMPATIBILITY.md`
-should move to partial support. The status remains partial because embedded
-`NUL` values, binary-string typing, `max_allowed_packet`, full
-collation/coercibility, and exact native arity error-code exposure are
-deferred.
+should move to partial support. The status remains partial because
+binary-string typing, `max_allowed_packet`, full collation/coercibility, and
+exact native arity error-code exposure are deferred.

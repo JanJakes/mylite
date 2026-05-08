@@ -149,9 +149,13 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Preserve string values containing null bytes instead of truncating at
       `\0`. Scalar `SELECT` literals and DML storage/update paths now preserve
       embedded NUL byte lengths, and scalar `LIKE` matching is length-aware for
-      decoded NUL bytes in values and patterns.
+      decoded NUL bytes in values and patterns. Raw decoded scalar results now
+      preserve byte lengths through `mylite_column_bytes()`, and covered
+      `QUOTE()`, `REPEAT()`, and `REVERSE()` paths are length-aware for
+      embedded NUL bytes.
 - [x] Make `FROM_BASE64(TO_BASE64('binary\\0data'))` preserve binary null
-      bytes.
+      bytes, including raw C API result access and covered downstream scalar
+      string helpers.
 - [x] Align invalid and zero-date coercion/rejection with MySQL in strict and
       non-strict modes for supported `DATE`, `DATETIME`, and `TIMESTAMP` DML
       write paths. Covered strict/default `NO_ZERO_DATE` and `NO_ZERO_IN_DATE`

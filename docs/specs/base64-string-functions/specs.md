@@ -203,7 +203,8 @@ Implementation extends the scalar-function registry in
 - reject malformed cleaned input by returning `NULL` without appending a
   warning
 - preserve internal byte lengths for binary `FROM_BASE64()` results so nested
-  `HEX(FROM_BASE64(...))` and `LENGTH(FROM_BASE64(...))` handle `0x00` bytes
+  `HEX(FROM_BASE64(...))`, `LENGTH(FROM_BASE64(...))`, raw C API reads, and
+  length-aware downstream scalar functions handle `0x00` bytes
 
 Metadata inference in `mylite.c` adds dedicated `TO_BASE64()` and
 `FROM_BASE64()` descriptors. `TO_BASE64()` cannot reuse ordinary string
@@ -225,6 +226,8 @@ Add C tests for:
   long output line wrapping, whitespace-tolerant decoding, invalid inputs,
   missing padding, misplaced padding, nonzero pad bits, and embedded-NUL byte
   lengths
+- direct raw-result byte assertions with `mylite_column_bytes()` for decoded
+  leading and embedded `0x00` bytes
 - no warnings for invalid `FROM_BASE64()` input
 - metadata under `utf8mb4` and `latin1`, including text, numeric, `NULL`,
   invalid `FROM_BASE64()`, and binary result descriptors

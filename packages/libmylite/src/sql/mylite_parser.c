@@ -595,6 +595,52 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_table_status_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_character_set_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token end_token,
+    struct mylite_sql_ast_node *like_pattern
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&end_token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (like_pattern != NULL) {
+        span = span_join(span, like_pattern->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, like_pattern);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_collation_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token collation_token,
+    struct mylite_sql_ast_node *like_pattern
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&collation_token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (like_pattern != NULL) {
+        span = span_join(span, like_pattern->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, like_pattern);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,
@@ -1827,6 +1873,7 @@ static bool map_keyword_token(
         {"CHARACTER", MYLITE_SQL_PARSE_CHARACTER},
         {"CHARSET", MYLITE_SQL_PARSE_CHARSET},
         {"COLLATE", MYLITE_SQL_PARSE_COLLATE},
+        {"COLLATION", MYLITE_SQL_PARSE_COLLATION},
         {"LIKE", MYLITE_SQL_PARSE_LIKE},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
         {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},

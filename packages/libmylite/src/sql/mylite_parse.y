@@ -77,6 +77,12 @@ statement(A) ::= show_tables_statement(B). {
 statement(A) ::= show_table_status_statement(B). {
     A = B;
 }
+statement(A) ::= show_character_set_statement(B). {
+    A = B;
+}
+statement(A) ::= show_collation_statement(B). {
+    A = B;
+}
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
@@ -213,6 +219,17 @@ show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) FROM identifier(D) sh
 }
 show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) IN identifier(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_table_status_statement(state, S, T, D, L);
+}
+
+show_character_set_statement(A) ::= SHOW(S) CHARACTER SET(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_character_set_statement(state, S, T, L);
+}
+show_character_set_statement(A) ::= SHOW(S) CHARSET(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_character_set_statement(state, S, T, L);
+}
+
+show_collation_statement(A) ::= SHOW(S) COLLATION(C) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_collation_statement(state, S, C, L);
 }
 
 show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) show_like_clause_opt(L). {
@@ -798,6 +815,9 @@ identifier(A) ::= CHARACTER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COLLATE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COLLATION(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

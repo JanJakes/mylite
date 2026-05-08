@@ -343,6 +343,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_create_database_statement";
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
         return "show_table_status_statement";
+    case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
+        return "show_character_set_statement";
+    case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
+        return "show_collation_statement";
     }
 
     return "unknown";

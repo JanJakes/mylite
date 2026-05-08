@@ -542,7 +542,7 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `SHOW CHARACTER SET` | 🟡 | Limited static `utf8mb4` row with MySQL 8.4.9 column labels and `LIKE` filters; no `WHERE`, alternate charsets, privileges, or `INFORMATION_SCHEMA`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [character sets](docs/compatibility/character-sets.md) |
+| `SHOW CHARACTER SET` / `SHOW CHARSET` | 🟡 | Limited static `utf8mb4` row with MySQL 8.4.9 column labels and `LIKE` filters; no `WHERE`, alternate charsets, privileges, or `INFORMATION_SCHEMA`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [character sets](docs/compatibility/character-sets.md) |
 | `SHOW COLLATION` | 🟡 | Limited static `utf8mb4_0900_ai_ci` row with MySQL 8.4.9 column labels and `LIKE` filters; no `WHERE`, alternate collations, privileges, or `INFORMATION_SCHEMA`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [collations](docs/compatibility/collations.md) |
 | `SHOW COLUMNS` | 🟡 | Limited descriptor-driven column listing for persistent base tables with integer-family descriptors; supports `FROM`/`IN`, schema-qualified targets, explicit schema forms, and `LIKE` filters, but no NUL-producing pattern escapes, `FULL`, `EXTENDED`, `WHERE`, views, privileges, indexes, defaults, or hidden columns. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW FIELDS` | 🟡 | Limited alias for the supported `SHOW COLUMNS` subset. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |

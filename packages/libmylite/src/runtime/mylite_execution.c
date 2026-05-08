@@ -53,6 +53,8 @@ enum {
     show_create_database_result_column_count = 2,
     show_table_status_result_column_count = 18,
     show_table_status_data_length = 16384,
+    show_character_set_result_column_count = 4,
+    show_collation_result_column_count = 7,
     show_engines_result_column_count = 6,
 };
 
@@ -341,6 +343,16 @@ static int execute_show_tables_statement(
     mylite_result **out_result
 );
 static int execute_show_table_status_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_character_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_collation_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -1344,6 +1356,10 @@ static int execute_parsed_statement(
         return execute_show_tables_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
         return execute_show_table_status_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
+        return execute_show_character_set_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
+        return execute_show_collation_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -2008,6 +2024,124 @@ static int execute_show_table_status_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_character_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_character_set_result_column_count] = {
+        "Charset",
+        "Description",
+        "Default collation",
+        "Maxlen",
+    };
+    static const char *const values[show_character_set_result_column_count] = {
+        "utf8mb4",
+        "UTF-8 Unicode",
+        "utf8mb4_0900_ai_ci",
+        "4",
+    };
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    rc = make_show_like_filter(database, child_at(statement, 0U), &filter);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_character_set_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK && show_like_filter_matches(&filter, values[0], false)) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        show_like_filter_deinit(&filter);
+        return rc;
+    }
+
+    show_like_filter_deinit(&filter);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_show_collation_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_collation_result_column_count] = {
+        "Collation",
+        "Charset",
+        "Id",
+        "Default",
+        "Compiled",
+        "Sortlen",
+        "Pad_attribute",
+    };
+    static const char *const values[show_collation_result_column_count] = {
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "255",
+        "Yes",
+        "Yes",
+        "0",
+        "NO PAD",
+    };
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    rc = make_show_like_filter(database, child_at(statement, 0U), &filter);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_collation_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK && show_like_filter_matches(&filter, values[0], false)) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        show_like_filter_deinit(&filter);
+        return rc;
+    }
+
+    show_like_filter_deinit(&filter);
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_columns_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -2588,6 +2722,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:

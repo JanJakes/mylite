@@ -39,7 +39,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW PRIVILEGES` | ❌ | Result shape, filters, privileges |
 | `SHOW PROCEDURE CODE` | ❌ | Debug-only routine bytecode listing |
 | `SHOW PROCEDURE STATUS` | 🟡 | Limited empty routine introspection with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; global and default-schema independent; no NUL-producing pattern escapes, routine descriptors, routine rows, routine DDL, `SHOW CREATE PROCEDURE`, `WHERE`, privileges, or `INFORMATION_SCHEMA.ROUTINES` |
-| `SHOW PROCESSLIST` | ❌ | Result shape, filters, privileges |
+| `SHOW PROCESSLIST` | 🟡 | Limited current embedded-handle row for `SHOW [FULL] PROCESSLIST` with MySQL 8.4.9 columns, selected-schema `db`, `Info` truncation, and default process-list warning count; no server-wide threads, sleeping/background rows, filters, privileges, Performance Schema, `INFORMATION_SCHEMA.PROCESSLIST`, sys-schema views, or `KILL` |
 | `SHOW PROFILE` | ❌ | Result shape, filters, privileges |
 | `SHOW PROFILES` | ❌ | Result shape, filters, privileges |
 | `SHOW RELAYLOG EVENTS` | ❌ | Result shape, filters, privileges |

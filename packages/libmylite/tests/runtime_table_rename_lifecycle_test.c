@@ -1087,16 +1087,6 @@ static int test_alter_table_rename_failure_diagnostics_and_unwinding(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "ALTER TABLE duplicate_target RENAME COLUMN id TO renamed_id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
         failures += expect_uint64(

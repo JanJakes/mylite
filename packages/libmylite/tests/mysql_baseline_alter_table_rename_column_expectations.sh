@@ -232,6 +232,15 @@ expect_error \
     "ALTER TABLE numbers RENAME COLUMN n TO id;" \
     "$DATABASE"
 
+run_mysql "CREATE TABLE case_collision (a INT, B INT);" "$DATABASE" >/dev/null
+expect_error \
+    "case-insensitive duplicate new column uses existing spelling" \
+    1060 \
+    42S21 \
+    "Duplicate column name 'B'" \
+    "ALTER TABLE case_collision RENAME COLUMN a TO b;" \
+    "$DATABASE"
+
 expect_error \
     "old qualified column syntax" \
     1064 \

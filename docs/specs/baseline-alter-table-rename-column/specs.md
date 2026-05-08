@@ -193,7 +193,8 @@ names must be rejected before generated SQLite SQL.
 Unknown old columns return MySQL error `1054`, SQLSTATE `42S22`, and message
 `Unknown column '<column>' in '<table>'`. New names that collide with a
 different existing descriptor column return MySQL error `1060`, SQLSTATE
-`42S21`, and message `Duplicate column name '<column>'`.
+`42S21`, and message `Duplicate column name '<column>'`, using the existing
+conflicting descriptor column spelling.
 
 If the old and new names are byte-for-byte equal, MyLite returns a successful
 no-op result and does not mutate catalog rows, descriptor versions, catalog
@@ -291,7 +292,8 @@ Supported diagnostics:
 - unknown old column: `1054`, `42S22`,
   `Unknown column '<column>' in '<table>'`;
 - duplicate new column: `1060`, `42S21`,
-  `Duplicate column name '<column>'`;
+  `Duplicate column name '<column>'`, using the existing conflicting descriptor
+  spelling for case-insensitive collisions;
 - table-qualified old or new column names, missing `COLUMN`, missing `TO`,
   multiple actions, algorithms, locks, and positioning tokens: syntax error
   for this slice;

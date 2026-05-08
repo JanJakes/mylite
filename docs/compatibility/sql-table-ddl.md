@@ -7,7 +7,7 @@ actions.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `ALTER TABLE` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]`, append-only `ALTER TABLE ... ADD [COLUMN]`, and single-column `ALTER TABLE ... DROP [COLUMN]` forms only; see [ALTER TABLE actions](#alter-table-actions) |
+| `ALTER TABLE` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]`, append-only `ALTER TABLE ... ADD [COLUMN]`, single-column `ALTER TABLE ... DROP [COLUMN]`, and single-column `ALTER TABLE ... RENAME COLUMN ... TO ...` forms only; see [ALTER TABLE actions](#alter-table-actions) |
 | `CREATE TABLE` | 🟡 | Limited persistent base-table creation: explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, `NULL`/`NOT NULL`, optional explicit `ENGINE [=] InnoDB`, and optional fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table charset/collation options; no other options, keys, defaults, temporary tables, `IF NOT EXISTS`, or generated invisible primary keys |
 | `CREATE TEMPORARY TABLE` | ❌ | Session-scoped table lifecycle and name shadowing |
 | `CREATE TABLE ... LIKE` | ❌ | Exact metadata cloning rules |
@@ -15,7 +15,7 @@ actions.
 | `DROP TABLE` | 🟡 | Limited single persistent base-table drop without `IF EXISTS`, `TEMPORARY`, multi-table drop, `RESTRICT`, or `CASCADE` |
 | `RENAME TABLE` | 🟡 | Limited single-pair persistent base-table rename from `baseline-table-rename-lifecycle`, including unqualified, schema-qualified, and cross-schema names; no multi-table rename, temporary tables, views, triggers, or privilege semantics |
 | `TRUNCATE TABLE` | 🟡 | Limited persistent base-table `TRUNCATE [TABLE] table_name` for unqualified and schema-qualified descriptor targets; empties physical rows, preserves descriptors, and reports zero affected rows; no implicit commits, temporary tables, partitions, foreign keys, triggers, auto-increment reset, locks, privileges, or physical storage rebuild semantics |
-| Atomic DDL | 🟡 | Catalog descriptor rows and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename/truncate and single-action alter rename/add-column/drop-column subsets only |
+| Atomic DDL | 🟡 | Catalog descriptor rows and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename/truncate and single-action alter rename/add-column/drop-column/rename-column subsets only |
 | Implicit commit boundaries | ❌ | Implicit commit boundaries |
 | `IMPORT TABLE` | ❌ | Transportable tablespace import syntax, diagnostics |
 
@@ -45,7 +45,7 @@ actions.
 | --- | --- | --- |
 | `ADD COLUMN` | 🟡 | Limited append-only `ALTER TABLE table_name ADD [COLUMN] column_name integer_type [NULL\|NOT NULL]` for persistent base tables; supports `INT`/`INTEGER`/`BIGINT` with optional `UNSIGNED`, nullable existing-row `NULL` backfill, and non-null existing-row `0` backfill; no defaults, positioning, multiple actions, parenthesized lists, non-integer types, generated/invisible/auto-increment columns, keys, constraints, algorithms, locks, temporary tables, or views |
 | `DROP COLUMN` | 🟡 | Limited single-column `ALTER TABLE table_name DROP [COLUMN] column_name` for persistent base tables; removes the MyLite descriptor column, compacts later descriptor ordinals, preserves remaining row values, and emits MySQL-compatible diagnostics for unknown columns and attempts to drop the last column; no multiple actions, table-qualified drop targets, keys, constraints, dependency checks, algorithms, locks, temporary tables, or views |
-| `RENAME COLUMN` | ❌ | Metadata rewrite and dependency updates |
+| `RENAME COLUMN` | 🟡 | Limited single-action `ALTER TABLE table_name RENAME COLUMN old_col TO new_col` for persistent base tables; preserves column id, ordinal position, integer type, nullability, and row values, supports exact same-name no-op and case-only spelling changes, and rejects duplicate or unknown columns; no multiple actions, table-qualified column names, type changes, dependency updates, algorithms, locks, temporary tables, or views |
 | `CHANGE COLUMN` | ❌ | Rename plus type/attribute change semantics |
 | `MODIFY COLUMN` | ❌ | Type/attribute change without rename |
 | `ALTER COLUMN SET DEFAULT` | ❌ | Default mutation semantics |

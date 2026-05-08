@@ -162,14 +162,10 @@ system-view list.
 
 ## Metadata Limitation
 
-`SHOW ENGINES` currently attaches MySQL-compatible field metadata through
-MyLite's custom result metadata path. Existing `INFORMATION_SCHEMA` `SELECT`
-execution prepares SQLite-backed statements directly and does not attach full
-MySQL field metadata for any supported information-schema table. This first
-slice keeps that behavior consistent: tests verify column names, values, row
-order, nulls, and case-insensitive resolution, while exact field descriptors for
-`INFORMATION_SCHEMA.ENGINES` remain deferred to a unified information-schema
-metadata pass.
+`SHOW ENGINES` attaches MySQL-compatible field metadata through MyLite's custom
+result metadata path. `INFORMATION_SCHEMA.ENGINES` attaches MySQL-compatible
+descriptors for the six exposed columns, including the observed latin1
+collation, fixed declared lengths, `NOT_NULL` flags, and zero decimals.
 
 ## Composable Query Forms
 

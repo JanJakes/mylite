@@ -1013,7 +1013,7 @@ static struct mylite_field_descriptor information_schema_engines_column_descript
         return information_schema_text_descriptor(
             information_schema_identifier_length,
             MYLITE_FIELD_FLAG_NOT_NULL,
-            mylite_mysql_not_fixed_decimals,
+            0U,
             false
         );
     }
@@ -1021,7 +1021,7 @@ static struct mylite_field_descriptor information_schema_engines_column_descript
         return information_schema_text_descriptor(
             information_schema_engine_support_length,
             MYLITE_FIELD_FLAG_NOT_NULL,
-            mylite_mysql_not_fixed_decimals,
+            0U,
             false
         );
     }
@@ -1029,18 +1029,13 @@ static struct mylite_field_descriptor information_schema_engines_column_descript
         return information_schema_text_descriptor(
             information_schema_engine_comment_length,
             MYLITE_FIELD_FLAG_NOT_NULL,
-            mylite_mysql_not_fixed_decimals,
+            0U,
             false
         );
     }
     if (mylite_ascii_case_equal(name, "TRANSACTIONS") || mylite_ascii_case_equal(name, "XA") ||
         mylite_ascii_case_equal(name, "SAVEPOINTS")) {
-        return information_schema_text_descriptor(
-            information_schema_yes_no_length,
-            0U,
-            mylite_mysql_not_fixed_decimals,
-            true
-        );
+        return information_schema_text_descriptor(information_schema_yes_no_length, 0U, 0U, true);
     }
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_INVALID,

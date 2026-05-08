@@ -367,6 +367,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       report MySQL-shaped descriptors for their direct wildcard result sets;
       `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` now reports
       MySQL-shaped descriptors for `COLLATION_NAME` and `CHARACTER_SET_NAME`;
+      `INFORMATION_SCHEMA.ENGINES` now reports MySQL-shaped zero-decimal
+      descriptors for its latin1 string columns;
       `INFORMATION_SCHEMA.SCHEMATA` now reports MySQL-shaped descriptors for
       `CATALOG_NAME`, `SCHEMA_NAME`, default charset/collation,
       `SQL_PATH`, and `DEFAULT_ENCRYPTION`;

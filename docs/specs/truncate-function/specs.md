@@ -92,9 +92,9 @@ MySQL emits duplicate 1292 INTEGER warning records for some exact DECIMAL
 expressions such as `TRUNCATE(123.456E0,'2abc')` emit one scale-conversion
 warning, and mixed invalid value/scale text such as
 `TRUNCATE('123abc','2abc')` emits one DOUBLE warning and one INTEGER warning.
-This slice follows the existing MyLite expression-warning architecture and
-emits one warning per actual value or scale conversion; native duplicate
-DECIMAL scale-warning counts are deferred.
+Covered exact-decimal literal and `CAST(... AS DECIMAL)` paths duplicate the
+scale-conversion warning to match MySQL's warning count while approximate and
+mixed text paths keep the single conversion warning.
 
 Exact integer and exact decimal literal inputs use MyLite-owned decimal-text
 truncation, not SQLite behavior. Approximate and nonnumeric inputs use the
@@ -246,9 +246,6 @@ Expected covered behavior:
 - MyLite's first slice rejects wrong `TRUNCATE()` arity through the existing
   unsupported scalar function path. MySQL's native behavior is parse error
   1064 for this keyword-function arity.
-- Native duplicate warning counts for exact DECIMAL `X` with truncated text
-  `D` are deferred. MyLite records the conversion warning, but currently does
-  not duplicate it to match MySQL's exact count for those expression shapes.
 - Full SQL mode and protocol diagnostic fidelity, including exact packet-level
   warning state and metadata outside the current C API, remains deferred with
   the broader scalar-function surface.

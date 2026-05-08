@@ -3113,6 +3113,19 @@ static int eval_truncate_function(
     struct mylite_expression_value *out_value
 );
 
+static int duplicate_truncate_exact_scale_warnings(
+    struct mylite_expression_warnings *warnings,
+    size_t first_warning,
+    size_t end_warning,
+    const struct mylite_sql_ast_node *value_argument,
+    struct round_exact_argument_text exact
+);
+
+static bool truncate_scale_warning_needs_duplicate(
+    const struct mylite_sql_ast_node *value_argument,
+    struct round_exact_argument_text exact
+);
+
 static int eval_round_scale(
     const struct mylite_sql_ast_node *arguments,
     const struct mylite_expression_eval_context *context,
@@ -21198,6 +21211,8 @@ static int eval_truncate_function(
     struct numeric_value number = {0};
     bool value_is_null = false;
     bool scale_is_null = false;
+    size_t scale_warning_start = 0U;
+    size_t scale_warning_end = 0U;
     int scale = 0;
     int status = eval_node(value_argument, context, warnings, &value);
 
@@ -21224,7 +21239,19 @@ static int eval_truncate_function(
         }
     }
     if (!scale_is_null) {
+        scale_warning_start = warnings == NULL ? 0U : warnings->count;
         status = round_scale_from_value(&scale_value, warnings, &scale);
+        if (status != 0) {
+            goto cleanup;
+        }
+        scale_warning_end = warnings == NULL ? 0U : warnings->count;
+        status = duplicate_truncate_exact_scale_warnings(
+            warnings,
+            scale_warning_start,
+            scale_warning_end,
+            value_argument,
+            exact
+        );
         if (status != 0) {
             goto cleanup;
         }
@@ -21245,6 +21272,56 @@ cleanup:
     mylite_expression_value_deinit(&scale_value);
     mylite_expression_value_deinit(&value);
     return status;
+}
+
+static int duplicate_truncate_exact_scale_warnings(
+    struct mylite_expression_warnings *warnings,
+    size_t first_warning,
+    size_t end_warning,
+    const struct mylite_sql_ast_node *value_argument,
+    struct round_exact_argument_text exact
+) {
+    if (warnings == NULL || !truncate_scale_warning_needs_duplicate(value_argument, exact)) {
+        return 0;
+    }
+    if (end_warning > warnings->count) {
+        end_warning = warnings->count;
+    }
+    for (size_t index = first_warning; index < end_warning; ++index) {
+        const struct mylite_expression_warning *warning = &warnings->items[index];
+
+        if (warning->code == MYLITE_WARNING_TRUNCATED_WRONG_VALUE && warning->message != NULL &&
+            strstr(warning->message, "Truncated incorrect INTEGER value") != NULL) {
+            return mylite_expression_warnings_append_condition(
+                warnings,
+                warning->level,
+                warning->code,
+                warning->message
+            );
+        }
+    }
+    return 0;
+}
+
+static bool truncate_scale_warning_needs_duplicate(
+    const struct mylite_sql_ast_node *value_argument,
+    struct round_exact_argument_text exact
+) {
+    const struct mylite_sql_ast_node *target = NULL;
+
+    if (exact.text != NULL && !exact.bound_signed && !exact.bound_unsigned) {
+        return true;
+    }
+    while (value_argument != NULL &&
+           value_argument->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        value_argument = child_at(value_argument, 0U);
+    }
+    if (value_argument == NULL || value_argument->kind != MYLITE_SQL_AST_CAST_EXPRESSION) {
+        return false;
+    }
+    target = child_at(value_argument, 1U);
+    return target != NULL && target->kind == MYLITE_SQL_AST_COLUMN_TYPE &&
+           target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_DECIMAL;
 }
 
 static int truncate_exact_decimal_text(

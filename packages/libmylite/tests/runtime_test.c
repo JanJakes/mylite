@@ -26185,6 +26185,7 @@ static int test_truncate_scalar_function_execution(mylite_db *database) {
         "0",   NULL,   NULL,   "123.45", "123",  "0",    "123.45", "123.45",  "123",
     };
     static const char *const single_column[] = {"v"};
+    static const char *const scale_trail_value[] = {"123.45"};
     static const char *const ordered_columns[] = {"id", "td"};
     static const char *const ordered_values[] = {"3", NULL, "2", "-123.45", "1", "123.45"};
     static const char *const i_column[] = {"i"};
@@ -26233,12 +26234,66 @@ static int test_truncate_scalar_function_execution(mylite_db *database) {
         1,
         "TRUNCATE scalar values"
     );
-    failures += expect_int(mylite_warning_count(database), 4, "TRUNCATE scalar warning count");
-    for (int index = 0; index < 4; ++index) {
+    failures += expect_int(mylite_warning_count(database), 6, "TRUNCATE scalar warning count");
+    for (int index = 0; index < 6; ++index) {
         failures += expect_int(
             (int)mylite_warning_code(database, index),
             mysql_warning_truncated_wrong_value,
             "TRUNCATE scalar warning code"
+        );
+    }
+
+    failures += expect_select_rows(
+        database,
+        "SELECT TRUNCATE(123.456,'2abc') AS v",
+        single_column,
+        1,
+        scale_trail_value,
+        1,
+        "TRUNCATE exact decimal duplicate scale warning value"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        2,
+        "TRUNCATE exact decimal duplicate scale warning count"
+    );
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_truncated_wrong_value,
+            "TRUNCATE exact decimal duplicate scale warning code"
+        );
+        failures += expect_contains(
+            mylite_warning_message(database, index),
+            "Truncated incorrect INTEGER value: '2abc'",
+            "TRUNCATE exact decimal duplicate scale warning message"
+        );
+    }
+
+    failures += expect_select_rows(
+        database,
+        "SELECT TRUNCATE(CAST(123.456 AS DECIMAL(8,3)),'2abc') AS v",
+        single_column,
+        1,
+        scale_trail_value,
+        1,
+        "TRUNCATE decimal cast duplicate scale warning value"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        2,
+        "TRUNCATE decimal cast duplicate scale warning count"
+    );
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_truncated_wrong_value,
+            "TRUNCATE decimal cast duplicate scale warning code"
+        );
+        failures += expect_contains(
+            mylite_warning_message(database, index),
+            "Truncated incorrect INTEGER value: '2abc'",
+            "TRUNCATE decimal cast duplicate scale warning message"
         );
     }
 

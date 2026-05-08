@@ -350,6 +350,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Scalar `CAST`/`CONVERT` to `FLOAT`, including `REAL` under
       `REAL_AS_FLOAT`, now normalize positive exponent display without the
       optional plus sign, matching MySQL's `3.40282e38` text form.
+      `TRUNCATE()` now duplicates truncated scale warnings for exact DECIMAL
+      value arguments while retaining single-warning behavior for approximate
+      and mixed text conversions.
       `LONGTEXT` and `LONGBLOB` now enter the covered string/binary DML
       coercion path for approximate numeric text conversion, and covered
       `LONGTEXT` invalid UTF-8 writes reject or demote like MySQL while paired

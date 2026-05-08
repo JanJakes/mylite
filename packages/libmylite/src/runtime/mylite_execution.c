@@ -321,6 +321,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT = 28,
     SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN = 29,
     SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF = 30,
+    SESSION_SYSTEM_VARIABLE_SQL_MODE = 31,
 };
 
 struct system_variable_component {
@@ -732,6 +733,7 @@ static int system_variable_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static const char *default_sql_mode_value(void);
 static int resolve_session_system_variable(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -6101,6 +6103,9 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
         out_cell->value = "binary";
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_SQL_MODE:
+        out_cell->value = default_sql_mode_value();
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
@@ -6161,6 +6166,11 @@ static int system_variable_value(
         out_cell->value = out_cell->integer_text;
     }
     return rc;
+}
+
+static const char *default_sql_mode_value(void) {
+    return "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
+           "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
 }
 
 static int resolve_session_system_variable(
@@ -6267,6 +6277,7 @@ static bool resolve_system_variable_kind(
          SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY},
         {"sql_log_bin", SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN},
         {"sql_log_off", SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF},
+        {"sql_mode", SESSION_SYSTEM_VARIABLE_SQL_MODE},
         {"sql_safe_updates", SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES},
         {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT},
         {"sql_notes", SESSION_SYSTEM_VARIABLE_SQL_NOTES},
@@ -6308,6 +6319,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
     case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
+    case SESSION_SYSTEM_VARIABLE_SQL_MODE:
     case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:

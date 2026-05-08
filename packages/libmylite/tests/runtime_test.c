@@ -54393,6 +54393,15 @@ static int test_show_create_table_execution(void) {
         "  `pdt` datetime(2) DEFAULT (now(2))\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
     static const char *const default_now_values[] = {"default_now", default_now_create};
+    static const char generated_default_expr_create[] =
+        "CREATE TABLE `generated_default_expr` (\n"
+        "  `a` int DEFAULT ((1 + 2)),\n"
+        "  `b` int DEFAULT (((3 * 4) + 5))\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+    static const char *const generated_default_expr_values[] = {
+        "generated_default_expr",
+        generated_default_expr_create
+    };
     static const char on_update_fsp_create[] =
         "CREATE TABLE `on_update_fsp` (\n"
         "  `ts` timestamp(3) NULL DEFAULT CURRENT_TIMESTAMP(3) "
@@ -54623,6 +54632,22 @@ static int test_show_create_table_execution(void) {
         default_now_values,
         1,
         "show create DEFAULT NOW()"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE generated_default_expr ("
+        "a INT DEFAULT (1 + 2), "
+        "b INT DEFAULT ((3 * 4) + 5))",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE generated_default_expr",
+        columns,
+        2,
+        generated_default_expr_values,
+        1,
+        "show create generated default expressions"
     );
     failures += execute_sql(
         database,

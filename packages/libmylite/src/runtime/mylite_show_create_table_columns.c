@@ -34,7 +34,14 @@ static bool show_create_column_needs_explicit_null_current_timestamp(
     const char *column_default
 );
 
+static bool show_create_column_default_is_generated(const char *extra);
+
 static void append_show_create_column_default(sqlite3_str *create_sql, const char *column_default);
+
+static void append_show_create_column_generated_default(
+    sqlite3_str *create_sql,
+    const char *column_default
+);
 
 static void append_show_create_column_generation_expression(
     sqlite3_str *create_sql,
@@ -163,6 +170,8 @@ static int append_show_create_table_column(
         sqlite3_str_appendall(create_sql, " DEFAULT ");
         if (mylite_column_default_is_current_timestamp(column_default)) {
             append_show_create_column_default(create_sql, column_default);
+        } else if (show_create_column_default_is_generated(extra)) {
+            append_show_create_column_generated_default(create_sql, column_default);
         } else {
             mylite_show_create_append_string_literal(create_sql, column_default);
         }
@@ -196,6 +205,10 @@ static bool show_create_column_needs_explicit_null_current_timestamp(
            mylite_column_default_is_current_timestamp(column_default);
 }
 
+static bool show_create_column_default_is_generated(const char *extra) {
+    return mylite_text_contains_word(extra, "DEFAULT_GENERATED");
+}
+
 static void append_show_create_column_default(sqlite3_str *create_sql, const char *column_default) {
     if (show_create_column_default_uses_now_function(column_default)) {
         sqlite3_str_appendchar(create_sql, 1, '(');
@@ -204,6 +217,15 @@ static void append_show_create_column_default(sqlite3_str *create_sql, const cha
         return;
     }
     sqlite3_str_appendall(create_sql, column_default);
+}
+
+static void append_show_create_column_generated_default(
+    sqlite3_str *create_sql,
+    const char *column_default
+) {
+    sqlite3_str_appendchar(create_sql, 1, '(');
+    sqlite3_str_appendall(create_sql, column_default == NULL ? "" : column_default);
+    sqlite3_str_appendchar(create_sql, 1, ')');
 }
 
 static void append_show_create_column_generation_expression(

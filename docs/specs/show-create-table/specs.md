@@ -57,6 +57,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW CREATE TABLE escaped_literals` for string defaults and comments containing quotes/backslashes | Embedded single quotes render as doubled quotes and embedded backslashes render as escaped backslashes in string literals. |
 | `SHOW CREATE TABLE index_options` for `KEY idx_pre USING BTREE (v)`, `KEY idx_post (v) USING BTREE`, and `KEY idx_hash USING HASH (v)` | Explicit BTREE index type syntax is preserved as `USING BTREE` after the key-part list. Unsupported InnoDB HASH syntax falls back to effective BTREE metadata but does not display a `USING` clause. |
 | `SHOW CREATE TABLE text_defaults` for nullable `TEXT`, explicit `TEXT DEFAULT NULL`, and `TEXT NOT NULL` columns | Nullable text family columns omit implicit and explicit `DEFAULT NULL`; non-null text columns append `NOT NULL`. |
+| `SHOW CREATE TABLE generated_default_expr` for `INT DEFAULT (1 + 2)` and nested arithmetic generated defaults | Generated default expressions render as expression defaults, for example `DEFAULT ((1 + 2))` and `DEFAULT (((3 * 4) + 5))`, rather than quoted string literals. |
 | `SHOW CREATE TABLE generated_meta` for stored, explicit virtual, and default-virtual generated columns | Generated columns render `GENERATED ALWAYS AS (<expression>)` after nullability, suppress ordinary default rendering, and always display explicit `STORED` or `VIRTUAL`. Default-virtual columns normalize to explicit `VIRTUAL`. |
 | `SHOW CREATE TABLE t_default_col_explicit` for `CREATE TABLE t_default_col_explicit (c VARCHAR(10) COLLATE utf8mb4_bin, d VARCHAR(10)) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci` | Column `c` renders `varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL`; column `d` renders `varchar(10) DEFAULT NULL`. |
 | `SHOW CREATE TABLE t_table_bin` for `CREATE TABLE t_table_bin (c VARCHAR(10), d VARCHAR(10) COLLATE utf8mb4_0900_ai_ci) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin` | Column `c` renders `varchar(10) COLLATE utf8mb4_bin DEFAULT NULL`; column `d` renders `varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL`. |
@@ -143,8 +144,8 @@ Formatting:
 - Nullable columns with no explicit default append `DEFAULT NULL`, except text
   and blob family columns where MySQL omits the implicit default.
 - Explicit defaults are rendered as `DEFAULT CURRENT_TIMESTAMP` for
-  `CURRENT_TIMESTAMP` defaults and as quoted literals for other cataloged
-  defaults.
+  `CURRENT_TIMESTAMP` defaults, as parenthesized expression text for cataloged
+  generated defaults, and as quoted literals for ordinary cataloged defaults.
 - Generated columns append `GENERATED ALWAYS AS (<generation-expression>)`,
   followed by explicit `STORED` or `VIRTUAL`. They do not render ordinary
   defaults, and default-virtual definitions render with explicit `VIRTUAL`.
@@ -221,6 +222,7 @@ Runtime coverage:
 - create-time and ALTER-added CHECK clauses, including generated names,
   constraint-name ordering, and `/*!80016 NOT ENFORCED */`
 - text family columns suppressing implicit and explicit `DEFAULT NULL`
+- parenthesized generated default expressions in `SHOW CREATE TABLE`
 - stored, explicit virtual, and default-virtual generated columns
 - escaped backticks in table, column, and index identifiers
 - missing selected schema diagnostic

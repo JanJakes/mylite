@@ -82425,6 +82425,8 @@ static int test_delete_single_table_execution(void) {
         "4",
         "40",
     };
+    static const char *const non_strict_predicate_values[] = {"3", "30", "4", "40"};
+    static const char *const non_strict_order_values[] = {"2", "20", "4", "40"};
     static const char *const ai_values[] = {"104", "5"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -82711,6 +82713,93 @@ static int test_delete_single_table_execution(void) {
         4,
         "delete strict order rollback rows"
     );
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE w_non_strict_predicate (id INT PRIMARY KEY, v INT, z VARCHAR(20))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO w_non_strict_predicate VALUES "
+        "(1,10,'2'),(2,20,'2a'),(3,30,'a'),(4,40,'10')",
+        MYLITE_DONE
+    );
+    failures +=
+        prepare_sql(database, "DELETE FROM w_non_strict_predicate WHERE z = 2", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "delete non-strict predicate warnings");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "delete non-strict predicate affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "delete non-strict predicate warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "delete non-strict predicate first warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "delete non-strict predicate second warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM w_non_strict_predicate ORDER BY id",
+        id_v_columns,
+        2,
+        non_strict_predicate_values,
+        2,
+        "delete non-strict predicate remaining rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE w_non_strict_order (id INT PRIMARY KEY, v INT, z VARCHAR(20))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO w_non_strict_order VALUES "
+        "(1,10,'2'),(2,20,'2a'),(3,30,'a'),(4,40,'10')",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "DELETE FROM w_non_strict_order ORDER BY z + 0, id LIMIT 2",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "delete non-strict order warnings");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "delete non-strict order affected rows");
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "delete non-strict order warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "delete non-strict order first warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "delete non-strict order second warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM w_non_strict_order ORDER BY id",
+        id_v_columns,
+        2,
+        non_strict_order_values,
+        2,
+        "delete non-strict order remaining rows"
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
 
     failures += execute_sql(
         database,

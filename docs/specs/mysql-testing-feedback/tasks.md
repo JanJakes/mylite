@@ -334,6 +334,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       source text for covered 1366 errors and warnings. Direct table-backed
       `INSERT ... SELECT` now reports selected source row numbers for covered
       strict and non-strict numeric, temporal, and string coercion diagnostics.
+      Single-table `DELETE` predicate and order-expression warnings now promote
+      only in strict SQL modes and remain warnings in non-strict mode,
+      including numeric string comparisons and numeric order keys.
       Clean unsigned integer text and `CAST(... AS UNSIGNED)` values above the
       signed 64-bit range now store exactly in fitting `DECIMAL(M,D)` targets
       for covered insert and update paths instead of passing through lossy

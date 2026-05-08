@@ -1,5 +1,6 @@
 #include "mylite_dml.h"
 
+#include "mylite_connection.h"
 #include "mylite_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_runtime.h"
@@ -29,6 +30,9 @@ int mylite_dml_promote_expression_warnings(mylite_db *database, size_t warning_s
     int status = MYLITE_OK;
 
     if (database == NULL || warning_start >= database->warnings.count) {
+        return MYLITE_OK;
+    }
+    if (!mylite_connection_sql_mode_is_strict(database)) {
         return MYLITE_OK;
     }
 

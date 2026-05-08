@@ -212,8 +212,7 @@ statement is `-1`.
 
 With `SET SESSION sql_mode = ''`, the same predicate succeeds, deletes rows
 with `z='2'` and `z='2a'`, reports `ROW_COUNT() = 2`, and records two 1292
-warnings for `'2a'` and `'a'`. This non-strict behavior is a future SQL-mode
-target if Task 20 lands before full SQL-mode support.
+warnings for `'2a'` and `'a'`.
 
 ### ORDER BY and LIMIT interaction
 
@@ -528,8 +527,8 @@ order-insensitive. Tests must add deterministic `ORDER BY` clauses whenever
 Expression evaluation should use the Task 16 value model and conversion rules.
 In the verified default strict SQL mode, conversion warnings in supported
 predicate or order expressions for data-change statements should fail the
-statement and roll back all row deletions. Non-strict warning demotion should
-be preserved as a future behavior target.
+statement and roll back all row deletions. Non-strict mode should preserve the
+warnings while allowing the statement to complete.
 
 Deleting rows must not:
 
@@ -691,10 +690,6 @@ sets rather than depending on storage order.
 | non-strict `DELETE FROM w ORDER BY z + 0, id LIMIT 2` | deletes first two numeric-order rows; two 1292 warnings |
 | `DELETE FROM t WHERE missing_col = 1` | unknown column in `where clause`; table unchanged |
 | `DELETE FROM t ORDER BY missing_col LIMIT 1` | unknown column in `order clause`; table unchanged |
-
-If MyLite implements Task 20 before non-strict SQL-mode behavior exists, tests
-for non-strict warning demotion should be recorded as expected-future cases
-rather than marked supported.
 
 ### Affected rows and diagnostics
 

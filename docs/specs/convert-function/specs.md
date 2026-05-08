@@ -87,6 +87,9 @@ Integer target overflow behavior for approximate inputs was additionally
 checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 `CHAR ASCII` target shorthand behavior was additionally checked on 2026-05-07
 against the same MySQL 8.4.9 runtime.
+Overflowed exponent strings in `DECIMAL` conversions were additionally checked
+on 2026-05-07 against the same MySQL 8.4.9 runtime through the shared
+CAST-family implementation.
 
 ## MySQL observations
 
@@ -103,6 +106,7 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT('12.345', DECIMAL(5,2))` | `12.35` | none |
 | `CONVERT(999999, DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CONVERT('999999x', DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |
+| `CONVERT('1e309', DECIMAL(10,2))` | `99999999.99` | 1292 truncated decimal prefix, 1292 truncated decimal, 1264 out of range |
 | `CONVERT('abcdef', CHAR(3))` | `abc` | 1292 truncated char |
 | `CONVERT('abc', BINARY)` | `abc` | none |
 | `HEX(CONVERT('a', BINARY(3)))` | `610000` | none |

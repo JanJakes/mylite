@@ -36773,6 +36773,12 @@ static int test_cast_expression_execution(void) {
     static const char *const txt_100_00[] = {"100.00"};
     static const char *const decimal_range_columns[] = {"d1", "d2", "s2", "n1"};
     static const char *const decimal_range_values[] = {"999.99", "999.99", "999.99", "-0.99"};
+    static const char *const decimal_overflow_columns[] = {"p", "n", "f"};
+    static const char *const decimal_overflow_values[] = {
+        "99999999.99",
+        "-99999999.99",
+        "99999999.99",
+    };
     static const char *const decimal_nonfinite_columns[] = {"nan_value", "inf_value"};
     static const char *const decimal_nonfinite_values[] = {"0.00", "0.00"};
     static const char *const cast_charset_columns[] = {"bad_utf8mb4", "good_utf8mb4"};
@@ -37603,6 +37609,65 @@ static int test_cast_expression_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('1e309' AS DECIMAL(10,2)) AS p, "
+        "CAST('-1e309' AS DECIMAL(10,2)) AS n, "
+        "CAST('1.2e309' AS DECIMAL(10,2)) AS f",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_column_names(stmt, decimal_overflow_columns, 3, "CAST decimal overflow columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST decimal overflow row");
+    for (int index = 0; index < 3; ++index) {
+        failures += expect_string(
+            mylite_column_text(stmt, index),
+            decimal_overflow_values[index],
+            "CAST decimal overflow value"
+        );
+    }
+    failures +=
+        expect_int(mylite_warning_count(database), 9, "CAST decimal overflow warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CAST decimal overflow prefix warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "'1'",
+        "CAST decimal overflow prefix warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "CAST decimal overflow full warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 1),
+        "'1e309'",
+        "CAST decimal overflow full warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_data_out_of_range,
+        "CAST decimal overflow range warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 3),
+        "'-1'",
+        "CAST decimal overflow negative prefix warning message"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 6),
+        "'1.2'",
+        "CAST decimal overflow fraction prefix warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST decimal overflow done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures +=
         prepare_sql(database, "SELECT CAST('abcdef' AS CHAR(3)) AS value", MYLITE_OK, &stmt);
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST char warning row");
@@ -38427,6 +38492,8 @@ static int test_convert_expression_execution(void) {
     static const char *const id_3[] = {"3"};
     static const char *const decimal_range_columns[] = {"d1", "d2", "s2", "n1"};
     static const char *const decimal_range_values[] = {"999.99", "999.99", "999.99", "-0.99"};
+    static const char *const decimal_overflow_columns[] = {"p", "n"};
+    static const char *const decimal_overflow_values[] = {"99999999.99", "-99999999.99"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -38783,6 +38850,49 @@ static int test_convert_expression_execution(void) {
         "CONVERT decimal range string warning code"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT decimal range done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CONVERT('1e309', DECIMAL(10,2)) AS p, "
+        "CONVERT('-1e309', DECIMAL(10,2)) AS n",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_column_names(stmt, decimal_overflow_columns, 2, "CONVERT decimal overflow columns");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT decimal overflow row");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_string(
+            mylite_column_text(stmt, index),
+            decimal_overflow_values[index],
+            "CONVERT decimal overflow value"
+        );
+    }
+    failures +=
+        expect_int(mylite_warning_count(database), 6, "CONVERT decimal overflow warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT decimal overflow prefix warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "'1'",
+        "CONVERT decimal overflow prefix warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_data_out_of_range,
+        "CONVERT decimal overflow range warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 3),
+        "'-1'",
+        "CONVERT decimal overflow negative prefix warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT decimal overflow done");
     mylite_finalize(stmt);
     stmt = NULL;
 

@@ -81,6 +81,8 @@ Integer target overflow behavior for approximate inputs was additionally
 checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 YEAR target behavior was additionally checked on 2026-05-07 against the same
 MySQL 8.4.9 runtime.
+Overflowed exponent strings in `DECIMAL` casts were additionally checked on
+2026-05-07 against the same MySQL 8.4.9 runtime.
 
 Table-backed `DECIMAL` string coercions were additionally checked on
 2026-05-07 against the same MySQL 8.4.9 runtime with `DECIMAL(10,2)` values
@@ -133,9 +135,11 @@ and `DECIMAL(M,D)` uses the supplied scale. Values are rounded to the target
 scale. When the rounded result does not fit the requested precision and scale,
 the value is clipped to the nearest representable endpoint and warning 1264 is
 emitted. Invalid, non-finite, or truncated string inputs emit warning 1292 with
-a decimal message. Invalid and non-finite strings produce a zero value formatted
-at the target scale; truncated strings keep their parsed numeric prefix before
-range validation.
+a decimal message. Invalid and literal non-finite strings such as `nan` and
+`inf` produce a zero value formatted at the target scale. Overflowed exponent
+strings emit one warning for the decimal prefix and one warning for the full
+string, then clip to the target range with warning 1264. Other truncated strings
+keep their parsed numeric prefix before range validation.
 
 | SQL | Result | Warnings |
 | --- | --- | --- |
@@ -147,6 +151,7 @@ range validation.
 | `CAST(999999 AS DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CAST(999.995 AS DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CAST('999999x' AS DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |
+| `CAST('1e309' AS DECIMAL(10,2))` | `99999999.99` | 1292 truncated decimal prefix, 1292 truncated decimal, 1264 out of range |
 | `CAST('nan' AS DECIMAL(5,2))` | `0.00` | 1292 truncated decimal |
 
 Character casts produce variable-length character-string metadata. `CHAR(N)`

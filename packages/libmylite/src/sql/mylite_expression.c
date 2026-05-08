@@ -4040,6 +4040,13 @@ static int cast_string_to_decimal_double(
     double *out_number
 );
 
+static int append_decimal_overflow_prefix_warning(
+    struct mylite_expression_warnings *warnings,
+    char *text
+);
+
+static char *decimal_overflow_prefix_end(char *text);
+
 static bool decimal_cast_result_exceeds_precision(
     const char *text,
     unsigned int precision,
@@ -24873,6 +24880,7 @@ static int cast_string_to_decimal_double(
     char *start = NULL;
     char *end = NULL;
     char *copy_end = copy == NULL ? NULL : copy + (text == NULL ? 0U : text_length);
+    bool overflow_to_infinity = false;
 
     if (copy == NULL) {
         return -1;
@@ -24883,12 +24891,17 @@ static int cast_string_to_decimal_double(
     }
     errno = 0;
     *out_number = strtod(start, &end);
+    overflow_to_infinity = errno == ERANGE && isinf(*out_number);
     while (end != NULL && end < copy_end && isspace((unsigned char)*end)) {
         ++end;
     }
     if (end == start || (end != NULL && end < copy_end)) {
-        int status = append_cast_truncation_warning(warnings, "DECIMAL", text);
+        int status =
+            overflow_to_infinity ? append_decimal_overflow_prefix_warning(warnings, start) : 0;
 
+        if (status == 0) {
+            status = append_cast_truncation_warning(warnings, "DECIMAL", text);
+        }
         if (end == start) {
             *out_number = 0.0;
         }
@@ -24896,14 +24909,59 @@ static int cast_string_to_decimal_double(
         return status;
     }
     if (!isfinite(*out_number)) {
-        int status = append_cast_truncation_warning(warnings, "DECIMAL", text);
+        int status =
+            overflow_to_infinity ? append_decimal_overflow_prefix_warning(warnings, start) : 0;
 
-        *out_number = 0.0;
+        if (status == 0) {
+            status = append_cast_truncation_warning(warnings, "DECIMAL", text);
+        }
+        if (!overflow_to_infinity) {
+            *out_number = 0.0;
+        }
         free(copy);
         return status;
     }
     free(copy);
     return 0;
+}
+
+static int append_decimal_overflow_prefix_warning(
+    struct mylite_expression_warnings *warnings,
+    char *text
+) {
+    char *prefix_end = decimal_overflow_prefix_end(text);
+    char saved = '\0';
+    int status = 0;
+
+    if (prefix_end == text) {
+        return 0;
+    }
+    saved = *prefix_end;
+    *prefix_end = '\0';
+    status = append_cast_truncation_warning(warnings, "DECIMAL", *text == '+' ? text + 1 : text);
+    *prefix_end = saved;
+    return status;
+}
+
+static char *decimal_overflow_prefix_end(char *text) {
+    char *cursor = text == NULL ? "" : text;
+    bool saw_digit = false;
+
+    if (*cursor == '+' || *cursor == '-') {
+        ++cursor;
+    }
+    while (isdigit((unsigned char)*cursor)) {
+        saw_digit = true;
+        ++cursor;
+    }
+    if (*cursor == '.') {
+        ++cursor;
+        while (isdigit((unsigned char)*cursor)) {
+            saw_digit = true;
+            ++cursor;
+        }
+    }
+    return saw_digit ? cursor : text;
 }
 
 static bool decimal_cast_result_exceeds_precision(

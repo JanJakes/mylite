@@ -281,7 +281,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `DECIMAL(M,D)` now covers
       target-scale rounding, out-of-range endpoint clipping with warning 1264,
       truncated decimal strings with warning 1292 before range warning 1264,
-      and non-finite decimal strings returning formatted zero with warning 1292.
+      overflowed exponent strings with MySQL's prefix/full-text/range warning
+      order, and non-finite decimal strings returning formatted zero with
+      warning 1292.
       Scalar unsigned integer arithmetic now covers exact `BIGINT UNSIGNED`
       addition, subtraction, multiplication, `/`, `DIV`, and modulo above
       signed 64-bit range, including MySQL-style 1690 overflow/underflow

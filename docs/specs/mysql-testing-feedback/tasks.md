@@ -451,6 +451,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       functions now have binary-connection descriptor coverage.
       String `INSERT()` source-`NULL` result metadata now matches MySQL's
       binary `VAR_STRING` descriptors, including all-`NULL` argument lists.
+      No-length numeric `CAST(... AS CHAR)` / `CAST(... AS BINARY)` metadata
+      now derives declared widths from the source expression descriptor instead
+      of the evaluated display string.
       `EXTRACT(QUARTER FROM ...)` and `EXTRACT(MICROSECOND FROM ...)` now parse
       and execute with MySQL-shaped signed `LONGLONG` descriptors, including the
       MySQL-observed `EXTRACT(MICROSECOND...)` display width.

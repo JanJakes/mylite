@@ -71,6 +71,13 @@ static uint64_t cast_character_length(
     const struct mylite_field_descriptor *source
 );
 
+static uint64_t cast_character_source_length(
+    uint64_t source_length,
+    uint64_t max_length,
+    bool binary_target,
+    const struct mylite_field_descriptor *source
+);
+
 static bool cast_target_uses_binary_charset(const struct mylite_sql_ast_node *target);
 
 // NOLINTNEXTLINE(misc-no-recursion)
@@ -371,20 +378,36 @@ static uint64_t cast_character_length(
     const struct mylite_field_descriptor *source
 ) {
     uint64_t max_length = mylite_expression_descriptor_connection_character_max_length(database);
+    bool binary_target = cast_target_uses_binary_charset(target);
 
     if (target != NULL && target->has_column_length) {
-        if (cast_target_uses_binary_charset(target)) {
+        if (binary_target) {
             max_length = 1U;
         }
         return target->column_length * max_length;
     }
+    if (source != NULL && source->length != 0U) {
+        return cast_character_source_length(source->length, max_length, binary_target, source);
+    }
     if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         return (uint64_t)(value->text_value == NULL ? 0U : value->text_length) * max_length;
     }
-    if (source != NULL && source->length != 0U) {
-        return source->length;
-    }
     return 0U;
+}
+
+static uint64_t cast_character_source_length(
+    uint64_t source_length,
+    uint64_t max_length,
+    bool binary_target,
+    const struct mylite_field_descriptor *source
+) {
+    if (binary_target || source == NULL || source->charset_id != mylite_mysql_binary_charset_id) {
+        return source_length;
+    }
+    if (source_length > UINT64_MAX / max_length) {
+        return UINT64_MAX;
+    }
+    return source_length * max_length;
 }
 
 static bool cast_target_uses_binary_charset(const struct mylite_sql_ast_node *target) {

@@ -249,8 +249,11 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CAST('12' AS DECIMAL(5))` | `NEWDECIMAL` | `6` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `CAST('12.34' AS DECIMAL(6,2))` | `NEWDECIMAL` | `8` | `2` | `binary` | `NOT_NULL BINARY NUM` |
 | `CAST('abc' AS CHAR)` | `VAR_STRING` | source length times charset maxlen | `31` | connection dependent | none |
+| `CAST(1 AS CHAR)` | `VAR_STRING` | numeric source display length times charset maxlen | `31` | connection dependent | none |
+| `CAST(38.8 AS CHAR)` | `VAR_STRING` | decimal source display length times charset maxlen | `31` | connection dependent | none |
 | `CAST('abc' AS CHAR(3))` | `VAR_STRING` | `3` times charset maxlen | `31` | connection dependent | none |
 | `CAST('abc' AS BINARY)` | `VAR_STRING` | source length times connection charset maxlen | `31` | `binary` | `BINARY` |
+| `CAST(1 AS BINARY)` | `VAR_STRING` | numeric source display length | `31` | `binary` | `BINARY` |
 | `CAST('abc' AS BINARY(3))` | `VAR_STRING` | `3` | `31` | `binary` | `BINARY` |
 | `CAST(NULL AS CHAR)` | `VAR_STRING` | `0` | `31` | connection dependent | nullable |
 | `CAST('1.25' AS FLOAT)` | `FLOAT` | `23` | `31` | `binary` | `NOT_NULL BINARY NUM` |

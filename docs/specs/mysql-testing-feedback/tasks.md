@@ -338,6 +338,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       preserve MySQL's warning split: values through the unsigned 64-bit
       endpoint emit the signed-complement warning, while values above that
       endpoint emit only the truncation warning.
+      Scalar `CAST`/`CONVERT` from exact signed and unsigned integer values to
+      `DECIMAL(M,D)` now preserves integer precision before applying the target
+      scale, including clean unsigned 64-bit values above the signed range.
       DML numeric coercion now applies the same embedded-NUL handling for
       covered integer and approximate assignments, rejecting in strict mode and
       warning/storing the prefix in non-strict mode.

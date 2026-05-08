@@ -84,6 +84,8 @@ YEAR target behavior was additionally checked on 2026-05-07 against the same
 MySQL 8.4.9 runtime.
 Overflowed exponent strings in `DECIMAL` casts were additionally checked on
 2026-05-07 against the same MySQL 8.4.9 runtime.
+Exact integer-to-`DECIMAL` casts above the signed 64-bit range were additionally
+checked on 2026-05-08 against the same MySQL 8.4.9 runtime.
 
 Table-backed `DECIMAL` string coercions were additionally checked on
 2026-05-07 against the same MySQL 8.4.9 runtime with `DECIMAL(10,2)` values
@@ -147,13 +149,17 @@ literal non-finite strings such as `nan` and `inf` produce a zero value
 formatted at the target scale. Overflowed exponent strings emit one warning for
 the decimal prefix and one warning for the full string, then clip to the target
 range with warning 1264. Other truncated strings keep their parsed numeric
-prefix before range validation.
+prefix before range validation. Integer inputs are converted exactly before
+scale formatting, including clean unsigned 64-bit values above the signed
+64-bit range.
 
 | SQL | Result | Warnings |
 | --- | --- | --- |
 | `CAST(12.345 AS DECIMAL)` | `12` | none |
 | `CAST(12.345 AS DECIMAL(5))` | `12` | none |
 | `CAST(12.345 AS DECIMAL(5,2))` | `12.35` | none |
+| `CAST(18446744073709551615 AS DECIMAL(20,0))` | `18446744073709551615` | none |
+| `CAST(18446744073709551615 AS DECIMAL(22,2))` | `18446744073709551615.00` | none |
 | `CAST('.5' AS DECIMAL(10,0))` | `1` | none |
 | `CAST('-.5' AS DECIMAL(10,0))` | `-1` | none |
 | `CAST('x' AS DECIMAL(5,2))` | `0.00` | 1292 truncated decimal |

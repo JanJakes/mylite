@@ -94,6 +94,9 @@ against the same MySQL 8.4.9 runtime.
 Overflowed exponent strings in `DECIMAL` conversions were additionally checked
 on 2026-05-07 against the same MySQL 8.4.9 runtime through the shared
 CAST-family implementation.
+Exact integer-to-`DECIMAL` conversions above the signed 64-bit range were
+additionally checked on 2026-05-08 against the same MySQL 8.4.9 runtime
+through the shared CAST-family implementation.
 
 ## MySQL observations
 
@@ -109,6 +112,8 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT('-0e1', UNSIGNED)` | `0` | 1292 truncated integer, 1105 negative-to-unsigned |
 | `CONVERT(-1e20, UNSIGNED)` | error | 1690 out of range |
 | `CONVERT('12.345', DECIMAL(5,2))` | `12.35` | none |
+| `CONVERT(18446744073709551615, DECIMAL(20,0))` | `18446744073709551615` | none |
+| `CONVERT(18446744073709551615, DECIMAL(22,2))` | `18446744073709551615.00` | none |
 | `CONVERT('+.5', DECIMAL(10,0))` | `1` | none |
 | `CONVERT(999999, DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CONVERT('999999x', DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |

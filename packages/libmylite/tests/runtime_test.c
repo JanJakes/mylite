@@ -39461,6 +39461,35 @@ static int test_cast_expression_execution(void) {
 
     failures += prepare_sql(
         database,
+        "SELECT CAST(18446744073709551615 AS DECIMAL(20,0)) AS uint_lit, "
+        "CAST(CAST('18446744073709551615' AS UNSIGNED) AS DECIMAL(20,0)) AS uint_cast, "
+        "CAST(18446744073709551615 AS DECIMAL(22,2)) AS uint_scaled",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST decimal uint64 exact row");
+    failures += expect_string(
+        mylite_column_text(stmt, 0),
+        "18446744073709551615",
+        "CAST decimal uint64 literal exact value"
+    );
+    failures += expect_string(
+        mylite_column_text(stmt, 1),
+        "18446744073709551615",
+        "CAST decimal uint64 cast exact value"
+    );
+    failures += expect_string(
+        mylite_column_text(stmt, 2),
+        "18446744073709551615.00",
+        "CAST decimal uint64 scaled exact value"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "CAST decimal uint64 warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST decimal uint64 exact done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
         "SELECT CAST('nan' AS DECIMAL(5,2)) AS nan_value, "
         "CAST('inf' AS DECIMAL(5,2)) AS inf_value",
         MYLITE_OK,
@@ -40690,6 +40719,35 @@ static int test_convert_expression_execution(void) {
         "CHAR(3)",
         "CONVERT char warning message"
     );
+
+    failures += prepare_sql(
+        database,
+        "SELECT CONVERT(18446744073709551615, DECIMAL(20,0)) AS uint_lit, "
+        "CONVERT(CAST('18446744073709551615' AS UNSIGNED), DECIMAL(20,0)) AS uint_cast, "
+        "CONVERT(18446744073709551615, DECIMAL(22,2)) AS uint_scaled",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT decimal uint64 exact row");
+    failures += expect_string(
+        mylite_column_text(stmt, 0),
+        "18446744073709551615",
+        "CONVERT decimal uint64 literal exact value"
+    );
+    failures += expect_string(
+        mylite_column_text(stmt, 1),
+        "18446744073709551615",
+        "CONVERT decimal uint64 cast exact value"
+    );
+    failures += expect_string(
+        mylite_column_text(stmt, 2),
+        "18446744073709551615.00",
+        "CONVERT decimal uint64 scaled exact value"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "CONVERT decimal uint64 warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT decimal uint64 exact done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += prepare_sql(
         database,

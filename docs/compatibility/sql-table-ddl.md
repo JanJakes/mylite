@@ -29,6 +29,7 @@ actions.
 | Generated columns | ❌ | Generated column metadata |
 | Invisible columns | ❌ | Implicit column lists, SELECT * behavior, and metadata flags |
 | Generated invisible primary keys | ❌ | Invisible primary key metadata and hidden `my_row_id` table creation; limited scalar `@@sql_generate_invisible_primary_key` reads expose the fixed disabled baseline only |
+| Primary key requirement enforcement | ❌ | `@@sql_require_primary_key` DDL effects are not implemented; limited scalar reads expose the fixed disabled baseline only |
 | AUTO_INCREMENT columns | ❌ | Allocation and metadata |
 | Table options: engine | 🟡 | Optional explicit `ENGINE [=] InnoDB` only; no alternate engines, engine substitution, or durable per-table engine metadata |
 | Table options: charset/collation | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options only for the limited persistent `CREATE TABLE` subset, with matching static `SHOW CHARACTER SET` / `SHOW COLLATION` rows; no alternate defaults, descriptor metadata, string semantics, or full charset/collation catalogs |

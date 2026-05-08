@@ -54,7 +54,8 @@ temporary table is dropped.
 `CREATE TEMPORARY TABLE IF NOT EXISTS` checks the temporary namespace, not the
 persistent namespace. It creates a temporary table when only a persistent table
 of the same name exists. If the temporary table already exists, the statement
-succeeds with a 1050 note and no error condition.
+succeeds with a 1050 note and no error condition after schema-level table
+options are validated.
 
 `DROP TABLE tbl_name` drops the temporary table when one shadows the persistent
 table. `DROP TEMPORARY TABLE tbl_name` only drops a temporary table and reports

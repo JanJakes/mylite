@@ -179,6 +179,20 @@ int mylite_table_ddl_validate_create_table_plan(
         return mylite_diagnostics_set_schema_access_denied_error(database, schema_name);
     }
 
+    status = mylite_catalog_schema_default_by_name(database, schema_name, schema_default);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = mylite_table_ddl_normalize_create_table_options(
+        database,
+        schema_name,
+        schema_default,
+        &plan->options
+    );
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
     if (plan->temporary) {
         status =
             mylite_catalog_temporary_table_exists(database, schema_name, plan->table_name, &exists);
@@ -205,19 +219,6 @@ int mylite_table_ddl_validate_create_table_plan(
         return set_create_table_exists_error(database, plan->table_name);
     }
 
-    status = mylite_catalog_schema_default_by_name(database, schema_name, schema_default);
-    if (status != MYLITE_OK) {
-        return status;
-    }
-    status = mylite_table_ddl_normalize_create_table_options(
-        database,
-        schema_name,
-        schema_default,
-        &plan->options
-    );
-    if (status != MYLITE_OK) {
-        return status;
-    }
     if (!validate_create_table_column_names(database, plan)) {
         return MYLITE_EXEC_ERROR;
     }

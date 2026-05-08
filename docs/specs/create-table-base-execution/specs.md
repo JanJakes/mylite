@@ -89,8 +89,9 @@ or implementation sources.
 - Duplicate table creation fails with error 1050.
 - Duplicate column, key-name, and primary-key declarations fail with errors
   1060, 1061, and 1068 respectively.
-- `CREATE TABLE IF NOT EXISTS existing_table (...)` succeeds as a no-op,
-  records note 1050, and must not mutate existing metadata or storage.
+- `CREATE TABLE IF NOT EXISTS existing_table (...)` validates schema-level table
+  options first, then succeeds as a no-op with note 1050 and must not mutate
+  existing metadata or storage.
 
 ### Metadata for the supported subset
 
@@ -218,7 +219,8 @@ Existence:
 
 - Existing target table plus no `IF NOT EXISTS` fails.
 - Existing target table plus `IF NOT EXISTS` returns success with note 1050 and
-  no metadata or storage mutation.
+  no metadata or storage mutation after schema-level table options are
+  validated.
 
 Storage:
 
@@ -315,6 +317,8 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | representative `simple_create` statement above | Succeeds; `TABLES`, `COLUMNS`, and `STATISTICS` reflect table, columns, and indexes. |
 | duplicate `CREATE TABLE simple_create (a INT)` | Execution error; original metadata unchanged. |
 | `CREATE TABLE IF NOT EXISTS simple_create (a INT)` | Success no-op; original metadata unchanged. |
+| `CREATE TABLE IF NOT EXISTS simple_create (a INT) DEFAULT CHARSET=utf8` | Warning 3719 followed by note 1050; original metadata unchanged. |
+| `CREATE TABLE IF NOT EXISTS simple_create (a INT) DEFAULT CHARSET=nosuchcharset` | Unknown-character-set execution error before duplicate handling. |
 | `CREATE TABLE IF NOT EXISTS new_table (a INT)` | Creates normally. |
 | valid table-option permutations with optional `=` | Parse and execute when charset/collation are supported and compatible. |
 | `DEFAULT CHARSET latin1 COLLATE utf8mb4_bin` | Execution error; no partial table/catalog rows. |

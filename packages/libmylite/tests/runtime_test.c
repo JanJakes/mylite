@@ -41757,6 +41757,49 @@ static int test_create_table_base_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
     failures += expect_no_information_schema_column_row(database, "simple_create", "ignored");
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE IF NOT EXISTS simple_create (a INT) DEFAULT CHARSET=utf8",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_DONE,
+        "persistent if not exists preserves table with utf8 alias warning"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "persistent if not exists utf8 warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_utf8_alias,
+        "persistent if not exists utf8 warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_table_exists,
+        "persistent if not exists utf8 table-exists note code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE IF NOT EXISTS simple_create (a INT) DEFAULT CHARSET=nosuchcharset",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "persistent if not exists validates table options before duplicate"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Unknown character set",
+        "persistent if not exists unknown charset error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += execute_sql(database, "CREATE TABLE IF NOT EXISTS new_table (a INT)", MYLITE_DONE);
 
     failures += prepare_sql(
@@ -43941,6 +43984,51 @@ static int test_temporary_table_execution(void) {
         (int)mylite_warning_code(database, 0),
         mysql_warning_table_exists,
         "temporary if not exists existing warning code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "CREATE TEMPORARY TABLE IF NOT EXISTS shadowed "
+        "(id INT PRIMARY KEY) DEFAULT CHARSET=utf8",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_DONE,
+        "temporary if not exists preserves table with utf8 alias warning"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 2, "temporary if not exists utf8 warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_utf8_alias,
+        "temporary if not exists utf8 warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_table_exists,
+        "temporary if not exists utf8 table-exists note code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "CREATE TEMPORARY TABLE IF NOT EXISTS shadowed "
+        "(id INT PRIMARY KEY) DEFAULT CHARSET=nosuchcharset",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "temporary if not exists validates table options before duplicate"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Unknown character set",
+        "temporary if not exists unknown charset error"
     );
     mylite_finalize(stmt);
     stmt = NULL;

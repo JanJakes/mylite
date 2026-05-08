@@ -66,9 +66,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Support `ALTER TABLE ... AUTO_INCREMENT=50`.
 - [x] Support `CREATE TEMPORARY TABLE ... AUTO_INCREMENT=...`.
 - [x] Make `CREATE TABLE IF NOT EXISTS t ...` a MySQL-compatible no-op when
-      `t` exists.
+      `t` exists after schema-level table-option validation.
 - [x] Make `CREATE TEMPORARY TABLE IF NOT EXISTS t ...` a MySQL-compatible
-      no-op when the temporary `t` exists.
+      no-op when the temporary `t` exists after schema-level table-option
+      validation.
 - [x] Support or intentionally diagnose `CREATE FULLTEXT INDEX`.
 - [x] Support or intentionally diagnose `ALTER TABLE ... ADD FULLTEXT INDEX`.
 - [x] Support or intentionally diagnose `CREATE SPATIAL INDEX`.

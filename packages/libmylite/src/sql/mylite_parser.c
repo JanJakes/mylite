@@ -1094,6 +1094,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_column_sta
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *column
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (column != NULL) {
+        span = span_join(span, column->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, column);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token insert_token,
@@ -2173,6 +2198,7 @@ static bool map_keyword_token(
         {"SESSION_USER", MYLITE_SQL_PARSE_SESSION_USER},
         {"RENAME", MYLITE_SQL_PARSE_RENAME},
         {"ADD", MYLITE_SQL_PARSE_ADD},
+        {"MODIFY", MYLITE_SQL_PARSE_MODIFY},
         {"COLUMN", MYLITE_SQL_PARSE_COLUMN},
         {"INSERT", MYLITE_SQL_PARSE_INSERT},
         {"INTO", MYLITE_SQL_PARSE_INTO},

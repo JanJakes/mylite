@@ -1757,6 +1757,39 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle MODIFY COLUMN old_col BIGINT NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT,
+        "alter table modify column statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter modify column child count");
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.simple_lifecycle",
+        "alter modify column target"
+    );
+    column = child_at(statement, 1U);
+    failures += expect_node(column, MYLITE_SQL_AST_COLUMN_DEFINITION, "alter modify column");
+    failures += expect_span_text(child_at(column, 0U), "old_col", "alter modified column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_BIGINT,
+        0,
+        "alter modified column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "alter modified column nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE simple_lifecycle ADD added BIGINT UNSIGNED NOT NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -1781,6 +1814,34 @@ static int test_table_lifecycle_statements(void) {
         child_at(column, 2U),
         MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
         "bare alter add column nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY old_col INT UNSIGNED NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT,
+        "bare alter table modify statement"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 0U), "simple_lifecycle", "bare alter modify target");
+    column = child_at(statement, 1U);
+    failures += expect_span_text(child_at(column, 0U), "old_col", "bare alter modify column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        1,
+        "bare alter modify column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "bare alter modify column nullability"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -3684,6 +3745,69 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name RENAME COLUMN old_col TO new_col, LOCK=DEFAULT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name MODIFY old_name.old_col BIGINT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name MODIFY old_col BIGINT DEFAULT 5;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name MODIFY old_col BIGINT FIRST;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name MODIFY old_col BIGINT AFTER other_col;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name MODIFY old_col BIGINT, MODIFY other_col BIGINT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name MODIFY old_col VARCHAR(10);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CHANGE COLUMN old_col new_col BIGINT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name MODIFY old_col BIGINT, ALGORITHM=INSTANT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name MODIFY old_col BIGINT, LOCK=DEFAULT;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

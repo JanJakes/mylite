@@ -381,6 +381,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "alter_table_drop_column_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
         return "alter_table_rename_column_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
+        return "alter_table_modify_column_statement";
     }
 
     return "unknown";

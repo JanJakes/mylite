@@ -43,6 +43,7 @@ enum {
     mysql_error_unknown_system_variable = 1193,
     mysql_error_session_variable_only = 1238,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_data_truncated = 1265,
     mysql_error_unknown_collation = 1273,
     mysql_warning_deprecated_system_variable = 1287,
     mysql_warning_information_schema_processlist_deprecated = 1287,
@@ -120,6 +121,21 @@ struct planned_alter_table_rename_column {
     struct mylite_catalog_column_descriptor column;
     char new_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool is_noop;
+};
+
+struct planned_alter_table_modify_column {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor original_column;
+    struct planned_column column;
+    struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
+    size_t column_index;
+    bool is_noop;
+    bool is_metadata_only;
+    bool reports_rebuild_row_count;
+    const char *rowid_alias;
+    int64_t affected_rows;
 };
 
 struct planned_truncate_table {
@@ -419,6 +435,11 @@ static int execute_alter_table_rename_column_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_modify_column_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_insert_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -633,6 +654,11 @@ static int execute_physical_alter_table_rename_column(
     struct mylite_db *database,
     const struct planned_alter_table_rename_column *plan
 );
+static int execute_physical_alter_table_modify_column(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan,
+    const struct mylite_catalog_mutation *mutation
+);
 
 static int create_schema_from_statement(
     struct mylite_db *database,
@@ -713,6 +739,56 @@ static int plan_alter_table_rename_column(
 static int alter_table_rename_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_rename_column *plan
+);
+static int plan_alter_table_modify_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int complete_alter_table_modify_column_plan(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    struct planned_alter_table_modify_column *out_plan
+);
+static bool modify_column_definition_matches(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
+static bool modify_column_type_matches(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
+static bool modify_column_name_matches(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
+static void planned_alter_table_modify_column_deinit(
+    struct planned_alter_table_modify_column *plan
+);
+static int alter_table_modify_column_from_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *plan
+);
+static int collect_modify_column_rebuild_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int validate_modify_column_existing_rows(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan,
+    int64_t *out_row_count
+);
+static int validate_existing_integer_for_column(
+    struct mylite_db *database,
+    int64_t value,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+);
+static void make_modify_target_descriptor(
+    const struct planned_alter_table_modify_column *plan,
+    struct mylite_catalog_column_descriptor *out_column
 );
 static int rename_table_from_plan_with_policy(
     struct mylite_db *database,
@@ -1358,6 +1434,31 @@ static int build_alter_table_rename_column_sql(
     const struct planned_alter_table_rename_column *plan,
     char **out_sql
 );
+static int build_modify_temporary_physical_name(
+    const struct planned_alter_table_modify_column *plan,
+    const struct mylite_catalog_mutation *mutation,
+    char *destination,
+    size_t destination_size
+);
+static int build_alter_table_modify_validation_sql(
+    const struct planned_alter_table_modify_column *plan,
+    char **out_sql
+);
+static int build_alter_table_modify_create_sql(
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+);
+static int build_alter_table_modify_copy_sql(
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+);
+static int build_alter_table_rename_physical_table_sql(
+    const char *source_physical_name,
+    const char *target_physical_name,
+    char **out_sql
+);
 static int build_truncate_table_sql(const struct planned_truncate_table *plan, char **out_sql);
 static int build_insert_sql(const struct planned_insert *plan, char **out_sql);
 static int append_insert_column_names(
@@ -1557,6 +1658,11 @@ static void set_unknown_column_in_table_error(
 static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name);
 static void set_column_count_mismatch_error(struct mylite_db *database, size_t row_number);
 static void set_bad_null_error(struct mylite_db *database, const char *column_name);
+static void set_data_truncated_error(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+);
 static void set_no_default_error(struct mylite_db *database, const char *column_name);
 static void set_out_of_range_error(
     struct mylite_db *database,
@@ -1755,6 +1861,8 @@ static int execute_parsed_statement(
         return execute_alter_table_drop_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
         return execute_alter_table_rename_column_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
+        return execute_alter_table_modify_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_STATEMENT:
         return execute_insert_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
@@ -2208,6 +2316,35 @@ static int execute_alter_table_rename_column_statement(
         return rc;
     }
 
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_modify_column_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_modify_column plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_modify_column(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_modify_column_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_modify_column_deinit(&plan);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    planned_alter_table_modify_column_deinit(&plan);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -4111,6 +4248,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_DELETE_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
         return result == NULL ? 0 : mylite_result_affected_rows(result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
         return -1;
@@ -5491,6 +5629,434 @@ static int execute_physical_alter_table_rename_column(
     char *sql = NULL;
     int rc = build_alter_table_rename_column_sql(plan, &sql);
 
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+
+    return rc;
+}
+
+static int plan_alter_table_modify_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_modify_column){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_column(database, child_at(statement, 1U), &out_plan->column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE MODIFY COLUMN supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(columns, column_count, out_plan->column.name, &column_index);
+        if (rc != MYLITE_OK) {
+            set_unknown_column_in_table_error(
+                database,
+                out_plan->column.name,
+                out_plan->table.name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->original_column = columns[column_index];
+        out_plan->column_index = column_index;
+        out_plan->column_count = column_count;
+        rc = complete_alter_table_modify_column_plan(database, columns, out_plan);
+    }
+
+    free(columns);
+    if (rc != MYLITE_OK) {
+        planned_alter_table_modify_column_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int complete_alter_table_modify_column_plan(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    if (modify_column_definition_matches(&out_plan->original_column, &out_plan->column)) {
+        if (modify_column_name_matches(&out_plan->original_column, &out_plan->column)) {
+            out_plan->is_noop = true;
+            return MYLITE_OK;
+        }
+        out_plan->is_metadata_only = true;
+        return MYLITE_OK;
+    }
+
+    if (!modify_column_type_matches(&out_plan->original_column, &out_plan->column)) {
+        out_plan->reports_rebuild_row_count = true;
+    }
+    rc = choose_sqlite_rowid_alias(
+        database,
+        columns,
+        out_plan->column_count,
+        "ALTER TABLE MODIFY COLUMN requires an unshadowed SQLite rowid alias",
+        &out_plan->rowid_alias
+    );
+    if (rc == MYLITE_OK) {
+        rc = collect_modify_column_rebuild_columns(
+            database,
+            columns,
+            out_plan->column_count,
+            out_plan
+        );
+    }
+
+    return rc;
+}
+
+static bool modify_column_definition_matches(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    if (strcmp(original_column->logical_type, replacement_column->logical_type) != 0) {
+        return false;
+    }
+    if (strcmp(original_column->physical_type, replacement_column->physical_type) != 0) {
+        return false;
+    }
+    if (original_column->is_nullable != replacement_column->is_nullable) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool modify_column_type_matches(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    if (strcmp(original_column->logical_type, replacement_column->logical_type) != 0) {
+        return false;
+    }
+    if (strcmp(original_column->physical_type, replacement_column->physical_type) != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool modify_column_name_matches(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    if (strcmp(original_column->name, replacement_column->name) != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+static void planned_alter_table_modify_column_deinit(
+    struct planned_alter_table_modify_column *plan
+) {
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->columns);
+    *plan = (struct planned_alter_table_modify_column){0};
+}
+
+static int alter_table_modify_column_from_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int64_t validated_row_count = 0;
+    int rc = MYLITE_OK;
+
+    if (plan->is_noop) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (rc == MYLITE_OK && !plan->is_metadata_only) {
+        rc = validate_modify_column_existing_rows(database, plan, &validated_row_count);
+        if (rc == MYLITE_OK && plan->reports_rebuild_row_count) {
+            plan->affected_rows = validated_row_count;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_replace_column_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->original_column.column_id,
+            plan->column.name,
+            plan->column.logical_type,
+            plan->column.physical_type,
+            plan->column.is_nullable
+        );
+    }
+    if (rc == MYLITE_OK && plan->is_metadata_only) {
+        struct planned_alter_table_rename_column rename_plan = {
+            .target = plan->target,
+            .table = plan->table,
+            .column = plan->original_column,
+            .is_noop = false,
+        };
+
+        memcpy(rename_plan.new_column_name, plan->column.name, sizeof(rename_plan.new_column_name));
+        rc = execute_physical_alter_table_rename_column(database, &rename_plan);
+    } else if (rc == MYLITE_OK) {
+        rc = execute_physical_alter_table_modify_column(database, plan, &mutation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to modify table column");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
+
+    return MYLITE_OK;
+}
+
+static int collect_modify_column_rebuild_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    struct mylite_catalog_column_descriptor *rebuild_columns = NULL;
+
+    if (column_count > SIZE_MAX / sizeof(*rebuild_columns)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rebuild_columns = calloc(column_count, sizeof(*rebuild_columns));
+    if (rebuild_columns == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t index = 0U; index < column_count; ++index) {
+        rebuild_columns[index] = columns[index];
+        if (index == out_plan->column_index) {
+            make_modify_target_descriptor(out_plan, &rebuild_columns[index]);
+        }
+    }
+
+    out_plan->columns = rebuild_columns;
+    return MYLITE_OK;
+}
+
+static int validate_modify_column_existing_rows(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan,
+    int64_t *out_row_count
+) {
+    sqlite3_stmt *statement = NULL;
+    struct mylite_catalog_column_descriptor target_column = {0};
+    char *sql = NULL;
+    size_t row_number = 0U;
+    int sqlite_rc = SQLITE_OK;
+    int rc = build_alter_table_modify_validation_sql(plan, &sql);
+
+    *out_row_count = 0;
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    make_modify_target_descriptor(plan, &target_column);
+    while (rc == MYLITE_OK && (sqlite_rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        int sqlite_type = sqlite3_column_type(statement, 0);
+
+        if (row_number >= (size_t)INT64_MAX) {
+            set_runtime_error(database, "too many rows to validate for ALTER TABLE MODIFY COLUMN");
+            rc = MYLITE_ERROR;
+            break;
+        }
+        ++row_number;
+        if (sqlite_type == SQLITE_NULL) {
+            if (!target_column.is_nullable) {
+                set_data_truncated_error(database, target_column.name, row_number);
+                rc = MYLITE_ERROR;
+            }
+        } else if (sqlite_type == SQLITE_INTEGER) {
+            rc = validate_existing_integer_for_column(
+                database,
+                (int64_t)sqlite3_column_int64(statement, 0),
+                &target_column,
+                row_number
+            );
+        } else {
+            set_physical_sqlite_row_error(database);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && sqlite_rc != SQLITE_DONE) {
+        rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    if (rc == MYLITE_OK) {
+        *out_row_count = (int64_t)row_number;
+    } else if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+        set_physical_sqlite_row_error(database);
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int validate_existing_integer_for_column(
+    struct mylite_db *database,
+    int64_t value,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t row_number
+) {
+    struct integer_column_range range = {0};
+    int rc = integer_range_for_column(
+        database,
+        column,
+        "ALTER TABLE MODIFY COLUMN supports only baseline integer columns",
+        &range
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value < 0) {
+        const uint64_t int64_min_magnitude = (uint64_t)INT64_MAX + 1U;
+        uint64_t magnitude = value == INT64_MIN ? int64_min_magnitude : (uint64_t)(-value);
+
+        if (range.negative_abs_max == 0U || magnitude > range.negative_abs_max) {
+            set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    if ((uint64_t)value > range.positive_max) {
+        set_out_of_range_error(database, column->name, row_number);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static void make_modify_target_descriptor(
+    const struct planned_alter_table_modify_column *plan,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    *out_column = plan->original_column;
+    memcpy(out_column->name, plan->column.name, sizeof(out_column->name));
+    snprintf(
+        out_column->logical_type,
+        sizeof(out_column->logical_type),
+        "%s",
+        plan->column.logical_type
+    );
+    snprintf(
+        out_column->physical_type,
+        sizeof(out_column->physical_type),
+        "%s",
+        plan->column.physical_type
+    );
+    out_column->is_nullable = plan->column.is_nullable;
+}
+
+static int execute_physical_alter_table_modify_column(
+    struct mylite_db *database,
+    const struct planned_alter_table_modify_column *plan,
+    const struct mylite_catalog_mutation *mutation
+) {
+    char temporary_physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    char *sql = NULL;
+    int rc = build_modify_temporary_physical_name(
+        plan,
+        mutation,
+        temporary_physical_name,
+        sizeof(temporary_physical_name)
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = build_alter_table_modify_create_sql(plan, temporary_physical_name, &sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+    sql = NULL;
+
+    if (rc == MYLITE_OK) {
+        rc = build_alter_table_modify_copy_sql(plan, temporary_physical_name, &sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+    sql = NULL;
+
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_drop_table(database, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_alter_table_rename_physical_table_sql(
+            temporary_physical_name,
+            plan->table.physical_name,
+            &sql
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_schema_sql(database, sql);
     }
@@ -10000,6 +10566,221 @@ static int build_alter_table_rename_column_sql(
     return rc;
 }
 
+static int build_modify_temporary_physical_name(
+    const struct planned_alter_table_modify_column *plan,
+    const struct mylite_catalog_mutation *mutation,
+    char *destination,
+    size_t destination_size
+) {
+    int written = 0;
+
+    if (plan == NULL || mutation == NULL || destination == NULL || destination_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    written = snprintf(
+        destination,
+        destination_size,
+        "_mylite_user_table_%" PRId64 "_modify_%" PRIu64,
+        plan->table.table_id,
+        mylite_catalog_mutation_generation(mutation)
+    );
+    if (written < 0 || (size_t)written >= destination_size) {
+        return MYLITE_NOMEM;
+    }
+
+    return MYLITE_OK;
+}
+
+static int build_alter_table_modify_validation_sql(
+    const struct planned_alter_table_modify_column *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->original_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " ORDER BY ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, plan->rowid_alias);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_alter_table_modify_create_sql(
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "CREATE TABLE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, temporary_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " (");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        const struct mylite_catalog_column_descriptor *column = &plan->columns[column_index];
+
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, column->name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, " INTEGER");
+        }
+        if (rc == MYLITE_OK && !column->is_nullable) {
+            rc = dynamic_string_append(&string, " NOT NULL");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_alter_table_modify_copy_sql(
+    const struct planned_alter_table_modify_column *plan,
+    const char *temporary_physical_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "INSERT INTO ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, temporary_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " (");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, plan->columns[column_index].name);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") SELECT ");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        const char *source_name = plan->columns[column_index].name;
+
+        if (column_index == plan->column_index) {
+            source_name = plan->original_column.name;
+        }
+        if (column_index != 0U) {
+            rc = dynamic_string_append(&string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(&string, source_name);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " ORDER BY ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, plan->rowid_alias);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int build_alter_table_rename_physical_table_sql(
+    const char *source_physical_name,
+    const char *target_physical_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "ALTER TABLE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, source_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " RENAME TO ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, target_physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
 static int build_truncate_table_sql(const struct planned_truncate_table *plan, char **out_sql) {
     struct dynamic_string string;
     int rc = MYLITE_OK;
@@ -11620,6 +12401,31 @@ static void set_bad_null_error(struct mylite_db *database, const char *column_na
         mylite_connection_diagnostics(database),
         mysql_error_bad_null,
         "23000",
+        message
+    );
+}
+
+static void set_data_truncated_error(
+    struct mylite_db *database,
+    const char *column_name,
+    size_t row_number
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Data truncated for column '%s' at row %zu",
+        column_name,
+        row_number
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_data_truncated,
+        "01000",
         message
     );
 }

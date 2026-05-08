@@ -32,6 +32,16 @@ enum catalog_column_insert_bind_index {
     catalog_column_insert_generation_bind = 7,
 };
 
+enum catalog_column_replace_bind_index {
+    catalog_column_replace_name_bind = 1,
+    catalog_column_replace_logical_type_bind = 2,
+    catalog_column_replace_physical_type_bind = 3,
+    catalog_column_replace_is_nullable_bind = 4,
+    catalog_column_replace_generation_bind = 5,
+    catalog_column_replace_table_id_bind = 6,
+    catalog_column_replace_column_id_bind = 7,
+};
+
 enum catalog_table_select_column_index {
     catalog_table_select_table_id_column = 0,
     catalog_table_select_schema_id_column = 1,
@@ -720,6 +730,90 @@ int mylite_catalog_rename_column_in_mutation(
     }
     if (rc == MYLITE_OK) {
         rc = bind_i64(statement, 4, column_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
+int mylite_catalog_replace_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t column_id,
+    const char *name,
+    const char *logical_type,
+    const char *physical_type,
+    bool is_nullable
+) {
+    sqlite3_stmt *statement = NULL;
+    int64_t nullable_value = 0;
+    int rc = validate_catalog_ready_database(database);
+
+    if (is_nullable) {
+        nullable_value = 1;
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(column_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_logical_object_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_required_name(logical_type, MYLITE_CATALOG_TYPE_NAME_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_required_name(physical_type, MYLITE_CATALOG_TYPE_NAME_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "UPDATE _mylite_catalog_columns "
+        "SET name = ?1, logical_type = ?2, physical_type = ?3, is_nullable = ?4, "
+        "descriptor_version = descriptor_version + 1, updated_catalog_generation = ?5 "
+        "WHERE table_id = ?6 AND column_id = ?7",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_column_replace_name_bind, name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_column_replace_logical_type_bind, logical_type);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_text(statement, catalog_column_replace_physical_type_bind, physical_type);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_replace_is_nullable_bind, nullable_value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, catalog_column_replace_generation_bind, mutation->next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_replace_table_id_bind, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_replace_column_id_bind, column_id);
     }
     if (rc == MYLITE_OK) {
         rc = step_done(statement);

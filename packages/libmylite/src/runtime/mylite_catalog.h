@@ -147,6 +147,16 @@ int mylite_catalog_rename_column_in_mutation(
     int64_t column_id,
     const char *name
 );
+int mylite_catalog_replace_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t column_id,
+    const char *name,
+    const char *logical_type,
+    const char *physical_type,
+    bool is_nullable
+);
 int mylite_catalog_delete_schema_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

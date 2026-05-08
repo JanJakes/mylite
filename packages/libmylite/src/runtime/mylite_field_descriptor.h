@@ -7,11 +7,12 @@
 #include "sql/mylite_expression.h"
 
 enum mylite_format_metadata_length {
+    mylite_format_string_base_character_length = 32,
     mylite_format_null_character_length = 32,
     mylite_format_decimal_literal_extra_length = 33,
     mylite_format_literal_extra_length = 34,
     mylite_format_numeric_descriptor_extra_length = 35,
-    mylite_format_string_descriptor_extra_length = 42,
+    mylite_format_unknown_descriptor_character_length = 42,
     mylite_format_float_character_length = 61,
 };
 

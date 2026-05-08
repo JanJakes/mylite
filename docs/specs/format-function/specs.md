@@ -223,6 +223,11 @@ by the tests:
 | `DOUBLE` column argument | `61` |
 | `VARCHAR(32)` column argument | `74` |
 
+For string arguments, MySQL derives the estimate from source character count,
+adds grouping slack, and then scales by the current result charset. With
+`SET NAMES utf8mb4`, the verified `FORMAT(VARCHAR(32),2)` table-backed
+descriptor length is `296` bytes.
+
 Signs on numeric literals do not widen the `FORMAT()` descriptor. Decimal
 literals use MySQL's fixed-point descriptor width plus grouping slack rather
 than the final formatted display text. With `SET NAMES utf8mb4`, the verified
@@ -263,4 +268,5 @@ expression evaluator:
   function binder still reports MyLite's unsupported-arity diagnostic.
 - Exact fixed-point preservation for every DECIMAL column and expression path
   beyond the currently supported value representation.
-- Exhaustive metadata length parity for every possible source expression class.
+- Exhaustive metadata length parity for every possible non-string source
+  expression class.

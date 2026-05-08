@@ -26888,6 +26888,60 @@ static int test_format_scalar_function_execution(mylite_db *database) {
          format_string_result_clear_flags,
          1},
     };
+    static const struct expected_result_metadata format_table_utf8_metadata[] = {
+        {"fmt_i",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         184U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         format_string_result_clear_flags,
+         1},
+        {"fmt_d",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         180U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         format_string_result_clear_flags,
+         1},
+        {"fmt_f",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         244U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         format_string_result_clear_flags,
+         1},
+        {"fmt_s",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         296U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         format_string_result_clear_flags,
+         1},
+    };
     static const char *const id_fd_columns[] = {"id", "fd"};
     static const char *const ordered_format_values[] = {
         "3",
@@ -27326,6 +27380,26 @@ static int test_format_scalar_function_execution(mylite_db *database) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT FORMAT(i,2) AS fmt_i, FORMAT(d,2) AS fmt_d, "
+        "FORMAT(f,2) AS fmt_f, FORMAT(s,2) AS fmt_s "
+        "FROM format_sites LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        format_table_utf8_metadata,
+        (int)(sizeof(format_table_utf8_metadata) / sizeof(format_table_utf8_metadata[0])),
+        "FORMAT table utf8mb4 metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "FORMAT table utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
     failures += expect_select_rows(
         database,
         "SELECT id, FORMAT(d,2) AS fd FROM format_sites "

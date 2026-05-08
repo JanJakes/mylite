@@ -600,6 +600,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       of exact-decimal descriptors.
       Exact decimal literals now expose MySQL-shaped normalized display widths
       for direct scalar metadata, including leading-zero and trailing-dot forms.
+      `FORMAT()` table-backed string source metadata now estimates result
+      width from source characters plus grouping slack before applying the
+      current result charset, matching MySQL for utf8mb4 result metadata.
       Remaining expression and other SQLite-backed result metadata gaps are
       still tracked here.
 

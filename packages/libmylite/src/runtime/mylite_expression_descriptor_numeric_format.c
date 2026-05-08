@@ -1,5 +1,6 @@
 #include "mylite_expression_descriptor_numeric_format.h"
 
+#include "charset/mylite_charset.h"
 #include "mylite_expression_descriptor.h"
 #include "mylite_expression_descriptor_numeric.h"
 #include "mylite_function_names.h"
@@ -25,6 +26,16 @@ static uint64_t format_decimal_literal_descriptor_length(
 );
 
 static uint64_t format_decimal_result_character_length(uint64_t decimal_length);
+
+static uint64_t format_string_result_character_length(uint64_t source_length);
+
+static uint64_t format_descriptor_string_character_length(
+    const struct mylite_field_descriptor *descriptor
+);
+
+static uint64_t format_descriptor_character_max_length(
+    const struct mylite_field_descriptor *descriptor
+);
 
 // NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t format_literal_result_character_length(const struct mylite_sql_ast_node *argument);
@@ -104,7 +115,9 @@ static uint64_t format_function_result_character_length(
     case MYLITE_FIELD_TYPE_LONG_BLOB:
     case MYLITE_FIELD_TYPE_BLOB:
     case MYLITE_FIELD_TYPE_JSON:
-        return argument_descriptor->length + mylite_format_string_descriptor_extra_length;
+        return format_string_result_character_length(
+            format_descriptor_string_character_length(argument_descriptor)
+        );
     case MYLITE_FIELD_TYPE_DECIMAL:
     case MYLITE_FIELD_TYPE_NULL:
     case MYLITE_FIELD_TYPE_TIMESTAMP:
@@ -117,7 +130,7 @@ static uint64_t format_function_result_character_length(
     case MYLITE_FIELD_TYPE_SET:
     case MYLITE_FIELD_TYPE_GEOMETRY:
     default:
-        return mylite_format_string_descriptor_extra_length;
+        return mylite_format_unknown_descriptor_character_length;
     }
 }
 
@@ -175,6 +188,53 @@ static uint64_t format_decimal_result_character_length(uint64_t decimal_length) 
     return total + grouping_slack;
 }
 
+static uint64_t format_string_result_character_length(uint64_t source_length) {
+    uint64_t grouping_slack = source_length / 3U;
+    uint64_t total = 0U;
+
+    if (source_length > UINT64_MAX - grouping_slack) {
+        return UINT64_MAX;
+    }
+    total = source_length + grouping_slack;
+    if (total > UINT64_MAX - mylite_format_string_base_character_length) {
+        return UINT64_MAX;
+    }
+    return total + mylite_format_string_base_character_length;
+}
+
+static uint64_t format_descriptor_string_character_length(
+    const struct mylite_field_descriptor *descriptor
+) {
+    uint64_t max_length = format_descriptor_character_max_length(descriptor);
+
+    if (descriptor == NULL) {
+        return 0U;
+    }
+    if (max_length <= 1U) {
+        return descriptor->length;
+    }
+    if (descriptor->length > UINT64_MAX - (max_length - 1U)) {
+        return UINT64_MAX / max_length;
+    }
+    return (descriptor->length + max_length - 1U) / max_length;
+}
+
+static uint64_t format_descriptor_character_max_length(
+    const struct mylite_field_descriptor *descriptor
+) {
+    const struct mylite_collation *collation =
+        descriptor == NULL
+            ? NULL
+            : mylite_expression_descriptor_collation_lookup_id(descriptor->charset_id);
+    const struct mylite_charset *charset =
+        collation == NULL ? NULL : mylite_charset_lookup(collation->character_set);
+
+    if (charset == NULL || charset->max_length <= 0) {
+        return 1U;
+    }
+    return (uint64_t)charset->max_length;
+}
+
 // NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t format_literal_result_character_length(const struct mylite_sql_ast_node *argument) {
     argument = mylite_sql_ast_unwrap_parenthesized_expression(argument);
@@ -198,9 +258,9 @@ static uint64_t format_literal_result_character_length(const struct mylite_sql_a
     case MYLITE_SQL_AST_LITERAL_STRING:
     case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
     case MYLITE_SQL_AST_LITERAL_BINARY_STRING:
-        return argument->span.length >= 2U
-                   ? argument->span.length - 2U + mylite_format_literal_extra_length
-                   : mylite_format_literal_extra_length;
+        return format_string_result_character_length(
+            argument->span.length >= 2U ? argument->span.length - 2U : 0U
+        );
     case MYLITE_SQL_AST_LITERAL_TRUE:
     case MYLITE_SQL_AST_LITERAL_FALSE:
     case MYLITE_SQL_AST_LITERAL_DATE:

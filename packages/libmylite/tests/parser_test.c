@@ -1674,6 +1674,64 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle ADD COLUMN added INT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT,
+        "alter table add column statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter add column child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app.simple_lifecycle", "alter add target");
+    column = child_at(statement, 1U);
+    failures += expect_node(column, MYLITE_SQL_AST_COLUMN_DEFINITION, "alter add column");
+    failures += expect_span_text(child_at(column, 0U), "added", "alter added column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "alter added column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "alter added column nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD added BIGINT UNSIGNED NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT,
+        "bare alter table add statement"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 0U), "simple_lifecycle", "bare alter add target");
+    column = child_at(statement, 1U);
+    failures += expect_span_text(child_at(column, 0U), "added", "bare alter add column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_BIGINT,
+        1,
+        "bare alter add column type"
+    );
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "bare alter add column nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "INSERT INTO app.simple_lifecycle (amount, id) VALUES (+1, -2), (NULL, 3);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -3423,7 +3481,46 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE old_name ADD COLUMN added INT;",
+        "ALTER TABLE old_name ADD COLUMN added INT DEFAULT 5;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ADD COLUMN added INT FIRST;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ADD COLUMN added INT AFTER id;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name ADD (added INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ADD COLUMN first_added INT, ADD COLUMN second_added INT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ADD COLUMN old_name.added INT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ADD COLUMN added VARCHAR(10);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

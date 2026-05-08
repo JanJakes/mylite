@@ -134,6 +134,9 @@ statement(A) ::= rename_table_statement(B). {
 statement(A) ::= alter_table_rename_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_add_column_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -448,6 +451,18 @@ rename_table_statement(A) ::= RENAME(R) TABLE table_name(S) TO table_name(T). {
 alter_table_rename_statement(A) ::=
     ALTER(A1) TABLE table_name(S) RENAME table_rename_connector_opt table_name(T). {
     A = mylite_sql_parser_make_alter_table_rename_statement(state, A1, S, T);
+}
+
+alter_table_add_column_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ADD column_keyword_opt column_definition(C). {
+    A = mylite_sql_parser_make_alter_table_add_column_statement(state, A1, T, C);
+}
+
+column_keyword_opt(A) ::= . {
+    A = NULL;
+}
+column_keyword_opt(A) ::= COLUMN. {
+    A = NULL;
 }
 
 table_rename_connector_opt(A) ::= . {

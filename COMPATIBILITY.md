@@ -85,7 +85,7 @@ tests.
 | Default expressions | ❌ | Literal and expression defaults. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Table engine options | 🟡 | Optional explicit `ENGINE [=] InnoDB` only for the limited persistent `CREATE TABLE` subset; non-InnoDB engines are rejected with MyLite's embedded InnoDB-only diagnostic. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Table charset and collation options | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options only for the limited persistent `CREATE TABLE` subset, with matching static `SHOW CHARACTER SET` / `SHOW COLLATION` rows; no non-default charsets/collations, descriptor metadata, string semantics, or full charset/collation catalogs. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
-| `ADD COLUMN` | ❌ | Positioning, defaults, metadata. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `ADD COLUMN` | 🟡 | Limited append-only persistent base-table `ALTER TABLE ... ADD [COLUMN]` for one integer-family column with optional nullability; existing nullable rows backfill `NULL`, existing `NOT NULL` integer rows backfill `0`; no defaults, positioning, multiple actions, non-integer types, keys, constraints, temporary tables, views, algorithms, locks, or privilege semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `DROP COLUMN` | ❌ | Dependency checks and errors. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `RENAME COLUMN` | ❌ | Metadata rewrite. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CHANGE COLUMN` | ❌ | Rename plus definition change. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
@@ -98,7 +98,7 @@ tests.
 | `TRUNCATE TABLE` | 🟡 | Limited persistent base-table `TRUNCATE [TABLE] table_name` empties descriptor-backed physical rows and reports zero affected rows; no implicit commits, temporary tables, partitions, foreign keys, triggers, auto-increment reset, locks, privileges, or storage rebuild semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `DROP TABLE` | 🟡 | Limited single persistent base-table drop without `IF EXISTS`, `TEMPORARY`, multi-table drop, `RESTRICT`, or `CASCADE`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `RENAME TABLE` | 🟡 | Limited single-pair persistent base-table rename with unqualified, schema-qualified, and cross-schema names; no multi-table rename, temporary tables, views, triggers, or privilege semantics. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| Atomic DDL | 🟡 | Catalog descriptors and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename/truncate and single-action alter-rename subsets only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Atomic DDL | 🟡 | Catalog descriptors and generated physical SQLite table changes commit or roll back atomically for the limited create/drop/rename/truncate and single-action alter rename/add-column subsets only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Implicit commit boundaries | ❌ | MySQL DDL commit behavior. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [SQL transactions](docs/compatibility/sql-transactions.md) |
 
 ### Auto Increment

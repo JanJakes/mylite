@@ -879,18 +879,25 @@ static int eval_unsigned_cast(
 
 static bool cast_literal_unsigned_integer_value(
     const struct mylite_sql_ast_node *source,
-    uint64_t *out_integer
+    uint64_t *out_integer,
+    bool *out_overflow
 );
 
 static bool cast_hex_literal_unsigned_integer_value(
     const struct mylite_sql_ast_node *source,
-    uint64_t *out_integer
+    uint64_t *out_integer,
+    bool *out_overflow
 );
 
 static bool cast_bit_literal_unsigned_integer_value(
     const struct mylite_sql_ast_node *source,
-    uint64_t *out_integer
+    uint64_t *out_integer,
+    bool *out_overflow
 );
+
+static char *copy_hex_literal_bytes(const struct mylite_sql_ast_node *source, size_t *out_length);
+
+static char *copy_bit_literal_bytes(const struct mylite_sql_ast_node *source, size_t *out_length);
 
 static int eval_decimal_cast(
     const struct mylite_sql_ast_node *expression,
@@ -4309,6 +4316,17 @@ static int append_cast_truncation_warning(
     const char *text
 );
 
+static int append_binary_literal_numeric_truncation_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *bytes,
+    size_t byte_length
+);
+
+static int append_binary_literal_numeric_truncation_warning_from_source(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *source
+);
+
 static int append_incorrect_year_warning(
     struct mylite_expression_warnings *warnings,
     const char *text,
@@ -5742,11 +5760,18 @@ static int eval_signed_cast(
     int64_t integer = 0;
     int status = 0;
     uint64_t literal_integer = 0U;
+    bool literal_overflow = false;
 
     if (value->kind == MYLITE_EXPRESSION_VALUE_REAL && value->real_value < (double)INT64_MIN) {
         return append_integer_cast_out_of_range_error(warnings, source);
     }
-    if (cast_literal_unsigned_integer_value(source, &literal_integer)) {
+    if (cast_literal_unsigned_integer_value(source, &literal_integer, &literal_overflow)) {
+        if (literal_overflow) {
+            status = append_binary_literal_numeric_truncation_warning_from_source(warnings, source);
+            if (status != 0) {
+                return status;
+            }
+        }
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_INT64,
             .int64_value = signed_integer_from_uint64(literal_integer)
@@ -5772,11 +5797,18 @@ static int eval_unsigned_cast(
 ) {
     uint64_t integer = 0;
     int status = 0;
+    bool literal_overflow = false;
 
     if (value->kind == MYLITE_EXPRESSION_VALUE_REAL && value->real_value < (double)INT64_MIN) {
         return append_integer_cast_out_of_range_error(warnings, source);
     }
-    if (cast_literal_unsigned_integer_value(source, &integer)) {
+    if (cast_literal_unsigned_integer_value(source, &integer, &literal_overflow)) {
+        if (literal_overflow) {
+            status = append_binary_literal_numeric_truncation_warning_from_source(warnings, source);
+            if (status != 0) {
+                return status;
+            }
+        }
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_UINT64,
             .uint64_value = integer
@@ -5796,29 +5828,35 @@ static int eval_unsigned_cast(
 
 static bool cast_literal_unsigned_integer_value(
     const struct mylite_sql_ast_node *source,
-    uint64_t *out_integer
+    uint64_t *out_integer,
+    bool *out_overflow
 ) {
     source = mylite_sql_ast_unwrap_parenthesized_expression(source);
     if (source == NULL || source->kind != MYLITE_SQL_AST_LITERAL || out_integer == NULL) {
         return false;
     }
     if (source->literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
-        return cast_hex_literal_unsigned_integer_value(source, out_integer);
+        return cast_hex_literal_unsigned_integer_value(source, out_integer, out_overflow);
     }
     if (source->literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
-        return cast_bit_literal_unsigned_integer_value(source, out_integer);
+        return cast_bit_literal_unsigned_integer_value(source, out_integer, out_overflow);
     }
     return false;
 }
 
 static bool cast_hex_literal_unsigned_integer_value(
     const struct mylite_sql_ast_node *source,
-    uint64_t *out_integer
+    uint64_t *out_integer,
+    bool *out_overflow
 ) {
     const char *digits = NULL;
     size_t digit_count = 0U;
     uint64_t integer = 0U;
+    bool overflow = false;
 
+    if (out_overflow != NULL) {
+        *out_overflow = false;
+    }
     if (!hex_literal_digits(source, &digits, &digit_count)) {
         return false;
     }
@@ -5829,23 +5867,31 @@ static bool cast_hex_literal_unsigned_integer_value(
             return false;
         }
         if (integer > (UINT64_MAX - (uint64_t)digit) / 16U) {
-            integer = UINT64_MAX;
+            overflow = true;
             continue;
         }
         integer = (integer * 16U) + (uint64_t)digit;
     }
-    *out_integer = integer;
+    *out_integer = overflow ? 0U : integer;
+    if (out_overflow != NULL) {
+        *out_overflow = overflow;
+    }
     return true;
 }
 
 static bool cast_bit_literal_unsigned_integer_value(
     const struct mylite_sql_ast_node *source,
-    uint64_t *out_integer
+    uint64_t *out_integer,
+    bool *out_overflow
 ) {
     const char *digits = NULL;
     size_t digit_count = 0U;
     uint64_t integer = 0U;
+    bool overflow = false;
 
+    if (out_overflow != NULL) {
+        *out_overflow = false;
+    }
     if (!bit_literal_digits(source, &digits, &digit_count)) {
         return false;
     }
@@ -5854,13 +5900,99 @@ static bool cast_bit_literal_unsigned_integer_value(
             return false;
         }
         if (integer > (UINT64_MAX >> 1U)) {
-            integer = UINT64_MAX;
+            overflow = true;
             continue;
         }
         integer = (integer << 1U) | (uint64_t)(digits[index] == '1' ? 1U : 0U);
     }
-    *out_integer = integer;
+    *out_integer = overflow ? 0U : integer;
+    if (out_overflow != NULL) {
+        *out_overflow = overflow;
+    }
     return true;
+}
+
+static char *copy_hex_literal_bytes(const struct mylite_sql_ast_node *source, size_t *out_length) {
+    const char *digits = NULL;
+    size_t digit_count = 0U;
+    size_t result_length = 0U;
+    size_t input = 0U;
+    size_t output = 0U;
+    char *result = NULL;
+    unsigned char *result_bytes = NULL;
+
+    if (out_length == NULL || !hex_literal_digits(source, &digits, &digit_count)) {
+        return NULL;
+    }
+    result_length = (digit_count / 2U) + (digit_count % 2U);
+    result = malloc(result_length + 1U);
+    if (result == NULL) {
+        return NULL;
+    }
+    result_bytes = (unsigned char *)result;
+    if ((digit_count % 2U) != 0U) {
+        int digit = hex_digit_value((unsigned char)digits[input++]);
+
+        if (digit < 0) {
+            free(result);
+            return NULL;
+        }
+        result_bytes[output++] = (unsigned char)digit;
+    }
+    while (input < digit_count) {
+        int high = hex_digit_value((unsigned char)digits[input]);
+        int low = hex_digit_value((unsigned char)digits[input + 1U]);
+
+        if (high < 0 || low < 0) {
+            free(result);
+            return NULL;
+        }
+        result_bytes[output++] = (unsigned char)((high << 4U) | low);
+        input += 2U;
+    }
+    result[result_length] = '\0';
+    *out_length = result_length;
+    return result;
+}
+
+static char *copy_bit_literal_bytes(const struct mylite_sql_ast_node *source, size_t *out_length) {
+    const char *digits = NULL;
+    size_t digit_count = 0U;
+    size_t result_length = 0U;
+    size_t leading_pad = 0U;
+    char *result = NULL;
+    unsigned char *result_bytes = NULL;
+
+    if (out_length == NULL || !bit_literal_digits(source, &digits, &digit_count)) {
+        return NULL;
+    }
+    result_length =
+        (digit_count + (MYLITE_EXPRESSION_BITS_PER_BYTE - 1U)) / MYLITE_EXPRESSION_BITS_PER_BYTE;
+    leading_pad = (result_length * MYLITE_EXPRESSION_BITS_PER_BYTE) - digit_count;
+    result = calloc(result_length + 1U, sizeof(*result));
+    if (result == NULL) {
+        return NULL;
+    }
+    result_bytes = (unsigned char *)result;
+    for (size_t index = 0U; index < digit_count; ++index) {
+        size_t bit_position = leading_pad + index;
+        unsigned char mask = (unsigned char)(1U
+                                             << ((MYLITE_EXPRESSION_BITS_PER_BYTE - 1U) -
+                                                 (bit_position % MYLITE_EXPRESSION_BITS_PER_BYTE)));
+
+        if (digits[index] == '0') {
+            continue;
+        }
+        if (digits[index] != '1') {
+            free(result);
+            return NULL;
+        }
+        size_t byte_index = bit_position / MYLITE_EXPRESSION_BITS_PER_BYTE;
+
+        result_bytes[byte_index] = (unsigned char)(result_bytes[byte_index] | mask);
+    }
+    *out_length = result_length;
+    return result;
 }
 
 static int eval_decimal_cast(
@@ -23100,55 +23232,25 @@ static int eval_hex_literal(
     const struct mylite_sql_ast_node *node,
     struct mylite_expression_value *out_value
 ) {
-    const char *digits = NULL;
-    size_t digit_count = 0U;
     size_t result_length = 0U;
-    size_t input = 0U;
-    size_t output = 0U;
     char *result = NULL;
-    unsigned char *result_bytes = NULL;
     uint64_t numeric_value = 0U;
+    bool numeric_overflow = false;
 
-    if (!hex_literal_digits(node, &digits, &digit_count) ||
-        !cast_hex_literal_unsigned_integer_value(node, &numeric_value)) {
+    if (!cast_hex_literal_unsigned_integer_value(node, &numeric_value, &numeric_overflow)) {
         return -1;
     }
-
-    result_length = (digit_count / 2U) + (digit_count % 2U);
-    result = malloc(result_length + 1U);
+    result = copy_hex_literal_bytes(node, &result_length);
     if (result == NULL) {
         return -1;
     }
-    result_bytes = (unsigned char *)result;
-
-    if ((digit_count % 2U) != 0U) {
-        int digit = hex_digit_value((unsigned char)digits[input++]);
-
-        if (digit < 0) {
-            free(result);
-            return -1;
-        }
-        result_bytes[output++] = (unsigned char)digit;
-    }
-    while (input < digit_count) {
-        int high = hex_digit_value((unsigned char)digits[input]);
-        int low = hex_digit_value((unsigned char)digits[input + 1U]);
-
-        if (high < 0 || low < 0) {
-            free(result);
-            return -1;
-        }
-        result_bytes[output++] = (unsigned char)((high << 4U) | low);
-        input += 2U;
-    }
-
-    result[result_length] = '\0';
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_TEXT,
         .text_value = result,
         .text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY,
         .text_length = result_length,
         .has_literal_numeric_value = true,
+        .literal_numeric_overflow = numeric_overflow,
         .literal_numeric_unsigned = true,
         .literal_numeric_value = numeric_value,
     };
@@ -23159,44 +23261,17 @@ static int eval_bit_literal(
     const struct mylite_sql_ast_node *node,
     struct mylite_expression_value *out_value
 ) {
-    const char *digits = NULL;
-    size_t digit_count = 0U;
     size_t result_length = 0U;
-    size_t leading_pad = 0U;
     char *result = NULL;
-    unsigned char *result_bytes = NULL;
     uint64_t numeric_value = 0U;
+    bool numeric_overflow = false;
 
-    if (!bit_literal_digits(node, &digits, &digit_count) ||
-        !cast_bit_literal_unsigned_integer_value(node, &numeric_value)) {
+    if (!cast_bit_literal_unsigned_integer_value(node, &numeric_value, &numeric_overflow)) {
         return -1;
     }
-
-    result_length =
-        (digit_count + (MYLITE_EXPRESSION_BITS_PER_BYTE - 1U)) / MYLITE_EXPRESSION_BITS_PER_BYTE;
-    leading_pad = (result_length * MYLITE_EXPRESSION_BITS_PER_BYTE) - digit_count;
-    result = calloc(result_length + 1U, sizeof(*result));
+    result = copy_bit_literal_bytes(node, &result_length);
     if (result == NULL) {
         return -1;
-    }
-    result_bytes = (unsigned char *)result;
-
-    for (size_t index = 0U; index < digit_count; ++index) {
-        size_t bit_position = leading_pad + index;
-        unsigned char mask = (unsigned char)(1U
-                                             << ((MYLITE_EXPRESSION_BITS_PER_BYTE - 1U) -
-                                                 (bit_position % MYLITE_EXPRESSION_BITS_PER_BYTE)));
-
-        if (digits[index] == '0') {
-            continue;
-        }
-        if (digits[index] != '1') {
-            free(result);
-            return -1;
-        }
-        size_t byte_index = bit_position / MYLITE_EXPRESSION_BITS_PER_BYTE;
-
-        result_bytes[byte_index] = (unsigned char)(result_bytes[byte_index] | mask);
     }
 
     *out_value = (struct mylite_expression_value){
@@ -23205,6 +23280,7 @@ static int eval_bit_literal(
         .text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY,
         .text_length = result_length,
         .has_literal_numeric_value = true,
+        .literal_numeric_overflow = numeric_overflow,
         .literal_numeric_unsigned = false,
         .literal_numeric_value = numeric_value,
     };
@@ -25500,6 +25576,20 @@ static int value_to_numeric(
         out_numeric->int64_value = numeric_real_to_truncated_int64(value->real_value);
         return 0;
     case MYLITE_EXPRESSION_VALUE_TEXT:
+        if (value->literal_numeric_overflow) {
+            int status = append_binary_literal_numeric_truncation_warning(
+                warnings,
+                value->text_value,
+                value->text_length
+            );
+
+            out_numeric->uint64_value = 0U;
+            out_numeric->int64_value = 0;
+            out_numeric->real_value = 0.0;
+            out_numeric->is_integer = true;
+            out_numeric->is_unsigned = value->literal_numeric_unsigned;
+            return status;
+        }
         if (value->has_literal_numeric_value) {
             out_numeric->uint64_value = value->literal_numeric_value;
             out_numeric->int64_value = signed_integer_from_uint64(value->literal_numeric_value);
@@ -26710,6 +26800,69 @@ static int append_cast_truncation_warning(
         return -1;
     }
     return append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+}
+
+static int append_binary_literal_numeric_truncation_warning(
+    struct mylite_expression_warnings *warnings,
+    const char *bytes,
+    size_t byte_length
+) {
+    static const char prefix[] = "Truncated incorrect BINARY value: 'x'";
+    static const char suffix[] = "''";
+    static const char hex_digits[] = "0123456789abcdef";
+    const size_t prefix_length = sizeof(prefix) - 1U;
+    const size_t suffix_length = sizeof(suffix) - 1U;
+    char *message = NULL;
+    char *cursor = NULL;
+    int status = 0;
+
+    if (byte_length > (SIZE_MAX - prefix_length - suffix_length - 1U) / 2U) {
+        return -1;
+    }
+    message = malloc(prefix_length + (byte_length * 2U) + suffix_length + 1U);
+    if (message == NULL) {
+        return -1;
+    }
+    cursor = message;
+    memcpy(cursor, prefix, prefix_length);
+    cursor += prefix_length;
+    for (size_t index = 0U; index < byte_length; ++index) {
+        unsigned char byte = bytes == NULL ? 0U : (unsigned char)bytes[index];
+
+        *cursor++ = hex_digits[byte >> 4U];
+        *cursor++ = hex_digits[byte & 0x0FU];
+    }
+    memcpy(cursor, suffix, suffix_length);
+    cursor += suffix_length;
+    *cursor = '\0';
+    status = append_warning(warnings, MYLITE_WARNING_TRUNCATED_WRONG_VALUE, message);
+    free(message);
+    return status;
+}
+
+static int append_binary_literal_numeric_truncation_warning_from_source(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *source
+) {
+    char *bytes = NULL;
+    size_t byte_length = 0U;
+    int status = 0;
+
+    source = mylite_sql_ast_unwrap_parenthesized_expression(source);
+    if (source == NULL || source->kind != MYLITE_SQL_AST_LITERAL) {
+        return -1;
+    }
+    if (source->literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        bytes = copy_hex_literal_bytes(source, &byte_length);
+    } else if (source->literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        bytes = copy_bit_literal_bytes(source, &byte_length);
+    }
+    if (bytes == NULL) {
+        return -1;
+    }
+    status = append_binary_literal_numeric_truncation_warning(warnings, bytes, byte_length);
+    free(bytes);
+    return status;
 }
 
 static int append_incorrect_year_warning(

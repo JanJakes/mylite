@@ -341,6 +341,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Scalar `CAST`/`CONVERT` from exact signed and unsigned integer values to
       `DECIMAL(M,D)` now preserves integer precision before applying the target
       scale, including clean unsigned 64-bit values above the signed range.
+      Oversized hex and bit literals cast or converted to signed/unsigned
+      integer targets or otherwise coerced to numbers now return `0` with
+      warning 1292 when nonzero high bits extend beyond the low 64 bits, while
+      leading zero bytes/bits remain valid.
       DML numeric coercion now applies the same embedded-NUL handling for
       covered integer and approximate assignments, rejecting in strict mode and
       warning/storing the prefix in non-strict mode.

@@ -86,6 +86,8 @@ Overflowed exponent strings in `DECIMAL` casts were additionally checked on
 2026-05-07 against the same MySQL 8.4.9 runtime.
 Exact integer-to-`DECIMAL` casts above the signed 64-bit range were additionally
 checked on 2026-05-08 against the same MySQL 8.4.9 runtime.
+Oversized hex and bit literal integer casts were additionally checked on
+2026-05-08 against the same MySQL 8.4.9 runtime.
 
 Table-backed `DECIMAL` string coercions were additionally checked on
 2026-05-07 against the same MySQL 8.4.9 runtime with `DECIMAL(10,2)` values
@@ -118,7 +120,9 @@ prefix returns `0` with warning 1292.
 | `CAST('18446744073709551615' AS SIGNED)` | `-1` | 1105 positive-to-signed-complement |
 | `CAST('18446744073709551616' AS SIGNED)` | `-1` | 1292 truncated integer |
 | `CAST(0x3132 AS SIGNED)` | `12594` | none |
+| `CAST(0xFFFFFFFFFFFFFFFFFF AS SIGNED)` | `0` | 1292 truncated binary |
 | `CAST(0b1010 AS SIGNED)` | `10` | none |
+| `CAST(b'11111111111111111111111111111111111111111111111111111111111111111' AS SIGNED)` | `0` | 1292 truncated binary |
 
 Unsigned integer casts produce unsigned 64-bit integer results. Negative numeric
 inputs wrap to the corresponding two's-complement unsigned value without a
@@ -392,7 +396,9 @@ the result is `NULL` without conversion warnings.
   land
 - real inputs round halves away from zero
 - hex and bit literal inputs use the literal's unsigned integer value, not the
-  decoded binary string bytes
+  decoded binary string bytes; oversized literals with nonzero bits beyond the
+  low 64 bits return `0` in integer numeric contexts and emit warning 1292
+  against the canonical binary literal text
 - string inputs parse an optional sign and decimal integer prefix
 - string suffixes, decimal fractions, and missing digits emit warning 1292
   using `Truncated incorrect INTEGER value: '<value>'`
@@ -404,7 +410,9 @@ the result is `NULL` without conversion warnings.
 - integer and real inputs convert to the unsigned 64-bit representation
 - real inputs round halves away from zero before conversion
 - hex and bit literal inputs use the literal's unsigned integer value, not the
-  decoded binary string bytes
+  decoded binary string bytes; oversized literals with nonzero bits beyond the
+  low 64 bits return `0` in integer numeric contexts and emit warning 1292
+  against the canonical binary literal text
 - string inputs follow signed string parsing first
 - negative string inputs emit warning 1105 with
   `Cast to unsigned converted negative integer to its positive complement`

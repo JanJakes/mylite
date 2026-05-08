@@ -97,6 +97,9 @@ CAST-family implementation.
 Exact integer-to-`DECIMAL` conversions above the signed 64-bit range were
 additionally checked on 2026-05-08 against the same MySQL 8.4.9 runtime
 through the shared CAST-family implementation.
+Oversized hex and bit literal integer conversions were additionally checked on
+2026-05-08 against the same MySQL 8.4.9 runtime through the shared CAST-family
+implementation.
 
 ## MySQL observations
 
@@ -108,9 +111,11 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | --- | --- | --- |
 | `CONVERT('12.5', SIGNED)` | `12` | 1292 truncated integer |
 | `CONVERT(-1e20, SIGNED)` | error | 1690 out of range |
+| `CONVERT(0xFFFFFFFFFFFFFFFFFF, SIGNED)` | `0` | 1292 truncated binary |
 | `CONVERT('-1', UNSIGNED)` | `18446744073709551615` | 1105 negative-to-unsigned |
 | `CONVERT('-0e1', UNSIGNED)` | `0` | 1292 truncated integer, 1105 negative-to-unsigned |
 | `CONVERT(-1e20, UNSIGNED)` | error | 1690 out of range |
+| `CONVERT(0xFFFFFFFFFFFFFFFFFF, UNSIGNED)` | `0` | 1292 truncated binary |
 | `CONVERT('12.345', DECIMAL(5,2))` | `12.35` | none |
 | `CONVERT(18446744073709551615, DECIMAL(20,0))` | `18446744073709551615` | none |
 | `CONVERT(18446744073709551615, DECIMAL(22,2))` | `18446744073709551615.00` | none |

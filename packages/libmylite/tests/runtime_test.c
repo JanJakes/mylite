@@ -37911,6 +37911,42 @@ static int test_cast_expression_execution(void) {
         "12594",
         "10",
     };
+    static const char *const literal_integer_overflow_columns[] = {
+        "hex_leading",
+        "hex_unsigned",
+        "hex_signed",
+        "convert_hex_unsigned",
+        "bit_leading",
+        "bit_unsigned",
+        "bit_signed",
+        "convert_bit_unsigned",
+    };
+    static const char *const literal_integer_overflow_values[] = {
+        "18446744073709551615",
+        "0",
+        "0",
+        "0",
+        "18446744073709551615",
+        "0",
+        "0",
+        "0",
+    };
+    static const char *const literal_numeric_overflow_columns[] = {
+        "hex_plus",
+        "hex_eq_zero",
+        "hex_eq_max",
+        "bit_plus",
+        "bit_eq_zero",
+        "bit_eq_max",
+    };
+    static const char *const literal_numeric_overflow_values[] = {
+        "0",
+        "1",
+        "0",
+        "0",
+        "1",
+        "0",
+    };
     static const char *const nul_numeric_columns[] = {
         "signed_value",
         "unsigned_value",
@@ -38588,6 +38624,10 @@ static int test_cast_expression_execution(void) {
     static const unsigned char binary_padded[] = {'a', '\0', '\0'};
     static const unsigned char binary_truncated[] = {'a', 'b', 'c'};
     static const unsigned char binary_euro_truncated[] = {0xE2, 0x82, 0xAC};
+    static const char hex_literal_overflow_warning[] =
+        "Truncated incorrect BINARY value: 'x'ffffffffffffffffff''";
+    static const char bit_literal_overflow_warning[] =
+        "Truncated incorrect BINARY value: 'x'01ffffffffffffffff''";
     static const char float_cast_out_of_range_message[] =
         "DOUBLE value is out of range in "
         "'cast('3.4028234663852886e39' as float)'";
@@ -38660,6 +38700,81 @@ static int test_cast_expression_execution(void) {
         0,
         "CAST hex and bit literal integer warning count"
     );
+
+    failures += expect_select_rows(
+        database,
+        "SELECT CAST(0x00FFFFFFFFFFFFFFFF AS UNSIGNED) AS hex_leading, "
+        "CAST(0xFFFFFFFFFFFFFFFFFF AS UNSIGNED) AS hex_unsigned, "
+        "CAST(0xFFFFFFFFFFFFFFFFFF AS SIGNED) AS hex_signed, "
+        "CONVERT(0xFFFFFFFFFFFFFFFFFF, UNSIGNED) AS convert_hex_unsigned, "
+        "CAST(b'01111111111111111111111111111111"
+        "111111111111111111111111111111111' AS UNSIGNED) AS bit_leading, "
+        "CAST(b'11111111111111111111111111111111"
+        "111111111111111111111111111111111' AS UNSIGNED) AS bit_unsigned, "
+        "CAST(b'11111111111111111111111111111111"
+        "111111111111111111111111111111111' AS SIGNED) AS bit_signed, "
+        "CONVERT(b'11111111111111111111111111111111"
+        "111111111111111111111111111111111', UNSIGNED) AS convert_bit_unsigned",
+        literal_integer_overflow_columns,
+        (int)(sizeof(literal_integer_overflow_columns) /
+              sizeof(literal_integer_overflow_columns[0])),
+        literal_integer_overflow_values,
+        1,
+        "CAST oversized hex and bit literal integer values"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        6,
+        "CAST oversized hex and bit literal warning count"
+    );
+    for (int index = 0; index < 6; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_truncated_wrong_value,
+            "CAST oversized hex and bit literal warning code"
+        );
+        failures += expect_string(
+            mylite_warning_message(database, index),
+            index < 3 ? hex_literal_overflow_warning : bit_literal_overflow_warning,
+            "CAST oversized hex and bit literal warning message"
+        );
+    }
+
+    failures += expect_select_rows(
+        database,
+        "SELECT 0xFFFFFFFFFFFFFFFFFF + 0 AS hex_plus, "
+        "0xFFFFFFFFFFFFFFFFFF = 0 AS hex_eq_zero, "
+        "0xFFFFFFFFFFFFFFFFFF = 18446744073709551615 AS hex_eq_max, "
+        "b'11111111111111111111111111111111"
+        "111111111111111111111111111111111' + 0 AS bit_plus, "
+        "b'11111111111111111111111111111111"
+        "111111111111111111111111111111111' = 0 AS bit_eq_zero, "
+        "b'11111111111111111111111111111111"
+        "111111111111111111111111111111111' = 18446744073709551615 AS bit_eq_max",
+        literal_numeric_overflow_columns,
+        (int)(sizeof(literal_numeric_overflow_columns) /
+              sizeof(literal_numeric_overflow_columns[0])),
+        literal_numeric_overflow_values,
+        1,
+        "oversized hex and bit literal numeric coercions"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        6,
+        "oversized hex and bit literal numeric coercion warning count"
+    );
+    for (int index = 0; index < 6; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_truncated_wrong_value,
+            "oversized hex and bit literal numeric coercion warning code"
+        );
+        failures += expect_string(
+            mylite_warning_message(database, index),
+            index < 3 ? hex_literal_overflow_warning : bit_literal_overflow_warning,
+            "oversized hex and bit literal numeric coercion warning message"
+        );
+    }
 
     failures += expect_select_rows(
         database,

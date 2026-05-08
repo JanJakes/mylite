@@ -217,10 +217,10 @@ The snapshot is connection-local and in-memory. It is not stored in the
 | 2 | `Code` | decimal MySQL diagnostic code text |
 | 3 | `Message` | MyLite's diagnostic message text |
 
-If the previous snapshot has an error condition, that row is displayed before
-warning records. The current implementation does not create snapshots that mix
-errors and warnings, but this order is deterministic if such a mix appears in
-future code.
+If the previous snapshot has both warning records and an error condition, the
+warning records are displayed first in recorded order, followed by the final
+error condition. This matches the later `sql_slave_skip_counter` mixed
+warning/error scalar-select evidence.
 
 `SHOW COUNT(*) WARNINGS` returns one row whose value is:
 

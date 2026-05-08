@@ -29,6 +29,7 @@ tests.
 | Current user identity | 🟡 | Limited scalar `USER()`, `SESSION_USER()`, `SYSTEM_USER()`, `CURRENT_USER()`, and bare `CURRENT_USER` expose MyLite's embedded `root@%` session identity; no accounts, authentication, roles, privileges, definer semantics, `IGNORE_SPACE`, or stored-function resolution. | [SQL users, roles, and privileges](docs/compatibility/sql-users-privileges.md), [system functions](docs/compatibility/functions-system.md) |
 | Version function | 🟡 | Limited scalar `VERSION()` exposes MyLite's engine version string; no MySQL server-version impersonation, protocol handshake version reporting, or `@@version` support. | [system functions](docs/compatibility/functions-system.md) |
 | Diagnostics count variables | 🟡 | Limited scalar `SELECT @@warning_count` and `SELECT @@error_count` read the previous diagnostics snapshot and then clear it like MySQL nondiagnostic `SELECT`; supports `session`/`local` qualifiers only. | [runtime system variables](docs/compatibility/runtime-system-variables.md), [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
+| Character set system variables | 🟡 | Limited scalar reads for `@@character_set_client`, `@@character_set_connection`, `@@character_set_results`, and `@@collation_connection` expose MyLite's fixed `utf8mb4` / `utf8mb4_0900_ai_ci` connection baseline; no `SET`, `SET NAMES`, conversion, or full charset state. | [runtime system variables](docs/compatibility/runtime-system-variables.md), [character sets](docs/compatibility/character-sets.md), [collations](docs/compatibility/collations.md) |
 | SQLSTATE values | ❌ | MySQL-compatible SQLSTATEs. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
 | Error numbers | ❌ | MySQL-compatible error codes. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
 | Warning numbers | ❌ | MySQL-compatible warning codes. | [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
@@ -171,14 +172,14 @@ tests.
 | --- | :-: | --- | --- |
 | `ascii` character set | ❌ | Baseline character set. | [character sets](docs/compatibility/character-sets.md) |
 | `binary` character set | ❌ | Baseline character set. | [character sets](docs/compatibility/character-sets.md) |
-| `utf8mb4` character set | 🟡 | Limited static `SHOW CHARACTER SET` row and fixed `CREATE TABLE` option acceptance only; no conversions, string types, connection charset state, or full catalog semantics. | [character sets](docs/compatibility/character-sets.md) |
+| `utf8mb4` character set | 🟡 | Limited static `SHOW CHARACTER SET` row, fixed `CREATE TABLE` option acceptance, and scalar connection charset variable reads only; no conversions, string types, mutable connection charset state, or full catalog semantics. | [character sets](docs/compatibility/character-sets.md) |
 | `ascii_general_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `ascii_bin` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `binary` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `utf8mb4_general_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `utf8mb4_bin` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `utf8mb4_unicode_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
-| `utf8mb4_0900_ai_ci` collation | 🟡 | Limited static `SHOW COLLATION` row and fixed `CREATE TABLE` option acceptance only; no comparison semantics, coercibility, string metadata, or full catalog semantics. | [collations](docs/compatibility/collations.md) |
+| `utf8mb4_0900_ai_ci` collation | 🟡 | Limited static `SHOW COLLATION` row, fixed `CREATE TABLE` option acceptance, and scalar `@@collation_connection` read only; no comparison semantics, coercibility, mutable connection collation state, string metadata, or full catalog semantics. | [collations](docs/compatibility/collations.md) |
 | `utf8mb4_0900_bin` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `SET` | ❌ | Session variable assignment. | [SQL SET statements](docs/compatibility/sql-set-statements.md), [runtime system variables](docs/compatibility/runtime-system-variables.md) |
 | `SET NAMES` | ❌ | Client character-set state. | [SQL SET statements](docs/compatibility/sql-set-statements.md), [character sets](docs/compatibility/character-sets.md) |

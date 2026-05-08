@@ -117,11 +117,11 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `caching_sha2_password_digest_rounds` | ❌ | Value, scope, SET, diagnostics |
 | `caching_sha2_password_private_key_path` | ❌ | Value, scope, SET, diagnostics |
 | `caching_sha2_password_public_key_path` | ❌ | Value, scope, SET, diagnostics |
-| `character_set_client` | ❌ | Value, scope, SET, diagnostics |
-| `character_set_connection` | ❌ | Value, scope, SET, diagnostics |
+| `character_set_client` | 🟡 | Limited read-only scalar `SELECT @@character_set_client` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` connection baseline; no `SET`, `SET NAMES`, conversion, client negotiation, `SHOW VARIABLES`, or protocol charset metadata |
+| `character_set_connection` | 🟡 | Limited read-only scalar `SELECT @@character_set_connection` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` connection baseline; no `SET`, `SET NAMES`, conversion, string literal semantics, `SHOW VARIABLES`, or protocol charset metadata |
 | `character_set_database` | ❌ | Value, scope, SET, diagnostics |
 | `character_set_filesystem` | ❌ | Value, scope, SET, diagnostics |
-| `character_set_results` | ❌ | Value, scope, SET, diagnostics |
+| `character_set_results` | 🟡 | Limited read-only scalar `SELECT @@character_set_results` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` connection baseline; no `SET`, `SET NAMES`, result conversion, `NULL` results mode, `SHOW VARIABLES`, or protocol charset metadata |
 | `character_set_server` | ❌ | Value, scope, SET, diagnostics |
 | `character_set_system` | ❌ | Value, scope, SET, diagnostics |
 | `character_sets_dir` | ❌ | Value, scope, SET, diagnostics |
@@ -140,7 +140,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `clone_ssl_cert` | ❌ | Value, scope, SET, diagnostics |
 | `clone_ssl_key` | ❌ | Value, scope, SET, diagnostics |
 | `clone_valid_donor_list` | ❌ | Value, scope, SET, diagnostics |
-| `collation_connection` | ❌ | Value, scope, SET, diagnostics |
+| `collation_connection` | 🟡 | Limited read-only scalar `SELECT @@collation_connection` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4_0900_ai_ci` connection baseline; no `SET`, `SET NAMES`, collation coercibility, string comparison semantics, `SHOW VARIABLES`, or protocol collation metadata |
 | `collation_database` | ❌ | Value, scope, SET, diagnostics |
 | `collation_server` | ❌ | Value, scope, SET, diagnostics |
 | `completion_type` | ❌ | Value, scope, SET, diagnostics |

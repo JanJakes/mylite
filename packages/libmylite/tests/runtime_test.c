@@ -17888,6 +17888,53 @@ static int test_date_and_datediff_functions_execution(void) {
 
     failures += prepare_sql(
         database,
+        "SELECT HOUR('12:34:56') AS h_time, "
+        "MINUTE('12:34:56') AS mi_time, "
+        "SECOND('12:34:56') AS s_time, "
+        "EXTRACT(HOUR FROM '12:34:56') AS eh_time, "
+        "EXTRACT(MINUTE FROM '12:34:56') AS emi_time, "
+        "EXTRACT(SECOND FROM '12:34:56') AS es_time, "
+        "HOUR('-03:04:05.000006') AS h_negative_time, "
+        "MINUTE('-03:04:05.000006') AS mi_negative_time, "
+        "SECOND('-03:04:05.000006') AS s_negative_time, "
+        "HOUR('839:00:00') AS h_clipped_time, "
+        "MINUTE('839:00:00') AS mi_clipped_time, "
+        "SECOND('839:00:00') AS s_clipped_time",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "temporal part time text row");
+    failures += expect_string(mylite_column_text(stmt, 0), "12", "HOUR time text");
+    failures += expect_string(mylite_column_text(stmt, 1), "34", "MINUTE time text");
+    failures += expect_string(mylite_column_text(stmt, 2), "56", "SECOND time text");
+    failures += expect_string(mylite_column_text(stmt, 3), "12", "EXTRACT HOUR time text");
+    failures += expect_string(mylite_column_text(stmt, 4), "34", "EXTRACT MINUTE time text");
+    failures += expect_string(mylite_column_text(stmt, 5), "56", "EXTRACT SECOND time text");
+    failures += expect_string(mylite_column_text(stmt, 6), "3", "HOUR negative time text");
+    failures += expect_string(mylite_column_text(stmt, 7), "4", "MINUTE negative time text");
+    failures += expect_string(mylite_column_text(stmt, 8), "5", "SECOND negative time text");
+    failures += expect_string(mylite_column_text(stmt, 9), "838", "HOUR clipped time text");
+    failures += expect_string(mylite_column_text(stmt, 10), "59", "MINUTE clipped time text");
+    failures += expect_string(mylite_column_text(stmt, 11), "59", "SECOND clipped time text");
+    failures += expect_int(mylite_warning_count(database), 3, "temporal part time warning count");
+    for (int index = 0; index < 3; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_truncated_wrong_value,
+            "temporal part time warning code"
+        );
+        failures += expect_string(
+            mylite_warning_message(database, index),
+            "Truncated incorrect time value: '839:00:00'",
+            "temporal part clipped time warning"
+        );
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "temporal part time text done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
         "SELECT WEEK('2008-02-20') AS default_week, "
         "WEEK('2008-02-20', 0) AS mode_0, "
         "WEEK('2008-02-20', 1) AS mode_1, "

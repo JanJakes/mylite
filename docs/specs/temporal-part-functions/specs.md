@@ -28,9 +28,6 @@ Out of scope:
   `EXTRACT()` units such as `YEAR_MONTH`
 - `EXTRACT(WEEK FROM ...)`, combined `EXTRACT()` units such as `YEAR_MONTH`,
   and combined microsecond units such as `DAY_MICROSECOND`
-- standalone time-only parsing for date/time part functions other than
-  `MICROSECOND()`; for example `HOUR('10:05:03')` is intentionally deferred
-  even though MySQL supports it
 - SQL-mode-specific temporal edge behavior beyond MyLite's current default
   strict-mode warning policy
 - exact native error-code parity for runtime-validated unsupported arities
@@ -117,6 +114,10 @@ Observed edge behavior:
 | `YEAR('bad')` | `NULL` | 1292 |
 | `YEAR('2024-02-29foo')` | `2024` | 1292 |
 | `HOUR('2024-02-29 12:34:56foo')` | `12` | 1292 |
+| `HOUR('12:34:56')`, `MINUTE('12:34:56')`, `SECOND('12:34:56')` | `12`, `34`, `56` | none |
+| `EXTRACT(HOUR FROM '12:34:56')`, `EXTRACT(MINUTE FROM '12:34:56')`, `EXTRACT(SECOND FROM '12:34:56')` | `12`, `34`, `56` | none |
+| `HOUR('-03:04:05.000006')`, `MINUTE('-03:04:05.000006')`, `SECOND('-03:04:05.000006')` | `3`, `4`, `5` | none |
+| `HOUR('839:00:00')`, `MINUTE('839:00:00')`, `SECOND('839:00:00')` | `838`, `59`, `59` | one 1292 time warning each |
 | `MICROSECOND('bad')` | `NULL` | 1292 time warning |
 | `MICROSECOND('2024-02-29 12:34:56.123456foo')` | `123456` | 1292 time warning |
 | `MICROSECOND('2024-02-29')` | `0` | 1292 time warning |
@@ -125,12 +126,6 @@ Observed edge behavior:
 | `DAYOFWEEK(240229)`, `DAYOFYEAR(240229)`, `QUARTER(240229)` | `5`, `60`, `1` | none |
 | `MICROSECOND(20240229123456.123456)`, `MICROSECOND('12:34:56.123456')` | `123456`, `123456` | none |
 | `YEAR(20240229.9)`, `EXTRACT(DAY FROM 20240229.9)` | `2024`, `29` | one 1292 warning each |
-
-MySQL supports standalone time strings for time parts, including large `TIME`
-hours. This slice implements that conversion only for `MICROSECOND()`, because
-that function's date-only and fractional-numeric behavior is time-conversion
-driven. The broader `HOUR`, `MINUTE`, and `SECOND` standalone time-string
-surface remains deferred.
 
 Observed metadata:
 
@@ -175,16 +170,13 @@ such as `2008-00-00` therefore return `NULL` with warning 1292 instead of
 returning a zero-based part. `DAYOFWEEK()` returns MySQL's Sunday-first
 weekday index, where Sunday is `1`.
 
-`HOUR`, `MINUTE`, and `SECOND` return the parsed time fields when the input is a
-date/datetime value with a time part, and return `0` for date-only values
-through the current parser. MySQL's standalone time-string conversion remains a
-known gap for this feature.
-
-`MICROSECOND()` follows MySQL's time-conversion behavior more closely than the
-other direct part functions: datetime-like strings with a time suffix, including
-incomplete zero dates, return their fractional second field; date-only strings
-fall through to time parsing and append a 1292 time warning; exact decimal
-numeric compact datetimes preserve the decimal fraction as fractional seconds.
+`HOUR`, `MINUTE`, `SECOND`, and `MICROSECOND` use MySQL-style time conversion
+after `NULL` handling. Datetime-like strings with a time suffix, including
+incomplete zero dates, return the requested time field; standalone time strings
+return the corresponding `TIME` component; date-only strings fall through to
+time parsing and append a 1292 time warning; exact decimal numeric compact
+datetimes preserve the decimal fraction as fractional seconds for
+`MICROSECOND()`.
 
 `EXTRACT(unit FROM expr)` should be represented as a function call whose
 argument list contains only `expr`. The unit is AST metadata, not an
@@ -227,7 +219,7 @@ identifier when it is not part of that call shape.
 ## Runtime semantics
 
 For `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`,
-`QUARTER`, `HOUR`, `MINUTE`, `SECOND`, and supported `EXTRACT` units:
+`QUARTER`, and supported date-domain `EXTRACT` units:
 
 1. Evaluate the temporal expression.
 2. Return `NULL` without warnings when the value is `NULL`.
@@ -236,12 +228,12 @@ For `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`,
    non-`NULL` temporal values.
 5. Return the requested integer part.
 
-For `MICROSECOND()`:
+For `HOUR`, `MINUTE`, `SECOND`, `MICROSECOND`, and matching `EXTRACT` units:
 
 1. Evaluate the temporal expression.
 2. Return `NULL` without warnings when the value is `NULL`.
 3. For datetime-like inputs with a time suffix, parse through the date/datetime
-   parser with incomplete dates allowed and return the fractional second field.
+   parser with incomplete dates allowed and return the requested time field.
 4. Otherwise convert through MyLite's time parser, preserving MySQL-like time
    warnings for date-only strings and malformed values.
 
@@ -270,9 +262,10 @@ Runtime tests should cover:
 - invalid temporal inputs, truncation warnings, and warning counts
 - incomplete date part extraction with zero month/day values
 - complete-date enforcement for `DAYOFWEEK()` and `DAYOFYEAR()`
-- `MICROSECOND()` time conversion for fractional datetime strings, incomplete
-  datetimes with time suffixes, date-only text warnings, standalone time
-  strings, and exact decimal compact datetimes
+- `HOUR()`, `MINUTE()`, `SECOND()`, and `MICROSECOND()` time conversion for
+  fractional datetime strings, incomplete datetimes with time suffixes,
+  date-only text warnings, standalone time strings, clipped time strings, and
+  exact decimal compact datetimes
 - compact string, integer, approximate numeric, fractional datetime, current
   temporal, and nested `DATE_ADD()` inputs
 - result metadata for direct part functions and `EXTRACT`
@@ -285,8 +278,8 @@ Runtime tests should cover:
 
 After implementation, the listed temporal part functions have partial
 compatibility for the supported scalar expression paths and date/datetime input
-surface. `MICROSECOND()` and `EXTRACT(MICROSECOND FROM ...)` also cover the
-time-conversion cases listed above. Time-only parsing for the other time-part
-functions, `EXTRACT(WEEK FROM ...)`, combined `EXTRACT` units, remaining week
-and calendar-name functions, exact native diagnostics, and broader SQL-mode
+surface. `HOUR()`, `MINUTE()`, `SECOND()`, `MICROSECOND()`, and matching
+`EXTRACT` forms also cover the time-conversion cases listed above.
+`EXTRACT(WEEK FROM ...)`, combined `EXTRACT` units, remaining week and
+calendar-name functions, exact native diagnostics, and broader SQL-mode
 temporal variants remain deferred.

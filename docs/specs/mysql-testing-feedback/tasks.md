@@ -415,6 +415,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       binary display lengths, and explicit nonbinary charset conversions.
 - [x] Complete `SELECT DATE(...)`, date-function predicates, and typed
       DATE/DATETIME/TIMESTAMP comparisons against ISO date/datetime strings.
+      `HOUR()`, `MINUTE()`, `SECOND()`, and matching `EXTRACT(...)` time-unit
+      forms now also parse standalone time strings, negative time strings, and
+      clipped large `TIME` values through MySQL-shaped time coercion warnings.
 - [x] Align ambiguous-name handling in `GROUP BY`, `HAVING`, and `ORDER BY`.
       Covered behavior includes duplicate output-label diagnostics in the
       correct clause context, table-column-vs-alias warning behavior, and

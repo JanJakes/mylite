@@ -12164,7 +12164,9 @@ static int eval_temporal_part_function(
 ) {
     const struct mylite_sql_ast_node *arguments = child_at(node, 1U);
     struct mylite_expression_value argument = {0};
+    struct temporal_date_source source = {0};
     struct temporal_date_value date = {0};
+    struct temporal_time_value time = {0};
     enum temporal_part_kind part = TEMPORAL_PART_NONE;
     bool valid = false;
     int status = 0;
@@ -12184,6 +12186,49 @@ static int eval_temporal_part_function(
 
     if (part == TEMPORAL_PART_MICROSECOND) {
         status = eval_temporal_microsecond_part(&argument, warnings, out_value);
+        goto cleanup;
+    }
+    if (part == TEMPORAL_PART_HOUR || part == TEMPORAL_PART_MINUTE ||
+        part == TEMPORAL_PART_SECOND) {
+        if (argument.kind != MYLITE_EXPRESSION_VALUE_REAL) {
+            status = temporal_date_source_from_value(&argument, &source);
+            if (status != 0) {
+                goto cleanup;
+            }
+            if (parse_temporal_date_source(&source, true, true, &date) && date.has_time) {
+                if (date.warning_kind != TEMPORAL_DATE_WARNING_NONE) {
+                    status = append_temporal_time_warning(
+                        warnings,
+                        source.warning_text,
+                        source.warning_length
+                    );
+                    if (status != 0) {
+                        goto cleanup;
+                    }
+                }
+                *out_value = (struct mylite_expression_value){
+                    .kind = MYLITE_EXPRESSION_VALUE_INT64,
+                    .int64_value = part == TEMPORAL_PART_HOUR     ? date.hour
+                                   : part == TEMPORAL_PART_MINUTE ? date.minute
+                                                                  : date.second,
+                };
+                goto cleanup;
+            }
+        }
+        status = time_value_from_expression(&argument, warnings, &time, &valid);
+        if (status != 0) {
+            goto cleanup;
+        }
+        if (!valid) {
+            *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
+            goto cleanup;
+        }
+        *out_value = (struct mylite_expression_value){
+            .kind = MYLITE_EXPRESSION_VALUE_INT64,
+            .int64_value = part == TEMPORAL_PART_HOUR     ? time.hour
+                           : part == TEMPORAL_PART_MINUTE ? time.minute
+                                                          : time.second,
+        };
         goto cleanup;
     }
 

@@ -98,6 +98,7 @@ static int eval_system_variable_entry(
 );
 
 static int infer_system_variable_entry(
+    const mylite_db *database,
     const struct mylite_system_variable_entry *entry,
     struct mylite_field_descriptor *out_descriptor
 );
@@ -158,7 +159,7 @@ static const char *system_variable_string_value(
     struct mylite_schema_default *schema_default
 );
 
-static struct mylite_field_descriptor system_variable_string_descriptor(void);
+static struct mylite_field_descriptor system_variable_string_descriptor(const mylite_db *database);
 
 static struct mylite_field_descriptor system_variable_unsigned_descriptor(void);
 
@@ -240,7 +241,7 @@ int mylite_system_variable_infer_identifier(
         *out_descriptor = mylite_expression_descriptor_defaults();
         return set_system_variable_scope_error(database, &reference, entry);
     }
-    return infer_system_variable_entry(entry, out_descriptor);
+    return infer_system_variable_entry(database, entry, out_descriptor);
 }
 
 static int eval_system_variable_entry(
@@ -272,12 +273,13 @@ static int eval_system_variable_entry(
 }
 
 static int infer_system_variable_entry(
+    const mylite_db *database,
     const struct mylite_system_variable_entry *entry,
     struct mylite_field_descriptor *out_descriptor
 ) {
     switch (entry->value_kind) {
     case MYLITE_SYSTEM_VARIABLE_VALUE_STRING:
-        *out_descriptor = system_variable_string_descriptor();
+        *out_descriptor = system_variable_string_descriptor(database);
         return MYLITE_OK;
     case MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED:
         *out_descriptor = system_variable_unsigned_descriptor();
@@ -852,12 +854,15 @@ static const char *system_variable_string_value(
     return "";
 }
 
-static struct mylite_field_descriptor system_variable_string_descriptor(void) {
+static struct mylite_field_descriptor system_variable_string_descriptor(const mylite_db *database) {
+    const uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
     return (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
-        .length = mylite_mysql_system_variable_string_display_length,
+        .length = mylite_mysql_system_variable_string_display_length * max_bytes_per_character,
         .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_mysql_latin1_swedish_ci_charset_id,
+        .charset_id = mylite_expression_descriptor_connection_collation_id(database),
         .nullable = true,
     };
 }

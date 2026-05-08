@@ -127,8 +127,12 @@ Boolean variables return MySQL-compatible integers:
 MySQL 8.4.9 runtime probes show system-variable expressions use expression
 metadata rather than `SHOW VARIABLES` metadata:
 
-- String variables are `VAR_STRING`, collation `latin1_swedish_ci` (id 8),
-  declared length `21845`, decimals `31`, and no `NOT_NULL` flag.
+- String variables are `VAR_STRING` with the current result collation and
+  connection character width. With `latin1` results they use
+  `latin1_swedish_ci` (id 8) and declared length `21845`; with `utf8mb4`
+  results they use the current utf8mb4 collation, such as
+  `utf8mb4_0900_ai_ci` (id 255), and declared length `87380`. Decimals are
+  `31`, and the `NOT_NULL` flag is not set.
 - `group_concat_max_len`, `warning_count`, `error_count`, and `max_error_count`
   are unsigned `LONGLONG`, binary collation (id 63), declared length `21`,
   decimals `0`, and no `NOT_NULL` flag.
@@ -162,7 +166,8 @@ Runtime tests cover:
 - Boolean and version variables.
 - Session `sql_log_bin` reads and dump-style save/disable/restore assignment.
 - Use in table-backed `WHERE`, `ORDER BY`, and projection expressions.
-- Metadata for string, unsigned numeric, and boolean variables.
+- Metadata for string, unsigned numeric, and boolean variables, including
+  string-variable metadata after `SET NAMES` changes the result character set.
 - Unknown-variable and wrong-scope diagnostics.
 
 Parser tests cover `SYSTEM_VARIABLE` as a primary expression in a select list.

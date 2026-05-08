@@ -51486,10 +51486,10 @@ static int test_show_variables_execution(void) {
     static const struct expected_result_metadata system_variable_metadata[] = {
         {
             .name = "sm",
-            .declared_length = 21845U,
+            .declared_length = 87380U,
             .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
             .decimals = 31U,
-            .charset_id = 8U,
+            .charset_id = 255U,
             .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
                            MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
             .nullable = 1,
@@ -51502,6 +51502,88 @@ static int test_show_variables_execution(void) {
             .flags_set =
                 MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
             .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL,
+            .nullable = 1,
+        },
+        {
+            .name = "ac",
+            .declared_length = 1U,
+            .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+            .charset_id = 63U,
+            .flags_set = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
+            .nullable = 1,
+        },
+    };
+    static const struct expected_result_metadata system_variable_utf8mb4_table_metadata[] = {
+        {
+            .name = "sys_version",
+            .declared_length = 87380U,
+            .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .decimals = 31U,
+            .charset_id = 255U,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                           MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+            .nullable = 1,
+        },
+        {
+            .name = "sm",
+            .declared_length = 87380U,
+            .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .decimals = 31U,
+            .charset_id = 255U,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                           MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+            .nullable = 1,
+        },
+        {
+            .name = "tz",
+            .declared_length = 87380U,
+            .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .decimals = 31U,
+            .charset_id = 255U,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                           MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+            .nullable = 1,
+        },
+        {
+            .name = "ac",
+            .declared_length = 1U,
+            .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+            .charset_id = 63U,
+            .flags_set = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
+            .nullable = 1,
+        },
+    };
+    static const struct expected_result_metadata system_variable_latin1_table_metadata[] = {
+        {
+            .name = "sys_version",
+            .declared_length = 21845U,
+            .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .decimals = 31U,
+            .charset_id = 8U,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                           MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+            .nullable = 1,
+        },
+        {
+            .name = "sm",
+            .declared_length = 21845U,
+            .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .decimals = 31U,
+            .charset_id = 8U,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                           MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+            .nullable = 1,
+        },
+        {
+            .name = "tz",
+            .declared_length = 21845U,
+            .field_type = MYLITE_FIELD_TYPE_VAR_STRING,
+            .decimals = 31U,
+            .charset_id = 8U,
+            .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY |
+                           MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
             .nullable = 1,
         },
         {
@@ -51708,6 +51790,49 @@ static int test_show_variables_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "system variable metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
+    failures +=
+        execute_sql(database, "CREATE DATABASE mylite_show_variables_metadata", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_show_variables_metadata", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "CREATE TABLE show_variable_metadata (id INT NOT NULL)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT @@version AS sys_version, @@sql_mode AS sm, @@time_zone AS tz, "
+        "@@autocommit AS ac FROM show_variable_metadata LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        system_variable_utf8mb4_table_metadata,
+        (int)(sizeof(system_variable_utf8mb4_table_metadata) /
+              sizeof(system_variable_utf8mb4_table_metadata[0])),
+        "system variable utf8mb4 table metadata"
+    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "system variable utf8mb4 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "SELECT @@version AS sys_version, @@sql_mode AS sm, @@time_zone AS tz, "
+        "@@autocommit AS ac FROM show_variable_metadata LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        system_variable_latin1_table_metadata,
+        (int)(sizeof(system_variable_latin1_table_metadata) /
+              sizeof(system_variable_latin1_table_metadata[0])),
+        "system variable latin1 table metadata"
+    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_DONE, "system variable latin1 metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
     failures += expect_select_rows(
         database,
         "SHOW VARIABLES LIKE 'no_such_variable'",

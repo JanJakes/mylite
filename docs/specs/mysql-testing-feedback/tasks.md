@@ -427,6 +427,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `LONGLONG` display lengths for zero-row table-backed result metadata.
       Arithmetic with approximate and text operands now reports MySQL-shaped
       `DOUBLE` descriptors for zero-row table-backed result metadata.
+      String system-variable expression descriptors now follow the current
+      result character set and collation, including MySQL-shaped `utf8mb4`
+      metadata after `SET NAMES utf8mb4` and latin1 metadata after
+      `SET NAMES latin1`.
       User-variable reads now report MySQL-shaped nullable descriptors for
       assigned signed integer and default `utf8mb4` text values, including
       `LONG_BLOB` text metadata with length `268435440` and no flags.

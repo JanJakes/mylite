@@ -199,6 +199,8 @@ static int infer_to_base64_function_descriptor(
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = mylite_expression_descriptor_defaults();
+    const bool source_depends_on_row =
+        plan != NULL && !mylite_expression_is_supported_no_table(source);
     uint64_t max_bytes_per_character =
         mylite_expression_descriptor_connection_character_max_length(database);
     uint64_t encoded_chars = 0U;
@@ -212,16 +214,23 @@ static int infer_to_base64_function_descriptor(
     encoded_chars = source_descriptor.type == MYLITE_FIELD_TYPE_NULL
                         ? 0U
                         : base64_encoded_descriptor_length(source_descriptor.length);
-    length = max_bytes_per_character != 0U && encoded_chars > UINT64_MAX / max_bytes_per_character
-                 ? mylite_mysql_long_text_length
-                 : encoded_chars * max_bytes_per_character;
+    if (source_depends_on_row) {
+        length = encoded_chars;
+    } else {
+        length =
+            max_bytes_per_character != 0U && encoded_chars > UINT64_MAX / max_bytes_per_character
+                ? mylite_mysql_long_text_length
+                : encoded_chars * max_bytes_per_character;
+    }
 
     *out_descriptor = (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
         .flags = 0U,
         .length = length,
         .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .charset_id = source_depends_on_row
+                          ? mylite_mysql_latin1_swedish_ci_charset_id
+                          : mylite_expression_descriptor_connection_charset_id(database),
         .nullable = true,
     };
     mylite_field_descriptor_set_nullable(out_descriptor, true);

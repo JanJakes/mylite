@@ -141,11 +141,13 @@ Observed examples:
 
 ## Result metadata
 
-`TO_BASE64()` reports `VAR_STRING`, MySQL's not-fixed decimals marker `31`, no
-binary flag, and the connection result character set/collation. Its declared
-length is the maximum encoded length of the input descriptor after Base64
-expansion and 76-character line wrapping, measured in bytes for the connection
-result character set.
+`TO_BASE64()` reports `VAR_STRING`, MySQL's not-fixed decimals marker `31`, and
+no binary flag. No-table scalar expressions use the connection result character
+set/collation and measure the encoded display length in bytes for that
+character set. Table-dependent expressions report latin1 metadata because
+Base64 output is ASCII bytes; their declared length is the maximum encoded byte
+length of the input descriptor after Base64 expansion and 76-character line
+wrapping.
 
 `FROM_BASE64()` reports `VAR_STRING`, MySQL's not-fixed decimals marker `31`,
 binary charset/collation, and the `BINARY` flag. Its declared length is at
@@ -175,10 +177,10 @@ For a table with `s VARCHAR(20)`, `vb VARBINARY(8)`, `i INT`, and
 
 | Expression | Length |
 | --- | ---: |
-| `TO_BASE64(s)` | `436` |
-| `TO_BASE64(vb)` | `48` |
-| `TO_BASE64(i)` | `64` |
-| `TO_BASE64(d)` | `48` |
+| `TO_BASE64(s)` | `109` |
+| `TO_BASE64(vb)` | `12` |
+| `TO_BASE64(i)` | `16` |
+| `TO_BASE64(d)` | `12` |
 | `FROM_BASE64(s)` | `60` |
 
 MyLite's current metadata API also exposes expression nullability through its

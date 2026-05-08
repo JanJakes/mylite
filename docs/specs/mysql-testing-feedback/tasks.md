@@ -428,7 +428,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       descriptors for scalar and table-backed expressions, including
       literal-format token expansion and dynamic-format width estimates.
       `FORMAT()` now infers MySQL-shaped decimal-literal widths for fractional
-      fixed-point inputs and unary signed literals.
+      fixed-point inputs and unary signed literals, and table-backed
+      `TO_BASE64()` now reports latin1 byte descriptors instead of
+      connection-charset-scaled lengths.
       `REGEXP_REPLACE()` now reports the MySQL 8.4.9-shaped default
       `utf8mb4` result descriptor (`LONG_BLOB`, length `67108864`, nullable,
       no `NOT_NULL` flag) instead of a medium text descriptor.

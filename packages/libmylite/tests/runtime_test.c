@@ -10727,10 +10727,10 @@ static int test_scalar_builtin_functions_execution(void) {
          NULL,
          NULL,
          NULL,
-         436U,
+         109U,
          MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
-         255U,
+         8U,
          0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
@@ -10741,10 +10741,10 @@ static int test_scalar_builtin_functions_execution(void) {
          NULL,
          NULL,
          NULL,
-         64U,
+         16U,
          MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
-         255U,
+         8U,
          0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
@@ -10774,6 +10774,36 @@ static int test_scalar_builtin_functions_execution(void) {
          63U,
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
+    static const struct expected_result_metadata base64_binary_table_metadata[] = {
+        {"to_s",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"to_vb",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         16U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
          1},
     };
     static const struct expected_result_metadata base_table_metadata[] = {
@@ -13709,6 +13739,22 @@ static int test_scalar_builtin_functions_execution(void) {
         (int)(sizeof(base64_table_metadata) / sizeof(base64_table_metadata[0])),
         "table base64 function metadata"
     );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "SELECT TO_BASE64(s) AS to_s, TO_BASE64(vb) AS to_vb "
+        "FROM case_conversion_meta LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        base64_binary_table_metadata,
+        (int)(sizeof(base64_binary_table_metadata) / sizeof(base64_binary_table_metadata[0])),
+        "table binary base64 function metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "table binary base64 metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(

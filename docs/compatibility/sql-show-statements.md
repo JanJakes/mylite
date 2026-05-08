@@ -33,7 +33,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW GRANTS` | ❌ | Result shape, filters, privileges |
 | `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` | 🟡 | Limited descriptor-resolved persistent base-table introspection with MySQL 8.4.9 column labels and zero rows for current no-index tables; no index descriptors, indexed rows, `EXTENDED`, `WHERE`, temporary tables, views, privileges, or statistics |
 | `SHOW MASTER STATUS` | ❌ | Removed; use SHOW BINARY LOG STATUS |
-| `SHOW OPEN TABLES` | ❌ | Result shape, filters, privileges |
+| `SHOW OPEN TABLES` | 🟡 | Limited embedded empty open-table introspection with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; unknown explicit schemas are empty successes; no NUL-producing pattern escapes, table-cache rows, `In_use` counts, `Name_locked` state, temporary tables, `HANDLER`, table locks, `WHERE`, privileges, or performance-schema metadata |
 | `SHOW PARSE_TREE` | ❌ | Conditional parse-tree debug output |
 | `SHOW PLUGINS` | ❌ | Result shape, filters, privileges |
 | `SHOW PRIVILEGES` | ❌ | Result shape, filters, privileges |

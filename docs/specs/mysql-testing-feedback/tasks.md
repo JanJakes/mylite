@@ -312,8 +312,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       numeric prefix for signed, unsigned, decimal, and approximate targets
       while still treating the NUL plus following bytes as trailing garbage for
       warning emission.
-      Positive signed integer string casts above the unsigned 64-bit range now
-      preserve MySQL's truncation warning and signed-complement warning pair.
+      Positive signed integer string casts above the signed 64-bit range now
+      preserve MySQL's warning split: values through the unsigned 64-bit
+      endpoint emit the signed-complement warning, while values above that
+      endpoint emit only the truncation warning.
       DML numeric coercion now applies the same embedded-NUL handling for
       covered integer and approximate assignments, rejecting in strict mode and
       warning/storing the prefix in non-strict mode.

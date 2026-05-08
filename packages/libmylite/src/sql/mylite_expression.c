@@ -24948,7 +24948,7 @@ static int cast_string_to_signed_integer(
         return 0;
     }
     *out_integer = signed_integer_from_uint64(parsed.magnitude);
-    if (parsed.overflow || parsed.magnitude > (uint64_t)INT64_MAX) {
+    if (!parsed.overflow && parsed.magnitude > (uint64_t)INT64_MAX) {
         return append_signed_complement_warning(warnings);
     }
     return 0;

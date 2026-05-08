@@ -37927,6 +37927,30 @@ static int test_cast_expression_execution(void) {
 
     failures += prepare_sql(
         database,
+        "SELECT CAST('18446744073709551615' AS SIGNED) AS value",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST string signed uint max row");
+    failures +=
+        expect_string(mylite_column_text(stmt, 0), "-1", "CAST string signed uint max value");
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "CAST string signed uint max warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_unknown,
+        "CAST string signed uint max warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "positive out-of-range",
+        "CAST string signed uint max warning message"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
         "SELECT CAST('18446744073709551616' AS SIGNED) AS value",
         MYLITE_OK,
         &stmt
@@ -37935,21 +37959,16 @@ static int test_cast_expression_execution(void) {
     failures +=
         expect_string(mylite_column_text(stmt, 0), "-1", "CAST string signed overflow value");
     failures +=
-        expect_int(mylite_warning_count(database), 2, "CAST string signed overflow warning count");
+        expect_int(mylite_warning_count(database), 1, "CAST string signed overflow warning count");
     failures += expect_int(
         (int)mylite_warning_code(database, 0),
         mysql_warning_truncated_wrong_value,
         "CAST string signed overflow truncation code"
     );
-    failures += expect_int(
-        (int)mylite_warning_code(database, 1),
-        mysql_warning_unknown,
-        "CAST string signed overflow complement code"
-    );
     failures += expect_contains(
-        mylite_warning_message(database, 1),
-        "positive out-of-range",
-        "CAST string signed overflow complement message"
+        mylite_warning_message(database, 0),
+        "18446744073709551616",
+        "CAST string signed overflow warning message"
     );
     mylite_finalize(stmt);
     stmt = NULL;

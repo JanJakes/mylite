@@ -303,6 +303,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `CAST(... AS CHAR ASCII)` and `CONVERT(..., CHAR ASCII)` now parse as
       MySQL's `latin1` shorthand, including charset/collation/coercibility
       introspection and incompatible-collation diagnostics.
+      `LONGTEXT` and `LONGBLOB` now enter the covered string/binary DML
+      coercion path for approximate numeric text conversion, and covered
+      `LONGTEXT` invalid UTF-8 writes reject or demote like MySQL while paired
+      `LONGBLOB` values preserve raw bytes. `LONGTEXT`/`LONGBLOB` maximum-size
+      exhaustion remains deferred.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
       with warning 3719, `CHAR ASCII` shorthand mapping to `latin1`,

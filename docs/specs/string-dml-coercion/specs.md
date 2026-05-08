@@ -27,18 +27,22 @@ It also covers the first TEXT/BLOB-family runtime edges:
 - invalid UTF-8 byte sequences assigned to `utf8mb4` `VARCHAR` and `TEXT`
   columns for `INSERT ... VALUES`, `INSERT IGNORE`, non-strict inserts, and
   single-table `UPDATE IGNORE`
+- invalid UTF-8 byte sequences assigned to `utf8mb4` `LONGTEXT` in the covered
+  `INSERT ... VALUES` / `INSERT IGNORE` slice, while paired `LONGBLOB` values
+  preserve raw bytes
 
 It also covers MySQL-shaped conversion text for approximate numeric values
-stored into `VARCHAR` and `TEXT` columns through `INSERT ... VALUES` and
-single-table `UPDATE`. MySQL renders stored DOUBLE values with a compact
-round-trippable decimal form: `1.2345678901234567E0` stores as
-`1.2345678901234567`, `1.7976931348623157E308` stores as
-`1.7976931348623157e308`, and `1E-320` stores as `1e-320`.
+stored into `VARCHAR`, `TEXT`, `LONGTEXT`, and `LONGBLOB` columns through
+covered `INSERT ... VALUES` and single-table `UPDATE` paths. MySQL renders
+stored DOUBLE values with a compact round-trippable decimal form:
+`1.2345678901234567E0` stores as `1.2345678901234567`,
+`1.7976931348623157E308` stores as `1.7976931348623157e308`, and `1E-320`
+stores as `1e-320`.
 
-`LONGTEXT`/`LONGBLOB` maximum sizes, exhaustive TEXT/BLOB coverage across all
-write forms, broader charset-specific byte validation, strict SQLSTATE details,
-`LOAD DATA`, and remaining numeric-to-string format fidelity outside the
-covered approximate numeric paths remain separate tasks.
+`LONGTEXT`/`LONGBLOB` maximum-size exhaustion, exhaustive TEXT/BLOB coverage
+across all write forms, broader charset-specific byte validation, strict
+SQLSTATE details, `LOAD DATA`, and remaining numeric-to-string format fidelity
+outside the covered approximate numeric paths remain separate tasks.
 
 ## Sources
 
@@ -109,6 +113,12 @@ MySQL stores the valid UTF-8 prefix before the first invalid byte sequence and
 emits warning 1366 for each affected character column. Binary columns such as
 `VARBINARY` preserve the raw bytes and do not emit these warnings.
 
+For the covered `LONGTEXT`/`LONGBLOB` slice, MySQL applies the same invalid
+UTF-8 handling to `LONGTEXT` while `LONGBLOB` stores the same source bytes
+without validation. The covered MySQL-observed case stores `UNHEX('61C362')`
+into `LONGTEXT` as `0x61` under `INSERT IGNORE`, and stores the paired
+`LONGBLOB` value as `0x61C362`.
+
 ## MyLite Design
 
 MyLite carries `CHARACTER_MAXIMUM_LENGTH` from the catalog into DML write-table
@@ -128,10 +138,10 @@ For binary string columns, MyLite applies the catalog length as bytes.
 `BINARY(N)` additionally pads shorter values with trailing `0x00` bytes before
 SQLite binding, while `VARBINARY(N)` preserves shorter values without padding.
 
-For the covered `TINYTEXT`, `TEXT`, and `MEDIUMTEXT` slices, MyLite applies the
-catalog length as a byte limit and truncates to a complete UTF-8 prefix. For
-the covered `TINYBLOB`, `BLOB`, and `MEDIUMBLOB` slices, MyLite applies the
-catalog length as raw bytes.
+For the covered `TINYTEXT`, `TEXT`, `MEDIUMTEXT`, and first `LONGTEXT` slices,
+MyLite applies the catalog length as a byte limit and truncates to a complete
+UTF-8 prefix. For the covered `TINYBLOB`, `BLOB`, `MEDIUMBLOB`, and first
+`LONGBLOB` slices, MyLite applies the catalog length as raw bytes.
 
 When a value exceeds the target length, MyLite:
 
@@ -162,8 +172,8 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
   and `BLOB`, including conflict-row preservation on strict failure
 - `TEXT` byte-limit truncation at a complete UTF-8 character boundary
 - approximate numeric value conversion to `VARCHAR` and `TEXT` for covered
-  `INSERT ... VALUES` and single-table `UPDATE` paths, including lowercase
-  exponent markers and no positive exponent plus sign
+  `INSERT ... VALUES` and single-table `UPDATE` paths, including `LONGTEXT` and
+  `LONGBLOB`, lowercase exponent markers, and no positive exponent plus sign
 - strict rejection, non-strict truncation, `INSERT IGNORE`, `REPLACE`, ODKU
   update assignments, and single-table `UPDATE` / `UPDATE IGNORE` for
   `MEDIUMTEXT` and `MEDIUMBLOB`
@@ -171,3 +181,6 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - strict invalid UTF-8 rejection for `utf8mb4` `VARCHAR`/`TEXT`, `INSERT
   IGNORE` and non-strict valid-prefix storage with warning 1366, `UPDATE
   IGNORE` demotion, and raw byte preservation for binary columns
+- strict invalid UTF-8 rejection for `utf8mb4` `LONGTEXT`, `INSERT IGNORE`
+  valid-prefix storage with warning 1366, and raw byte preservation for
+  `LONGBLOB`

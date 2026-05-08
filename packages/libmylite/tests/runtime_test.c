@@ -62038,6 +62038,10 @@ static int test_string_dml_coercion_execution(void) {
         {"1", "", "0", "", "0", "C3", "1"};
     static const char *const invalid_utf8_ignore_update_values[] =
         {"1", "", "0", "", "0", "61C362", "3"};
+    static const char *const invalid_long_lob_columns[] =
+        {"id", "lt_hex", "lt_len", "lb_hex", "lb_len"};
+    static const char *const invalid_long_lob_insert_ignore_values[] =
+        {"1", "61", "1", "61C362", "3"};
     static const char *const real_string_columns[] = {"id", "v", "v_len", "tx", "tx_len"};
     static const char *const real_string_values[] = {
         "1",
@@ -62059,6 +62063,19 @@ static int test_string_dml_coercion_execution(void) {
         "1.7976931348623157e308",
         "22",
         "1e-320",
+        "6",
+    };
+    static const char *const real_long_lob_columns[] = {"id", "lt", "lt_len", "lb_hex", "lb_len"};
+    static const char *const real_long_lob_values[] = {
+        "1",
+        "1.2345678901234567",
+        "18",
+        "312E32333435363738393031323334353637",
+        "18",
+        "2",
+        "1.7976931348623157e308",
+        "22",
+        "31652D333230",
         "6",
     };
     mylite_db *database = NULL;
@@ -62230,6 +62247,37 @@ static int test_string_dml_coercion_execution(void) {
         real_string_values,
         4,
         "real-to-string DML formatting"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE real_long_lob_values (id INT PRIMARY KEY, lt LONGTEXT, lb LONGBLOB)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO real_long_lob_values VALUES "
+        "(1, 1.2345678901234567E0, 1.2345678901234567E0), "
+        "(2, NULL, NULL)",
+        2,
+        "real-to-long-lob insert values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE real_long_lob_values SET "
+        "lt = 1.7976931348623157E308, lb = 1E-320 WHERE id = 2",
+        1,
+        "real-to-long-lob update values"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, lt, LENGTH(lt) AS lt_len, HEX(lb) AS lb_hex, LENGTH(lb) AS lb_len "
+        "FROM real_long_lob_values ORDER BY id",
+        real_long_lob_columns,
+        5,
+        real_long_lob_values,
+        2,
+        "real-to-long-lob DML formatting"
     );
 
     failures += execute_sql(
@@ -62504,6 +62552,66 @@ static int test_string_dml_coercion_execution(void) {
         invalid_utf8_ignore_update_values,
         1,
         "invalid utf8 update ignore stored prefix"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE invalid_utf8_long_lobs (id INT PRIMARY KEY, lt LONGTEXT, lb LONGBLOB) "
+        "DEFAULT CHARSET=utf8mb4",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO invalid_utf8_long_lobs VALUES (1, UNHEX('61C362'), UNHEX('61C362'))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect string value: '\\xC3b' for column 'lt' at row 1",
+        "strict invalid longtext utf8 insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "strict invalid longtext utf8 insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM invalid_utf8_long_lobs",
+        0,
+        "strict invalid longtext no inserted row"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO invalid_utf8_long_lobs "
+        "VALUES (1, UNHEX('61C362'), UNHEX('61C362'))",
+        1,
+        "insert ignore invalid longtext utf8"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "invalid longtext utf8 insert ignore warnings"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "invalid longtext utf8 insert ignore code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, HEX(lt) AS lt_hex, LENGTH(lt) AS lt_len, "
+        "HEX(lb) AS lb_hex, LENGTH(lb) AS lb_len FROM invalid_utf8_long_lobs",
+        invalid_long_lob_columns,
+        5,
+        invalid_long_lob_insert_ignore_values,
+        1,
+        "invalid longtext insert ignore stored prefix"
     );
 
     failures += execute_sql(

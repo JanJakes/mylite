@@ -403,7 +403,8 @@ static bool column_data_type_is_character_string(const char *data_type) {
 static bool column_data_type_is_text_bytes(const char *data_type) {
     return mylite_ascii_case_equal(data_type, "tinytext") ||
            mylite_ascii_case_equal(data_type, "text") ||
-           mylite_ascii_case_equal(data_type, "mediumtext");
+           mylite_ascii_case_equal(data_type, "mediumtext") ||
+           mylite_ascii_case_equal(data_type, "longtext");
 }
 
 static bool column_data_type_is_binary_string(const char *data_type) {
@@ -417,7 +418,8 @@ static bool column_data_type_is_fixed_binary_string(const char *data_type) {
 static bool column_data_type_is_blob_bytes(const char *data_type) {
     return mylite_ascii_case_equal(data_type, "tinyblob") ||
            mylite_ascii_case_equal(data_type, "blob") ||
-           mylite_ascii_case_equal(data_type, "mediumblob");
+           mylite_ascii_case_equal(data_type, "mediumblob") ||
+           mylite_ascii_case_equal(data_type, "longblob");
 }
 
 static int insert_value_to_string_text(

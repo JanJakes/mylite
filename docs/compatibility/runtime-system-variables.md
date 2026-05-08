@@ -999,8 +999,8 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `validate_password.number_count` | ❌ | Value, scope, SET, diagnostics |
 | `validate_password.policy` | ❌ | Value, scope, SET, diagnostics |
 | `validate_password.special_char_count` | ❌ | Value, scope, SET, diagnostics |
-| `version` | ❌ | Value, scope, SET, diagnostics |
-| `version_comment` | ❌ | Value, scope, SET, diagnostics |
+| `version` | 🟡 | Limited read-only scalar `SELECT @@version` with no scope or `global`; returns MyLite's engine version string, not an impersonated MySQL server version; no `session`/`local`, `SET`, `SHOW VARIABLES`, protocol handshake version reporting, or version compile variables |
+| `version_comment` | 🟡 | Limited read-only scalar `SELECT @@version_comment` with no scope or `global`; returns MyLite's fixed version comment; no MySQL build comment impersonation, `session`/`local`, `SET`, `SHOW VARIABLES`, protocol metadata, or version compile variables |
 | `version_compile_machine` | ❌ | Value, scope, SET, diagnostics |
 | `version_compile_os` | ❌ | Value, scope, SET, diagnostics |
 | `version_compile_zlib` | ❌ | Value, scope, SET, diagnostics |

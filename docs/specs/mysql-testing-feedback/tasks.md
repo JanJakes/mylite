@@ -204,8 +204,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       ODKU update assignments, single-table `UPDATE`, and joined `UPDATE`
       paths. Covered behavior includes integer half-away rounding, numeric
       string prefixes, strict truncation/incorrect-value rejection, non-strict
-      warning coercion, decimal scale rounding notes, and DECIMAL result text
-      shape.
+      warning coercion, decimal scale rounding notes, declared `DECIMAL(M,D)`
+      strict/non-strict/`INSERT IGNORE` range clipping after rounding, and
+      DECIMAL result text shape.
 - [x] Align `BIGINT UNSIGNED` DML assignment values above signed 64-bit range
       for currently supported write paths. Covered behavior includes exact
       endpoint storage, strict overflow rejection, non-strict and `IGNORE`
@@ -218,6 +219,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       strict error 1264 for `-9223372036854775809`, non-strict clipping to the
       signed endpoint, negative unsigned clipping to zero, and underflow range
       warnings before truncation warnings for numeric strings.
+- [x] Align first-slice declared `DECIMAL(M,D)` DML range coercion. Covered
+      behavior includes strict error 1264, non-strict endpoint clipping,
+      post-round overflow such as `999.995`, `INSERT IGNORE` demotion, and
+      single-table `UPDATE` assignment clipping for explicit-id rows.
 - [x] Align `CHAR`/`VARCHAR` length coercion in strict and non-strict modes for
       currently supported `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`,
       ODKU update assignments, single-table `UPDATE`, and joined `UPDATE`
@@ -247,10 +252,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       not-null, duplicate-key, and foreign-key slices plus joined
       `UPDATE IGNORE` assignment coercion, explicit `NULL` not-null coercion,
       and duplicate-key slices. Signed and unsigned `TINYINT`, `SMALLINT`,
-      `MEDIUMINT`, `INT`, and covered `BIGINT` range
-      clipping, plus first-slice `FLOAT`/`DOUBLE` target clipping, is covered
-      for strict, non-strict, `INSERT IGNORE`, and single-table `UPDATE IGNORE`
-      paths. `TINYTEXT` and `TINYBLOB`
+      `MEDIUMINT`, `INT`, and covered `BIGINT` range clipping, first-slice
+      `DECIMAL(M,D)` endpoint clipping, plus first-slice `FLOAT`/`DOUBLE`
+      target clipping, is covered for strict, non-strict, `INSERT IGNORE`, and
+      single-table `UPDATE IGNORE` paths. `TINYTEXT` and `TINYBLOB`
       255-byte write limits and plain `TEXT`/`BLOB` 65,535-byte write limits
       are now covered for strict and non-strict `INSERT ... VALUES`, `REPLACE`,
       `REPLACE ... SET`, `INSERT IGNORE`, strict single-table `UPDATE`, and

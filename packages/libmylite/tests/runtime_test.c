@@ -62534,6 +62534,29 @@ static int test_numeric_dml_coercion_execution(void) {
     static const char *const numeric_nul_count_values[] = {"0"};
     static const char *const numeric_nul_columns[] = {"id", "i", "r"};
     static const char *const numeric_nul_values[] = {"1", "12", "12.0"};
+    static const char *const decimal_range_columns[] = {"id", "d"};
+    static const char *const decimal_range_insert_values[] = {
+        "1",
+        "999.99",
+        "2",
+        "-999.99",
+        "3",
+        "999.99",
+        "4",
+        "-999.99",
+    };
+    static const char *const decimal_range_final_values[] = {
+        "1",
+        "999.99",
+        "2",
+        "999.99",
+        "3",
+        "999.99",
+        "4",
+        "-999.99",
+        "5",
+        "999.99",
+    };
     static const char *const strict_insert_values[] = {"1", "5", "-5", "4.57"};
     static const char *const non_strict_insert_values[] = {
         "1",
@@ -62565,6 +62588,11 @@ static int test_numeric_dml_coercion_execution(void) {
     failures += execute_sql(
         database,
         "CREATE TABLE numeric_nul_values (id INT PRIMARY KEY, i INT, r DOUBLE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE decimal_ranges (id INT PRIMARY KEY, d DECIMAL(5,2))",
         MYLITE_DONE
     );
 
@@ -62662,7 +62690,71 @@ static int test_numeric_dml_coercion_execution(void) {
         "strict embedded NUL numeric rollback"
     );
 
+    failures +=
+        prepare_sql(database, "INSERT INTO decimal_ranges VALUES (1, 999999)", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 'd' at row 1",
+        "strict decimal range insert error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict decimal range insert code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS rows_left FROM decimal_ranges",
+        numeric_nul_count_columns,
+        1,
+        numeric_nul_count_values,
+        1,
+        "strict decimal range rollback"
+    );
+
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO decimal_ranges VALUES "
+        "(1, 999999), (2, -999999), (3, 999.995), (4, -999.995)",
+        4,
+        "non-strict decimal range insert"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 4, "non-strict decimal range warning count");
+    for (int warning = 0; warning < 4; ++warning) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, warning),
+            mysql_warning_data_out_of_range,
+            "non-strict decimal range warning code"
+        );
+    }
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d FROM decimal_ranges ORDER BY id",
+        decimal_range_columns,
+        2,
+        decimal_range_insert_values,
+        4,
+        "non-strict decimal range clipped values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE decimal_ranges SET d = 999999 WHERE id = 2",
+        1,
+        "non-strict decimal range update"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "non-strict decimal update warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "non-strict decimal update warning code"
+    );
+
     failures += execute_sql_expect_done_affected(
         database,
         "INSERT INTO numeric_nul_values VALUES ("
@@ -62756,6 +62848,48 @@ static int test_numeric_dml_coercion_execution(void) {
     failures += expect_int(mylite_warning_count(database), 3, "numeric odku warning count");
 
     failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "UPDATE decimal_ranges SET d = -999999 WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Out of range value for column 'd' at row 1",
+        "strict decimal range update error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "strict decimal range update code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO decimal_ranges VALUES (5, 999999)",
+        1,
+        "strict insert ignore decimal range"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 1, "insert ignore decimal range warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_out_of_range,
+        "insert ignore decimal range warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d FROM decimal_ranges ORDER BY id",
+        decimal_range_columns,
+        2,
+        decimal_range_final_values,
+        5,
+        "decimal range final clipped values"
+    );
+
     failures += prepare_sql(
         database,
         "UPDATE numeric_values SET i = '4.5x' WHERE id = 2",

@@ -166,6 +166,7 @@ struct mylite_insert_table_column {
     char *character_set_name;
     char *extra;
     uint64_t character_maximum_length;
+    uint64_t numeric_precision;
     uint64_t numeric_scale;
     bool nullable;
     bool auto_increment;
@@ -173,6 +174,7 @@ struct mylite_insert_table_column {
     bool on_update_current_timestamp;
     bool has_default;
     bool has_character_maximum_length;
+    bool has_numeric_precision;
     bool has_numeric_scale;
 };
 

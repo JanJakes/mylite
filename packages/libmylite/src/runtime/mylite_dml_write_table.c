@@ -180,6 +180,7 @@ static int load_insert_column_from_catalog_row(
     }
 
     column.character_maximum_length = row->character_maximum_length;
+    column.numeric_precision = row->numeric_precision;
     column.numeric_scale = row->numeric_scale;
     column.has_default = row->has_default;
     column.auto_increment = mylite_text_contains_word(column.extra, "auto_increment");
@@ -189,6 +190,7 @@ static int load_insert_column_from_catalog_row(
         mylite_text_contains_word(column.extra, "update") &&
         mylite_text_contains_word(column.extra, "CURRENT_TIMESTAMP");
     column.has_character_maximum_length = row->has_character_maximum_length;
+    column.has_numeric_precision = row->has_numeric_precision;
     column.has_numeric_scale = row->has_numeric_scale;
     if (column.auto_increment) {
         load_context->table->has_auto_increment = true;

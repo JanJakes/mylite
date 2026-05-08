@@ -13,11 +13,11 @@ decimal columns across these DML paths:
 - joined `UPDATE`
 
 This slice now includes signed and unsigned range clipping for `TINYINT`,
-`SMALLINT`, `MEDIUMINT`, `INT`, and `BIGINT` write paths, plus `FLOAT` and
-`DOUBLE` target range clipping for covered assignment paths. It also stores
-exact `BIGINT UNSIGNED` assignment values above signed 64-bit range for covered
-DML paths. String length truncation, `LOAD DATA`, and protocol SQLSTATE details
-remain separate tasks.
+`SMALLINT`, `MEDIUMINT`, `INT`, and `BIGINT` write paths, declared
+`DECIMAL(M,D)` range clipping, plus `FLOAT` and `DOUBLE` target range clipping
+for covered assignment paths. It also stores exact `BIGINT UNSIGNED` assignment
+values above signed 64-bit range for covered DML paths. String length
+truncation, `LOAD DATA`, and protocol SQLSTATE details remain separate tasks.
 
 ## Sources
 
@@ -85,6 +85,14 @@ stores as `0.00` with warning 1366 in non-strict mode and rejects with error
 1366 in strict mode; incorrect integer and decimal diagnostics include the
 offending source text, matching MySQL's 1366 message shape.
 
+For `DECIMAL(5,2)` values outside the declared range, strict mode rejects with
+error 1264 and non-strict mode clips to `999.99` or `-999.99` with warning
+1264. `INSERT IGNORE` demotes the strict range failure to warning 1264 and
+stores the clipped endpoint. Values that round beyond the endpoint, such as
+`999.995`, also report range warning 1264 rather than a scale-rounding note.
+When a decimal string has both trailing garbage and a range condition,
+non-strict MySQL reports the trailing-garbage note before the range warning.
+
 For approximate numeric columns, strict mode rejects values outside the target
 column range with error 1264. Non-strict mode and `INSERT IGNORE` clip to the
 nearest endpoint with warning 1264. Verified endpoints are the single-precision
@@ -127,6 +135,9 @@ For decimal columns, MyLite:
 - parses numeric and string inputs as decimal-compatible real values for this
   slice
 - rounds to the catalog numeric scale
+- clips rounded values outside the catalog numeric precision/scale envelope to
+  the nearest endpoint in non-strict and `IGNORE` paths, and rejects them in
+  strict paths with 1264
 - formats the stored value with exactly the target scale
 - records note 1265 when scale rounding changes the value
 - treats no numeric prefix as incorrect decimal value 1366
@@ -173,5 +184,7 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - strict rejection and non-strict note coercion for decimal strings with
   trailing characters
 - strict rejection and non-strict warning coercion for incorrect decimal strings
+- strict rejection, non-strict clipping, and `INSERT IGNORE` warning demotion
+  for declared `DECIMAL(M,D)` range endpoints after scale rounding
 - `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`, ODKU update assignments,
   single-table `UPDATE`, and joined `UPDATE`

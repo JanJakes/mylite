@@ -341,6 +341,14 @@ static double decimal_scale_factor(uint64_t scale);
 
 static uint64_t decimal_scale_for_column(const struct mylite_insert_table_column *column);
 
+static bool decimal_max_abs_for_column(
+    const struct mylite_insert_table_column *column,
+    uint64_t scale,
+    double *out_maximum
+);
+
+static double decimal_power10(uint64_t exponent);
+
 static int set_decimal_output(
     double value,
     uint64_t scale,
@@ -1273,18 +1281,63 @@ static int coerce_decimal_double(
 ) {
     uint64_t scale = decimal_scale_for_column(column);
     double rounded = round_decimal_to_scale(value, scale);
+    double maximum = 0.0;
+    bool has_range = decimal_max_abs_for_column(column, scale, &maximum);
+    bool out_of_range = has_range && (isinf(rounded) || fabs(rounded) > maximum);
     int status = handle_numeric_problem(database, column, problem, row_number, ignore);
 
     if (status != MYLITE_OK) {
         return status;
     }
-    if (fabs(value - rounded) > 0.0) {
+    if (out_of_range) {
+        status = handle_numeric_problem(
+            database,
+            column,
+            MYLITE_DML_NUMERIC_PROBLEM_OUT_OF_RANGE,
+            row_number,
+            ignore
+        );
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        rounded = signbit(rounded) ? -maximum : maximum;
+    } else if (fabs(value - rounded) > 0.0) {
         status = append_decimal_scale_note(database, column, row_number);
         if (status != MYLITE_OK) {
             return status;
         }
     }
     return set_decimal_output(rounded, scale, out_output);
+}
+
+static bool decimal_max_abs_for_column(
+    const struct mylite_insert_table_column *column,
+    uint64_t scale,
+    double *out_maximum
+) {
+    uint64_t integer_digits = 0U;
+    double integer_limit = 0.0;
+    double scale_factor = 0.0;
+
+    if (column == NULL || out_maximum == NULL || !column->has_numeric_precision ||
+        column->numeric_precision < scale) {
+        return false;
+    }
+
+    integer_digits = column->numeric_precision - scale;
+    integer_limit = decimal_power10(integer_digits);
+    scale_factor = decimal_scale_factor(scale);
+    *out_maximum = integer_limit - (1.0 / scale_factor);
+    return isfinite(*out_maximum) && *out_maximum >= 0.0;
+}
+
+static double decimal_power10(uint64_t exponent) {
+    double value = 1.0;
+
+    for (uint64_t index = 0U; index < exponent && index < 308U; ++index) {
+        value *= 10.0;
+    }
+    return value;
 }
 
 static int coerce_approximate_double(

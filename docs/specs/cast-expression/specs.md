@@ -221,6 +221,7 @@ returns `NULL` without warnings.
 | `CAST('1.23456789' AS FLOAT8)` | `1.23456789` | none |
 | `CAST('x' AS DOUBLE)` | `0` | 1292 truncated double |
 | `CAST('12x' AS FLOAT)` | `12` | 1292 truncated double |
+| `CAST('3.4028234663852886e39' AS FLOAT)` | error 1690 | `DOUBLE value is out of range in 'cast('3.4028234663852886e39' as float)'` |
 | `CAST(NULL AS FLOAT)` | `NULL` | none |
 
 Temporal casts use MySQL's temporal parser and target fractional-second

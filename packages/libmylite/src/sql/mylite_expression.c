@@ -893,6 +893,7 @@ static int eval_decimal_cast(
 );
 
 static int eval_float_cast(
+    const struct mylite_sql_ast_node *source,
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
     bool real_as_float,
@@ -4135,7 +4136,10 @@ static bool cast_float_target_is_real_as_float(
 
 static int set_float_cast_value(double value, struct mylite_expression_value *out_value);
 
-static int append_float_cast_out_of_range_error(struct mylite_expression_warnings *warnings);
+static int append_float_cast_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *source
+);
 
 static double absolute_real_value(double value);
 
@@ -5513,6 +5517,7 @@ static int eval_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_FLOAT:
     case MYLITE_SQL_AST_COLUMN_TYPE_DOUBLE:
         status = eval_float_cast(
+            source,
             target,
             &value,
             context != NULL && context->real_as_float,
@@ -5775,6 +5780,7 @@ static int eval_decimal_cast(
 }
 
 static int eval_float_cast(
+    const struct mylite_sql_ast_node *source,
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
     bool real_as_float,
@@ -5797,7 +5803,7 @@ static int eval_float_cast(
         return 0;
     }
     if (number.real_value > (double)FLT_MAX || number.real_value < -(double)FLT_MAX) {
-        status = append_float_cast_out_of_range_error(warnings);
+        status = append_float_cast_out_of_range_error(warnings, source);
         return status == 0 ? MYLITE_EXEC_ERROR : status;
     }
     return set_float_cast_value((double)(float)number.real_value, out_value);
@@ -25963,13 +25969,48 @@ static int append_cot_out_of_range_error(struct mylite_expression_warnings *warn
     );
 }
 
-static int append_float_cast_out_of_range_error(struct mylite_expression_warnings *warnings) {
-    return mylite_expression_warnings_append_condition(
+static int append_float_cast_out_of_range_error(
+    struct mylite_expression_warnings *warnings,
+    const struct mylite_sql_ast_node *source
+) {
+    static const char prefix[] = "DOUBLE value is out of range in 'cast(";
+    static const char suffix[] = " as float)'";
+    static const char fallback[] = "DOUBLE value is out of range in 'cast()'";
+    size_t prefix_length = sizeof(prefix) - 1U;
+    size_t suffix_length = sizeof(suffix) - 1U;
+    size_t source_length = source == NULL || source->span.text == NULL ? 0U : source->span.length;
+    const char *source_text =
+        source == NULL || source->span.text == NULL ? NULL : source->span.text;
+    char *message = NULL;
+    int status = 0;
+
+    if (source_text == NULL) {
+        return mylite_expression_warnings_append_condition(
+            warnings,
+            MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
+            MYLITE_WARNING_OUT_OF_RANGE,
+            fallback
+        );
+    }
+    if (source_length > SIZE_MAX - prefix_length - suffix_length - 1U) {
+        return -1;
+    }
+    message = malloc(prefix_length + source_length + suffix_length + 1U);
+    if (message == NULL) {
+        return -1;
+    }
+    memcpy(message, prefix, prefix_length);
+    memcpy(message + prefix_length, source_text, source_length);
+    memcpy(message + prefix_length + source_length, suffix, suffix_length);
+    message[prefix_length + source_length + suffix_length] = '\0';
+    status = mylite_expression_warnings_append_condition(
         warnings,
         MYLITE_EXPRESSION_WARNING_LEVEL_ERROR,
         MYLITE_WARNING_OUT_OF_RANGE,
-        "DOUBLE value is out of range in 'cast()'"
+        message
     );
+    free(message);
+    return status;
 }
 
 static int append_angle_conversion_out_of_range_error(

@@ -37571,6 +37571,9 @@ static int test_cast_expression_execution(void) {
     static const unsigned char binary_padded[] = {'a', '\0', '\0'};
     static const unsigned char binary_truncated[] = {'a', 'b', 'c'};
     static const unsigned char binary_euro_truncated[] = {0xE2, 0x82, 0xAC};
+    static const char float_cast_out_of_range_message[] =
+        "DOUBLE value is out of range in "
+        "'cast('3.4028234663852886e39' as float)'";
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -37878,6 +37881,44 @@ static int test_cast_expression_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST invalid float done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT CAST('3.4028234663852886e39' AS FLOAT) AS fover",
+        MYLITE_EXEC_ERROR,
+        float_cast_out_of_range_message,
+        "CAST float out of range"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "CAST float range warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_out_of_range,
+        "CAST float range warning code"
+    );
+    failures += expect_string(
+        mylite_warning_message(database, 0),
+        float_cast_out_of_range_message,
+        "CAST float range warning message"
+    );
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT CONVERT('3.4028234663852886e39', FLOAT) AS fover",
+        MYLITE_EXEC_ERROR,
+        float_cast_out_of_range_message,
+        "CONVERT float out of range"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "CONVERT float range warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_out_of_range,
+        "CONVERT float range warning code"
+    );
+    failures += expect_string(
+        mylite_warning_message(database, 0),
+        float_cast_out_of_range_message,
+        "CONVERT float range warning message"
+    );
 
     failures += prepare_sql(
         database,

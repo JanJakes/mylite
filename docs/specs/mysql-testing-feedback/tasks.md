@@ -304,7 +304,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       diagnostics. Scalar `CAST`/`CONVERT` to signed and unsigned integer
       targets now reject negative approximate values below the signed 64-bit
       floor with MySQL-style 1690 diagnostics while preserving MySQL's
-      positive approximate overflow clipping behavior. Hex and bit literal
+      positive approximate overflow clipping behavior. Scalar `FLOAT` cast
+      range errors now include MySQL-shaped rendered `cast(... as float)`
+      expression text in error 1690 diagnostics. Hex and bit literal
       `CAST` / `CONVERT` plus covered arithmetic, comparison, and bitwise
       numeric contexts now use the literal's numeric value instead of the
       decoded binary string bytes.

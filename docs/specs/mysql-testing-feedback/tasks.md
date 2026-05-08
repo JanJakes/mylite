@@ -426,6 +426,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Table-backed `DECIMAL` arithmetic with exact operands now reports
       MySQL-shaped `NEWDECIMAL` descriptors for the covered `+`, `-`, and `*`
       result columns.
+      `CASE` result metadata now preserves binary string metadata for
+      `VARBINARY` arms and MySQL-shaped binary collation for mixed
+      binary/text result arms.
       Standalone `VALUES ROW(...)` result metadata now has MySQL-verified
       regression coverage for zero-row mixed numeric/string descriptors,
       character-width widening, and multi-column numeric/string rows.

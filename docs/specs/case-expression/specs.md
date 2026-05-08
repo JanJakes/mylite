@@ -240,12 +240,14 @@ Verified `mysql --column-type-info -vvv` examples:
 | `CASE WHEN 1 THEN NULL END AS only_null` | `NULL` | `0` | `0` | `binary` | nullable |
 | `CASE WHEN n > 0 THEN s ELSE 'none' END AS case_table_string` | `VAR_STRING` | `80` | `31` | `utf8mb4_0900_ai_ci` | nullable |
 | `CASE n WHEN 1 THEN n ELSE nullable END AS case_table_int` | `LONG` | `11` | `0` | `binary` | nullable `BINARY NUM` |
+| `CASE WHEN 1 THEN b ELSE b END AS case_bin_col`, with `b VARBINARY(8)` | `VAR_STRING` | `8` | `31` | `binary` | nullable `BINARY` |
+| `CASE WHEN 1 THEN b ELSE s END AS case_mixed_bin_text`, with `b VARBINARY(8)` and `s VARCHAR(8)` | `VAR_STRING` | `32` | `31` | `binary` | nullable `BINARY` |
 
 Initial MyLite implementation should reuse existing descriptor inference and
 extend it with a CASE result aggregation helper. It may stay conservative for
 currently deferred type families, but it should match the verified scalar
-integer, decimal, string, `NULL`, charset, decimals, and nullability cases
-covered by implementation tests.
+integer, decimal, string, binary string, mixed binary/text, `NULL`, charset,
+decimals, and nullability cases covered by implementation tests.
 
 Default output labels preserve the source expression text when no alias is
 provided. Verified labels include:
@@ -420,6 +422,8 @@ Assert symbolic descriptor fields for the verified metadata examples above:
 - integer CASE returns `LONGLONG` or table-column integer type, binary
   collation, numeric flags
 - decimal CASE returns `NEWDECIMAL` with the verified scale
+- CASE with any binary string result arm returns binary string metadata,
+  including mixed `VARBINARY`/`VARCHAR` arms
 - literal `NULL` and omitted `ELSE` make the expression nullable
 - all-`NULL` result expressions produce the `NULL` metadata type
 - CASE expressions have empty origin schema/table/column metadata

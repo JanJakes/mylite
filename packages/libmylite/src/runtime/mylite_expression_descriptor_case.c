@@ -10,6 +10,7 @@ struct mylite_case_descriptor_aggregate {
     bool has_result;
     bool has_non_null_result;
     bool has_text_result;
+    bool has_binary_text_result;
     bool has_decimal_result;
     bool has_double_result;
     bool nullable;
@@ -26,6 +27,10 @@ static int infer_case_result_descriptor(
 static void aggregate_case_result_descriptor(
     const struct mylite_field_descriptor *descriptor,
     struct mylite_case_descriptor_aggregate *aggregate
+);
+
+static bool case_result_descriptor_uses_binary_text(
+    const struct mylite_field_descriptor *descriptor
 );
 
 static struct mylite_field_descriptor finalize_case_descriptor(
@@ -140,6 +145,9 @@ static void aggregate_case_result_descriptor(
 
     if (mylite_expression_descriptor_has_text_result(descriptor)) {
         aggregate->has_text_result = true;
+        if (case_result_descriptor_uses_binary_text(descriptor)) {
+            aggregate->has_binary_text_result = true;
+        }
     }
     if (mylite_expression_descriptor_has_decimal_result(descriptor)) {
         aggregate->has_decimal_result = true;
@@ -147,6 +155,15 @@ static void aggregate_case_result_descriptor(
     if (mylite_expression_descriptor_has_double_result(descriptor)) {
         aggregate->has_double_result = true;
     }
+}
+
+static bool case_result_descriptor_uses_binary_text(
+    const struct mylite_field_descriptor *descriptor
+) {
+    if (!mylite_expression_descriptor_has_text_result(descriptor)) {
+        return false;
+    }
+    return descriptor->charset_id == mylite_mysql_binary_charset_id;
 }
 
 static struct mylite_field_descriptor finalize_case_descriptor(
@@ -159,12 +176,18 @@ static struct mylite_field_descriptor finalize_case_descriptor(
         return mylite_expression_descriptor_null();
     }
     if (aggregate->has_text_result) {
+        unsigned int flags = aggregate->has_binary_text_result ? MYLITE_FIELD_FLAG_BINARY : 0U;
+        unsigned int charset_id =
+            aggregate->has_binary_text_result
+                ? mylite_mysql_binary_charset_id
+                : mylite_expression_descriptor_connection_charset_id(database);
+
         descriptor = (struct mylite_field_descriptor){
             .type = MYLITE_FIELD_TYPE_VAR_STRING,
-            .flags = 0U,
+            .flags = flags,
             .length = aggregate->descriptor.length,
             .decimals = mylite_mysql_not_fixed_decimals,
-            .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+            .charset_id = charset_id,
             .nullable = aggregate->nullable,
         };
     } else if (aggregate->has_decimal_result) {

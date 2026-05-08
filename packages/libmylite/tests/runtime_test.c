@@ -35396,6 +35396,60 @@ static int test_case_expression_execution(void) {
          0U,
          0},
     };
+    static const struct expected_result_metadata binary_metadata[] = {
+        {"case_bin_col",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         8U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"case_mixed_bin_text",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         32U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"case_mixed_text_bin",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         32U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"case_null_bin",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         8U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
     static const char *const id_column[] = {"id"};
     static const char *const id_label_columns[] = {"id", "label"};
     static const char *const projection_values[] = {
@@ -35553,6 +35607,39 @@ static int test_case_expression_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CASE metadata row");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CASE metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE case_bin_meta ("
+        "id INT PRIMARY KEY, "
+        "b VARBINARY(8), "
+        "s VARCHAR(8))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO case_bin_meta VALUES (1, X'616263', 'abc')",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "SELECT CASE WHEN 1 THEN b ELSE b END AS case_bin_col, "
+        "CASE WHEN 1 THEN b ELSE s END AS case_mixed_bin_text, "
+        "CASE WHEN 1 THEN s ELSE b END AS case_mixed_text_bin, "
+        "CASE WHEN 1 THEN NULL ELSE b END AS case_null_bin "
+        "FROM case_bin_meta LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        binary_metadata,
+        (int)(sizeof(binary_metadata) / sizeof(binary_metadata[0])),
+        "CASE binary metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CASE binary metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 

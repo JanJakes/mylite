@@ -14,6 +14,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct create_unique_text_compare {
+    bool case_insensitive;
+    bool pad_space;
+};
+
 static int resolve_index_ddl_schema(
     mylite_db *database,
     const char *selected_schema,
@@ -66,7 +71,7 @@ static void append_create_unique_index_part_expression(
     const struct mylite_create_table_key_part *key_part
 );
 
-static bool alter_column_uses_case_insensitive_text_compare(
+static struct create_unique_text_compare alter_column_text_compare(
     const struct mylite_alter_table_column *column
 );
 
@@ -643,10 +648,13 @@ static void append_create_unique_index_part_expression(
     const struct mylite_create_table_key_part *key_part
 ) {
     const char *column_name = alter_table_column_physical_name(column);
-    bool case_insensitive = alter_column_uses_case_insensitive_text_compare(column);
+    struct create_unique_text_compare compare = alter_column_text_compare(column);
 
-    if (case_insensitive) {
+    if (compare.case_insensitive) {
         sqlite3_str_append(sql, "lower(", (int)strlen("lower("));
+    }
+    if (compare.pad_space) {
+        sqlite3_str_append(sql, "rtrim(", (int)strlen("rtrim("));
     }
     if (key_part->has_prefix_length) {
         sqlite3_str_appendf(
@@ -658,19 +666,32 @@ static void append_create_unique_index_part_expression(
     } else {
         sqlite3_str_appendf(sql, "\"%w\"", column_name);
     }
-    if (case_insensitive) {
+    if (compare.pad_space) {
+        sqlite3_str_append(sql, ",' ')", (int)strlen(",' ')"));
+    }
+    if (compare.case_insensitive) {
         sqlite3_str_append(sql, ")", 1);
     }
 }
 
-static bool alter_column_uses_case_insensitive_text_compare(
+static struct create_unique_text_compare alter_column_text_compare(
     const struct mylite_alter_table_column *column
 ) {
-    return column != NULL && mylite_column_definition_uses_case_insensitive_text_compare(
-                                 column->data_type,
-                                 column->character_set_name,
-                                 column->collation_name
-                             );
+    if (column == NULL) {
+        return (struct create_unique_text_compare){0};
+    }
+    return (struct create_unique_text_compare){
+        .case_insensitive = mylite_column_definition_uses_case_insensitive_text_compare(
+            column->data_type,
+            column->character_set_name,
+            column->collation_name
+        ),
+        .pad_space = mylite_column_definition_uses_pad_space_text_compare(
+            column->data_type,
+            column->character_set_name,
+            column->collation_name
+        ),
+    };
 }
 
 static const char *alter_table_column_physical_name(

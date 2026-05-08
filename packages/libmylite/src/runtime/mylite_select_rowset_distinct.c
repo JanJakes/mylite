@@ -1,15 +1,21 @@
 #include "mylite_select_rowset_distinct.h"
 
+#include "mylite_charset.h"
 #include "mylite_field_descriptor.h"
 #include "mylite_metadata_constants.h"
 #include "mylite_metadata_types.h"
 #include "mylite_select_compare.h"
+#include "mylite_span.h"
 
 #include <stddef.h>
 
 static size_t expression_value_text_length(const struct mylite_expression_value *value);
 
 static bool table_select_text_descriptor_is_binary(
+    const struct mylite_field_descriptor *descriptor
+);
+
+static bool table_select_text_descriptor_uses_pad_space(
     const struct mylite_field_descriptor *descriptor
 );
 
@@ -73,7 +79,8 @@ int mylite_select_compare_distinct_values(
         return 1;
     }
     if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT && right->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
-        table_select_text_descriptor_is_binary(descriptor)) {
+        table_select_text_descriptor_is_binary(descriptor) &&
+        !table_select_text_descriptor_uses_pad_space(descriptor)) {
         return mylite_select_compare_binary_text_values(
             left->text_value,
             expression_value_text_length(left),
@@ -113,4 +120,13 @@ static bool table_select_text_descriptor_is_binary(
     default:
         return false;
     }
+}
+
+static bool table_select_text_descriptor_uses_pad_space(
+    const struct mylite_field_descriptor *descriptor
+) {
+    const struct mylite_collation *collation =
+        descriptor == NULL ? NULL : mylite_collation_lookup_id((int)descriptor->charset_id);
+
+    return collation != NULL && mylite_ascii_case_equal(collation->pad_attribute, "PAD SPACE");
 }

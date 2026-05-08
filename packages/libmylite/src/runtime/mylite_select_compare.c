@@ -10,12 +10,22 @@ static int compare_select_text_values(
     const char *left,
     size_t left_length,
     const char *right,
-    size_t right_length
+    size_t right_length,
+    bool case_sensitive,
+    bool pad_space_compare
 );
 
 static bool expression_value_uses_binary_text_compare(const struct mylite_expression_value *value);
 
+static bool expression_value_uses_binary_text_charset(const struct mylite_expression_value *value);
+
+static bool expression_value_uses_pad_space_text_compare(
+    const struct mylite_expression_value *value
+);
+
 static size_t expression_value_text_length(const struct mylite_expression_value *value);
+
+static size_t trimmed_text_length(const char *text, size_t length);
 
 static size_t nullable_text_length(const char *text);
 
@@ -36,20 +46,21 @@ int mylite_select_compare_values(
         return 1;
     }
     if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT && right->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
-        if (expression_value_uses_binary_text_compare(left) ||
-            expression_value_uses_binary_text_compare(right)) {
-            return mylite_select_compare_binary_text_values(
-                left->text_value,
-                expression_value_text_length(left),
-                right->text_value,
-                expression_value_text_length(right)
-            );
-        }
+        bool binary_compare = expression_value_uses_binary_text_compare(left) ||
+                              expression_value_uses_binary_text_compare(right);
+        bool binary_charset_compare = expression_value_uses_binary_text_charset(left) ||
+                                      expression_value_uses_binary_text_charset(right);
+        bool pad_space_compare =
+            !binary_charset_compare && (expression_value_uses_pad_space_text_compare(left) ||
+                                        expression_value_uses_pad_space_text_compare(right));
+
         return compare_select_text_values(
             left->text_value,
             expression_value_text_length(left),
             right->text_value,
-            expression_value_text_length(right)
+            expression_value_text_length(right),
+            binary_compare,
+            pad_space_compare
         );
     }
     if (left->kind == MYLITE_EXPRESSION_VALUE_REAL || right->kind == MYLITE_EXPRESSION_VALUE_REAL) {
@@ -80,7 +91,9 @@ int mylite_select_compare_values(
             left_text,
             nullable_text_length(left_text),
             right_text,
-            nullable_text_length(right_text)
+            nullable_text_length(right_text),
+            false,
+            false
         );
 
         free(left_text);
@@ -119,7 +132,9 @@ static int compare_select_text_values(
     const char *left,
     size_t left_length,
     const char *right,
-    size_t right_length
+    size_t right_length,
+    bool case_sensitive,
+    bool pad_space_compare
 ) {
     size_t index = 0U;
     size_t compare_length = 0U;
@@ -132,15 +147,19 @@ static int compare_select_text_values(
         right = "";
         right_length = 0U;
     }
+    if (pad_space_compare) {
+        left_length = trimmed_text_length(left, left_length);
+        right_length = trimmed_text_length(right, right_length);
+    }
     compare_length = left_length < right_length ? left_length : right_length;
     while (index < compare_length) {
         unsigned char left_byte = (unsigned char)left[index];
         unsigned char right_byte = (unsigned char)right[index];
 
-        if (left_byte >= 'A' && left_byte <= 'Z') {
+        if (!case_sensitive && left_byte >= 'A' && left_byte <= 'Z') {
             left_byte = (unsigned char)(left_byte - 'A' + 'a');
         }
-        if (right_byte >= 'A' && right_byte <= 'Z') {
+        if (!case_sensitive && right_byte >= 'A' && right_byte <= 'Z') {
             right_byte = (unsigned char)(right_byte - 'A' + 'a');
         }
         if (left_byte != right_byte) {
@@ -153,7 +172,20 @@ static int compare_select_text_values(
 
 static bool expression_value_uses_binary_text_compare(const struct mylite_expression_value *value) {
     return value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+           (value->binary_text_compare ||
+            value->text_charset == MYLITE_EXPRESSION_TEXT_CHARSET_BINARY);
+}
+
+static bool expression_value_uses_binary_text_charset(const struct mylite_expression_value *value) {
+    return value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
            value->text_charset == MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
+}
+
+static bool expression_value_uses_pad_space_text_compare(
+    const struct mylite_expression_value *value
+) {
+    return value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+           value->pad_space_text_compare;
 }
 
 static size_t expression_value_text_length(const struct mylite_expression_value *value) {
@@ -161,6 +193,16 @@ static size_t expression_value_text_length(const struct mylite_expression_value 
         return 0U;
     }
     return value->text_length;
+}
+
+static size_t trimmed_text_length(const char *text, size_t length) {
+    if (text == NULL) {
+        return 0U;
+    }
+    while (length > 0U && text[length - 1U] == ' ') {
+        --length;
+    }
+    return length;
 }
 
 static size_t nullable_text_length(const char *text) {

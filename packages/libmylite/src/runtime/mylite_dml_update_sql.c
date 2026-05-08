@@ -10,6 +10,11 @@
 #include <stdint.h>
 #include <string.h>
 
+struct update_unique_text_compare {
+    bool case_insensitive;
+    bool pad_space;
+};
+
 static int bind_update_value(
     sqlite3_stmt *stmt,
     int index,
@@ -26,16 +31,16 @@ static void append_update_unique_stored_part(
     sqlite3_str *sql,
     const struct mylite_insert_table_column *column,
     uint64_t prefix_length,
-    bool case_insensitive
+    struct update_unique_text_compare compare
 );
 
 static void append_update_unique_bound_part(
     sqlite3_str *sql,
     uint64_t prefix_length,
-    bool case_insensitive
+    struct update_unique_text_compare compare
 );
 
-static bool update_unique_column_uses_case_insensitive_text_compare(
+static struct update_unique_text_compare update_unique_column_text_compare(
     const struct mylite_insert_table_column *column
 );
 
@@ -180,21 +185,24 @@ static void append_update_unique_part_comparison(
     const struct mylite_insert_table_column *column,
     uint64_t prefix_length
 ) {
-    bool case_insensitive = update_unique_column_uses_case_insensitive_text_compare(column);
+    struct update_unique_text_compare compare = update_unique_column_text_compare(column);
 
-    append_update_unique_stored_part(sql, column, prefix_length, case_insensitive);
+    append_update_unique_stored_part(sql, column, prefix_length, compare);
     sqlite3_str_append(sql, " = ", (int)strlen(" = "));
-    append_update_unique_bound_part(sql, prefix_length, case_insensitive);
+    append_update_unique_bound_part(sql, prefix_length, compare);
 }
 
 static void append_update_unique_stored_part(
     sqlite3_str *sql,
     const struct mylite_insert_table_column *column,
     uint64_t prefix_length,
-    bool case_insensitive
+    struct update_unique_text_compare compare
 ) {
-    if (case_insensitive) {
+    if (compare.case_insensitive) {
         sqlite3_str_append(sql, "lower(", (int)strlen("lower("));
+    }
+    if (compare.pad_space) {
+        sqlite3_str_append(sql, "rtrim(", (int)strlen("rtrim("));
     }
     if (prefix_length != 0U) {
         sqlite3_str_appendf(
@@ -206,7 +214,10 @@ static void append_update_unique_stored_part(
     } else {
         sqlite3_str_appendf(sql, "\"%w\"", column->name);
     }
-    if (case_insensitive) {
+    if (compare.pad_space) {
+        sqlite3_str_append(sql, ",' ')", (int)strlen(",' ')"));
+    }
+    if (compare.case_insensitive) {
         sqlite3_str_append(sql, ")", 1);
     }
 }
@@ -214,29 +225,45 @@ static void append_update_unique_stored_part(
 static void append_update_unique_bound_part(
     sqlite3_str *sql,
     uint64_t prefix_length,
-    bool case_insensitive
+    struct update_unique_text_compare compare
 ) {
-    if (case_insensitive) {
+    if (compare.case_insensitive) {
         sqlite3_str_append(sql, "lower(", (int)strlen("lower("));
+    }
+    if (compare.pad_space) {
+        sqlite3_str_append(sql, "rtrim(", (int)strlen("rtrim("));
     }
     if (prefix_length != 0U) {
         sqlite3_str_appendf(sql, "substr(?,1,%llu)", (unsigned long long)prefix_length);
     } else {
         sqlite3_str_append(sql, "?", 1);
     }
-    if (case_insensitive) {
+    if (compare.pad_space) {
+        sqlite3_str_append(sql, ",' ')", (int)strlen(",' ')"));
+    }
+    if (compare.case_insensitive) {
         sqlite3_str_append(sql, ")", 1);
     }
 }
 
-static bool update_unique_column_uses_case_insensitive_text_compare(
+static struct update_unique_text_compare update_unique_column_text_compare(
     const struct mylite_insert_table_column *column
 ) {
-    return column != NULL && mylite_column_definition_uses_case_insensitive_text_compare(
-                                 column->data_type,
-                                 column->character_set_name,
-                                 column->collation_name
-                             );
+    if (column == NULL) {
+        return (struct update_unique_text_compare){0};
+    }
+    return (struct update_unique_text_compare){
+        .case_insensitive = mylite_column_definition_uses_case_insensitive_text_compare(
+            column->data_type,
+            column->character_set_name,
+            column->collation_name
+        ),
+        .pad_space = mylite_column_definition_uses_pad_space_text_compare(
+            column->data_type,
+            column->character_set_name,
+            column->collation_name
+        ),
+    };
 }
 
 static int bind_update_value(

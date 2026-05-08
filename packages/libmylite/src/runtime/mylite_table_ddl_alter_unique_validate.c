@@ -10,6 +10,11 @@
 
 #include <string.h>
 
+struct alter_unique_text_compare {
+    bool case_insensitive;
+    bool pad_space;
+};
+
 static int validate_alter_table_unique_index(
     mylite_db *database,
     const struct mylite_alter_table_model *model,
@@ -43,7 +48,7 @@ static int append_alter_table_added_column_value_literal(
     const struct mylite_alter_table_column *column
 );
 
-static bool alter_table_unique_column_uses_case_insensitive_text_compare(
+static struct alter_unique_text_compare alter_table_unique_column_text_compare(
     const struct mylite_alter_table_column *column
 );
 
@@ -174,12 +179,17 @@ static int append_alter_table_unique_part_expression(
 ) {
     const struct mylite_alter_table_column *column =
         mylite_table_ddl_find_alter_table_column(model, part->column_name);
+    struct alter_unique_text_compare compare = {0};
 
     if (column == NULL) {
         return MYLITE_MISUSE;
     }
-    if (alter_table_unique_column_uses_case_insensitive_text_compare(column)) {
+    compare = alter_table_unique_column_text_compare(column);
+    if (compare.case_insensitive) {
         sqlite3_str_append(sql, "lower(", (int)strlen("lower("));
+    }
+    if (compare.pad_space) {
+        sqlite3_str_append(sql, "rtrim(", (int)strlen("rtrim("));
     }
     if (part->has_sub_part) {
         sqlite3_str_append(sql, "substr(", (int)strlen("substr("));
@@ -196,7 +206,10 @@ static int append_alter_table_unique_part_expression(
     if (part->has_sub_part) {
         sqlite3_str_appendf(sql, ",1,%lld)", (long long)part->sub_part);
     }
-    if (alter_table_unique_column_uses_case_insensitive_text_compare(column)) {
+    if (compare.pad_space) {
+        sqlite3_str_append(sql, ",' ')", (int)strlen(",' ')"));
+    }
+    if (compare.case_insensitive) {
         sqlite3_str_append(sql, ")", 1);
     }
     return MYLITE_OK;
@@ -257,12 +270,22 @@ static int append_alter_table_added_column_value_literal(
     return MYLITE_OK;
 }
 
-static bool alter_table_unique_column_uses_case_insensitive_text_compare(
+static struct alter_unique_text_compare alter_table_unique_column_text_compare(
     const struct mylite_alter_table_column *column
 ) {
-    return column != NULL && mylite_column_definition_uses_case_insensitive_text_compare(
-                                 column->data_type,
-                                 column->character_set_name,
-                                 column->collation_name
-                             );
+    if (column == NULL) {
+        return (struct alter_unique_text_compare){0};
+    }
+    return (struct alter_unique_text_compare){
+        .case_insensitive = mylite_column_definition_uses_case_insensitive_text_compare(
+            column->data_type,
+            column->character_set_name,
+            column->collation_name
+        ),
+        .pad_space = mylite_column_definition_uses_pad_space_text_compare(
+            column->data_type,
+            column->character_set_name,
+            column->collation_name
+        ),
+    };
 }

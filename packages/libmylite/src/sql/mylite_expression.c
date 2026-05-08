@@ -776,6 +776,13 @@ static int eval_binary(
     struct mylite_expression_value *out_value
 );
 
+static int eval_collate(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int eval_logical_and(
     const struct mylite_sql_ast_node *node,
     const struct mylite_expression_eval_context *context,
@@ -3380,6 +3387,35 @@ static int eval_literal(
     struct mylite_expression_value *out_value
 );
 
+static void apply_default_text_literal_metadata(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_value *value
+);
+
+static void apply_text_value_collation_name_metadata(
+    const char *collation_name,
+    struct mylite_expression_value *value
+);
+
+static enum mylite_expression_text_charset text_charset_from_charset_name(const char *name);
+
+static bool connection_text_metadata_uses_binary_compare(
+    const struct mylite_expression_eval_context *context
+);
+
+static bool connection_text_metadata_uses_pad_space_compare(
+    const struct mylite_expression_eval_context *context
+);
+
+static bool collation_name_uses_binary_text_compare(const char *collation_name);
+
+static bool collation_name_uses_pad_space_text_compare(const char *collation_name);
+
+static bool cstring_case_equal(const char *left, const char *right);
+
+static bool cstring_case_suffix_equal(const char *text, const char *suffix);
+
 static int handle_integer_literal_exact_value(
     char **io_text,
     struct mylite_expression_value *out_value
@@ -3993,6 +4029,14 @@ static int compare_text_values(
 );
 
 static bool expression_value_uses_binary_text_compare(const struct mylite_expression_value *value);
+
+static bool expression_value_uses_binary_text_charset(const struct mylite_expression_value *value);
+
+static bool expression_value_uses_pad_space_text_compare(
+    const struct mylite_expression_value *value
+);
+
+static size_t trimmed_text_length(const char *text, size_t length);
 
 static int value_to_numeric(
     const struct mylite_expression_value *value,
@@ -4937,8 +4981,14 @@ static int eval_node(
     }
 
     switch (node->kind) {
-    case MYLITE_SQL_AST_LITERAL:
-        return eval_literal(node, out_value);
+    case MYLITE_SQL_AST_LITERAL: {
+        int status = eval_literal(node, out_value);
+
+        if (status == 0) {
+            apply_default_text_literal_metadata(node, context, out_value);
+        }
+        return status;
+    }
     case MYLITE_SQL_AST_IDENTIFIER:
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
         if (context != NULL && context->resolve_identifier != NULL) {
@@ -5070,16 +5120,15 @@ static int eval_binary(
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT) {
         return eval_json_extract_operator(node->operator_kind, node, context, warnings, out_value);
     }
+    if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
+        return eval_collate(node, context, warnings, out_value);
+    }
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND) {
         return eval_logical_and(node, context, warnings, out_value);
     }
     if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR) {
         return eval_logical_or(node, context, warnings, out_value);
     }
-    if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
-        return eval_node(child_at(node, 0U), context, warnings, out_value);
-    }
-
     status = eval_node(child_at(node, 0U), context, warnings, &left);
     if (status == 0) {
         status = eval_node(child_at(node, 1U), context, warnings, &right);
@@ -5127,6 +5176,29 @@ cleanup:
     mylite_expression_value_deinit(&left);
     mylite_expression_value_deinit(&right);
     return status;
+}
+
+static int eval_collate(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    const struct mylite_sql_ast_node *collation = child_at(node, 1U);
+    char *collation_name = NULL;
+    int status = eval_node(child_at(node, 0U), context, warnings, out_value);
+
+    if (status != 0 || out_value->kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        return status;
+    }
+    collation_name = copy_charset_node_name(collation);
+    if (collation_name == NULL) {
+        mylite_expression_value_deinit(out_value);
+        return -1;
+    }
+    apply_text_value_collation_name_metadata(collation_name, out_value);
+    free(collation_name);
+    return 0;
 }
 
 static int eval_logical_and(
@@ -22244,6 +22316,144 @@ static int eval_literal(
     return -1;
 }
 
+static void apply_default_text_literal_metadata(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_expression_eval_context *context,
+    struct mylite_expression_value *value
+) {
+    if (node == NULL || value == NULL || value->kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        return;
+    }
+    switch (node->literal_kind) {
+    case MYLITE_SQL_AST_LITERAL_STRING:
+        value->text_charset =
+            text_charset_from_charset_name(default_char_cast_charset_name(context));
+        value->binary_text_compare = connection_text_metadata_uses_binary_compare(context);
+        value->pad_space_text_compare = connection_text_metadata_uses_pad_space_compare(context);
+        break;
+    case MYLITE_SQL_AST_LITERAL_NATIONAL_STRING:
+        value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB3;
+        value->binary_text_compare = false;
+        value->pad_space_text_compare = true;
+        break;
+    case MYLITE_SQL_AST_LITERAL_BINARY_STRING:
+    case MYLITE_SQL_AST_LITERAL_HEX:
+    case MYLITE_SQL_AST_LITERAL_BIT:
+        value->binary_text_compare = true;
+        value->pad_space_text_compare = false;
+        break;
+    case MYLITE_SQL_AST_LITERAL_NULL:
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+    case MYLITE_SQL_AST_LITERAL_DECIMAL:
+    case MYLITE_SQL_AST_LITERAL_FLOAT:
+    case MYLITE_SQL_AST_LITERAL_DATE:
+    case MYLITE_SQL_AST_LITERAL_TIME:
+    case MYLITE_SQL_AST_LITERAL_TIMESTAMP:
+    case MYLITE_SQL_AST_LITERAL_NONE:
+        break;
+    }
+}
+
+static void apply_text_value_collation_name_metadata(
+    const char *collation_name,
+    struct mylite_expression_value *value
+) {
+    if (value == NULL || value->kind != MYLITE_EXPRESSION_VALUE_TEXT) {
+        return;
+    }
+    if (cstring_case_equal(collation_name, "binary")) {
+        value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
+    } else if (
+        cstring_case_equal(collation_name, "latin1_swedish_ci") ||
+        cstring_case_equal(collation_name, "latin1_bin")
+    ) {
+        value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_LATIN1;
+    } else if (
+        cstring_case_equal(collation_name, "utf8mb3_general_ci") ||
+        cstring_case_equal(collation_name, "utf8mb3_bin")
+    ) {
+        value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB3;
+    } else if (
+        cstring_case_equal(collation_name, "utf8mb4_0900_ai_ci") ||
+        cstring_case_equal(collation_name, "utf8mb4_general_ci") ||
+        cstring_case_equal(collation_name, "utf8mb4_unicode_ci") ||
+        cstring_case_equal(collation_name, "utf8mb4_unicode_520_ci") ||
+        cstring_case_equal(collation_name, "utf8mb4_bin")
+    ) {
+        value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB4;
+    }
+    value->binary_text_compare = collation_name_uses_binary_text_compare(collation_name);
+    value->pad_space_text_compare = collation_name_uses_pad_space_text_compare(collation_name);
+}
+
+static enum mylite_expression_text_charset text_charset_from_charset_name(const char *name) {
+    enum char_function_charset charset = char_function_charset_from_name(name);
+
+    return expression_text_charset_from_char_function(charset);
+}
+
+static bool connection_text_metadata_uses_binary_compare(
+    const struct mylite_expression_eval_context *context
+) {
+    return cstring_case_equal(default_char_cast_charset_name(context), "binary") ||
+           collation_name_uses_binary_text_compare(
+               context == NULL ? NULL : context->collation_connection
+           );
+}
+
+static bool connection_text_metadata_uses_pad_space_compare(
+    const struct mylite_expression_eval_context *context
+) {
+    const char *collation_name = context == NULL ? NULL : context->collation_connection;
+
+    if (collation_name != NULL && collation_name[0] != '\0') {
+        return collation_name_uses_pad_space_text_compare(collation_name);
+    }
+    if (cstring_case_equal(default_char_cast_charset_name(context), "latin1") ||
+        cstring_case_equal(default_char_cast_charset_name(context), "utf8mb3") ||
+        cstring_case_equal(default_char_cast_charset_name(context), "utf8")) {
+        return true;
+    }
+    return false;
+}
+
+static bool collation_name_uses_binary_text_compare(const char *collation_name) {
+    return cstring_case_equal(collation_name, "binary") ||
+           cstring_case_suffix_equal(collation_name, "_bin");
+}
+
+static bool collation_name_uses_pad_space_text_compare(const char *collation_name) {
+    return cstring_case_equal(collation_name, "latin1_swedish_ci") ||
+           cstring_case_equal(collation_name, "latin1_bin") ||
+           cstring_case_equal(collation_name, "utf8mb3_general_ci") ||
+           cstring_case_equal(collation_name, "utf8mb3_bin") ||
+           cstring_case_equal(collation_name, "utf8mb4_general_ci") ||
+           cstring_case_equal(collation_name, "utf8mb4_unicode_ci") ||
+           cstring_case_equal(collation_name, "utf8mb4_unicode_520_ci") ||
+           cstring_case_equal(collation_name, "utf8mb4_bin");
+}
+
+static bool cstring_case_equal(const char *left, const char *right) {
+    return ascii_text_equal_ci((struct text_compare_input){
+        .left = left,
+        .left_length = strlen(left == NULL ? "" : left),
+        .right = right,
+        .right_length = strlen(right == NULL ? "" : right),
+    });
+}
+
+static bool cstring_case_suffix_equal(const char *text, const char *suffix) {
+    size_t text_length = text == NULL ? 0U : strlen(text);
+    size_t suffix_length = suffix == NULL ? 0U : strlen(suffix);
+
+    if (suffix_length == 0U || text_length < suffix_length) {
+        return false;
+    }
+    return cstring_case_equal(text + text_length - suffix_length, suffix);
+}
+
 static int handle_integer_literal_exact_value(
     char **io_text,
     struct mylite_expression_value *out_value
@@ -24779,18 +24989,26 @@ static int compare_text_values(
 ) {
     bool binary_compare = expression_value_uses_binary_text_compare(left) ||
                           expression_value_uses_binary_text_compare(right);
-    size_t compare_length = left_length < right_length ? left_length : right_length;
+    bool binary_charset_compare = expression_value_uses_binary_text_charset(left) ||
+                                  expression_value_uses_binary_text_charset(right);
+    bool pad_space_compare =
+        !binary_charset_compare && (expression_value_uses_pad_space_text_compare(left) ||
+                                    expression_value_uses_pad_space_text_compare(right));
+    size_t compare_length = 0U;
 
     if (left_text == NULL) {
         left_text = "";
         left_length = 0U;
-        compare_length = 0U;
     }
     if (right_text == NULL) {
         right_text = "";
         right_length = 0U;
-        compare_length = 0U;
     }
+    if (pad_space_compare) {
+        left_length = trimmed_text_length(left_text, left_length);
+        right_length = trimmed_text_length(right_text, right_length);
+    }
+    compare_length = left_length < right_length ? left_length : right_length;
 
     for (size_t index = 0U; index < compare_length; ++index) {
         unsigned char left_byte = (unsigned char)left_text[index];
@@ -24809,7 +25027,30 @@ static int compare_text_values(
 
 static bool expression_value_uses_binary_text_compare(const struct mylite_expression_value *value) {
     return value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+           (value->binary_text_compare ||
+            value->text_charset == MYLITE_EXPRESSION_TEXT_CHARSET_BINARY);
+}
+
+static bool expression_value_uses_binary_text_charset(const struct mylite_expression_value *value) {
+    return value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
            value->text_charset == MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
+}
+
+static bool expression_value_uses_pad_space_text_compare(
+    const struct mylite_expression_value *value
+) {
+    return value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+           value->pad_space_text_compare;
+}
+
+static size_t trimmed_text_length(const char *text, size_t length) {
+    if (text == NULL) {
+        return 0U;
+    }
+    while (length > 0U && text[length - 1U] == ' ') {
+        --length;
+    }
+    return length;
 }
 
 static int value_to_numeric(
@@ -25837,6 +26078,8 @@ static int set_text_value(
     }
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
     out_value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_UNKNOWN;
+    out_value->binary_text_compare = false;
+    out_value->pad_space_text_compare = false;
     out_value->suppress_text_numeric_warnings = false;
     out_value->preserve_temporal_fraction_digits = false;
     out_value->temporal_type = MYLITE_EXPRESSION_TEMPORAL_NONE;
@@ -25853,6 +26096,8 @@ static int set_binary_text_value(
 
     if (status == 0) {
         out_value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
+        out_value->binary_text_compare = true;
+        out_value->pad_space_text_compare = false;
     }
     return status;
 }

@@ -148,6 +148,7 @@ int mylite_dml_resolve_insert_expression_bound_value(
         .user_data = &user_context,
         .real_as_float = mylite_connection_sql_mode_has_real_as_float(database),
         .character_set_connection = mylite_connection_character_set_connection(database),
+        .collation_connection = mylite_connection_collation_connection(database),
         .resolve_identifier = resolve_insert_expression_identifier,
         .eval_session_function = evaluate_insert_expression_session_function,
         .eval_default_function = evaluate_insert_expression_default_function,

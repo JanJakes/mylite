@@ -8,5 +8,15 @@ bool mylite_column_definition_uses_case_insensitive_text_compare(
     const char *character_set_name,
     const char *collation_name
 );
+bool mylite_column_definition_uses_pad_space_text_compare(
+    const char *data_type,
+    const char *character_set_name,
+    const char *collation_name
+);
+bool mylite_column_definition_uses_binary_text_compare(
+    const char *data_type,
+    const char *character_set_name,
+    const char *collation_name
+);
 
 #endif

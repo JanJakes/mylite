@@ -29,6 +29,7 @@ bool mylite_charset_name_is_utf8_alias(const char *name);
 size_t mylite_collation_count(void);
 const struct mylite_collation *mylite_collation_at(size_t index);
 const struct mylite_collation *mylite_collation_lookup(const char *name);
+const struct mylite_collation *mylite_collation_lookup_id(int id);
 bool mylite_charset_collation_match(
     const struct mylite_charset *character_set,
     const struct mylite_collation *collation

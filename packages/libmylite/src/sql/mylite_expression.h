@@ -63,6 +63,8 @@ struct mylite_expression_value {
     bool preserve_temporal_fraction_digits;
     enum mylite_expression_temporal_type temporal_type;
     enum mylite_expression_text_charset text_charset;
+    bool binary_text_compare;
+    bool pad_space_text_compare;
     char *text_value;
     size_t text_length;
 };
@@ -136,6 +138,7 @@ struct mylite_expression_eval_context {
     void *user_data;
     bool real_as_float;
     const char *character_set_connection;
+    const char *collation_connection;
     mylite_expression_resolve_identifier_fn resolve_identifier;
     mylite_expression_eval_constant_fn eval_constant;
     mylite_expression_eval_aggregate_fn eval_aggregate;

@@ -131,6 +131,10 @@ void mylite_select_eval_expression_context_init(
             user_context != NULL && user_context->stmt != NULL
                 ? mylite_connection_character_set_connection(user_context->stmt->database)
                 : NULL,
+        .collation_connection =
+            user_context != NULL && user_context->stmt != NULL
+                ? mylite_connection_collation_connection(user_context->stmt->database)
+                : NULL,
         .resolve_identifier = resolve_table_select_expression_identifier,
         .eval_constant = evaluate_table_select_cached_constant_expression,
         .eval_aggregate = evaluate_table_select_aggregate_call,
@@ -286,6 +290,7 @@ static int evaluate_table_select_cached_constant_expression(
         struct mylite_expression_eval_context expression_context = {
             .real_as_float = mylite_connection_sql_mode_has_real_as_float(stmt->database),
             .character_set_connection = mylite_connection_character_set_connection(stmt->database),
+            .collation_connection = mylite_connection_collation_connection(stmt->database),
         };
 
         entry->status = mylite_expression_eval_with_context(

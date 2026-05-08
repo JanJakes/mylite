@@ -1,6 +1,8 @@
 #include "mylite_field_descriptor.h"
 
+#include "mylite_charset.h"
 #include "mylite_metadata_constants.h"
+#include "mylite_span.h"
 
 #include <mylite/mylite.h>
 
@@ -16,6 +18,9 @@ static enum mylite_expression_text_charset field_descriptor_expression_text_char
     const struct mylite_field_descriptor *descriptor
 );
 static bool field_descriptor_uses_binary_text_compare(
+    const struct mylite_field_descriptor *descriptor
+);
+static bool field_descriptor_uses_pad_space_text_compare(
     const struct mylite_field_descriptor *descriptor
 );
 static bool field_descriptor_decimal_value_to_double(
@@ -63,6 +68,8 @@ int mylite_field_descriptor_apply_expression_value_metadata(
     value->temporal_type = mylite_field_descriptor_expression_temporal_type(descriptor);
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         value->text_charset = field_descriptor_expression_text_charset(descriptor);
+        value->binary_text_compare = field_descriptor_uses_binary_text_compare(descriptor);
+        value->pad_space_text_compare = field_descriptor_uses_pad_space_text_compare(descriptor);
     }
     return field_descriptor_preserve_decimal_text(descriptor, value);
 }
@@ -164,7 +171,22 @@ static enum mylite_expression_text_charset field_descriptor_expression_text_char
     case MYLITE_FIELD_TYPE_STRING:
     case MYLITE_FIELD_TYPE_VAR_STRING:
     case MYLITE_FIELD_TYPE_BLOB:
-    case MYLITE_FIELD_TYPE_JSON:
+    case MYLITE_FIELD_TYPE_JSON: {
+        const struct mylite_collation *collation =
+            mylite_collation_lookup_id((int)descriptor->charset_id);
+
+        if (collation != NULL &&
+            mylite_ascii_case_equal(collation->character_set, mylite_mysql_latin1_charset_name)) {
+            return MYLITE_EXPRESSION_TEXT_CHARSET_LATIN1;
+        }
+        if (collation != NULL &&
+            mylite_ascii_case_equal(collation->character_set, mylite_mysql_utf8mb3_charset_name)) {
+            return MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB3;
+        }
+        if (collation != NULL && mylite_ascii_case_equal(collation->character_set, "utf8mb4")) {
+            return MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB4;
+        }
+    }
         if (field_descriptor_uses_binary_text_compare(descriptor)) {
             return MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
         }
@@ -183,9 +205,30 @@ static enum mylite_expression_text_charset field_descriptor_expression_text_char
 static bool field_descriptor_uses_binary_text_compare(
     const struct mylite_field_descriptor *descriptor
 ) {
-    return descriptor != NULL && (descriptor->charset_id == mylite_mysql_binary_charset_id ||
-                                  descriptor->charset_id == mylite_mysql_utf8mb4_bin_charset_id ||
-                                  (descriptor->flags & MYLITE_FIELD_FLAG_BINARY) != 0U);
+    const struct mylite_collation *collation =
+        descriptor == NULL ? NULL : mylite_collation_lookup_id((int)descriptor->charset_id);
+    size_t collation_length =
+        collation == NULL || collation->name == NULL ? 0U : strlen(collation->name);
+
+    return descriptor != NULL &&
+           (descriptor->charset_id == mylite_mysql_binary_charset_id ||
+            descriptor->charset_id == mylite_mysql_utf8mb4_bin_charset_id ||
+            mylite_ascii_case_equal(
+                collation == NULL ? NULL : collation->name,
+                mylite_mysql_binary_charset_name
+            ) ||
+            (collation_length >= 4U &&
+             mylite_ascii_case_equal(collation->name + collation_length - 4U, "_bin")) ||
+            (descriptor->flags & MYLITE_FIELD_FLAG_BINARY) != 0U);
+}
+
+static bool field_descriptor_uses_pad_space_text_compare(
+    const struct mylite_field_descriptor *descriptor
+) {
+    const struct mylite_collation *collation =
+        descriptor == NULL ? NULL : mylite_collation_lookup_id((int)descriptor->charset_id);
+
+    return collation != NULL && mylite_ascii_case_equal(collation->pad_attribute, "PAD SPACE");
 }
 
 static bool field_descriptor_decimal_value_to_double(

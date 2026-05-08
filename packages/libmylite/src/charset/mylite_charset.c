@@ -141,6 +141,15 @@ const struct mylite_collation *mylite_collation_lookup(const char *name) {
     return NULL;
 }
 
+const struct mylite_collation *mylite_collation_lookup_id(int id) {
+    for (size_t index = 0U; index < mylite_collation_count(); ++index) {
+        if (collations[index].id == id) {
+            return &collations[index];
+        }
+    }
+    return NULL;
+}
+
 bool mylite_charset_collation_match(
     const struct mylite_charset *character_set,
     const struct mylite_collation *collation

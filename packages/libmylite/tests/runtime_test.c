@@ -1787,6 +1787,12 @@ static int test_text_comparison_collation_execution(void) {
     static const char *const first_id_value[] = {"1"};
     static const char *const second_id_value[] = {"2"};
     static const char *const binary_collation_values[] = {"1", "a", "2", "A"};
+    static const char *const pad_space_columns[] = {"pad_eq", "pad_order", "strcmp_pad"};
+    static const char *const pad_space_values[] = {"1", "0", "0"};
+    static const char *const mixed_binary_pad_columns[] = {"bin_pad_eq", "bin_pad_order"};
+    static const char *const mixed_binary_pad_values[] = {"0", "1"};
+    static const char *const explicit_bin_columns[] = {"bin_pad_eq", "bin_pad_order", "bin_case"};
+    static const char *const explicit_bin_values[] = {"1", "0", "0"};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -1804,6 +1810,38 @@ static int test_text_comparison_collation_execution(void) {
         comparison_values,
         1,
         "text comparison collation operators"
+    );
+    failures += execute_sql(database, "SET NAMES latin1", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT 'a' = 'a ' AS pad_eq, 'a' < 'a ' AS pad_order, "
+        "STRCMP('a','a ') AS strcmp_pad",
+        pad_space_columns,
+        3,
+        pad_space_values,
+        1,
+        "latin1 pad-space literal comparison"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT _binary'a' = 'a ' AS bin_pad_eq, _binary'a' < 'a ' AS bin_pad_order",
+        mixed_binary_pad_columns,
+        2,
+        mixed_binary_pad_values,
+        1,
+        "binary literal keeps trailing spaces significant under pad collation"
+    );
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT 'a' COLLATE utf8mb4_bin = 'a ' COLLATE utf8mb4_bin AS bin_pad_eq, "
+        "'a' COLLATE utf8mb4_bin < 'a ' COLLATE utf8mb4_bin AS bin_pad_order, "
+        "'a' COLLATE utf8mb4_bin = 'A' COLLATE utf8mb4_bin AS bin_case",
+        explicit_bin_columns,
+        3,
+        explicit_bin_values,
+        1,
+        "explicit binary collation pad-space comparison"
     );
 
     failures += execute_sql(database, "CREATE DATABASE mylite_text_compare", MYLITE_DONE);
@@ -1897,6 +1935,40 @@ static int test_text_comparison_collation_execution(void) {
         1,
         "binary collation predicate remains case-sensitive"
     );
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM text_bin_collation WHERE v = 'a '",
+        id_column,
+        1,
+        first_id_value,
+        1,
+        "binary collation predicate ignores trailing spaces"
+    );
+    failures +=
+        prepare_sql(database, "INSERT INTO text_bin_collation VALUES (3,'a ')", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate entry",
+        "binary collation unique rejects trailing-space duplicate"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE text_latin_pad ("
+        "id INT PRIMARY KEY, "
+        "v VARCHAR(10) CHARACTER SET latin1 COLLATE latin1_swedish_ci UNIQUE)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(database, "INSERT INTO text_latin_pad VALUES (1,'a')", MYLITE_DONE);
+    failures +=
+        prepare_sql(database, "INSERT INTO text_latin_pad VALUES (2,'a ')", MYLITE_OK, &stmt);
+    failures +=
+        expect_exec_error(stmt, database, "Duplicate entry", "latin1 pad-space unique insert");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures +=
         execute_sql(database, "CREATE TABLE text_existing_unique (v VARCHAR(10))", MYLITE_DONE);
@@ -1917,6 +1989,32 @@ static int test_text_comparison_collation_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += execute_sql(
+        database,
+        "CREATE TABLE text_existing_pad_unique ("
+        "v VARCHAR(10) CHARACTER SET latin1 COLLATE latin1_swedish_ci)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO text_existing_pad_unique VALUES ('a'),('a ')",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "CREATE UNIQUE INDEX uq_existing_pad_v ON text_existing_pad_unique (v)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate entry",
+        "pad-space create unique validates existing rows"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures +=
         execute_sql(database, "CREATE TABLE text_alter_unique (v VARCHAR(10))", MYLITE_DONE);
     failures +=
@@ -1932,6 +2030,29 @@ static int test_text_comparison_collation_execution(void) {
         database,
         "Duplicate entry",
         "case-insensitive alter unique validates existing rows"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE text_alter_pad_unique ("
+        "v VARCHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO text_alter_pad_unique VALUES ('a'),('a ')", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE text_alter_pad_unique ADD UNIQUE KEY uq_v (v)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate entry",
+        "pad-space alter unique validates existing rows"
     );
     mylite_finalize(stmt);
     stmt = NULL;

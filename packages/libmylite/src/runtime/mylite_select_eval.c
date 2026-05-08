@@ -269,6 +269,7 @@ int mylite_select_eval_constant_predicate(
     struct mylite_expression_eval_context context = {
         .real_as_float = mylite_connection_sql_mode_has_real_as_float(stmt->database),
         .character_set_connection = mylite_connection_character_set_connection(stmt->database),
+        .collation_connection = mylite_connection_collation_connection(stmt->database),
     };
     int truth = -1;
     int status = 0;

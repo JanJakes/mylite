@@ -7,7 +7,7 @@ miscellaneous system helpers.
 | --- | --- | --- |
 | `BENCHMARK()` | ❌ | Repeatedly execute an expression |
 | `CONNECTION_ID()` | 🟡 | Limited one-row scalar `SELECT CONNECTION_ID()` with optional `FROM DUAL`; returns a MyLite process-local nonzero handle id; no server thread, process-list, Performance Schema, `pseudo_thread_id`, aliases, table-backed evaluation, or protocol metadata |
-| `CURRENT_ROLE()` | ❌ | Return current active roles |
+| `CURRENT_ROLE()` | 🟡 | Limited one-row scalar `SELECT CURRENT_ROLE()` with optional `FROM DUAL`; returns MyLite's no-active-role value `NONE`; no role catalog, role grants, `SET ROLE`, bare `CURRENT_ROLE`, aliases, table-backed evaluation, clauses, or general expression support |
 | `CURRENT_USER(), CURRENT_USER` | 🟡 | Limited one-row scalar select returns MyLite's embedded current identity `root@%`; no accounts, definers, roles, privileges, or table-backed evaluation |
 | `DATABASE()` | 🟡 | Limited one-row scalar `SELECT DATABASE()` with optional `FROM DUAL`; returns selected MyLite catalog schema or `NULL`; no aliases, table-backed evaluation, clauses, or general expression support |
 | `ExtractValue()` | ❌ | Extract a value from an XML string using XPath notation |

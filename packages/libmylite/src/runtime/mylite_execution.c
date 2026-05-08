@@ -323,6 +323,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF = 30,
     SESSION_SYSTEM_VARIABLE_SQL_MODE = 31,
     SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY = 32,
+    SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER = 33,
 };
 
 struct system_variable_component {
@@ -6125,6 +6126,7 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
     case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
+    case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
         rc = format_uint64(database, 0U, out_cell->integer_text, sizeof(out_cell->integer_text));
         if (rc == MYLITE_OK) {
@@ -6280,6 +6282,7 @@ static bool resolve_system_variable_kind(
         {"sql_log_bin", SESSION_SYSTEM_VARIABLE_SQL_LOG_BIN},
         {"sql_log_off", SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF},
         {"sql_mode", SESSION_SYSTEM_VARIABLE_SQL_MODE},
+        {"sql_replica_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER},
         {"sql_require_primary_key", SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY},
         {"sql_safe_updates", SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES},
         {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT},
@@ -6323,6 +6326,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
     case SESSION_SYSTEM_VARIABLE_SQL_MODE:
+    case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
@@ -6339,6 +6343,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
 static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind) {
     switch (kind) {
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
+    case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
         return false;

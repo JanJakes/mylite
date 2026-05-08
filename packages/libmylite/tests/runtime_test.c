@@ -40427,6 +40427,72 @@ static int test_create_table_base_execution(void) {
         "pdt_ok",
     };
     static const char *const default_now_presence_values[] = {"1", "1", "1", "1", "1"};
+    static const char *const serial_metadata_columns[] = {
+        "COLUMN_NAME",
+        "DATA_TYPE",
+        "COLUMN_TYPE",
+        "IS_NULLABLE",
+        "COLUMN_KEY",
+        "EXTRA",
+    };
+    static const char *const serial_type_metadata_values[] = {
+        "id",
+        "bigint",
+        "bigint unsigned",
+        "NO",
+        "PRI",
+        "auto_increment",
+        "note",
+        "int",
+        "int",
+        "YES",
+        "",
+        "",
+    };
+    static const char *const serial_attr_metadata_values[] = {
+        "id",
+        "int",
+        "int",
+        "NO",
+        "PRI",
+        "auto_increment",
+        "note",
+        "int",
+        "int",
+        "YES",
+        "",
+        "",
+    };
+    static const char *const serial_insert_columns[] = {"id", "note"};
+    static const char *const serial_insert_values[] = {"1", "10", "2", "20"};
+    static const char *const serial_index_columns[] = {
+        "INDEX_NAME",
+        "NON_UNIQUE",
+        "SEQ_IN_INDEX",
+        "COLUMN_NAME",
+    };
+    static const char *const serial_index_values[] = {"id", "0", "1", "id"};
+    static const char *const serial_show_create_columns[] = {"Table", "Create Table"};
+    static const char serial_type_create[] =
+        "CREATE TABLE `serial_alias_type` (\n"
+        "  `id` bigint unsigned NOT NULL AUTO_INCREMENT,\n"
+        "  `note` int DEFAULT NULL,\n"
+        "  UNIQUE KEY `id` (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin";
+    static const char *const serial_type_create_values[] = {
+        "serial_alias_type",
+        serial_type_create
+    };
+    static const char serial_attr_create[] =
+        "CREATE TABLE `serial_alias_attr` (\n"
+        "  `id` int NOT NULL AUTO_INCREMENT,\n"
+        "  `note` int DEFAULT NULL,\n"
+        "  UNIQUE KEY `id` (`id`)\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin";
+    static const char *const serial_attr_create_values[] = {
+        "serial_alias_attr",
+        serial_attr_create
+    };
     const char *path = MYLITE_RUNTIME_TEST_FILE_PATH;
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -40545,6 +40611,96 @@ static int test_create_table_base_execution(void) {
         default_now_presence_values,
         1,
         "DEFAULT NOW() insert values"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE serial_alias_type (id SERIAL, note INT)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE serial_alias_attr (id INT SERIAL DEFAULT VALUE, note INT)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'serial_alias_type' "
+        "ORDER BY ORDINAL_POSITION",
+        serial_metadata_columns,
+        6,
+        serial_type_metadata_values,
+        2,
+        "SERIAL type metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'serial_alias_attr' "
+        "ORDER BY ORDINAL_POSITION",
+        serial_metadata_columns,
+        6,
+        serial_attr_metadata_values,
+        2,
+        "SERIAL DEFAULT VALUE metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'serial_alias_type' "
+        "ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        serial_index_columns,
+        4,
+        serial_index_values,
+        1,
+        "SERIAL type unique index metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE serial_alias_type",
+        serial_show_create_columns,
+        2,
+        serial_type_create_values,
+        1,
+        "SERIAL type show create"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE serial_alias_attr",
+        serial_show_create_columns,
+        2,
+        serial_attr_create_values,
+        1,
+        "SERIAL DEFAULT VALUE show create"
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO serial_alias_type (note) VALUES (10), (20)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM serial_alias_type ORDER BY id",
+        serial_insert_columns,
+        2,
+        serial_insert_values,
+        2,
+        "SERIAL type insert generation"
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO serial_alias_attr (note) VALUES (10), (20)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM serial_alias_attr ORDER BY id",
+        serial_insert_columns,
+        2,
+        serial_insert_values,
+        2,
+        "SERIAL DEFAULT VALUE insert generation"
     );
 
     failures += execute_sql(

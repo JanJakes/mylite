@@ -1654,6 +1654,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_auto_increment_attribu
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token auto_increment_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_serial_default_value_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token serial_token,
+    struct mylite_sql_token default_token,
+    struct mylite_sql_token value_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_primary_key_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,

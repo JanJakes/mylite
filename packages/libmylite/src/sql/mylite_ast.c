@@ -1229,6 +1229,8 @@ const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type colu
         return "int";
     case MYLITE_SQL_AST_COLUMN_TYPE_BIGINT:
         return "bigint";
+    case MYLITE_SQL_AST_COLUMN_TYPE_SERIAL:
+        return "serial";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
         return "bool";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
@@ -1314,6 +1316,8 @@ const char *mylite_sql_ast_column_attribute_name(
         return "references";
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK:
         return "check";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SERIAL_DEFAULT_VALUE:
+        return "serial_default_value";
     }
 
     return "unknown";

@@ -269,6 +269,8 @@ static const char *create_table_column_type_name(enum mylite_sql_ast_column_type
         return "INT";
     case MYLITE_SQL_AST_COLUMN_TYPE_BIGINT:
         return "BIGINT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_SERIAL:
+        return "BIGINT";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
         return "BOOL";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
@@ -323,6 +325,9 @@ static const char *create_table_column_type_name(enum mylite_sql_ast_column_type
 static bool create_table_column_uses_integer_descriptor(
     enum mylite_sql_ast_column_type column_type
 ) {
+    if (column_type == MYLITE_SQL_AST_COLUMN_TYPE_SERIAL) {
+        return true;
+    }
     if (column_type < MYLITE_SQL_AST_COLUMN_TYPE_TINYINT) {
         return false;
     }

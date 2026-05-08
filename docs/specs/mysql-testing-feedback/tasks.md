@@ -34,6 +34,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Verify and complete `SHOW TABLE STATUS WHERE ...` filtering.
 - [x] Align `CREATE TABLE ... AUTO_INCREMENT=100` metadata and status
       reporting with MySQL next-value expectations.
+- [x] Support `SERIAL` and `SERIAL DEFAULT VALUE` create-table aliases with
+      MySQL-compatible normalized column, index, `SHOW CREATE TABLE`, and
+      generated auto-increment insert behavior for supported base tables.
 - [x] Align `SHOW CREATE TABLE` formatting and metadata, including index
       spacing, text-column defaults, comments, `USING BTREE`, foreign keys, and
       CHECK constraints. Stored, virtual, and default-virtual generated columns

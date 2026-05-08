@@ -67,6 +67,23 @@ static const char *create_table_column_key(
     const char *column_name
 );
 
+static bool create_table_column_is_implicit_primary_key(
+    const struct mylite_create_table_plan *plan,
+    const char *column_name
+);
+
+static bool create_table_has_primary_index(const struct mylite_create_table_plan *plan);
+
+static bool create_table_index_is_single_column(
+    const struct mylite_create_table_index *table_index,
+    const char *column_name
+);
+
+static bool create_table_column_is_nullable(
+    const struct mylite_create_table_plan *plan,
+    const char *column_name
+);
+
 static struct mylite_create_table_column_index_status create_table_column_index_status(
     const struct mylite_create_table_plan *plan,
     const char *column_name
@@ -676,6 +693,9 @@ static const char *create_table_column_key(
     if (status.primary) {
         return "PRI";
     }
+    if (create_table_column_is_implicit_primary_key(plan, column_name)) {
+        return "PRI";
+    }
     if (status.unique) {
         return "UNI";
     }
@@ -683,6 +703,55 @@ static const char *create_table_column_key(
         return "MUL";
     }
     return "";
+}
+
+static bool create_table_column_is_implicit_primary_key(
+    const struct mylite_create_table_plan *plan,
+    const char *column_name
+) {
+    if (plan == NULL || column_name == NULL || create_table_has_primary_index(plan) ||
+        create_table_column_is_nullable(plan, column_name)) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < plan->index_count; ++index) {
+        const struct mylite_create_table_index *table_index = &plan->indexes[index];
+
+        if (!table_index->is_unique) {
+            continue;
+        }
+        return create_table_index_is_single_column(table_index, column_name);
+    }
+    return false;
+}
+
+static bool create_table_has_primary_index(const struct mylite_create_table_plan *plan) {
+    for (size_t index = 0U; plan != NULL && index < plan->index_count; ++index) {
+        if (plan->indexes[index].is_primary) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool create_table_index_is_single_column(
+    const struct mylite_create_table_index *table_index,
+    const char *column_name
+) {
+    return table_index != NULL && table_index->part_count == 1U &&
+           mylite_ascii_case_equal(table_index->parts[0U].column_name, column_name);
+}
+
+static bool create_table_column_is_nullable(
+    const struct mylite_create_table_plan *plan,
+    const char *column_name
+) {
+    for (size_t column = 0U; plan != NULL && column < plan->column_count; ++column) {
+        if (mylite_ascii_case_equal(plan->columns[column].name, column_name)) {
+            return plan->columns[column].nullable;
+        }
+    }
+    return true;
 }
 
 static struct mylite_create_table_column_index_status create_table_column_index_status(

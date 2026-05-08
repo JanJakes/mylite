@@ -9,6 +9,8 @@ implemented by earlier roadmap tasks:
 - inline `PRIMARY KEY`
 - inline `KEY` as MySQL's inline primary-key shorthand
 - inline `AUTO_INCREMENT`
+- `SERIAL` and `SERIAL DEFAULT VALUE` aliases for `AUTO_INCREMENT` plus
+  inline unique-key metadata
 - table-level `PRIMARY KEY (...)`
 - `CONSTRAINT PRIMARY KEY (...)` and `CONSTRAINT name PRIMARY KEY (...)`
 - optional primary-key index name after `PRIMARY KEY`
@@ -63,6 +65,8 @@ Runtime probes against MySQL 8.4.9 show these representative behaviors:
 | `a INT PRIMARY KEY` | accepted; shown as `a int NOT NULL` plus `PRIMARY KEY (a)` |
 | `a INT KEY` | accepted as an inline primary-key shorthand and normalized like `PRIMARY KEY` |
 | `a BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY` | accepted; shown as `bigint unsigned NOT NULL AUTO_INCREMENT` plus primary key |
+| `a SERIAL` | accepted as `bigint unsigned NOT NULL AUTO_INCREMENT` plus a generated unique key |
+| `a INT SERIAL DEFAULT VALUE` | accepted as `int NOT NULL AUTO_INCREMENT` plus a generated unique key |
 | `a BIGINT AUTO_INCREMENT` with no key | parses but errors during DDL validation because an auto column must be indexed |
 | `a VARCHAR(10) AUTO_INCREMENT PRIMARY KEY` | parses but errors during DDL validation because the type is invalid for `AUTO_INCREMENT` |
 | `a DECIMAL AUTO_INCREMENT PRIMARY KEY` | parses but errors during DDL validation |
@@ -169,6 +173,7 @@ remain stable.
 Column definitions gain two accepted attributes:
 
 - `AUTO_INCREMENT`
+- `SERIAL DEFAULT VALUE`
 - `PRIMARY KEY`, with `KEY` alone producing the same primary-key attribute
 
 Table-level primary keys are represented as primary-key constraint nodes with
@@ -219,6 +224,7 @@ table_element ::= table_primary_key_constraint.
 column_definition ::= identifier column_type column_attribute_list.
 
 column_attribute ::= AUTO_INCREMENT.
+column_attribute ::= SERIAL DEFAULT VALUE.
 column_attribute ::= PRIMARY KEY.
 column_attribute ::= KEY.
 

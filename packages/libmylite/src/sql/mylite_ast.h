@@ -336,6 +336,7 @@ enum mylite_sql_ast_column_type {
     MYLITE_SQL_AST_COLUMN_TYPE_DATETIME = 25,
     MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP = 26,
     MYLITE_SQL_AST_COLUMN_TYPE_YEAR = 27,
+    MYLITE_SQL_AST_COLUMN_TYPE_SERIAL = 28,
 };
 
 enum mylite_sql_ast_column_attribute {
@@ -355,6 +356,7 @@ enum mylite_sql_ast_column_attribute {
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_GENERATED = 13,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_REFERENCES = 14,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK = 15,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SERIAL_DEFAULT_VALUE = 16,
 };
 
 enum mylite_sql_ast_generated_column_storage {

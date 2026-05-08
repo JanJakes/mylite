@@ -2591,16 +2591,18 @@ static int test_create_table_column_attributes(void) {
 
 static int test_create_table_primary_keys_auto_increment(void) {
     enum {
-        expected_element_count = 10,
+        expected_element_count = 12,
         id_column = 0,
         shorthand_column = 1,
         no_key_auto_column = 2,
         nullable_primary_column = 3,
         decimal_auto_column = 5,
         float_auto_column = 6,
-        named_primary_constraint = 7,
-        constraint_without_name = 8,
-        constraint_with_index_name = 9,
+        serial_type_column = 7,
+        serial_default_column = 8,
+        named_primary_constraint = 9,
+        constraint_without_name = 10,
+        constraint_with_index_name = 11,
         prefix_length = 10,
         key_block_size = 8,
         named_primary_option_count = 5,
@@ -2622,6 +2624,7 @@ static int test_create_table_primary_keys_auto_increment(void) {
         "v VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'v' VISIBLE, "
         "d DECIMAL AUTO_INCREMENT PRIMARY KEY, "
         "f FLOAT AUTO_INCREMENT PRIMARY KEY, "
+        "serial_alias SERIAL, serial_default INT SERIAL DEFAULT VALUE, "
         "PRIMARY KEY pk_named USING BTREE (id, v(10) DESC) "
         "KEY_BLOCK_SIZE = 8 COMMENT 'pk' VISIBLE "
         "ENGINE_ATTRIBUTE='{}' SECONDARY_ENGINE_ATTRIBUTE '', "
@@ -2695,6 +2698,35 @@ static int test_create_table_primary_keys_auto_increment(void) {
         child_at(attributes, 0U),
         MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT,
         "float auto_increment attribute"
+    );
+
+    failures += expect_column_type(
+        child_at(child_at(elements, serial_type_column), 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_SERIAL,
+        "serial alias type"
+    );
+    failures += expect_span_text(
+        child_at(child_at(elements, serial_type_column), 1U),
+        "SERIAL",
+        "serial alias type span"
+    );
+
+    failures += expect_column_type(
+        child_at(child_at(elements, serial_default_column), 1U),
+        MYLITE_SQL_AST_COLUMN_TYPE_INT,
+        "serial default value base type"
+    );
+    attributes = child_at(child_at(elements, serial_default_column), 2U);
+    failures += expect_child_count(attributes, 1U, "serial default value attribute count");
+    failures += expect_column_attribute(
+        child_at(attributes, 0U),
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SERIAL_DEFAULT_VALUE,
+        "serial default value attribute"
+    );
+    failures += expect_span_text(
+        child_at(attributes, 0U),
+        "SERIAL DEFAULT VALUE",
+        "serial default value attribute span"
     );
 
     constraint = child_at(elements, named_primary_constraint);
@@ -2800,7 +2832,7 @@ static int test_create_table_primary_keys_auto_increment(void) {
 
     failures += parse_sql(
         "CREATE TABLE pk_keyword_names ("
-        "auto_increment INT, btree INT, hash INT, "
+        "auto_increment INT, btree INT, hash INT, serial INT, "
         "key_block_size INT, engine_attribute INT, "
         "secondary_engine_attribute INT);",
         MYLITE_SQL_PARSE_OK,
@@ -2966,6 +2998,13 @@ static int test_create_table_primary_keys_auto_increment(void) {
     failures += parse_sql(
         "CREATE TABLE bad_primary_using_rtree "
         "(a INT, PRIMARY KEY USING RTREE (a));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_serial_type_default (id SERIAL DEFAULT VALUE);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

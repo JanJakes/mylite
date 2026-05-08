@@ -191,7 +191,7 @@ static void mylite_sql_parser_stack_free(void *pointer, void *context)
     FOLLOWS HASH HOUR IMMEDIATE INSTANT
     INVISIBLE INVOKER KEY_BLOCK_SIZE LANGUAGE MEMORY MESSAGE_TEXT MINUTE MODIFY MONTH MYSQL_ERRNO
     NCHAR NO NULLS NVARCHAR OFFSET ONLY POSITION PRECEDES PRECEDING PRESERVE QUARTER REPLICA
-    RESPECT RETURNS ROLLBACK SAVEPOINT SCHEDULE SCHEMA_NAME SECOND SECONDARY_ENGINE_ATTRIBUTE
+    RESPECT RETURNS ROLLBACK SAVEPOINT SCHEDULE SCHEMA_NAME SECOND SECONDARY_ENGINE_ATTRIBUTE SERIAL
     SECURITY SIGNED SLAVE SNAPSHOT SONAME START STARTS STORAGE STRINGKW SUBCLASS_ORIGIN SUBDATE
     TABLE_NAME TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE UNBOUNDED VISIBLE VALUE WARNINGS WEEK
     WORK YEAR.
@@ -2958,6 +2958,13 @@ column_type(A) ::= double_column_type(B). {
 column_type(A) ::= temporal_column_type(B). {
     A = B;
 }
+column_type(A) ::= serial_column_type(B). {
+    A = B;
+}
+
+serial_column_type(A) ::= SERIAL(T). {
+    A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_SERIAL);
+}
 
 integer_column_type(A) ::= integer_type_name(B) opt_integer_display_width(C). {
     A = mylite_sql_parser_set_column_display_width(state, B, C);
@@ -3448,6 +3455,9 @@ column_attribute(A) ::= STORAGE(S) MEMORY(T). {
 }
 column_attribute(A) ::= AUTO_INCREMENT(T). {
     A = mylite_sql_parser_make_column_auto_increment_attribute(state, T);
+}
+column_attribute(A) ::= SERIAL(S) DEFAULT(D) VALUE(V). {
+    A = mylite_sql_parser_make_column_serial_default_value_attribute(state, S, D, V);
 }
 column_attribute(A) ::= PRIMARY(P) KEY(K). {
     A = mylite_sql_parser_make_column_primary_key_attribute(state, P, K);

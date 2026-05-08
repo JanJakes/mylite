@@ -22,6 +22,8 @@ static int copy_create_table_column_attributes(
     struct mylite_create_table_plan *plan
 );
 
+static void apply_serial_column_alias(struct mylite_create_table_column *column);
+
 static int copy_create_table_column_check_attribute(
     const struct mylite_sql_ast_node *attribute,
     struct mylite_create_table_plan *plan
@@ -64,6 +66,9 @@ int mylite_table_ddl_copy_create_table_column(
         return MYLITE_NOMEM;
     }
     status = copy_create_table_column_type(mylite_ast_child_at(column_node, 1U), &column.type);
+    if (status == MYLITE_OK) {
+        apply_serial_column_alias(&column);
+    }
     if (status == MYLITE_OK) {
         status = copy_create_table_column_attributes(
             mylite_ast_child_at(column_node, 2U),
@@ -210,6 +215,17 @@ static int copy_create_table_column_type(
     return MYLITE_OK;
 }
 
+static void apply_serial_column_alias(struct mylite_create_table_column *column) {
+    if (column == NULL || column->type.ast_type != MYLITE_SQL_AST_COLUMN_TYPE_SERIAL) {
+        return;
+    }
+
+    column->nullable = false;
+    column->auto_increment = true;
+    column->unique_key = true;
+    column->type.attributes.has_unsigned = true;
+}
+
 static int copy_create_table_column_attributes(
     const struct mylite_sql_ast_node *attributes,
     struct mylite_create_table_column *column,
@@ -260,6 +276,11 @@ static int copy_create_table_column_attributes(
             break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_AUTO_INCREMENT:
             column->auto_increment = true;
+            break;
+        case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SERIAL_DEFAULT_VALUE:
+            column->nullable = false;
+            column->auto_increment = true;
+            column->unique_key = true;
             break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY:
             column->primary_key = true;

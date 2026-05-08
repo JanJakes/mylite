@@ -5898,6 +5898,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_auto_increment_attribu
     return attribute;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_serial_default_value_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token serial_token,
+    struct mylite_sql_token default_token,
+    struct mylite_sql_token value_token
+) {
+    struct mylite_sql_ast_node *attribute = make_node(
+        state,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE,
+        span_join(
+            span_join(span_from_token(&serial_token), span_from_token(&default_token)),
+            span_from_token(&value_token)
+        )
+    );
+
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_column_attribute(
+        attribute,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SERIAL_DEFAULT_VALUE
+    );
+    return attribute;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_column_primary_key_attribute(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,
@@ -7930,6 +7956,7 @@ static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type c
     case MYLITE_SQL_AST_COLUMN_TYPE_MEDIUMINT:
     case MYLITE_SQL_AST_COLUMN_TYPE_INT:
     case MYLITE_SQL_AST_COLUMN_TYPE_BIGINT:
+    case MYLITE_SQL_AST_COLUMN_TYPE_SERIAL:
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
         break;
@@ -8323,6 +8350,7 @@ static bool lookup_keyword_parser_token(
         {"SEPARATOR", MYLITE_SQL_PARSE_SEPARATOR},
         {"SELECT", MYLITE_SQL_PARSE_SELECT},
         {"SECURITY", MYLITE_SQL_PARSE_SECURITY},
+        {"SERIAL", MYLITE_SQL_PARSE_SERIAL},
         {"SESSION", MYLITE_SQL_PARSE_SESSION},
         {"SET", MYLITE_SQL_PARSE_SET},
         {"SHARED", MYLITE_SQL_PARSE_SHARED},

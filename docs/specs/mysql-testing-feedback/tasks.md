@@ -449,6 +449,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `SHA2()` now derives result metadata widths from cacheable constant
       length expressions even when the digest result is `NULL`, and hash
       functions now have binary-connection descriptor coverage.
+      String `INSERT()` source-`NULL` result metadata now matches MySQL's
+      binary `VAR_STRING` descriptors, including all-`NULL` argument lists.
       `EXTRACT(QUARTER FROM ...)` and `EXTRACT(MICROSECOND FROM ...)` now parse
       and execute with MySQL-shaped signed `LONGLONG` descriptors, including the
       MySQL-observed `EXTRACT(MICROSECOND...)` display width.

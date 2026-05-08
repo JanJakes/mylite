@@ -16,7 +16,8 @@ Out of scope:
 - `max_allowed_packet` result-size enforcement
 - full collation aggregation and coercibility
 - SQL-mode-dependent stored or loadable function name resolution
-- exact metadata parity for every `NULL` argument combination
+- exact metadata parity in deferred prepared, stored, and generated-column
+  contexts
 
 ## Sources
 
@@ -118,6 +119,8 @@ Constant result metadata was verified:
 | --- | --- | --- | ---: | ---: | ---: | --- |
 | `INSERT('Quadratic',3,4,'What')` | `utf8mb4` | `VAR_STRING` | `255` | `52` | `31` | none |
 | `INSERT('abc',NULL,1,'x')` | `utf8mb4` | `VAR_STRING` | `255` | `16` | `31` | none |
+| `INSERT(NULL,1,1,'x')` | `utf8mb4` | `VAR_STRING` | `63` | `4` | `31` | `BINARY` |
+| `INSERT(NULL,NULL,NULL,NULL)` | `utf8mb4` | `VAR_STRING` | `63` | `0` | `31` | `BINARY` |
 | `INSERT('Quadratic',3,4,'What')` | `latin1` | `VAR_STRING` | `8` | `13` | `31` | none |
 | `INSERT(varbinary_col,2,2,'-')` | `utf8mb4` | `VAR_STRING` | `63` | source octet length + 4 | `31` | `BINARY` |
 
@@ -128,9 +131,10 @@ character. It is not based on the actual post-splice result length. For
 example, under `utf8mb4`, `'Quadratic'` plus `'What'` yields `(9 + 4) * 4 =
 52`, and `VARCHAR(20)` plus `'X'` yields `(20 + 1) * 4 = 84`.
 
-MySQL reports binary metadata for some `NULL` source combinations, such as
-`INSERT(NULL,1,1,'x')`. MyLite's first slice keeps the existing text scalar
-metadata architecture and targets the connection-collation text behavior above.
+MySQL reports binary metadata when the source argument is a literal `NULL`.
+MyLite follows that source-null rule while preserving connection-collation text
+metadata for nonbinary source arguments with `NULL` position, length, or
+replacement arguments.
 
 ## Parser and AST design
 
@@ -190,7 +194,7 @@ Add C tests for:
 - `NULL` propagation and observed conversion-warning short-circuit behavior
 - numeric rounding and string-numeric truncation warnings
 - UTF-8 character position and length behavior
-- metadata for the verified `utf8mb4` and `latin1` constant cases
+- metadata for the verified `utf8mb4`, `latin1`, and source-null constant cases
 - table-backed projection, `WHERE`, and `ORDER BY`
 - single-table `UPDATE` assignment/predicate and `DELETE` predicate paths
 
@@ -199,5 +203,5 @@ Add C tests for:
 After implementation and verification, the `INSERT()` row in
 `COMPATIBILITY.md` should move to partial support. The status remains partial
 because binary-string runtime behavior, `max_allowed_packet`, full
-collation/coercibility, exact all-`NULL` metadata, and full MySQL diagnostic
-fidelity are deferred.
+collation/coercibility, exact metadata in deferred contexts, and full MySQL
+diagnostic fidelity are deferred.

@@ -64,6 +64,14 @@ static int infer_source_binary_result(
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
+static int infer_insert_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
 static bool infer_padding_repeat_long_blob_descriptor(
     mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -370,6 +378,9 @@ static int infer_slice_string_binary_result(
     if (mylite_function_name_is_concat_ws(name)) {
         return infer_concat_binary_result(database, plan, arguments, out_binary, callbacks);
     }
+    if (mylite_function_name_is_insert(name)) {
+        return infer_insert_binary_result(database, plan, arguments, out_binary, callbacks);
+    }
     return infer_source_binary_result(database, plan, arguments, out_binary, callbacks);
 }
 
@@ -415,6 +426,25 @@ static int infer_source_binary_result(
         return status;
     }
     *out_binary = field_descriptor_is_binary_string(&descriptor);
+    return MYLITE_OK;
+}
+
+static int infer_insert_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *arguments,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
+    struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
+    int status = callbacks->infer_expression_descriptor(database, plan, source, NULL, &descriptor);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    *out_binary =
+        descriptor.type == MYLITE_FIELD_TYPE_NULL || field_descriptor_is_binary_string(&descriptor);
     return MYLITE_OK;
 }
 

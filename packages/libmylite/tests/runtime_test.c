@@ -8552,6 +8552,32 @@ static int test_scalar_builtin_functions_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"insert_null_source",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         4U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"insert_all_null",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         0U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
         {"quote_value",
          NULL,
          NULL,
@@ -11874,6 +11900,8 @@ static int test_scalar_builtin_functions_execution(void) {
         "LPAD('hi', 5, '.') AS lpad_value, "
         "RPAD('hi', 5, '.') AS rpad_value, "
         "INSERT('Quadratic', 3, 4, 'What') AS insert_value, "
+        "INSERT(NULL, 1, 1, 'x') AS insert_null_source, "
+        "INSERT(NULL, NULL, NULL, NULL) AS insert_all_null, "
         "QUOTE('Don''t') AS quote_value, "
         "QUOTE(42) AS quote_numeric, "
         "ELT(2, 'a', 'bc') AS elt_value, "

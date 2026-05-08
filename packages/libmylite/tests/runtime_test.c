@@ -15900,6 +15900,8 @@ static int test_hex_bit_literal_execution(void) {
     static const char *const binary_cast_values[] =
         {"610062", "3", "610062", "3", "610062", "3", "6100", "2", "610062", "3"};
     static const unsigned char odd_width_bit_literal[] = {0x00U, 0x01U};
+    static const unsigned char binary_string_store_value[] = {'a', 0x00U, 'b'};
+    static const unsigned char from_base64_store_value[] = {0x00U, 'A'};
     static const struct expected_result_metadata literal_metadata[] = {
         {"prefixed_hex",
          NULL,
@@ -16079,6 +16081,47 @@ static int test_hex_bit_literal_execution(void) {
         1,
         "binary string introducer DML stores bytes"
     );
+    failures +=
+        prepare_sql(database, "SELECT b FROM binary_string_store WHERE id = 1", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "stored binary NUL row");
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 0),
+        (int64_t)sizeof(binary_string_store_value),
+        "stored binary NUL byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 0),
+        binary_string_store_value,
+        sizeof(binary_string_store_value),
+        "stored binary NUL raw bytes"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "stored binary NUL done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "INSERT INTO binary_string_store VALUES (2, FROM_BASE64('AEE='), 'b64')",
+        MYLITE_DONE
+    );
+    failures +=
+        prepare_sql(database, "SELECT b FROM binary_string_store WHERE id = 2", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "stored FROM_BASE64 NUL row");
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 0),
+        (int64_t)sizeof(from_base64_store_value),
+        "stored FROM_BASE64 NUL byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 0),
+        from_base64_store_value,
+        sizeof(from_base64_store_value),
+        "stored FROM_BASE64 NUL raw bytes"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "stored FROM_BASE64 NUL done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += execute_sql(database, "CREATE TABLE literal_metadata_empty (id INT)", MYLITE_DONE);
     failures += prepare_sql(
         database,

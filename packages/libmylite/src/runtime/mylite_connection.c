@@ -165,6 +165,7 @@ static int allocate_database_handle(struct mylite_db **out_database) {
     }
 
     mylite_diagnostics_init(&database->diagnostics);
+    mylite_diagnostics_init(&database->previous_diagnostics);
     initialize_session_state(&database->session);
     mylite_catalog_init(&database->catalog);
     *out_database = database;
@@ -248,6 +249,7 @@ static void destroy_database_handle(struct mylite_db *database) {
         (void)sqlite3_close(database->sqlite);
     }
     database->sqlite = NULL;
+    mylite_diagnostics_deinit(&database->previous_diagnostics);
     mylite_diagnostics_deinit(&database->diagnostics);
     free(database);
 }

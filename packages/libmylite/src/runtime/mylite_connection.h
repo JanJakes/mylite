@@ -43,6 +43,7 @@ struct mylite_session_state {
 struct mylite_db {
     struct sqlite3 *sqlite;
     struct mylite_diagnostics diagnostics;
+    struct mylite_diagnostics previous_diagnostics;
     struct mylite_session_state session;
     struct mylite_sqlite_bootstrap_state sqlite_bootstrap;
     struct mylite_catalog catalog;

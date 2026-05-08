@@ -98,6 +98,9 @@ statement(A) ::= show_routine_status_statement(B). {
 statement(A) ::= show_processlist_statement(B). {
     A = B;
 }
+statement(A) ::= show_warnings_statement(B). {
+    A = B;
+}
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
@@ -302,6 +305,20 @@ show_processlist_statement(A) ::= SHOW(S) PROCESSLIST(P). {
 show_processlist_statement(A) ::= SHOW(S) FULL PROCESSLIST(P). {
     A = mylite_sql_parser_make_show_processlist_statement(
         state, S, P, MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT);
+}
+
+show_warnings_statement(A) ::= SHOW(S) WARNINGS(W) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_show_warnings_statement(state, S, W, L);
+}
+show_warnings_statement(A) ::= SHOW(S) COUNT(C) LPAREN(L) STAR RPAREN WARNINGS(W). {
+    A = mylite_sql_parser_make_show_count_warnings_statement(
+        state,
+        (struct mylite_sql_show_count_warnings_tokens){
+            .show = S,
+            .count = C,
+            .left_paren = L,
+            .warnings = W,
+        });
 }
 
 show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) show_like_clause_opt(L). {
@@ -881,6 +898,9 @@ identifier(A) ::= OPEN(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= PROCESSLIST(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= WARNINGS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ENGINE(T). {

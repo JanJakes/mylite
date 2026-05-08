@@ -62,6 +62,41 @@ void mylite_diagnostics_reset(struct mylite_diagnostics *diagnostics) {
     diagnostics->warning_count = 0U;
 }
 
+int mylite_diagnostics_replace(
+    struct mylite_diagnostics *destination,
+    const struct mylite_diagnostics *source
+) {
+    struct mylite_diagnostics copy;
+    int rc = MYLITE_OK;
+
+    if (destination == NULL || source == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (destination == source) {
+        return MYLITE_OK;
+    }
+
+    mylite_diagnostics_init(&copy);
+    copy.condition = source->condition;
+    for (size_t index = 0U; rc == MYLITE_OK && index < source->warning_count; ++index) {
+        const struct mylite_diagnostic_record *warning = &source->warnings[index];
+        rc = mylite_diagnostics_append_warning(
+            &copy,
+            warning->code,
+            warning->sqlstate,
+            warning->message
+        );
+    }
+    if (rc != MYLITE_OK) {
+        mylite_diagnostics_deinit(&copy);
+        return rc;
+    }
+
+    mylite_diagnostics_deinit(destination);
+    *destination = copy;
+    return MYLITE_OK;
+}
+
 void mylite_diagnostics_set_error(
     struct mylite_diagnostics *diagnostics,
     int code,

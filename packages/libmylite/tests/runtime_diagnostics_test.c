@@ -9,6 +9,7 @@
 
 static int test_null_public_diagnostic_accessors(void);
 static int test_live_diagnostics_set_read_reset_and_warning_order(void);
+static int test_diagnostics_replace_copies_condition_and_warnings(void);
 static int test_diagnostics_deinit_and_misuse_paths(void);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
@@ -20,6 +21,7 @@ int main(void) {
 
     failures += test_null_public_diagnostic_accessors();
     failures += test_live_diagnostics_set_read_reset_and_warning_order();
+    failures += test_diagnostics_replace_copies_condition_and_warnings();
     failures += test_diagnostics_deinit_and_misuse_paths();
 
     return failures == 0 ? 0 : 1;
@@ -133,6 +135,62 @@ static int test_diagnostics_deinit_and_misuse_paths(void) {
         "warning overflow sets diagnostic"
     );
     mylite_diagnostics_deinit(&diagnostics);
+
+    return failures;
+}
+
+static int test_diagnostics_replace_copies_condition_and_warnings(void) {
+    enum { copied_warning_code = 1287 };
+
+    struct mylite_diagnostics source;
+    struct mylite_diagnostics destination;
+    const struct mylite_diagnostic_record *warning = NULL;
+    int failures = 0;
+
+    mylite_diagnostics_init(&source);
+    mylite_diagnostics_init(&destination);
+
+    mylite_diagnostics_set_error(&source, MYLITE_ERROR, "42000", "source error");
+    failures += expect_int(
+        mylite_diagnostics_append_warning(&source, copied_warning_code, "HY000", "source warning"),
+        MYLITE_OK,
+        "append source warning"
+    );
+    failures += expect_int(
+        mylite_diagnostics_replace(&destination, &source),
+        MYLITE_OK,
+        "replace diagnostics"
+    );
+
+    mylite_diagnostics_reset(&source);
+    failures +=
+        expect_int(mylite_diagnostics_errcode(&destination), MYLITE_ERROR, "copied error code");
+    failures += expect_text(mylite_diagnostics_sqlstate(&destination), "42000", "copied SQLSTATE");
+    failures +=
+        expect_text(mylite_diagnostics_errmsg(&destination), "source error", "copied message");
+    failures +=
+        expect_size(mylite_diagnostics_warning_count(&destination), 1U, "copied warning count");
+    warning = mylite_diagnostics_warning_at(&destination, 0U);
+    failures += expect_true(warning != NULL, "copied warning exists");
+    if (warning != NULL) {
+        failures += expect_int(warning->code, copied_warning_code, "copied warning code");
+        failures += expect_text(warning->sqlstate, "HY000", "copied warning SQLSTATE");
+        failures += expect_text(warning->message, "source warning", "copied warning message");
+    }
+
+    failures += expect_int(
+        mylite_diagnostics_replace(NULL, &source),
+        MYLITE_MISUSE,
+        "replace rejects NULL destination"
+    );
+    failures += expect_int(
+        mylite_diagnostics_replace(&destination, NULL),
+        MYLITE_MISUSE,
+        "replace rejects NULL source"
+    );
+
+    mylite_diagnostics_deinit(&destination);
+    mylite_diagnostics_deinit(&source);
 
     return failures;
 }

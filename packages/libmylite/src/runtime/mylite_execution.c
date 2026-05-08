@@ -61,6 +61,8 @@ enum {
     show_open_tables_result_column_count = 4,
     show_routine_status_result_column_count = 12,
     show_processlist_result_column_count = 8,
+    show_warnings_result_column_count = 3,
+    show_count_warnings_result_column_count = 1,
     show_processlist_info_truncation_length = 100,
     show_processlist_db_column = 3,
     show_processlist_info_column = 7,
@@ -159,6 +161,13 @@ struct planned_select_limit {
     int64_t row_count;
     bool has_offset;
     int64_t offset;
+};
+
+struct planned_show_warnings_limit {
+    bool has_limit;
+    uint64_t row_count;
+    bool has_offset;
+    uint64_t offset;
 };
 
 struct planned_select {
@@ -393,6 +402,15 @@ static int execute_show_processlist_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_show_warnings_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_count_warnings_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+);
 static int execute_show_columns_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -423,6 +441,20 @@ static int64_t row_count_for_completed_statement(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
 );
+static int finish_parse_failure(
+    struct mylite_db *database,
+    const struct mylite_sql_parse_result *parse_result,
+    int parse_rc
+);
+static int finish_failed_statement(struct mylite_db *database, int rc, mylite_result **out_result);
+static int finish_completed_statement(
+    struct mylite_db *database,
+    int64_t completed_row_count,
+    bool preserve_diagnostics_snapshot,
+    mylite_result **out_result
+);
+static bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast_node *statement);
+static int snapshot_current_diagnostics(struct mylite_db *database);
 static int finish_successful_result(
     struct mylite_db *database,
     mylite_result *result,
@@ -672,6 +704,39 @@ static int copy_show_processlist_info(
 );
 static size_t statement_info_length_without_terminator(const char *sql, size_t sql_size);
 static int append_show_processlist_warning(struct mylite_db *database);
+static int plan_show_warnings_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *limit_clause,
+    struct planned_show_warnings_limit *out_limit
+);
+static int convert_show_warnings_limit_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int append_show_warnings_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_show_warnings_limit *limit
+);
+static int append_show_warnings_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *level,
+    const struct mylite_diagnostic_record *record
+);
+static int append_show_count_warnings_row(struct mylite_db *database, mylite_result *result);
+static int previous_diagnostics_condition_count(
+    const struct mylite_diagnostics *diagnostics,
+    uint64_t *out_count
+);
+static bool diagnostics_has_error_condition(const struct mylite_diagnostics *diagnostics);
+static int format_uint64(
+    struct mylite_db *database,
+    uint64_t value,
+    char *buffer,
+    size_t buffer_size
+);
 
 static int plan_show_create_table(
     struct mylite_db *database,
@@ -1288,6 +1353,7 @@ int mylite_execute(
     const struct mylite_sql_ast_node *statement = NULL;
     int64_t completed_row_count = -1;
     size_t statement_count = 0U;
+    bool preserve_diagnostics_snapshot = false;
     int rc = MYLITE_OK;
 
     if (out_result == NULL) {
@@ -1331,12 +1397,7 @@ int mylite_execute(
         &parse_result
     ));
     if (rc != MYLITE_OK) {
-        if (rc == MYLITE_NOMEM) {
-            set_nomem_error(database);
-        } else {
-            set_parse_error(database, &parse_result);
-        }
-        database->session.previous_row_count = -1;
+        rc = finish_parse_failure(database, &parse_result, rc);
         mylite_sql_parse_result_deinit(&parse_result);
         (void)mylite_statement_context_end(&context, rc);
         mylite_statement_context_deinit(&context);
@@ -1356,20 +1417,76 @@ int mylite_execute(
 
     if (rc == MYLITE_OK) {
         completed_row_count = row_count_for_completed_statement(statement, *out_result);
+        preserve_diagnostics_snapshot = statement_preserves_diagnostics_snapshot(statement);
     }
     mylite_sql_parse_result_deinit(&parse_result);
     if (rc != MYLITE_OK) {
-        database->session.previous_row_count = -1;
-        set_internal_error_if_clear(database, rc, "statement execution failed");
-        mylite_result_free(*out_result);
-        *out_result = NULL;
+        rc = finish_failed_statement(database, rc, out_result);
     } else {
-        database->session.previous_row_count = completed_row_count;
+        rc = finish_completed_statement(
+            database,
+            completed_row_count,
+            preserve_diagnostics_snapshot,
+            out_result
+        );
     }
     (void)mylite_statement_context_end(&context, rc);
     mylite_statement_context_deinit(&context);
 
     return rc;
+}
+
+static int finish_parse_failure(
+    struct mylite_db *database,
+    const struct mylite_sql_parse_result *parse_result,
+    int parse_rc
+) {
+    int rc = parse_rc;
+    int snapshot_rc = MYLITE_OK;
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else {
+        set_parse_error(database, parse_result);
+    }
+    database->session.previous_row_count = -1;
+
+    snapshot_rc = snapshot_current_diagnostics(database);
+    return snapshot_rc == MYLITE_OK ? rc : snapshot_rc;
+}
+
+static int finish_failed_statement(struct mylite_db *database, int rc, mylite_result **out_result) {
+    int snapshot_rc = MYLITE_OK;
+
+    database->session.previous_row_count = -1;
+    set_internal_error_if_clear(database, rc, "statement execution failed");
+    mylite_result_free(*out_result);
+    *out_result = NULL;
+
+    snapshot_rc = snapshot_current_diagnostics(database);
+    return snapshot_rc == MYLITE_OK ? rc : snapshot_rc;
+}
+
+static int finish_completed_statement(
+    struct mylite_db *database,
+    int64_t completed_row_count,
+    bool preserve_diagnostics_snapshot,
+    mylite_result **out_result
+) {
+    int rc = MYLITE_OK;
+
+    if (!preserve_diagnostics_snapshot) {
+        rc = snapshot_current_diagnostics(database);
+    }
+    if (rc != MYLITE_OK) {
+        database->session.previous_row_count = -1;
+        mylite_result_free(*out_result);
+        *out_result = NULL;
+        return rc;
+    }
+
+    database->session.previous_row_count = completed_row_count;
+    return MYLITE_OK;
 }
 
 static int execute_parsed_statement(
@@ -1430,6 +1547,10 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SHOW_PROCESSLIST_STATEMENT:
     case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
         return execute_show_processlist_statement(database, context, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT:
+        return execute_show_warnings_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
+        return execute_show_count_warnings_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -2682,6 +2803,303 @@ static int append_show_processlist_warning(struct mylite_db *database) {
     );
 }
 
+static int execute_show_warnings_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_warnings_result_column_count] = {
+        "Level",
+        "Code",
+        "Message",
+    };
+    struct planned_show_warnings_limit limit;
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    rc = plan_show_warnings_limit(database, child_at(statement, 0U), &limit);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_warnings_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_warnings_rows(database, result, &limit);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_show_count_warnings_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_count_warnings_result_column_count] = {
+        "@@session.warning_count",
+    };
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_count_warnings_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_count_warnings_row(database, result);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int plan_show_warnings_limit(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *limit_clause,
+    struct planned_show_warnings_limit *out_limit
+) {
+    int rc = MYLITE_OK;
+
+    if (out_limit == NULL) {
+        set_runtime_error(database, "invalid SHOW WARNINGS LIMIT plan");
+        return MYLITE_ERROR;
+    }
+
+    out_limit->has_limit = false;
+    out_limit->row_count = UINT64_MAX;
+    out_limit->has_offset = false;
+    out_limit->offset = 0U;
+    if (limit_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (limit_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE) {
+        set_unsupported_error(database, "SHOW WARNINGS supports only literal LIMIT clauses");
+        return MYLITE_ERROR;
+    }
+
+    rc = convert_show_warnings_limit_integer_literal(
+        database,
+        child_at(limit_clause, 0U),
+        &out_limit->row_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_limit->has_limit = true;
+
+    if (child_at(limit_clause, 1U) != NULL) {
+        rc = convert_show_warnings_limit_integer_literal(
+            database,
+            child_at(limit_clause, 1U),
+            &out_limit->offset
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_limit->has_offset = true;
+    }
+
+    return MYLITE_OK;
+}
+
+static int convert_show_warnings_limit_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+) {
+    uint64_t value = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        set_unsupported_error(
+            database,
+            "SHOW WARNINGS supports only unsigned decimal integer LIMIT literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_unsigned_integer_literal(&value_node->span, &value);
+    if (rc != MYLITE_OK) {
+        set_limit_out_of_range_error(database);
+        return MYLITE_ERROR;
+    }
+
+    *out_value = value;
+    return MYLITE_OK;
+}
+
+static int append_show_warnings_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_show_warnings_limit *limit
+) {
+    const struct mylite_diagnostics *diagnostics = &database->previous_diagnostics;
+    uint64_t total_count = 0U;
+    uint64_t start_index = 0U;
+    uint64_t row_count = UINT64_MAX;
+    uint64_t emitted_count = 0U;
+    uint64_t condition_count = 0U;
+    int rc = previous_diagnostics_condition_count(diagnostics, &condition_count);
+
+    if (limit->has_offset) {
+        start_index = limit->offset;
+    }
+    if (limit->has_limit) {
+        row_count = limit->row_count;
+    }
+    if (rc == MYLITE_OK) {
+        total_count = condition_count + (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+    }
+
+    for (uint64_t index = start_index;
+         rc == MYLITE_OK && index < total_count && emitted_count < row_count;
+         ++index, ++emitted_count) {
+        if (condition_count != 0U && index == 0U) {
+            rc = append_show_warnings_row(database, result, "Error", &diagnostics->condition);
+        } else {
+            const uint64_t warning_index = index - condition_count;
+            const struct mylite_diagnostic_record *warning =
+                mylite_diagnostics_warning_at(diagnostics, (size_t)warning_index);
+            if (warning == NULL) {
+                set_runtime_error(database, "invalid previous diagnostics warning index");
+                rc = MYLITE_ERROR;
+            } else {
+                rc = append_show_warnings_row(database, result, "Warning", warning);
+            }
+        }
+    }
+
+    return rc;
+}
+
+static int append_show_warnings_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *level,
+    const struct mylite_diagnostic_record *record
+) {
+    char code_text[integer_text_capacity];
+    const char *values[show_warnings_result_column_count] = {
+        level,
+        code_text,
+        record == NULL ? NULL : record->message,
+    };
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (record == NULL) {
+        set_runtime_error(database, "invalid diagnostics record");
+        return MYLITE_ERROR;
+    }
+
+    written = snprintf(code_text, sizeof(code_text), "%d", record->code);
+    if (written < 0 || (size_t)written >= sizeof(code_text)) {
+        set_runtime_error(database, "failed to format diagnostic code");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_result_append_text_row(result, values);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int append_show_count_warnings_row(struct mylite_db *database, mylite_result *result) {
+    const struct mylite_diagnostics *diagnostics = &database->previous_diagnostics;
+    char count_text[integer_text_capacity];
+    const char *values[show_count_warnings_result_column_count] = {count_text};
+    uint64_t condition_count = 0U;
+    uint64_t count = 0U;
+    int rc = previous_diagnostics_condition_count(diagnostics, &condition_count);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    count = condition_count + (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+    rc = format_uint64(database, count, count_text, sizeof(count_text));
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    return rc;
+}
+
+static int previous_diagnostics_condition_count(
+    const struct mylite_diagnostics *diagnostics,
+    uint64_t *out_count
+) {
+    uint64_t warning_count = 0U;
+
+    if (diagnostics == NULL || out_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    warning_count = (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+    if (diagnostics_has_error_condition(diagnostics) && warning_count == UINT64_MAX) {
+        return MYLITE_NOMEM;
+    }
+
+    *out_count = 0U;
+    if (diagnostics_has_error_condition(diagnostics)) {
+        *out_count = 1U;
+    }
+    return MYLITE_OK;
+}
+
+static bool diagnostics_has_error_condition(const struct mylite_diagnostics *diagnostics) {
+    if (diagnostics == NULL) {
+        return false;
+    }
+    if (mylite_diagnostics_errcode(diagnostics) == MYLITE_OK) {
+        return false;
+    }
+    return true;
+}
+
+static int format_uint64(
+    struct mylite_db *database,
+    uint64_t value,
+    char *buffer,
+    size_t buffer_size
+) {
+    int written = snprintf(buffer, buffer_size, "%" PRIu64, value);
+
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format unsigned integer");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int execute_show_columns_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -3271,6 +3689,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_PROCESSLIST_STATEMENT:
     case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
@@ -3328,6 +3748,33 @@ static int64_t row_count_for_completed_statement(
     }
 
     return 0;
+}
+
+static bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast_node *statement) {
+    if (statement == NULL) {
+        return false;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT) {
+        return true;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT) {
+        return true;
+    }
+    return false;
+}
+
+static int snapshot_current_diagnostics(struct mylite_db *database) {
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = mylite_diagnostics_replace(&database->previous_diagnostics, &database->diagnostics);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static int finish_successful_result(

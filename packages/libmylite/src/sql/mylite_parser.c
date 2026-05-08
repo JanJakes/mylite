@@ -758,6 +758,44 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_processlist_statement(
     return make_node(state, statement_kind, span);
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_warnings_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token warnings_token,
+    struct mylite_sql_ast_node *limit_clause
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&warnings_token));
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (limit_clause != NULL) {
+        span = span_join(span, limit_clause->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, limit_clause);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_count_warnings_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_show_count_warnings_tokens tokens
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&tokens.show), span_from_token(&tokens.warnings));
+
+    if (tokens.left_paren.offset != tokens.count.offset + tokens.count.length) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, tokens.left_paren);
+        return NULL;
+    }
+
+    return make_node(state, MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT, span);
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,
@@ -1987,6 +2025,7 @@ static bool map_keyword_token(
         {"EVENTS", MYLITE_SQL_PARSE_EVENTS},
         {"OPEN", MYLITE_SQL_PARSE_OPEN},
         {"PROCESSLIST", MYLITE_SQL_PARSE_PROCESSLIST},
+        {"WARNINGS", MYLITE_SQL_PARSE_WARNINGS},
         {"PROCEDURE", MYLITE_SQL_PARSE_PROCEDURE},
         {"FUNCTION", MYLITE_SQL_PARSE_FUNCTION},
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},

@@ -361,6 +361,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_processlist_statement";
     case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
         return "show_full_processlist_statement";
+    case MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT:
+        return "show_warnings_statement";
+    case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
+        return "show_count_warnings_statement";
     }
 
     return "unknown";

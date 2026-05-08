@@ -77,6 +77,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT = 68,
     MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT = 69,
     MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT = 70,
+    MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT = 71,
 };
 
 enum mylite_sql_ast_literal_kind {

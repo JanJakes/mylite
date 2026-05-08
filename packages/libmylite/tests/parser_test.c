@@ -21,6 +21,7 @@ static int test_table_lifecycle_statements(void);
 static int test_show_columns_introspection_statements(void);
 static int test_show_triggers_empty_introspection_statements(void);
 static int test_show_events_empty_introspection_statements(void);
+static int test_show_open_tables_empty_introspection_statements(void);
 static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
@@ -105,6 +106,7 @@ int main(void) {
     failures += test_show_columns_introspection_statements();
     failures += test_show_triggers_empty_introspection_statements();
     failures += test_show_events_empty_introspection_statements();
+    failures += test_show_open_tables_empty_introspection_statements();
     failures += test_show_index_empty_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
@@ -1932,6 +1934,108 @@ static int test_show_events_empty_introspection_statements(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_open_tables_empty_introspection_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW OPEN TABLES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT, "show open tables");
+    failures += expect_child_count(statement, 0U, "show open tables child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW OPEN TABLES FROM app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT, "show open tables from");
+    failures += expect_child_count(statement, 1U, "show open tables from child count");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show open tables schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW OPEN TABLES IN app LIKE 'open\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT,
+        "show open tables in like"
+    );
+    failures += expect_child_count(statement, 2U, "show open tables in like child count");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show open tables like schema");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "open tables like");
+    failures += expect_span_text(child_at(statement, 1U), "'open\\_%'", "open tables like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW OPEN TABLES LIKE 'open%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT, "show open tables like");
+    failures += expect_child_count(statement, 1U, "show open tables like child count");
+    failures += expect_literal(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "open tables bare like"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 0U), "'open%'", "open tables bare like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE open (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "open table");
+    failures += expect_span_text(child_at(statement, 0U), "open", "open identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW FULL OPEN TABLES FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW EXTENDED OPEN TABLES FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW OPEN TABLES FROM app WHERE `Table` = 'open_table';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW OPEN TABLES FROM app LIKE 'open%' WHERE `Table` = 'open_table';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW OPEN TABLES FROM app ORDER BY `Table`;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW OPEN TABLES FROM app LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW OPEN TABLES FROM app.extra;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW OPEN TABLES FROM app LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW OPEN TABLES FROM app LIKE NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

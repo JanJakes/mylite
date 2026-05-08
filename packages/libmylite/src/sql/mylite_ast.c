@@ -351,6 +351,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_triggers_statement";
     case MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT:
         return "show_events_statement";
+    case MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT:
+        return "show_open_tables_statement";
     }
 
     return "unknown";

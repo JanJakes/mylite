@@ -1,0 +1,287 @@
+# Baseline SQL Mode System Variable
+
+## Status
+
+This feature specifies a narrow scalar system-variable slice for `@@sql_mode`.
+
+It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
+`SELECT` execution, diagnostics lifecycle, and descriptor-driven statement
+paths. MySQL exposes `sql_mode` as mutable global and session state that
+controls a broad set of parser, coercion, validation, DDL, and DML behaviors.
+MyLite does not implement mutable system-variable assignment or SQL-mode
+effects in the baseline yet, so this slice exposes only the MySQL 8.4.9
+default mode string as a read-only scalar.
+
+This is not SQL-mode behavior support. It does not implement `SET sql_mode`,
+mutable global/session state, mode-dependent parsing, mode-dependent literal
+handling, strict/non-strict conversion behavior, or protocol/session tracking
+for changed modes.
+
+## Sources
+
+- MyLite README architecture: `README.md`
+- MyLite engineering standards:
+  `docs/architecture/engineering-standards.md`
+- Baseline implementation strategy:
+  `docs/specs/baseline-implementation-strategy/specs.md`
+- Runtime handles and statement context:
+  `docs/specs/runtime-handles-statement-context/specs.md`
+- MySQL lexer: `docs/specs/mysql-lexer/specs.md`
+- MySQL parser scaffold: `docs/specs/mysql-parser-scaffold/specs.md`
+- MySQL 8.4 Reference Manual, server system variables:
+  https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html
+- MySQL 8.4 Reference Manual, server SQL modes:
+  https://dev.mysql.com/doc/refman/8.4/en/sql-mode.html
+- MySQL 8.4 FAQ, server SQL mode:
+  https://dev.mysql.com/doc/refman/8.4/en/faqs-sql-modes.html
+
+This specification is independently authored from project documentation,
+official MySQL 8.4 documentation, observed MySQL 8.4.9 runtime behavior,
+public SQLite APIs, and existing MyLite source code. It does not copy MySQL,
+MariaDB, Percona, SQLite implementation internals, or other restrictively
+licensed implementation sources.
+
+## MySQL 8.4.9 Runtime Observations
+
+The expectation script
+`packages/libmylite/tests/mysql_baseline_sql_mode_system_variable_expectations.sh`
+records the runtime probes for this feature. The primary probes were run
+against container `mylite-mysql-849` with:
+
+```sh
+docker exec -i mylite-mysql-849 mysql \
+  --protocol=TCP -h127.0.0.1 -uroot \
+  --batch --raw --skip-column-names --default-character-set=utf8mb4
+```
+
+Observed behavior:
+
+- `SELECT VERSION()` returned `8.4.9`.
+- `SELECT @@sql_mode`, `@@global.sql_mode`, `@@session.sql_mode`,
+  `@@local.sql_mode`, and `@@SQL_MODE` return:
+  `ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION`.
+- The variable has global and session scope. After
+  `SET SESSION sql_mode='ANSI_QUOTES'`, unscoped, `session`, and `local`
+  reads return `ANSI_QUOTES`, while `global` still returns the default mode
+  string; assigning `DEFAULT` restores the default session value.
+- Variable and scope names are case-insensitive.
+- Backtick-quoted final variable-name components are accepted.
+- Backtick-quoted scope names, such as ``@@`session`.sql_mode``, are syntax
+  errors.
+- Unknown variables fail with error `1193`, SQLSTATE `HY000`, and an
+  `Unknown system variable` message.
+- A scalar `SELECT` that reads this variable is nondiagnostic. It reads the
+  previous diagnostics snapshot for any `@@warning_count` or `@@error_count`
+  items in the same select list, then clears diagnostics for following
+  diagnostic statements.
+- MySQL accepts wider expression forms such as `SELECT @@sql_mode + 1`.
+  Those forms remain outside this MyLite slice.
+
+The official MySQL documentation classifies `sql_mode` as a dynamic set-valued
+system variable with global and session scope. It also documents the default
+mode set used by MySQL 8.4. MyLite returns that default string in MySQL's
+comma-separated runtime format, but it does not apply any SQL-mode behavior in
+this slice.
+
+## Scope
+
+The implementation must add:
+
+- runtime recognition of `sql_mode` inside the existing scalar `SELECT`
+  subset;
+- support for no scope, `session`, `local`, and `global` scope qualifiers;
+- case-insensitive matching for unquoted scope and variable names;
+- backtick-quoted final variable-name components;
+- one-row scalar result sets with existing source-span column labels;
+- fixed MySQL 8.4.9 default mode string for all supported scopes;
+- MySQL-compatible unknown-variable diagnostics for unsupported names;
+- deterministic rejection of quoted scopes;
+- fast C tests and a MySQL 8.4.9 expectation artifact.
+
+Supported SQL examples:
+
+```sql
+SELECT @@sql_mode
+SELECT @@sql_mode FROM DUAL
+SELECT @@session.sql_mode, @@local.sql_mode
+SELECT @@global.sql_mode
+SELECT @@session.`sql_mode`, @@`sql_mode`
+SELECT @@sql_mode, @@warning_count, ROW_COUNT()
+```
+
+## Non-Goals
+
+This feature must not implement:
+
+- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
+  global/session `sql_mode` state;
+- mode-dependent parsing, including `ANSI_QUOTES`, `IGNORE_SPACE`,
+  `PIPES_AS_CONCAT`, `HIGH_NOT_PRECEDENCE`, or any other parser-affecting
+  mode;
+- mode-dependent literal handling, type coercion, strict/non-strict warnings,
+  DDL validation, DML validation, date handling, division-by-zero behavior,
+  auto-increment behavior, engine substitution, or padding behavior;
+- variables other than `sql_mode`;
+- changed descriptor-backed DDL, DML, or `SELECT` execution;
+- `SHOW VARIABLES` or Performance Schema variable tables;
+- table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
+  functions over variables, parameters, prepared statements, or arbitrary
+  SQLite pass-through;
+- catalog mutations, storage mutations, SQLite metadata reads, or SQLite fork
+  patches.
+
+## Ownership Boundary
+
+- The public API remains unchanged. `mylite_execute()` owns public validation,
+  parse/execution orchestration, result ownership, row-count state,
+  diagnostics snapshot replacement, and failure cleanup.
+- Statement context continues to reset live diagnostics at statement start and
+  preserve the previous diagnostics snapshot until nondiagnostic successful
+  completion replaces it.
+- Lexer/parser/AST own syntax admission and source spans for
+  `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
+  `expression ::= SYSTEM_VARIABLE` rule.
+- Runtime execution owns system-variable path parsing, scope validation, fixed
+  string selection, and diagnostics for unsupported names.
+- Descriptor-driven statement execution remains unchanged because this scalar
+  variable does not influence MyLite parsing, storage, planning, conversion, or
+  row visibility in this slice.
+- The catalog remains authoritative for descriptors. This variable slice does
+  not create SQL-mode metadata or affect table lifecycle.
+- Result builder owns scalar result column labels and one-row text values.
+- Storage, VFS, and SQLite physical row storage are not involved. This feature
+  must not touch `.mylite` preamble bytes or SQLite schema state.
+
+## Supported SQL Grammar
+
+This slice uses the existing system-variable expression atom:
+
+```lemon
+expression ::= SYSTEM_VARIABLE.
+```
+
+The supported runtime variable paths are:
+
+```sql
+@@sql_mode
+@@session.sql_mode
+@@local.sql_mode
+@@global.sql_mode
+```
+
+The existing scalar `SELECT` limits continue to apply:
+
+```lemon
+select_statement ::= SELECT select_item_list from_dual_opt.
+select_item ::= expression.
+from_dual_opt ::= .
+from_dual_opt ::= FROM DUAL.
+```
+
+System variables are admitted only when every selected expression is in the
+existing scalar expression set. Clauses such as `WHERE`, `ORDER BY`, `LIMIT`,
+table-backed `FROM`, aliases, and general expressions remain outside this
+slice.
+
+## Variable Resolution
+
+Runtime parses the raw token as a `@@` system variable:
+
+- it accepts no scope, `session`, `local`, or `global`;
+- it treats unquoted names ASCII case-insensitively;
+- it accepts a backtick-quoted final variable-name component and unescapes
+  doubled backticks before comparison;
+- it rejects backtick-quoted scope names with a deterministic syntax
+  diagnostic;
+- it rejects malformed paths and unsupported variables with MySQL error `1193`,
+  SQLSTATE `HY000`;
+- it preserves the original source text as the scalar result column label.
+
+For this slice, all scopes return the same fixed string. This is a deliberate
+MyLite limitation: no mutable SQL-mode state or mode semantics exist yet.
+
+## Runtime Semantics
+
+The supported variable returns:
+
+| Variable | Value |
+| --- | --- |
+| `sql_mode` | `ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION` |
+
+The value is independent of selected schema, close/reopen, table DDL, DML, and
+independent handles. It is a compatibility scalar only. Existing statement
+execution must not change because of this scalar.
+
+Successful scalar reads:
+
+- return one row and one text column for each selected expression;
+- use the original source expression as the column label unless the general
+  scalar-select path later adds alias support;
+- leave `warning_count == 0` for supported forms;
+- do not mutate session SQL-mode fields, catalog rows, descriptor versions,
+  descriptor caches, catalog generation, physical SQLite schema, or `.mylite`
+  preamble bytes;
+- follow existing scalar `SELECT` row-count behavior, so `ROW_COUNT()` after a
+  successful scalar row result is `-1`.
+
+## Diagnostics
+
+This slice uses existing diagnostics for:
+
+- syntax errors, including quoted scopes and unsupported scalar-select
+  clauses;
+- unknown system variables: error `1193`, SQLSTATE `HY000`;
+- unsupported expressions such as arithmetic over system variables;
+- allocation failures: MyLite runtime failure diagnostics;
+- public API misuse: existing public execution/result misuse behavior.
+
+Successful supported reads produce no warnings.
+
+## Tests
+
+Add a focused C runtime test under `packages/libmylite/tests/`, registered as
+`libmylite.runtime.sql_mode_system_variable`.
+
+The C tests must cover:
+
+- fixed default mode string for no scope, `session`, `local`, and `global`;
+- source-text labels, case-insensitive names, quoted final variable names,
+  `FROM DUAL`, selected-schema independence, and mixed scalar reads with other
+  baseline variables;
+- warning and error diagnostics snapshot behavior;
+- unknown unscoped and scoped variable diagnostics;
+- quoted-scope rejection and unsupported expression rejection;
+- close/reopen persistence, independent handles, unchanged catalog and SQLite
+  generations, unchanged placeholder session SQL-mode fields, and `.mylite`
+  preamble preservation;
+- descriptor-backed DDL/DML independence, including that `ANSI_QUOTES`,
+  strict-mode conversion, and other SQL-mode effects are not changed by this
+  scalar variable.
+
+The MySQL expectation script must verify the corresponding MySQL 8.4.9
+observable behavior, including upstream session mutability.
+
+## Compatibility Documentation
+
+Update:
+
+- `COMPATIBILITY.md`
+- `docs/compatibility/runtime-system-variables.md`
+- `docs/compatibility/runtime-session-sql-modes.md`
+
+Do not claim mutable SQL-mode state, `SET`, mode-dependent parser behavior,
+mode-dependent conversion behavior, `SHOW VARIABLES`, or Performance Schema
+variable tables.
+
+## Verification
+
+Before committing implementation, run:
+
+```sh
+packages/libmylite/tests/mysql_baseline_sql_mode_system_variable_expectations.sh
+ctest --preset dev -R 'libmylite\.runtime\.sql_mode_system_variable$' --output-on-failure
+cmake --workflow --preset check
+```
+
+Also run the existing focused parser and runtime lifecycle/system-variable
+CTest entries affected by the scalar-select path.

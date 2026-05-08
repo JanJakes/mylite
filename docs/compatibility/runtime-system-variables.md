@@ -981,7 +981,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `transaction_isolation` | ❌ | Value, scope, SET, diagnostics |
 | `transaction_prealloc_size` | ❌ | Value, scope, SET, diagnostics |
 | `transaction_read_only` | ❌ | Value, scope, SET, diagnostics |
-| `unique_checks` | ❌ | Value, scope, SET, diagnostics |
+| `unique_checks` | 🟡 | Limited read-only scalar `SELECT @@unique_checks` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; no `SET`, mutable global/session state, unique index DDL, duplicate-key enforcement, index metadata, optimizer effects, import optimizations, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `updatable_views_with_limit` | ❌ | Value, scope, SET, diagnostics |
 | `use_secondary_engine` | ❌ | Value, scope, SET, diagnostics |
 | `validate_password_check_user_name` | ❌ | Value, scope, SET, diagnostics |

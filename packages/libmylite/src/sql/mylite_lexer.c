@@ -359,6 +359,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"CUME_DIST", MYLITE_SQL_KEYWORD_RESERVED},
         {"CURRENT", 0U},
         {"CURRENT_DATE", MYLITE_SQL_KEYWORD_RESERVED},
+        {"CURRENT_ROLE", 0U},
         {"CURRENT_TIME", MYLITE_SQL_KEYWORD_RESERVED},
         {"CURRENT_TIMESTAMP", MYLITE_SQL_KEYWORD_RESERVED},
         {"CURRENT_USER", MYLITE_SQL_KEYWORD_RESERVED},

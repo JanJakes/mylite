@@ -1701,6 +1701,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -3959,6 +3961,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -5947,6 +5951,9 @@ static const char *argument_count_error_function_name(
     if (expression->kind == MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR) {
         return "VERSION";
     }
+    if (expression->kind == MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR) {
+        return "CURRENT_ROLE";
+    }
 
     return NULL;
 }
@@ -5979,6 +5986,9 @@ static int session_scalar_value(
         return MYLITE_OK;
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
         out_cell->value = database->session.current_user_identity;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+        out_cell->value = "NONE";
         return MYLITE_OK;
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION: {
         int written = snprintf(
@@ -6318,6 +6328,9 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_CONNECTION_ID_FUNCTION) {

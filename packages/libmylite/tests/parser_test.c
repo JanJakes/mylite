@@ -9,6 +9,7 @@ static int test_use_statements(void);
 static int test_select_expression_list(void);
 static int test_current_database_functions(void);
 static int test_current_user_identity_functions(void);
+static int test_current_role_function(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
@@ -99,6 +100,7 @@ int main(void) {
     failures += test_select_expression_list();
     failures += test_current_database_functions();
     failures += test_current_user_identity_functions();
+    failures += test_current_role_function();
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
@@ -482,6 +484,131 @@ static int test_current_user_identity_functions(void) {
         expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare system user identifier");
     failures += expect_span_text(first_expression, "SESSION_USER", "bare session user span");
     failures += expect_span_text(second_expression, "SYSTEM_USER", "bare system user span");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_current_role_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT CURRENT_ROLE(), Current_Role(), current_role() FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION,
+        "current role function"
+    );
+    failures += expect_span_text(first_expression, "CURRENT_ROLE()", "current role span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION,
+        "mixed-case current role function"
+    );
+    failures +=
+        expect_span_text(second_expression, "Current_Role()", "mixed-case current role span");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION,
+        "lower current role function"
+    );
+    failures += expect_span_text(third_expression, "current_role()", "lower current role span");
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "current role from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT CURRENT_ROLE (), (CURRENT_ROLE());", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION,
+        "spaced current role function"
+    );
+    failures += expect_span_text(first_expression, "CURRENT_ROLE ()", "spaced current role span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized current role function"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION,
+        "wrapped current role function"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT CURRENT_ROLE(1), CURRENT_ROLE(NULL), CURRENT_ROLE('x'), CURRENT_ROLE(1, 2);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR,
+        "current role integer argument error"
+    );
+    failures += expect_span_text(first_expression, "CURRENT_ROLE(1)", "current role integer span");
+    arguments = child_at(first_expression, 0U);
+    failures +=
+        expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "current role argument list");
+    failures += expect_child_count(arguments, 1U, "current role one argument count");
+    failures += expect_literal(
+        child_at(arguments, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "current role integer argument"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR,
+        "current role null argument error"
+    );
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR,
+        "current role string argument error"
+    );
+    arguments = child_at(child_at(child_at(select_list, 3U), 0U), 0U);
+    failures += expect_child_count(arguments, 2U, "current role multiple argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE current_role (current_role INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "current role identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CURRENT_ROLE;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare current role identifier");
+    failures += expect_span_text(first_expression, "CURRENT_ROLE", "bare current role span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CURRENT_ROLE() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

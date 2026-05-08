@@ -768,6 +768,14 @@ expression(A) ::= CURRENT_USER(T) LPAREN RPAREN(R). {
 expression(A) ::= CURRENT_USER(T). {
     A = mylite_sql_parser_make_current_user_keyword(state, T);
 }
+expression(A) ::= CURRENT_ROLE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION, R);
+}
+expression(A) ::= CURRENT_ROLE(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR, B, R);
+}
 expression(A) ::= CONNECTION_ID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_CONNECTION_ID_FUNCTION, R);
@@ -885,6 +893,9 @@ identifier(A) ::= SYSTEM_USER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CONNECTION_ID(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CURRENT_ROLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COUNT(T). {

@@ -39,7 +39,7 @@
 | `ucs2` | ❌ | Metadata and conversions |
 | `ujis` | ❌ | Metadata and conversions |
 | `utf8mb3` | ❌ | Metadata and conversions |
-| `utf8mb4` | 🟡 | Limited static `SHOW CHARACTER SET` row, fixed `CREATE TABLE` option acceptance, and scalar `@@character_set_client` / `@@character_set_connection` / `@@character_set_results` reads only; no conversions, string types, mutable connection state, or full catalog semantics |
+| `utf8mb4` | 🟡 | Limited static `SHOW CHARACTER SET` row, fixed `CREATE TABLE` option acceptance, scalar `@@character_set_client` / `@@character_set_connection` / `@@character_set_results` reads, and scalar `@@character_set_server` read only; no conversions, string types, mutable connection/server state, or full catalog semantics |
 | `utf16` | ❌ | Metadata and conversions |
 | `utf16le` | ❌ | Metadata and conversions |
 | `utf32` | ❌ | Metadata and conversions |

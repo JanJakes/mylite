@@ -122,7 +122,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `character_set_database` | ❌ | Value, scope, SET, diagnostics |
 | `character_set_filesystem` | ❌ | Value, scope, SET, diagnostics |
 | `character_set_results` | 🟡 | Limited read-only scalar `SELECT @@character_set_results` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` connection baseline; no `SET`, `SET NAMES`, result conversion, `NULL` results mode, `SHOW VARIABLES`, or protocol charset metadata |
-| `character_set_server` | ❌ | Value, scope, SET, diagnostics |
+| `character_set_server` | 🟡 | Limited read-only scalar `SELECT @@character_set_server` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` embedded server default; no `SET`, startup options, mutable global state, database defaults, `SHOW VARIABLES`, or protocol charset metadata |
 | `character_set_system` | ❌ | Value, scope, SET, diagnostics |
 | `character_sets_dir` | ❌ | Value, scope, SET, diagnostics |
 | `check_proxy_users` | ❌ | Value, scope, SET, diagnostics |
@@ -142,7 +142,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `clone_valid_donor_list` | ❌ | Value, scope, SET, diagnostics |
 | `collation_connection` | 🟡 | Limited read-only scalar `SELECT @@collation_connection` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4_0900_ai_ci` connection baseline; no `SET`, `SET NAMES`, collation coercibility, string comparison semantics, `SHOW VARIABLES`, or protocol collation metadata |
 | `collation_database` | ❌ | Value, scope, SET, diagnostics |
-| `collation_server` | ❌ | Value, scope, SET, diagnostics |
+| `collation_server` | 🟡 | Limited read-only scalar `SELECT @@collation_server` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4_0900_ai_ci` embedded server default; no `SET`, startup options, mutable global state, database defaults, string comparison semantics, `SHOW VARIABLES`, or protocol collation metadata |
 | `completion_type` | ❌ | Value, scope, SET, diagnostics |
 | `component_masking.dictionaries_flush_interval_seconds` | ❌ | Value, scope, SET, diagnostics |
 | `component_masking.masking_database` | ❌ | Value, scope, SET, diagnostics |

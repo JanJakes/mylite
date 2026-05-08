@@ -886,7 +886,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `sql_safe_updates` | 🟡 | Limited read-only scalar `SELECT @@sql_safe_updates` with no scope, `session`, `local`, or `global`; returns MyLite's fixed disabled value `0`; no `SET`, mutable global/session state, `sql_select_limit`, `max_join_size`, key-aware DML checks, changed `UPDATE`/`DELETE` behavior, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `sql_select_limit` | ❌ | Value, scope, SET, diagnostics |
 | `sql_slave_skip_counter` | ❌ | Value, scope, SET, diagnostics |
-| `sql_warnings` | ❌ | Value, scope, SET, diagnostics |
+| `sql_warnings` | 🟡 | Limited read-only scalar `SELECT @@sql_warnings` with no scope, `session`, `local`, or `global`; returns MyLite's fixed disabled value `0`; no `SET`, mutable global/session state, warning-producing DML conversions, protocol information strings, changed `INSERT` behavior, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `ssl_ca` | ❌ | Value, scope, SET, diagnostics |
 | `ssl_capath` | ❌ | Value, scope, SET, diagnostics |
 | `ssl_cert` | ❌ | Value, scope, SET, diagnostics |

@@ -8,7 +8,7 @@ actions.
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `ALTER TABLE` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]` only; see [ALTER TABLE actions](#alter-table-actions) |
-| `CREATE TABLE` | 🟡 | Limited persistent base-table creation: explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, `NULL`/`NOT NULL`, optional explicit `ENGINE [=] InnoDB`, and optional fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table charset/collation options; no other options, keys, defaults, temporary tables, or `IF NOT EXISTS` |
+| `CREATE TABLE` | 🟡 | Limited persistent base-table creation: explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, `NULL`/`NOT NULL`, optional explicit `ENGINE [=] InnoDB`, and optional fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table charset/collation options; no other options, keys, defaults, temporary tables, `IF NOT EXISTS`, or generated invisible primary keys |
 | `CREATE TEMPORARY TABLE` | ❌ | Session-scoped table lifecycle and name shadowing |
 | `CREATE TABLE ... LIKE` | ❌ | Exact metadata cloning rules |
 | `CREATE TABLE ... SELECT` | ❌ | CTAS inference and atomicity |
@@ -28,7 +28,7 @@ actions.
 | Default expressions | ❌ | Literal/expression defaults |
 | Generated columns | ❌ | Generated column metadata |
 | Invisible columns | ❌ | Implicit column lists, SELECT * behavior, and metadata flags |
-| Generated invisible primary keys | ❌ | Invisible primary key metadata |
+| Generated invisible primary keys | ❌ | Invisible primary key metadata and hidden `my_row_id` table creation; limited scalar `@@sql_generate_invisible_primary_key` reads expose the fixed disabled baseline only |
 | AUTO_INCREMENT columns | ❌ | Allocation and metadata |
 | Table options: engine | 🟡 | Optional explicit `ENGINE [=] InnoDB` only; no alternate engines, engine substitution, or durable per-table engine metadata |
 | Table options: charset/collation | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options only for the limited persistent `CREATE TABLE` subset, with matching static `SHOW CHARACTER SET` / `SHOW COLLATION` rows; no alternate defaults, descriptor metadata, string semantics, or full charset/collation catalogs |

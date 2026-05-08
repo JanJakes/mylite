@@ -28,11 +28,14 @@ the underlying catalog column names. The supported expression subset is:
   `` `Default collation` ``
 - string, numeric, boolean, and `NULL` literals
 - `=`, `<=>`, `<>`, `<`, `<=`, `>`, `>=`
+- `+`, `-`, `*`, and `/`
 - `AND`, `OR`, and unary `NOT`
 - `LIKE` and `NOT LIKE`, including a literal `ESCAPE` expression
 - `IN` and `NOT IN`
 - `BETWEEN` and `NOT BETWEEN`
 - unary `+` and `-`
+- one-argument `LOWER`, `LCASE`, `UPPER`, `UCASE`, `LENGTH`, and
+  `CHAR_LENGTH` calls over supported expressions
 - `IS NULL`, `IS NOT NULL`, `IS TRUE`, `IS NOT TRUE`, `IS FALSE`,
   `IS NOT FALSE`, `IS UNKNOWN`, and `IS NOT UNKNOWN`
 - parentheses
@@ -67,4 +70,5 @@ label:
 Runtime coverage includes successful filtering for each covered SHOW family,
 including generated `SHOW TABLES` display-column names, backtick-quoted
 character-set and collation labels, `IN`, `BETWEEN`, `<=>`, `IS TRUE`, `AND`,
-numeric comparisons, and unknown-column diagnostics.
+numeric comparisons, arithmetic predicates, selected scalar functions, and
+unknown-column diagnostics.

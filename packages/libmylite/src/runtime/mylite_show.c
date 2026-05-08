@@ -65,6 +65,16 @@ static int append_show_where_expression(
     size_t column_count
 );
 
+static int append_show_where_function_call(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_sql_ast_node *expression,
+    const char *const *column_names,
+    size_t column_count
+);
+
+static const char *show_where_function_sql(const struct mylite_sql_ast_node *name);
+
 static int append_show_where_expression_list(
     mylite_db *database,
     sqlite3_str *sql,
@@ -632,6 +642,14 @@ static int append_show_where_expression(
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:
         return append_show_where_literal(database, sql, expression);
+    case MYLITE_SQL_AST_FUNCTION_CALL:
+        return append_show_where_function_call(
+            database,
+            sql,
+            expression,
+            column_names,
+            column_count
+        );
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
             expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ||
@@ -799,6 +817,51 @@ static int append_show_where_expression(
     default:
         return MYLITE_UNSUPPORTED;
     }
+}
+
+static int append_show_where_function_call(
+    mylite_db *database,
+    sqlite3_str *sql,
+    const struct mylite_sql_ast_node *expression,
+    const char *const *column_names,
+    size_t column_count
+) {
+    const struct mylite_sql_ast_node *name = mylite_ast_child_at(expression, 0U);
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+    const char *function_sql = show_where_function_sql(name);
+    const struct mylite_sql_ast_node *argument = NULL;
+
+    if (function_sql == NULL || arguments == NULL ||
+        arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST ||
+        mylite_sql_ast_node_child_count(arguments) != 1U) {
+        return MYLITE_UNSUPPORTED;
+    }
+
+    argument = mylite_ast_child_at(arguments, 0U);
+    sqlite3_str_appendf(sql, "%s(", function_sql);
+    int status = append_show_where_expression(database, sql, argument, column_names, column_count);
+
+    if (status == MYLITE_OK) {
+        sqlite3_str_appendall(sql, ")");
+    }
+    return status;
+}
+
+static const char *show_where_function_sql(const struct mylite_sql_ast_node *name) {
+    if (name == NULL) {
+        return NULL;
+    }
+    if (mylite_span_equal_ci(name->span, "LOWER") || mylite_span_equal_ci(name->span, "LCASE")) {
+        return "lower";
+    }
+    if (mylite_span_equal_ci(name->span, "UPPER") || mylite_span_equal_ci(name->span, "UCASE")) {
+        return "upper";
+    }
+    if (mylite_span_equal_ci(name->span, "LENGTH") ||
+        mylite_span_equal_ci(name->span, "CHAR_LENGTH")) {
+        return "length";
+    }
+    return NULL;
 }
 
 static int append_show_where_between_expression(
@@ -1025,13 +1088,17 @@ static const char *show_where_binary_operator_sql(enum mylite_sql_ast_operator o
         return "LIKE";
     case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
         return "NOT LIKE";
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+        return "+";
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+        return "-";
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+        return "*";
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+        return "/";
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
     case MYLITE_SQL_AST_OPERATOR_POSITIVE:
     case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
-    case MYLITE_SQL_AST_OPERATOR_ADD:
-    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
-    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
-    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
     case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:

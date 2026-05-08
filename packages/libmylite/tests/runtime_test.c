@@ -48781,12 +48781,48 @@ static int test_show_table_status_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SHOW TABLE STATUS WHERE LOWER(Name) = 'alpha'",
+        columns,
+        18,
+        alpha_values,
+        1,
+        "show table status where lower name"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE LENGTH(Name) = 5",
+        columns,
+        18,
+        alpha_values,
+        1,
+        "show table status where length name"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE `Rows` + 1 > 0 AND Name = 'alpha'",
+        columns,
+        18,
+        alpha_values,
+        1,
+        "show table status where rows arithmetic"
+    );
+    failures += expect_select_rows(
+        database,
         "SHOW TABLE STATUS WHERE Auto_increment = 44 AND Update_time IS NOT NULL",
         columns,
         18,
         selected_values + (18 * 3),
         1,
         "show table status where auto increment and update time"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW TABLE STATUS WHERE Auto_increment + 1 = 45",
+        columns,
+        18,
+        selected_values + (18 * 3),
+        1,
+        "show table status where auto increment arithmetic"
     );
     failures += expect_select_rows(
         database,
@@ -50641,6 +50677,15 @@ static int test_show_variables_execution(void) {
         autocommit_values,
         1,
         "show variables where variable name"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES WHERE LOWER(Variable_name) = 'autocommit'",
+        columns,
+        2,
+        autocommit_values,
+        1,
+        "show variables where lower variable name"
     );
     failures += expect_select_rows(
         database,
@@ -52816,6 +52861,16 @@ static int test_show_collation_execution(void) {
         utf8mb4_no_pad_values,
         1,
         "show collation where pad attribute"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW COLLATION WHERE UCASE(Charset) = 'UTF8MB4' AND Sortlen + 0 = 0 "
+        "AND `Default` = 'Yes'",
+        columns,
+        7,
+        utf8mb4_no_pad_values,
+        1,
+        "show collation where function and arithmetic"
     );
     failures += expect_select_rows(
         database,

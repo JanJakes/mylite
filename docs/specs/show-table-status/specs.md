@@ -51,6 +51,8 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW TABLE STATUS FROM information_schema LIKE 'tables'` | Returns a row named `TABLES`. |
 | `SHOW TABLE STATUS FROM Information_Schema LIKE 'tables'` | Returns a row named `TABLES`. |
 | `SHOW TABLE STATUS WHERE Name = 'simple'` | Filters rows by the displayed `Name` column. |
+| `SHOW TABLE STATUS WHERE LOWER(Name) = 'alpha'` | Filters through a one-argument scalar function over the displayed `Name` column. |
+| ``SHOW TABLE STATUS WHERE `Rows` + 1 > 0`` | Filters through arithmetic over a reserved displayed column when quoted. |
 | `SHOW TABLE STATUS LIKE 1` | Syntax error. |
 | `SHOW TABLE STATUS LIKE 'a%' WHERE Name = 'a'` | Syntax error. |
 | `SHOW FULL TABLE STATUS` | Syntax error. |
@@ -206,6 +208,8 @@ Parser coverage:
 - `SHOW TABLE STATUS IN db LIKE 'a%'`
 - `SHOW TABLE STATUS LIKE 'solo%'`
 - `SHOW TABLE STATUS WHERE Name = 'simple'`
+- `SHOW TABLE STATUS WHERE LOWER(Name) = 'simple'`
+- ``SHOW TABLE STATUS WHERE `Rows` + 1 > 0``
 - `LIKE` literal child and `WHERE` child shapes
 - syntax rejection for `SHOW TABLE STATUS LIKE 1`
 - syntax rejection for combined `LIKE` plus `WHERE`
@@ -228,7 +232,8 @@ Runtime coverage:
   DML `Update_time`, and next auto-increment
 - `CREATE TABLE ... AUTO_INCREMENT`, `ALTER TABLE ... AUTO_INCREMENT`, inserts,
   deletes, and `SHOW TABLE STATUS WHERE` predicates over displayed
-  `Auto_increment` / timestamp columns, `BETWEEN`, `<=>`, and `IS TRUE`
+  `Auto_increment` / timestamp columns, scalar functions, arithmetic,
+  `BETWEEN`, `<=>`, and `IS TRUE`
 - transaction rollback of maintained row counts
 - secondary-index length changes after `CREATE INDEX` and `DROP INDEX`
 - `information_schema` lower-case and mixed-case schema/pattern behavior

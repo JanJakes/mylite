@@ -13617,6 +13617,28 @@ static int test_select_inner_join_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT * FROM l NATURAL JOIN r;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_INNER, "NATURAL JOIN type");
+    failures += expect_join_condition_type(
+        condition,
+        MYLITE_SQL_AST_JOIN_CONDITION_NATURAL,
+        "NATURAL JOIN condition type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM l NATURAL INNER JOIN r;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_INNER, "NATURAL INNER JOIN type");
+    failures += expect_join_condition_type(
+        condition,
+        MYLITE_SQL_AST_JOIN_CONDITION_NATURAL,
+        "NATURAL INNER JOIN condition type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT * FROM l, r JOIN p ON r.id = p.l_id;", MYLITE_SQL_PARSE_OK, &result);
     references = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
@@ -13692,6 +13714,20 @@ static int test_select_inner_join_syntax(void) {
 
     failures +=
         parse_sql("SELECT * FROM l, r ON l.id = r.id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM l NATURAL JOIN r ON l.id = r.id;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM l NATURAL JOIN r USING (id);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -13780,6 +13816,29 @@ static int test_select_outer_join_syntax(void) {
         child_at(child_at(using_columns, 0U), 0U),
         "id",
         "RIGHT OUTER first USING column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * FROM l NATURAL LEFT JOIN r;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_LEFT, "NATURAL LEFT JOIN type");
+    failures += expect_join_condition_type(
+        condition,
+        MYLITE_SQL_AST_JOIN_CONDITION_NATURAL,
+        "NATURAL LEFT JOIN condition type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT * FROM l NATURAL RIGHT OUTER JOIN r;", MYLITE_SQL_PARSE_OK, &result);
+    join = child_at(child_at(child_at(child_at(result.root, 0U), 1U), 0U), 0U);
+    condition = child_at(join, 2U);
+    failures += expect_join_type(join, MYLITE_SQL_AST_JOIN_RIGHT, "NATURAL RIGHT OUTER JOIN type");
+    failures += expect_join_condition_type(
+        condition,
+        MYLITE_SQL_AST_JOIN_CONDITION_NATURAL,
+        "NATURAL RIGHT OUTER JOIN condition type"
     );
     mylite_sql_parse_result_deinit(&result);
 

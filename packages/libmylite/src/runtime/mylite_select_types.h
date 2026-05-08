@@ -71,6 +71,7 @@ struct mylite_select_join_using_request {
     size_t right_first_table;
     size_t right_table_count;
     enum mylite_sql_ast_join_type join_type;
+    bool natural;
 };
 
 struct mylite_select_column_sequence {

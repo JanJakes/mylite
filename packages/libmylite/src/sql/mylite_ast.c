@@ -1709,6 +1709,8 @@ const char *mylite_sql_ast_join_condition_type_name(
         return "on";
     case MYLITE_SQL_AST_JOIN_CONDITION_USING:
         return "using";
+    case MYLITE_SQL_AST_JOIN_CONDITION_NATURAL:
+        return "natural";
     }
 
     return "unknown";

@@ -6557,6 +6557,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_join_using_condition(
     return condition;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_join_natural_condition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token natural_token
+) {
+    struct mylite_sql_ast_node *condition =
+        make_node(state, MYLITE_SQL_AST_JOIN_CONDITION, span_from_token(&natural_token));
+
+    if (condition == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_join_condition_type(condition, MYLITE_SQL_AST_JOIN_CONDITION_NATURAL);
+    return condition;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_using_column_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column
@@ -8448,6 +8463,7 @@ static bool lookup_keyword_parser_token(
         {"MYSQL_ERRNO", MYLITE_SQL_PARSE_MYSQL_ERRNO},
         {"NAMES", MYLITE_SQL_PARSE_NAMES},
         {"NATIONAL", MYLITE_SQL_PARSE_NATIONAL},
+        {"NATURAL", MYLITE_SQL_PARSE_NATURAL},
         {"NCHAR", MYLITE_SQL_PARSE_NCHAR},
         {"NO", MYLITE_SQL_PARSE_NO},
         {"NO_WRITE_TO_BINLOG", MYLITE_SQL_PARSE_NO_WRITE_TO_BINLOG},

@@ -41,7 +41,6 @@ In scope for the first implementation slice:
 Out of scope for the first implementation slice:
 
 - outer joins, including `LEFT`, `RIGHT`, and null-extension behavior
-- `NATURAL` joins
 - `STRAIGHT_JOIN`
 - broad parenthesized table-reference groups over comma lists; parenthesized
   nested join operands are covered for the base-table join surface
@@ -421,7 +420,7 @@ later work:
 
 | Surface | MySQL behavior observed or documented | Task 26 behavior |
 | --- | --- | --- |
-| `NATURAL JOIN` | Supported; joins on all common column names and coalesces common columns. | Deferred with deterministic unsupported parse/runtime diagnostic. |
+| `NATURAL JOIN` | Supported; joins on all common column names and coalesces common columns. | Implemented by the natural joins slice for supported base-table operands. |
 | Parenthesized table references | Supported and can override comma/explicit join precedence. | Deferred. |
 | Outer joins | Supported with null extension and different `ON`/`WHERE` placement effects. | Deferred to Task 27. |
 | Derived tables and subqueries in `FROM` | Supported with required aliases for derived tables. | Deferred. |
@@ -550,10 +549,9 @@ table_factor ::= LPAREN joined_table_reference RPAREN.
 /* Deferred: parenthesized comma-list table-reference groups. */
 table_factor ::= LPAREN table_references RPAREN.
 
-/* Deferred: outer, natural, and straight joins. */
+/* Deferred: outer and straight joins. */
 joined_table_reference ::= joined_table_reference LEFT JOIN table_factor join_condition.
 joined_table_reference ::= joined_table_reference RIGHT JOIN table_factor join_condition.
-joined_table_reference ::= joined_table_reference NATURAL JOIN table_factor.
 joined_table_reference ::= joined_table_reference STRAIGHT_JOIN table_factor opt_join_condition.
 
 /* Deferred: derived tables, lateral tables, and partitions. */
@@ -768,8 +766,8 @@ Parser tests:
 - qualified wildcards over joined table references
 - syntax rejection for `ON` after comma joins
 - rejection or unsupported handling for parenthesized comma-list table
-  references, outer joins, natural joins, straight joins, derived tables,
-  partitions, and index hints
+  references, outer joins, straight joins, derived tables, partitions, and
+  index hints
 
 Analyzer and runtime tests:
 

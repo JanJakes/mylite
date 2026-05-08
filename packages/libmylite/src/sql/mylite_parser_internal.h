@@ -1812,6 +1812,10 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_join_using_condition(
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_join_natural_condition(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token natural_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_using_column_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *column

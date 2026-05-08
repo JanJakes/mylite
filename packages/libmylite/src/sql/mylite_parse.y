@@ -48,6 +48,8 @@
 %type window_null_treatment { struct mylite_sql_parser_window_null_treatment }
 %type inner_join_operator { struct mylite_sql_parser_join_operator }
 %type outer_join_operator { struct mylite_sql_parser_join_operator }
+%type natural_inner_join_operator { struct mylite_sql_parser_join_operator }
+%type natural_outer_join_operator { struct mylite_sql_parser_join_operator }
 %type subquery { struct mylite_sql_parser_subquery }
 %type quantified_comparison_operator { struct mylite_sql_parser_comparison_operator }
 %type subquery_quantifier { enum mylite_sql_ast_subquery_quantifier }
@@ -4596,6 +4598,26 @@ joined_table_reference(A) ::= joined_table_reference(B) outer_join_operator(C) t
         outer_join_condition(E). {
     A = mylite_sql_parser_make_join_expression(state, B, C, D, E);
 }
+joined_table_reference(A) ::= joined_table_reference(B) natural_inner_join_operator(C)
+        table_factor(D). {
+    A = mylite_sql_parser_make_join_expression(
+        state,
+        B,
+        C,
+        D,
+        mylite_sql_parser_make_join_natural_condition(state, C.token)
+    );
+}
+joined_table_reference(A) ::= joined_table_reference(B) natural_outer_join_operator(C)
+        table_factor(D). {
+    A = mylite_sql_parser_make_join_expression(
+        state,
+        B,
+        C,
+        D,
+        mylite_sql_parser_make_join_natural_condition(state, C.token)
+    );
+}
 
 inner_join_operator(A) ::= JOIN(T). {
     A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_INNER);
@@ -4617,6 +4639,26 @@ outer_join_operator(A) ::= RIGHT(T) JOIN. {
     A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_RIGHT);
 }
 outer_join_operator(A) ::= RIGHT(T) OUTER JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_RIGHT);
+}
+
+natural_inner_join_operator(A) ::= NATURAL(T) JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_INNER);
+}
+natural_inner_join_operator(A) ::= NATURAL(T) INNER JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_INNER);
+}
+
+natural_outer_join_operator(A) ::= NATURAL(T) LEFT JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_LEFT);
+}
+natural_outer_join_operator(A) ::= NATURAL(T) LEFT OUTER JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_LEFT);
+}
+natural_outer_join_operator(A) ::= NATURAL(T) RIGHT JOIN. {
+    A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_RIGHT);
+}
+natural_outer_join_operator(A) ::= NATURAL(T) RIGHT OUTER JOIN. {
     A = mylite_sql_parser_make_join_operator(state, T, MYLITE_SQL_AST_JOIN_RIGHT);
 }
 

@@ -14,15 +14,47 @@ static int add_select_using_request_name(
     const struct mylite_sql_ast_node *column
 );
 
+static int add_select_using_request_name_text(
+    mylite_db *database,
+    struct mylite_select_join_using_request *request,
+    const char *name
+);
+
+static int add_select_using_request_name_owned(
+    mylite_db *database,
+    struct mylite_select_join_using_request *request,
+    char *name
+);
+
 static bool select_using_column_name_seen(
     const struct mylite_select_join_using_request *request,
     const char *name
 );
 
+static int append_select_using_request(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    struct mylite_select_join_using_request *request
+);
+
+static void deinit_select_using_request(struct mylite_select_join_using_request *request);
+
 static int resolve_select_using_request(
     mylite_db *database,
     struct mylite_select_plan *plan,
-    const struct mylite_select_join_using_request *request
+    struct mylite_select_join_using_request *request
+);
+
+static int add_select_natural_using_request_names(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    struct mylite_select_join_using_request *request
+);
+
+static bool select_natural_range_has_column_name(
+    const struct mylite_select_plan *plan,
+    const char *name,
+    struct mylite_select_table_range range
 );
 
 static int resolve_select_using_request_name(
@@ -71,7 +103,6 @@ int mylite_select_from_add_using_request(
         .right_table_count = right_table_count,
         .join_type = join_type,
     };
-    struct mylite_select_join_using_request *requests = NULL;
 
     if (columns == NULL || columns->kind != MYLITE_SQL_AST_USING_COLUMN_LIST) {
         return MYLITE_UNSUPPORTED;
@@ -82,29 +113,33 @@ int mylite_select_from_add_using_request(
             add_select_using_request_name(database, &request, mylite_ast_child_at(item, 0U));
 
         if (status != MYLITE_OK) {
-            for (size_t index = 0U; index < request.name_count; ++index) {
-                free(request.names[index]);
-            }
-            free((void *)request.names);
+            deinit_select_using_request(&request);
             return status;
         }
     }
 
-    requests = realloc(
-        plan->using_requests,
-        (plan->using_request_count + 1U) * sizeof(*plan->using_requests)
-    );
-    if (requests == NULL) {
-        for (size_t index = 0U; index < request.name_count; ++index) {
-            free(request.names[index]);
-        }
-        free((void *)request.names);
-        (void)mylite_diagnostics_set_error_message(database, "out of memory");
-        return MYLITE_NOMEM;
-    }
-    plan->using_requests = requests;
-    plan->using_requests[plan->using_request_count++] = request;
-    return MYLITE_OK;
+    return append_select_using_request(database, plan, &request);
+}
+
+int mylite_select_from_add_natural_using_request(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    size_t left_first_table,
+    size_t left_table_count,
+    size_t right_first_table,
+    size_t right_table_count,
+    enum mylite_sql_ast_join_type join_type
+) {
+    struct mylite_select_join_using_request request = {
+        .left_first_table = left_first_table,
+        .left_table_count = left_table_count,
+        .right_first_table = right_first_table,
+        .right_table_count = right_table_count,
+        .join_type = join_type,
+        .natural = true,
+    };
+
+    return append_select_using_request(database, plan, &request);
 }
 
 int mylite_select_from_resolve_using_requests(
@@ -128,12 +163,35 @@ static int add_select_using_request_name(
     const struct mylite_sql_ast_node *column
 ) {
     char *name = mylite_copy_identifier_span(column);
-    char **names = NULL;
 
     if (name == NULL) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
         return MYLITE_NOMEM;
     }
+    return add_select_using_request_name_owned(database, request, name);
+}
+
+static int add_select_using_request_name_text(
+    mylite_db *database,
+    struct mylite_select_join_using_request *request,
+    const char *name
+) {
+    char *name_copy = mylite_copy_span_text(name, strlen(name));
+
+    if (name_copy == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    return add_select_using_request_name_owned(database, request, name_copy);
+}
+
+static int add_select_using_request_name_owned(
+    mylite_db *database,
+    struct mylite_select_join_using_request *request,
+    char *name
+) {
+    char **names = NULL;
+
     if (select_using_column_name_seen(request, name)) {
         free(name);
         return MYLITE_OK;
@@ -163,11 +221,49 @@ static bool select_using_column_name_seen(
     return false;
 }
 
+static int append_select_using_request(
+    mylite_db *database,
+    struct mylite_select_plan *plan,
+    struct mylite_select_join_using_request *request
+) {
+    struct mylite_select_join_using_request *requests = realloc(
+        plan->using_requests,
+        (plan->using_request_count + 1U) * sizeof(*plan->using_requests)
+    );
+    if (requests == NULL) {
+        deinit_select_using_request(request);
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    plan->using_requests = requests;
+    plan->using_requests[plan->using_request_count++] = *request;
+    *request = (struct mylite_select_join_using_request){0};
+    return MYLITE_OK;
+}
+
+static void deinit_select_using_request(struct mylite_select_join_using_request *request) {
+    if (request == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < request->name_count; ++index) {
+        free(request->names[index]);
+    }
+    free((void *)request->names);
+    *request = (struct mylite_select_join_using_request){0};
+}
+
 static int resolve_select_using_request(
     mylite_db *database,
     struct mylite_select_plan *plan,
-    const struct mylite_select_join_using_request *request
+    struct mylite_select_join_using_request *request
 ) {
+    if (request->natural) {
+        int status = add_select_natural_using_request_names(database, plan, request);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
     for (size_t name_index = 0U; name_index < request->name_count; ++name_index) {
         int status =
             resolve_select_using_request_name(database, plan, request, request->names[name_index]);
@@ -177,6 +273,93 @@ static int resolve_select_using_request(
         }
     }
     return MYLITE_OK;
+}
+
+static int add_select_natural_using_request_names(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    struct mylite_select_join_using_request *request
+) {
+    struct mylite_select_table_range left_range = {
+        .first_table = request->left_first_table,
+        .table_count = request->left_table_count,
+    };
+    struct mylite_select_table_range right_range = {
+        .first_table = request->right_first_table,
+        .table_count = request->right_table_count,
+    };
+
+    for (size_t using_index = 0U; using_index < plan->using_column_count; ++using_index) {
+        const struct mylite_select_join_using_column *using_column =
+            &plan->using_columns[using_index];
+        size_t match_index = mylite_select_plan_column_count(plan);
+
+        if (mylite_select_count_column_parts_using_matches(
+                plan,
+                using_column->name,
+                left_range,
+                &match_index
+            ) == 0U ||
+            !select_natural_range_has_column_name(plan, using_column->name, right_range)) {
+            continue;
+        }
+        int status = add_select_using_request_name_text(database, request, using_column->name);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+
+    for (size_t table_offset = 0U; table_offset < left_range.table_count; ++table_offset) {
+        const struct mylite_select_table *table =
+            mylite_select_plan_table_const(plan, left_range.first_table + table_offset);
+
+        if (table == NULL) {
+            return MYLITE_UNSUPPORTED;
+        }
+        for (size_t column_offset = 0U; column_offset < table->column_count; ++column_offset) {
+            const struct mylite_select_column *column = &table->columns[column_offset];
+            size_t column_index = table->first_column_index + column_offset;
+            int status = MYLITE_OK;
+
+            if (mylite_select_column_index_is_using_column_in_range(
+                    plan,
+                    column_index,
+                    left_range
+                ) ||
+                !select_natural_range_has_column_name(plan, column->name, right_range)) {
+                continue;
+            }
+            status = add_select_using_request_name_text(database, request, column->name);
+            if (status != MYLITE_OK) {
+                return status;
+            }
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool select_natural_range_has_column_name(
+    const struct mylite_select_plan *plan,
+    const char *name,
+    struct mylite_select_table_range range
+) {
+    size_t match_index = mylite_select_plan_column_count(plan);
+
+    if (mylite_select_count_column_parts_using_matches(plan, name, range, &match_index) != 0U) {
+        return true;
+    }
+    for (size_t table_offset = 0U; table_offset < range.table_count; ++table_offset) {
+        const struct mylite_select_table *table =
+            mylite_select_plan_table_const(plan, range.first_table + table_offset);
+        size_t column_index = mylite_select_plan_column_count(plan);
+
+        if (mylite_select_resolve_column_in_table(plan, table, name, &column_index) == MYLITE_OK &&
+            !mylite_select_column_index_is_using_column_in_range(plan, column_index, range)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int resolve_select_using_request_name(

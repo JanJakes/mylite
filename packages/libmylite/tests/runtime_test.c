@@ -74672,6 +74672,10 @@ static int test_inner_join_execution(void) {
     };
     static const char *const using_multi_star_columns[] =
         {"id", "shared", "label", "left_id", "label"};
+    static const char *const natural_star_columns[] = {"id", "shared", "lval", "rval"};
+    static const char *const natural_star_values[] = {"1", "10", "left-one", "right-one"};
+    static const char *const natural_reference_columns[] = {"id", "left_id", "right_id"};
+    static const char *const natural_reference_values[] = {"1", "1", "1"};
     static const char *const comma_using_star_columns[] =
         {"id", "shared", "label", "id", "left_id", "shared", "label", "note"};
     static const char *const shared_column[] = {"shared"};
@@ -74712,6 +74716,16 @@ static int test_inner_join_execution(void) {
         execute_sql(database, "CREATE TABLE extra_t (id INT, note VARCHAR(20))", MYLITE_DONE);
     failures += execute_sql(
         database,
+        "CREATE TABLE natural_left (id INT, lval VARCHAR(20), shared INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE natural_right (id INT, rval VARCHAR(20), shared INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
         "INSERT INTO left_t VALUES "
         "(1,100,'left-one'),(2,200,'left-two')",
         MYLITE_DONE
@@ -74724,6 +74738,18 @@ static int test_inner_join_execution(void) {
     );
     failures +=
         execute_sql(database, "INSERT INTO extra_t VALUES (1,'e1'),(1,'e2'),(2,'e3')", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO natural_left VALUES "
+        "(1,'left-one',10),(2,'left-two',20)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO natural_right VALUES "
+        "(1,'right-one',10),(3,'right-three',30)",
+        MYLITE_DONE
+    );
 
     failures += expect_select_rows(
         database,
@@ -74813,6 +74839,25 @@ static int test_inner_join_execution(void) {
         NULL,
         0,
         "inner join multi using wildcard order"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT * FROM natural_left NATURAL JOIN natural_right ORDER BY id",
+        natural_star_columns,
+        4,
+        natural_star_values,
+        1,
+        "natural inner join wildcard rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, natural_left.id AS left_id, natural_right.id AS right_id "
+        "FROM natural_left NATURAL JOIN natural_right ORDER BY id",
+        natural_reference_columns,
+        3,
+        natural_reference_values,
+        1,
+        "natural inner join common column references"
     );
     failures += expect_select_rows(
         database,
@@ -75225,6 +75270,12 @@ static int test_outer_join_execution(void) {
         {"shared", "id", "left_id", "label", "flag", "id", "label", "nullable"};
     static const char *const right_using_multi_star_columns[] =
         {"id", "shared", "left_id", "label", "flag", "label", "nullable"};
+    static const char *const natural_left_star_columns[] = {"id", "shared", "lval", "rval"};
+    static const char *const natural_left_star_values[] =
+        {"1", "10", "left-one", "right-one", "2", "20", "left-two", NULL};
+    static const char *const natural_right_star_columns[] = {"id", "shared", "rval", "lval"};
+    static const char *const natural_right_star_values[] =
+        {"1", "10", "right-one", "left-one", "3", "30", "right-three", NULL};
     static const char *const count_column[] = {"c"};
     static const char *const duplicate_left_using_count[] = {"3"};
     static const char *const left_outer_count[] = {"4"};
@@ -75332,6 +75383,16 @@ static int test_outer_join_execution(void) {
     failures += execute_sql(database, "CREATE TABLE warn_r (s VARCHAR(10))", MYLITE_DONE);
     failures += execute_sql(
         database,
+        "CREATE TABLE natural_left (id INT, lval VARCHAR(20), shared INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE natural_right (id INT, rval VARCHAR(20), shared INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
         "CREATE TABLE wp_posts ("
         "ID INT PRIMARY KEY, post_title VARCHAR(20), post_date VARCHAR(20))",
         MYLITE_DONE
@@ -75362,6 +75423,18 @@ static int test_outer_join_execution(void) {
     );
     failures += execute_sql(database, "INSERT INTO warn_l VALUES (1),(2)", MYLITE_DONE);
     failures += execute_sql(database, "INSERT INTO warn_r VALUES ('bad'),('2x')", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO natural_left VALUES "
+        "(1,'left-one',10),(2,'left-two',20)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO natural_right VALUES "
+        "(1,'right-one',10),(3,'right-three',30)",
+        MYLITE_DONE
+    );
     failures += execute_sql(
         database,
         "INSERT INTO wp_posts VALUES "
@@ -75561,6 +75634,24 @@ static int test_outer_join_execution(void) {
         NULL,
         0,
         "right join multi using wildcard columns"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT * FROM natural_left NATURAL LEFT JOIN natural_right ORDER BY id",
+        natural_left_star_columns,
+        4,
+        natural_left_star_values,
+        2,
+        "natural left join wildcard rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT * FROM natural_left NATURAL RIGHT JOIN natural_right ORDER BY id",
+        natural_right_star_columns,
+        4,
+        natural_right_star_values,
+        2,
+        "natural right join wildcard rows"
     );
     failures += expect_select_rows(
         database,

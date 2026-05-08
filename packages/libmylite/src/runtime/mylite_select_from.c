@@ -415,6 +415,17 @@ static int apply_select_join_condition(
             entry->join_type
         );
     }
+    if (condition->join_condition_type == MYLITE_SQL_AST_JOIN_CONDITION_NATURAL) {
+        return mylite_select_from_add_natural_using_request(
+            database,
+            plan,
+            left_range.first_table,
+            left_range.table_count,
+            right_range.first_table,
+            right_range.table_count,
+            entry->join_type
+        );
+    }
     return MYLITE_UNSUPPORTED;
 }
 

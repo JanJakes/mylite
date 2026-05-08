@@ -41,7 +41,6 @@ In scope for the first implementation slice:
 
 Out of scope for this slice:
 
-- `NATURAL` joins, including `NATURAL LEFT JOIN` and `NATURAL RIGHT JOIN`
 - `STRAIGHT_JOIN`
 - ODBC `{ OJ ... }` escaped table references
 - broad parenthesized table-reference groups over comma lists; parenthesized
@@ -451,7 +450,7 @@ leaves for later work:
 
 | Surface | MySQL behavior | Task 27 behavior |
 | --- | --- | --- |
-| `NATURAL LEFT/RIGHT JOIN` | Supported; equivalent to a `USING` join over all common columns and uses outer-join coalescing. | Deferred with deterministic unsupported parse/runtime diagnostic. |
+| `NATURAL LEFT/RIGHT JOIN` | Supported; equivalent to a `USING` join over all common columns and uses outer-join coalescing. | Implemented by the natural joins slice for supported base-table operands. |
 | Parenthesized table references | Supported and can change comma/explicit join operands, including outer joins. | Deferred. |
 | Derived tables and subqueries in `FROM` | Supported with aliases. | Deferred. |
 | ODBC `{ OJ ... }` escaped references | Accepted for compatibility. | Deferred. |
@@ -548,9 +547,7 @@ table_factor ::= LPAREN joined_table_reference RPAREN.
 /* Deferred: parenthesized comma-list table-reference groups. */
 table_factor ::= LPAREN table_references RPAREN.
 
-/* Deferred: natural, straight, and ODBC escaped joins. */
-joined_table_reference ::= joined_table_reference NATURAL LEFT JOIN table_factor.
-joined_table_reference ::= joined_table_reference NATURAL RIGHT JOIN table_factor.
+/* Deferred: straight and ODBC escaped joins. */
 joined_table_reference ::= joined_table_reference STRAIGHT_JOIN table_factor opt_join_condition.
 escaped_table_reference ::= LBRACE OJ table_reference RBRACE.
 
@@ -734,5 +731,5 @@ sides, and includes runtime tests for rows, metadata, warnings, diagnostics,
 ordering, limits, and aggregate counts.
 
 Compatibility remains partial for the explicitly deferred surfaces above:
-natural joins, parenthesized comma-list table references, derived tables,
-partitions, and optimizer behavior.
+parenthesized comma-list table references, derived tables, partitions, and
+optimizer behavior.

@@ -566,6 +566,7 @@ enum mylite_sql_ast_join_condition_type {
     MYLITE_SQL_AST_JOIN_CONDITION_NONE = 0,
     MYLITE_SQL_AST_JOIN_CONDITION_ON = 1,
     MYLITE_SQL_AST_JOIN_CONDITION_USING = 2,
+    MYLITE_SQL_AST_JOIN_CONDITION_NATURAL = 3,
 };
 
 enum mylite_sql_ast_select_duplicate_mode {

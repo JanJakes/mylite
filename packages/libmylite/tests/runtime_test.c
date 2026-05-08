@@ -44137,6 +44137,21 @@ static int test_create_table_like_execution(void) {
     );
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += prepare_sql(database, "CREATE TABLE like_clone LIKE like_src", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "create table like duplicate target");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Table 'like_clone' already exists",
+        "create table like duplicate target error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_table_exists,
+        "create table like duplicate target code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += prepare_sql(
         database,
         "CREATE TABLE IF NOT EXISTS like_clone LIKE missing_like_source",
@@ -44195,6 +44210,29 @@ static int test_create_table_like_execution(void) {
     );
     failures +=
         execute_sql(database, "CREATE TEMPORARY TABLE temp_like_clone LIKE like_src", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "CREATE TEMPORARY TABLE temp_like_clone LIKE like_src",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "create temporary table like duplicate target"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Table 'temp_like_clone' already exists",
+        "create temporary table like duplicate target error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_table_exists,
+        "create temporary table like duplicate target code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += expect_select_rows(
         database,
         "SHOW COLUMNS FROM temp_like_clone WHERE Field = 'id'",

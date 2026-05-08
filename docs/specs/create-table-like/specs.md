@@ -72,6 +72,8 @@ Name resolution and diagnostics observed against MySQL 8.4.9:
   `Not unique table/alias: 't'`, even with `IF NOT EXISTS`
 - cross-schema `CREATE TABLE d2.t LIKE d1.t` succeeds when `d1.t` exists and
   `d2.t` does not
+- when the source exists and the target exists without `IF NOT EXISTS`, MySQL
+  fails with error 1050, `Table 'target' already exists`
 - when the source exists and the target exists, `IF NOT EXISTS` succeeds as a
   no-op note 1050
 

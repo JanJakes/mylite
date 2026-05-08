@@ -254,6 +254,10 @@ static int set_create_like_table_exists_error(mylite_db *database, const char *t
     }
 
     status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_TABLE_EXISTS_ERROR, message);
+    }
     sqlite3_free(message);
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }

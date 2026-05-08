@@ -50,6 +50,8 @@ static uint64_t json_unquote_json_result_length(mylite_db *database);
 
 static bool descriptor_has_integer_result(const struct mylite_field_descriptor *descriptor);
 
+static bool descriptor_uses_double_arithmetic(const struct mylite_field_descriptor *descriptor);
+
 static bool infer_decimal_arithmetic_descriptor(
     enum mylite_sql_ast_operator operator_kind,
     const struct mylite_field_descriptor *left,
@@ -374,6 +376,10 @@ int mylite_expression_descriptor_infer_binary_expression(
             )) {
             return MYLITE_OK;
         }
+        if (descriptor_uses_double_arithmetic(&left) || descriptor_uses_double_arithmetic(&right)) {
+            *out_descriptor = mylite_expression_descriptor_numeric_double_function(nullable);
+            return MYLITE_OK;
+        }
         *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
         if (result_unsigned) {
             out_descriptor->flags |= MYLITE_FIELD_FLAG_UNSIGNED;
@@ -476,6 +482,17 @@ int mylite_expression_descriptor_infer_binary_expression(
 
     *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
+}
+
+static bool descriptor_uses_double_arithmetic(const struct mylite_field_descriptor *descriptor) {
+    if (descriptor == NULL) {
+        return false;
+    }
+    if (descriptor->type == MYLITE_FIELD_TYPE_FLOAT ||
+        descriptor->type == MYLITE_FIELD_TYPE_DOUBLE) {
+        return true;
+    }
+    return mylite_expression_descriptor_has_text_result(descriptor);
 }
 
 static bool infer_decimal_arithmetic_descriptor(

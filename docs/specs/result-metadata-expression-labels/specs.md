@@ -263,6 +263,8 @@ tasks. Unsupported column families should stay deferred rather than guessed.
 | `d + 1 AS d_plus` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `9`, decimals `2` | `BINARY NUM`; nullable |
 | `d - 1 AS d_sub` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `9`, decimals `2` | `BINARY NUM`; nullable |
 | `d * 2 AS d_mul` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `9`, decimals `2` | `BINARY NUM`; nullable |
+| `r + 1 AS r_plus` where `r DOUBLE` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
+| `s + 1 AS s_plus` where `s VARCHAR(12)` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
 | `-r AS r_neg` where `r DOUBLE` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
 | `-s AS s_neg` where `s VARCHAR(12)` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
 | `5 / 2 AS slash_expr` | `NEWDECIMAL` | length `7`, decimals `4` | `BINARY NUM` |

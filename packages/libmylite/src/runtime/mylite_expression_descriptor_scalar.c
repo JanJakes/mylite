@@ -536,7 +536,7 @@ static bool infer_session_function_descriptor(
                 : mylite_mysql_current_role_function_display_chars * max_bytes_per_character;
 
         *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_BLOB,
+            .type = MYLITE_FIELD_TYPE_LONG_BLOB,
             .flags = 0U,
             .length = length,
             .decimals = mylite_mysql_not_fixed_decimals,

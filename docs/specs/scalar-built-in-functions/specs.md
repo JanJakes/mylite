@@ -758,7 +758,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `CONNECTION_ID() AS connection_id_value` | `LONGLONG` | `21` | `0` | `binary` | `NOT_NULL UNSIGNED BINARY NUM` |
 | `USER() AS user_value` | `VAR_STRING` | `1152` | `31` | `utf8mb4_0900_ai_ci` | nullable |
 | `CURRENT_USER AS current_user_value` | `VAR_STRING` | `1152` | `31` | `utf8mb4_0900_ai_ci` | nullable |
-| `CURRENT_ROLE() AS current_role_value` | `BLOB` | `201326592` | `31` | `utf8mb4_0900_ai_ci` | nullable, no flags |
+| `CURRENT_ROLE() AS current_role_value` | `LONG_BLOB` | `201326592` | `31` | `utf8mb4_0900_ai_ci` | nullable, no flags |
 
 Implementation should assert metadata through symbolic MyLite/MySQL field
 types, flags, decimals, charset id, and nullability rather than relying on raw

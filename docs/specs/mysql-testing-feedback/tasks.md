@@ -494,6 +494,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       User-variable reads now report MySQL-shaped nullable descriptors for
       assigned signed integer and default `utf8mb4` text values, including
       `LONG_BLOB` text metadata with length `268435440` and no flags.
+      `CURRENT_ROLE()` now reports MySQL's `LONG_BLOB` field type under the
+      current connection collation instead of the narrower generic BLOB type.
       `REGEXP_SUBSTR()` now reports source-shaped nullable string descriptors
       for literal and table-column source expressions instead of defaulting to
       the generic text length.

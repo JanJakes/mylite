@@ -42,6 +42,7 @@ enum {
     mysql_error_session_variable_only = 1238,
     mysql_error_data_out_of_range = 1264,
     mysql_error_unknown_collation = 1273,
+    mysql_warning_deprecated_system_variable = 1287,
     mysql_warning_information_schema_processlist_deprecated = 1287,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
@@ -324,6 +325,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_SQL_MODE = 31,
     SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY = 32,
     SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER = 33,
+    SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER = 34,
 };
 
 struct system_variable_component {
@@ -721,6 +723,10 @@ static int execute_session_scalar_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int append_session_scalar_select_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list
+);
 static const char *select_statement_argument_count_error_function(
     const struct mylite_sql_ast_node *statement
 );
@@ -736,6 +742,9 @@ static int system_variable_value(
     struct session_scalar_cell *out_cell
 );
 static const char *default_sql_mode_value(void);
+static const struct mylite_diagnostics *system_variable_count_diagnostics(
+    const struct mylite_db *database
+);
 static int resolve_session_system_variable(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -747,6 +756,11 @@ static bool resolve_system_variable_kind(
 );
 static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind);
 static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind);
+static bool system_variable_kind_warns_on_scalar_read(enum session_system_variable_kind kind);
+static int append_system_variable_read_warning(
+    struct mylite_db *database,
+    enum session_system_variable_kind kind
+);
 static int parse_system_variable_component(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
@@ -3162,6 +3176,7 @@ static int append_show_diagnostics_rows(
     uint64_t row_count = UINT64_MAX;
     uint64_t emitted_count = 0U;
     uint64_t condition_count = 0U;
+    uint64_t warning_count = 0U;
     int rc = previous_diagnostics_condition_count(diagnostics, &condition_count);
 
     if (limit->has_offset) {
@@ -3171,24 +3186,24 @@ static int append_show_diagnostics_rows(
         row_count = limit->row_count;
     }
     if (rc == MYLITE_OK) {
-        total_count = condition_count + (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+        warning_count = (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+        total_count = condition_count + warning_count;
     }
 
     for (uint64_t index = start_index;
          rc == MYLITE_OK && index < total_count && emitted_count < row_count;
          ++index, ++emitted_count) {
-        if (condition_count != 0U && index == 0U) {
-            rc = append_show_diagnostics_row(database, result, "Error", &diagnostics->condition);
-        } else {
-            const uint64_t warning_index = index - condition_count;
+        if (index < warning_count) {
             const struct mylite_diagnostic_record *warning =
-                mylite_diagnostics_warning_at(diagnostics, (size_t)warning_index);
+                mylite_diagnostics_warning_at(diagnostics, (size_t)index);
             if (warning == NULL) {
                 set_runtime_error(database, "invalid previous diagnostics warning index");
                 rc = MYLITE_ERROR;
             } else {
                 rc = append_show_diagnostics_row(database, result, "Warning", warning);
             }
+        } else if (condition_count != 0U) {
+            rc = append_show_diagnostics_row(database, result, "Error", &diagnostics->condition);
         }
     }
 
@@ -5902,6 +5917,7 @@ static int execute_session_scalar_select_statement(
         return MYLITE_NOMEM;
     }
 
+    rc = append_session_scalar_select_warnings(database, select_list);
     while (rc == MYLITE_OK && select_item != NULL) {
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
         char *column_name = NULL;
@@ -5937,6 +5953,30 @@ static int execute_session_scalar_select_statement(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int append_session_scalar_select_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list
+) {
+    const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
+    int rc = MYLITE_OK;
+
+    while (rc == MYLITE_OK && select_item != NULL) {
+        const struct mylite_sql_ast_node *expression =
+            unwrap_parenthesized_expression(child_at(select_item, 0U));
+        enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
+
+        if (expression != NULL && expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+            rc = resolve_session_system_variable(database, expression, &variable);
+            if (rc == MYLITE_OK && system_variable_kind_warns_on_scalar_read(variable)) {
+                rc = append_system_variable_read_warning(database, variable);
+            }
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return rc;
 }
 
 static const char *select_statement_argument_count_error_function(
@@ -6060,6 +6100,7 @@ static int system_variable_value(
     struct session_scalar_cell *out_cell
 ) {
     enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
+    const struct mylite_diagnostics *count_diagnostics = NULL;
     uint64_t count = 0U;
     uint64_t error_count = 0U;
     int rc = resolve_session_system_variable(database, expression, &variable);
@@ -6128,6 +6169,7 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_SQL_LOG_OFF:
     case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
+    case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
         rc = format_uint64(database, 0U, out_cell->integer_text, sizeof(out_cell->integer_text));
         if (rc == MYLITE_OK) {
             out_cell->value = out_cell->integer_text;
@@ -6154,15 +6196,15 @@ static int system_variable_value(
         break;
     }
 
-    rc = previous_diagnostics_condition_count(&database->previous_diagnostics, &error_count);
+    count_diagnostics = system_variable_count_diagnostics(database);
+    rc = previous_diagnostics_condition_count(count_diagnostics, &error_count);
     if (rc != MYLITE_OK) {
         return rc;
     }
     if (variable == SESSION_SYSTEM_VARIABLE_ERROR_COUNT) {
         count = error_count;
     } else {
-        count = error_count +
-                (uint64_t)mylite_diagnostics_warning_count(&database->previous_diagnostics);
+        count = error_count + (uint64_t)mylite_diagnostics_warning_count(count_diagnostics);
     }
 
     rc = format_uint64(database, count, out_cell->integer_text, sizeof(out_cell->integer_text));
@@ -6175,6 +6217,19 @@ static int system_variable_value(
 static const char *default_sql_mode_value(void) {
     return "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
            "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
+}
+
+static const struct mylite_diagnostics *system_variable_count_diagnostics(
+    const struct mylite_db *database
+) {
+    if (database == NULL) {
+        return NULL;
+    }
+    if (mylite_diagnostics_errcode(&database->diagnostics) != MYLITE_OK ||
+        mylite_diagnostics_warning_count(&database->diagnostics) > 0U) {
+        return &database->diagnostics;
+    }
+    return &database->previous_diagnostics;
 }
 
 static int resolve_session_system_variable(
@@ -6286,6 +6341,7 @@ static bool resolve_system_variable_kind(
         {"sql_require_primary_key", SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY},
         {"sql_safe_updates", SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES},
         {"sql_select_limit", SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT},
+        {"sql_slave_skip_counter", SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER},
         {"sql_notes", SESSION_SYSTEM_VARIABLE_SQL_NOTES},
         {"sql_warnings", SESSION_SYSTEM_VARIABLE_SQL_WARNINGS},
         {"version", SESSION_SYSTEM_VARIABLE_VERSION},
@@ -6330,6 +6386,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
     case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
     case SESSION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
+    case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_SQL_NOTES:
     case SESSION_SYSTEM_VARIABLE_SQL_WARNINGS:
     case SESSION_SYSTEM_VARIABLE_VERSION:
@@ -6344,12 +6401,34 @@ static bool system_variable_kind_allows_session_scope(enum session_system_variab
     switch (kind) {
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
+    case SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
         return false;
     default:
         return true;
     }
+}
+
+static bool system_variable_kind_warns_on_scalar_read(enum session_system_variable_kind kind) {
+    return kind == SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER;
+}
+
+static int append_system_variable_read_warning(
+    struct mylite_db *database,
+    enum session_system_variable_kind kind
+) {
+    if (kind == SESSION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@sql_slave_skip_counter' is deprecated and will be removed in a future release. "
+            "Please use sql_replica_skip_counter instead."
+        );
+    }
+
+    return MYLITE_OK;
 }
 
 static int parse_system_variable_component(

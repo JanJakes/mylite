@@ -17,15 +17,22 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
-    sql_replica_skip_counter_value_column_count = 5,
-    sql_replica_skip_counter_label_column_count = 5,
-    sql_replica_skip_counter_diagnostics_column_count = 4,
-    sql_replica_skip_counter_selected_column_count = 2,
-    sql_replica_skip_counter_independent_column_count = 3,
+    sql_slave_skip_counter_value_column_count = 5,
+    sql_slave_skip_counter_label_column_count = 5,
+    sql_slave_skip_counter_label_warning_count = 5,
+    sql_slave_skip_counter_diagnostics_column_count = 4,
+    sql_slave_skip_counter_selected_column_count = 2,
+    sql_slave_skip_counter_independent_column_count = 3,
+    sql_slave_skip_counter_mixed_diagnostics_count = 2,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
     mysql_error_global_variable_only = 1238,
+    mysql_warning_deprecated = 1287,
 };
+
+static const char *const sql_slave_skip_counter_deprecation_warning =
+    "'@@sql_slave_skip_counter' is deprecated and will be removed in a future release. "
+    "Please use sql_replica_skip_counter instead.";
 
 struct expected_sql_error {
     int code;
@@ -37,12 +44,13 @@ struct expected_result {
     const char *const *columns;
     const char *const *values;
     size_t count;
+    size_t warning_count;
     const char *context;
 };
 
-static int test_sql_replica_skip_counter_values_and_persistence(void);
-static int test_sql_replica_skip_counter_qualifiers_and_errors(void);
-static int test_independent_sql_replica_skip_counter_handles(void);
+static int test_sql_slave_skip_counter_values_and_persistence(void);
+static int test_sql_slave_skip_counter_qualifiers_and_errors(void);
+static int test_independent_sql_slave_skip_counter_handles(void);
 static int expect_result(const mylite_result *result, struct expected_result expected);
 static int expect_query_result(
     mylite_db *database,
@@ -55,6 +63,12 @@ static int expect_show_count_warnings(
     const char *context
 );
 static int expect_show_count_errors(mylite_db *database, const char *expected, const char *context);
+static int expect_show_single_deprecation_warning(mylite_db *database, const char *context);
+static int expect_show_deprecation_warning_and_scope_error(
+    mylite_db *database,
+    const char *context
+);
+static int expect_show_scope_error(mylite_db *database, const char *context);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -78,32 +92,32 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_sql_replica_skip_counter_values_and_persistence();
-    failures += test_sql_replica_skip_counter_qualifiers_and_errors();
-    failures += test_independent_sql_replica_skip_counter_handles();
+    failures += test_sql_slave_skip_counter_values_and_persistence();
+    failures += test_sql_slave_skip_counter_qualifiers_and_errors();
+    failures += test_independent_sql_slave_skip_counter_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_sql_replica_skip_counter_values_and_persistence(void) {
+static int test_sql_slave_skip_counter_values_and_persistence(void) {
     static const char *const value_columns[] = {
-        "@@sql_replica_skip_counter",
-        "@@global.sql_replica_skip_counter",
+        "@@sql_slave_skip_counter",
+        "@@global.sql_slave_skip_counter",
         "@@warning_count",
         "@@error_count",
         "ROW_COUNT()",
     };
-    static const char *const value_values[] = {"0", "0", "0", "0", "-1"};
+    static const char *const value_values[] = {"0", "0", "2", "0", "-1"};
     static const char *const label_columns[] = {
-        "@@SQL_REPLICA_SKIP_COUNTER",
-        "@@Global.Sql_Replica_Skip_Counter",
-        "@@global.`sql_replica_skip_counter`",
-        "@@`sql_replica_skip_counter`",
-        "(@@sql_replica_skip_counter)",
+        "@@SQL_SLAVE_SKIP_COUNTER",
+        "@@Global.Sql_Slave_Skip_Counter",
+        "@@global.`sql_slave_skip_counter`",
+        "@@`sql_slave_skip_counter`",
+        "(@@sql_slave_skip_counter)",
     };
     static const char *const label_values[] = {"0", "0", "0", "0", "0"};
     static const char *const mixed_columns[] = {
-        "@@sql_replica_skip_counter",
+        "@@sql_slave_skip_counter",
         "@@sql_log_bin",
         "@@foreign_key_checks",
         "@@unique_checks",
@@ -143,14 +157,13 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
         "MyLite",
     };
     static const char *const diagnostics_columns[] = {
-        "@@sql_replica_skip_counter",
+        "@@sql_slave_skip_counter",
         "@@warning_count",
         "@@error_count",
         "ROW_COUNT()",
     };
     static const char *const warning_values[] = {"0", "1", "0", "-1"};
-    static const char *const error_values[] = {"0", "1", "1", "-1"};
-    static const char *const selected_columns[] = {"@@sql_replica_skip_counter", "DATABASE()"};
+    static const char *const selected_columns[] = {"@@sql_slave_skip_counter", "DATABASE()"};
     static const char *const selected_values[] = {"0", "app"};
     static const char *const table_columns[] = {"id", "score"};
     static const char *const table_values[] = {"2", "30"};
@@ -176,14 +189,14 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
     mylite_file_preamble_init(expected_preamble);
 
     failures +=
-        expect_int(mylite_open(path, &database), MYLITE_OK, "open sql replica skip counter file");
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open sql slave skip counter file");
     session = mylite_connection_session_state(database);
     catalog_generation = session->catalog_generation;
     sqlite_schema_generation = session->sqlite_schema_generation;
 
     failures += execute_ok(
         database,
-        "SELECT @@sql_replica_skip_counter, @@global.sql_replica_skip_counter, "
+        "SELECT @@sql_slave_skip_counter, @@global.sql_slave_skip_counter, "
         "@@warning_count, @@error_count, ROW_COUNT() FROM DUAL",
         &result
     );
@@ -192,8 +205,9 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
         (struct expected_result){
             .columns = value_columns,
             .values = value_values,
-            .count = sql_replica_skip_counter_value_column_count,
-            .context = "sql replica skip counter values",
+            .count = sql_slave_skip_counter_value_column_count,
+            .warning_count = 2U,
+            .context = "sql slave skip counter values",
         }
     );
     mylite_result_free(result);
@@ -201,9 +215,9 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
 
     failures += execute_ok(
         database,
-        "SELECT @@SQL_REPLICA_SKIP_COUNTER, @@Global.Sql_Replica_Skip_Counter, "
-        "@@global.`sql_replica_skip_counter`, @@`sql_replica_skip_counter`, "
-        "(@@sql_replica_skip_counter)",
+        "SELECT @@SQL_SLAVE_SKIP_COUNTER, @@Global.Sql_Slave_Skip_Counter, "
+        "@@global.`sql_slave_skip_counter`, @@`sql_slave_skip_counter`, "
+        "(@@sql_slave_skip_counter)",
         &result
     );
     failures += expect_result(
@@ -211,8 +225,9 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
         (struct expected_result){
             .columns = label_columns,
             .values = label_values,
-            .count = sql_replica_skip_counter_label_column_count,
-            .context = "sql replica skip counter labels",
+            .count = sql_slave_skip_counter_label_column_count,
+            .warning_count = sql_slave_skip_counter_label_warning_count,
+            .context = "sql slave skip counter labels",
         }
     );
     mylite_result_free(result);
@@ -220,7 +235,7 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
 
     failures += execute_ok(
         database,
-        "SELECT @@sql_replica_skip_counter, @@sql_log_bin, @@foreign_key_checks, "
+        "SELECT @@sql_slave_skip_counter, @@sql_log_bin, @@foreign_key_checks, "
         "@@unique_checks, @@updatable_views_with_limit, @@sql_auto_is_null, "
         "@@sql_big_selects, @@sql_generate_invisible_primary_key, "
         "@@sql_buffer_result, @@sql_safe_updates, @@sql_select_limit, "
@@ -234,7 +249,8 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
             .columns = mixed_columns,
             .values = mixed_values,
             .count = sizeof(mixed_columns) / sizeof(mixed_columns[0]),
-            .context = "mixed sql replica skip counter scalar values",
+            .warning_count = 1U,
+            .context = "mixed sql slave skip counter scalar values",
         }
     );
     mylite_result_free(result);
@@ -243,7 +259,7 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
     failures += execute_ok(
         database,
-        "SELECT @@sql_replica_skip_counter, @@warning_count, @@error_count, ROW_COUNT()",
+        "SELECT @@sql_slave_skip_counter, @@warning_count, @@error_count, ROW_COUNT()",
         &result
     );
     failures += expect_result(
@@ -251,14 +267,16 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
         (struct expected_result){
             .columns = diagnostics_columns,
             .values = warning_values,
-            .count = sql_replica_skip_counter_diagnostics_column_count,
-            .context = "sql replica skip counter warning diagnostics",
+            .count = sql_slave_skip_counter_diagnostics_column_count,
+            .warning_count = 1U,
+            .context = "sql slave skip counter warning diagnostics",
         }
     );
     mylite_result_free(result);
     result = NULL;
+    failures += expect_show_count_warnings(database, "1", "sql slave skip counter warning count");
     failures +=
-        expect_show_count_warnings(database, "0", "sql replica skip counter clears warnings");
+        expect_show_single_deprecation_warning(database, "sql slave skip counter warning row");
 
     failures += execute_error(
         database,
@@ -271,45 +289,50 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
     );
     failures += execute_ok(
         database,
-        "SELECT @@sql_replica_skip_counter, @@warning_count, @@error_count, ROW_COUNT()",
+        "SELECT @@sql_slave_skip_counter, @@warning_count, @@error_count, ROW_COUNT()",
         &result
     );
     failures += expect_result(
         result,
         (struct expected_result){
             .columns = diagnostics_columns,
-            .values = error_values,
-            .count = sql_replica_skip_counter_diagnostics_column_count,
-            .context = "sql replica skip counter error diagnostics",
+            .values = warning_values,
+            .count = sql_slave_skip_counter_diagnostics_column_count,
+            .warning_count = 1U,
+            .context = "sql slave skip counter error diagnostics",
         }
     );
     mylite_result_free(result);
     result = NULL;
-    failures += expect_show_count_errors(database, "0", "sql replica skip counter clears errors");
+    failures += expect_show_count_errors(database, "0", "sql slave skip counter clears errors");
     failures +=
-        expect_show_count_warnings(database, "0", "sql replica skip counter clears error warnings");
+        expect_show_count_warnings(database, "1", "sql slave skip counter error warning count");
+    failures += expect_show_single_deprecation_warning(
+        database,
+        "sql slave skip counter error warning row"
+    );
 
     session = mylite_connection_session_state(database);
     failures += expect_int64(
         (int64_t)session->catalog_generation,
         (int64_t)catalog_generation,
-        "catalog generation unchanged by sql replica skip counter reads"
+        "catalog generation unchanged by sql slave skip counter reads"
     );
     failures += expect_int64(
         (int64_t)session->sqlite_schema_generation,
         (int64_t)sqlite_schema_generation,
-        "sqlite schema generation unchanged by sql replica skip counter reads"
+        "sqlite schema generation unchanged by sql slave skip counter reads"
     );
     failures += expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
-        "read sql replica skip counter preamble"
+        "read sql slave skip counter preamble"
     );
     failures += expect_bytes(
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "preamble after sql replica skip counter reads"
+        "preamble after sql slave skip counter reads"
     );
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
@@ -322,12 +345,13 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
     failures += execute_statement_ok(database, "UPDATE child SET score = 30 WHERE id = 2");
     failures += expect_query_result(
         database,
-        "SELECT @@sql_replica_skip_counter, DATABASE()",
+        "SELECT @@sql_slave_skip_counter, DATABASE()",
         (struct expected_result){
             .columns = selected_columns,
             .values = selected_values,
-            .count = sql_replica_skip_counter_selected_column_count,
-            .context = "sql replica skip counter with selected database",
+            .count = sql_slave_skip_counter_selected_column_count,
+            .warning_count = 1U,
+            .context = "sql slave skip counter with selected database",
         }
     );
     failures += expect_query_result(
@@ -337,7 +361,7 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
             .columns = table_columns,
             .values = table_values,
             .count = sizeof(table_columns) / sizeof(table_columns[0]),
-            .context = "sql replica skip counter does not alter descriptor select",
+            .context = "sql slave skip counter does not alter descriptor select",
         }
     );
     failures += expect_query_result(
@@ -347,8 +371,7 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
             .columns = table_columns,
             .values = table_values,
             .count = sizeof(table_columns) / sizeof(table_columns[0]),
-            .context =
-                "explicit descriptor select limit still applies with sql replica skip counter",
+            .context = "explicit descriptor select limit still applies with sql slave skip counter",
         }
     );
     failures += expect_query_result(
@@ -358,7 +381,7 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
             .columns = null_count_columns,
             .values = null_count_values,
             .count = sizeof(null_count_columns) / sizeof(null_count_columns[0]),
-            .context = "sql replica skip counter does not reject descriptor count",
+            .context = "sql slave skip counter does not reject descriptor count",
         }
     );
     failures += expect_query_result(
@@ -368,7 +391,7 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
             .columns = null_row_columns,
             .values = null_row_values,
             .count = sizeof(null_row_columns) / sizeof(null_row_columns[0]),
-            .context = "sql replica skip counter does not reject descriptor select",
+            .context = "sql slave skip counter does not reject descriptor select",
         }
     );
     failures += execute_statement_ok(database, "DELETE FROM child WHERE id = 3");
@@ -379,7 +402,7 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
             .columns = null_count_columns,
             .values = null_count_after_delete_values,
             .count = sizeof(null_count_columns) / sizeof(null_count_columns[0]),
-            .context = "sql replica skip counter does not reject descriptor delete",
+            .context = "sql slave skip counter does not reject descriptor delete",
         }
     );
     failures += execute_statement_ok(database, "RENAME TABLE child TO renamed_child");
@@ -390,7 +413,7 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
             .columns = table_columns,
             .values = table_values,
             .count = sizeof(table_columns) / sizeof(table_columns[0]),
-            .context = "sql replica skip counter does not reject descriptor rename",
+            .context = "sql slave skip counter does not reject descriptor rename",
         }
     );
 
@@ -398,15 +421,16 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
     database = NULL;
 
     failures +=
-        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen sql replica skip counter file");
+        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen sql slave skip counter file");
     failures += expect_query_result(
         database,
-        "SELECT @@sql_replica_skip_counter, @@global.sql_replica_skip_counter",
+        "SELECT @@sql_slave_skip_counter, @@global.sql_slave_skip_counter",
         (struct expected_result){
             .columns = value_columns,
             .values = value_values,
             .count = 2U,
-            .context = "reopened sql replica skip counter values",
+            .warning_count = 2U,
+            .context = "reopened sql slave skip counter values",
         }
     );
     failures += expect_query_result(
@@ -416,18 +440,19 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
             .columns = table_columns,
             .values = table_values,
             .count = sizeof(table_columns) / sizeof(table_columns[0]),
-            .context = "reopened sql replica skip counter table rows",
+            .context = "reopened sql slave skip counter table rows",
         }
     );
     failures += execute_statement_ok(database, "DROP TABLE app.renamed_child");
     failures += expect_query_result(
         database,
-        "SELECT @@sql_replica_skip_counter, @@global.sql_replica_skip_counter",
+        "SELECT @@sql_slave_skip_counter, @@global.sql_slave_skip_counter",
         (struct expected_result){
             .columns = value_columns,
             .values = value_values,
             .count = 2U,
-            .context = "sql replica skip counter values after descriptor drop",
+            .warning_count = 2U,
+            .context = "sql slave skip counter values after descriptor drop",
         }
     );
 
@@ -436,31 +461,42 @@ static int test_sql_replica_skip_counter_values_and_persistence(void) {
     return failures;
 }
 
-static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
+static int test_sql_slave_skip_counter_qualifiers_and_errors(void) {
     static const char *const scoped_columns[] = {
-        "@@SQL_REPLICA_SKIP_COUNTER",
-        "@@GLOBAL.SQL_REPLICA_SKIP_COUNTER",
-        "@@Global.Sql_Replica_Skip_Counter",
-        "@@global.`sql_replica_skip_counter`",
-        "(@@sql_replica_skip_counter)",
+        "@@SQL_SLAVE_SKIP_COUNTER",
+        "@@GLOBAL.SQL_SLAVE_SKIP_COUNTER",
+        "@@Global.Sql_Slave_Skip_Counter",
+        "@@global.`sql_slave_skip_counter`",
+        "(@@sql_slave_skip_counter)",
     };
     static const char *const scoped_values[] = {"0", "0", "0", "0", "0"};
-    static const char *const scalar_columns[] = {"@@sql_replica_skip_counter"};
+    static const char *const order_columns[] = {
+        "@@warning_count",
+        "@@sql_slave_skip_counter",
+        "@@error_count",
+        "ROW_COUNT()",
+    };
+    static const char *const order_values[] = {"1", "0", "0", "-1"};
+    static const char *const multi_columns[] = {
+        "@@sql_slave_skip_counter",
+        "@@warning_count",
+        "@@sql_slave_skip_counter",
+        "@@warning_count",
+    };
+    static const char *const multi_values[] = {"0", "2", "0", "2"};
+    static const char *const scalar_columns[] = {"@@sql_slave_skip_counter"};
     static const char *const scalar_values[] = {"0"};
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int failures = 0;
 
-    failures += expect_int(
-        mylite_open_memory(&database),
-        MYLITE_OK,
-        "open sql replica skip counter memory"
-    );
+    failures +=
+        expect_int(mylite_open_memory(&database), MYLITE_OK, "open sql slave skip counter memory");
     failures += execute_ok(
         database,
-        "SELECT @@SQL_REPLICA_SKIP_COUNTER, @@GLOBAL.SQL_REPLICA_SKIP_COUNTER, "
-        "@@Global.Sql_Replica_Skip_Counter, @@global.`sql_replica_skip_counter`, "
-        "(@@sql_replica_skip_counter)",
+        "SELECT @@SQL_SLAVE_SKIP_COUNTER, @@GLOBAL.SQL_SLAVE_SKIP_COUNTER, "
+        "@@Global.Sql_Slave_Skip_Counter, @@global.`sql_slave_skip_counter`, "
+        "(@@sql_slave_skip_counter)",
         &result
     );
     failures += expect_result(
@@ -468,8 +504,46 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
         (struct expected_result){
             .columns = scoped_columns,
             .values = scoped_values,
-            .count = sql_replica_skip_counter_label_column_count,
-            .context = "sql replica skip counter qualifiers",
+            .count = sql_slave_skip_counter_label_column_count,
+            .warning_count = sql_slave_skip_counter_label_warning_count,
+            .context = "sql slave skip counter qualifiers",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT @@warning_count, @@sql_slave_skip_counter, @@error_count, ROW_COUNT()",
+        &result
+    );
+    failures += expect_result(
+        result,
+        (struct expected_result){
+            .columns = order_columns,
+            .values = order_values,
+            .count = sizeof(order_columns) / sizeof(order_columns[0]),
+            .warning_count = 1U,
+            .context = "sql slave skip counter warning count before alias",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT @@sql_slave_skip_counter, @@warning_count, "
+        "@@sql_slave_skip_counter, @@warning_count",
+        &result
+    );
+    failures += expect_result(
+        result,
+        (struct expected_result){
+            .columns = multi_columns,
+            .values = multi_values,
+            .count = sizeof(multi_columns) / sizeof(multi_columns[0]),
+            .warning_count = 2U,
+            .context = "sql slave skip counter multiple alias warnings",
         }
     );
     mylite_result_free(result);
@@ -477,7 +551,7 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
 
     failures += execute_error(
         database,
-        "SELECT @@session.sql_replica_skip_counter",
+        "SELECT @@session.sql_slave_skip_counter",
         (struct expected_sql_error){
             .code = mysql_error_global_variable_only,
             .sqlstate = "HY000",
@@ -486,7 +560,7 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SELECT @@local.sql_replica_skip_counter",
+        "SELECT @@local.sql_slave_skip_counter",
         (struct expected_sql_error){
             .code = mysql_error_global_variable_only,
             .sqlstate = "HY000",
@@ -495,34 +569,70 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SELECT @@no_such_sql_replica_skip_counter_variable",
+        "SELECT @@no_such_sql_slave_skip_counter_variable",
         (struct expected_sql_error){
             .code = mysql_error_unknown_system_variable,
             .sqlstate = "HY000",
-            .message_part = "Unknown system variable 'no_such_sql_replica_skip_counter_variable'",
+            .message_part = "Unknown system variable 'no_such_sql_slave_skip_counter_variable'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT @@global.no_such_sql_replica_skip_counter_variable",
+        "SELECT @@global.no_such_sql_slave_skip_counter_variable",
         (struct expected_sql_error){
             .code = mysql_error_unknown_system_variable,
             .sqlstate = "HY000",
-            .message_part = "Unknown system variable 'no_such_sql_replica_skip_counter_variable'",
+            .message_part = "Unknown system variable 'no_such_sql_slave_skip_counter_variable'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT @@session.no_such_sql_replica_skip_counter_variable",
+        "SELECT @@session.no_such_sql_slave_skip_counter_variable",
         (struct expected_sql_error){
             .code = mysql_error_unknown_system_variable,
             .sqlstate = "HY000",
-            .message_part = "Unknown system variable 'no_such_sql_replica_skip_counter_variable'",
+            .message_part = "Unknown system variable 'no_such_sql_slave_skip_counter_variable'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT @@`session`.sql_replica_skip_counter",
+        "SELECT @@sql_slave_skip_counter, @@session.sql_slave_skip_counter",
+        (struct expected_sql_error){
+            .code = mysql_error_global_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "GLOBAL variable",
+        }
+    );
+    failures += expect_show_count_warnings(
+        database,
+        "2",
+        "sql slave skip counter valid alias before invalid scope warning count"
+    );
+    failures += expect_show_deprecation_warning_and_scope_error(
+        database,
+        "sql slave skip counter valid alias before invalid scope diagnostics"
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@session.sql_slave_skip_counter, @@sql_slave_skip_counter",
+        (struct expected_sql_error){
+            .code = mysql_error_global_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "GLOBAL variable",
+        }
+    );
+    failures += expect_show_count_warnings(
+        database,
+        "1",
+        "sql slave skip counter invalid scope before valid alias warning count"
+    );
+    failures += expect_show_scope_error(
+        database,
+        "sql slave skip counter invalid scope before valid alias diagnostics"
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@`session`.sql_slave_skip_counter",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -531,7 +641,7 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SELECT @@sql_replica_skip_counter + 1",
+        "SELECT @@sql_slave_skip_counter + 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -540,7 +650,7 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SET GLOBAL sql_replica_skip_counter = 1",
+        "SET GLOBAL sql_slave_skip_counter = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -549,12 +659,13 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
     );
     failures += expect_query_result(
         database,
-        "SELECT @@sql_replica_skip_counter",
+        "SELECT @@sql_slave_skip_counter",
         (struct expected_result){
             .columns = scalar_columns,
             .values = scalar_values,
             .count = sizeof(scalar_columns) / sizeof(scalar_columns[0]),
-            .context = "sql replica skip counter stays read-only after rejected SET",
+            .warning_count = 1U,
+            .context = "sql slave skip counter stays read-only after rejected SET",
         }
     );
 
@@ -562,14 +673,14 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
     return failures;
 }
 
-static int test_independent_sql_replica_skip_counter_handles(void) {
+static int test_independent_sql_slave_skip_counter_handles(void) {
     static const char *const columns[] = {
-        "@@sql_replica_skip_counter",
+        "@@sql_slave_skip_counter",
         "@@warning_count",
         "@@error_count",
     };
     static const char *const first_values[] = {"0", "1", "0"};
-    static const char *const second_values[] = {"0", "0", "0"};
+    static const char *const second_values[] = {"0", "1", "0"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -587,18 +698,18 @@ static int test_independent_sql_replica_skip_counter_handles(void) {
     failures += expect_int(
         mylite_open(first_path, &first),
         MYLITE_OK,
-        "open first sql replica skip counter handle"
+        "open first sql slave skip counter handle"
     );
     failures += expect_int(
         mylite_open(second_path, &second),
         MYLITE_OK,
-        "open second sql replica skip counter handle"
+        "open second sql slave skip counter handle"
     );
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
 
     failures += execute_ok(
         first,
-        "SELECT @@sql_replica_skip_counter, @@warning_count, @@error_count",
+        "SELECT @@sql_slave_skip_counter, @@warning_count, @@error_count",
         &result
     );
     failures += expect_result(
@@ -606,8 +717,9 @@ static int test_independent_sql_replica_skip_counter_handles(void) {
         (struct expected_result){
             .columns = columns,
             .values = first_values,
-            .count = sql_replica_skip_counter_independent_column_count,
-            .context = "first handle sql replica skip counter variables",
+            .count = sql_slave_skip_counter_independent_column_count,
+            .warning_count = 1U,
+            .context = "first handle sql slave skip counter variables",
         }
     );
     mylite_result_free(result);
@@ -615,7 +727,7 @@ static int test_independent_sql_replica_skip_counter_handles(void) {
 
     failures += execute_ok(
         second,
-        "SELECT @@sql_replica_skip_counter, @@warning_count, @@error_count",
+        "SELECT @@sql_slave_skip_counter, @@warning_count, @@error_count",
         &result
     );
     failures += expect_result(
@@ -623,8 +735,9 @@ static int test_independent_sql_replica_skip_counter_handles(void) {
         (struct expected_result){
             .columns = columns,
             .values = second_values,
-            .count = sql_replica_skip_counter_independent_column_count,
-            .context = "second handle sql replica skip counter variables",
+            .count = sql_slave_skip_counter_independent_column_count,
+            .warning_count = 1U,
+            .context = "second handle sql slave skip counter variables",
         }
     );
     mylite_result_free(result);
@@ -646,7 +759,8 @@ static int expect_result(const mylite_result *result, struct expected_result exp
 
     failures += expect_size(mylite_result_column_count(result), expected.count, expected.context);
     failures += expect_size(mylite_result_row_count(result), 1U, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
     for (size_t index = 0U; index < expected.count; ++index) {
         failures += expect_text_or_null(
             mylite_result_column_name(result, index),
@@ -708,6 +822,74 @@ static int expect_show_count_errors(
     return failures;
 }
 
+static int expect_show_single_deprecation_warning(mylite_db *database, const char *context) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SHOW WARNINGS", &result);
+
+    failures += expect_size(mylite_result_row_count(result), 1U, context);
+    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 0U), "Warning", context);
+    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 1U), "1287", context);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 0U, 2U),
+        sql_slave_skip_counter_deprecation_warning,
+        context
+    );
+    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_show_deprecation_warning_and_scope_error(
+    mylite_db *database,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SHOW WARNINGS", &result);
+
+    failures += expect_size(
+        mylite_result_row_count(result),
+        sql_slave_skip_counter_mixed_diagnostics_count,
+        context
+    );
+    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 0U), "Warning", context);
+    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 1U), "1287", context);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 0U, 2U),
+        sql_slave_skip_counter_deprecation_warning,
+        context
+    );
+    failures += expect_text_or_null(mylite_result_value_text(result, 1U, 0U), "Error", context);
+    failures += expect_text_or_null(mylite_result_value_text(result, 1U, 1U), "1238", context);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 1U, 2U),
+        "Variable 'sql_slave_skip_counter' is a GLOBAL variable",
+        context
+    );
+    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_show_scope_error(mylite_db *database, const char *context) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SHOW WARNINGS", &result);
+
+    failures += expect_size(mylite_result_row_count(result), 1U, context);
+    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 0U), "Error", context);
+    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 1U), "1238", context);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 0U, 2U),
+        "Variable 'sql_slave_skip_counter' is a GLOBAL variable",
+        context
+    );
+    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+
+    mylite_result_free(result);
+    return failures;
+}
+
 static int execute_statement_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
@@ -757,7 +939,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "%s/mylite_sql_replica_skip_counter_system_variable_%d_%s.mylite",
+        "%s/mylite_sql_slave_skip_counter_system_variable_%d_%s.mylite",
         P_tmpdir,
         current_process_id(),
         name

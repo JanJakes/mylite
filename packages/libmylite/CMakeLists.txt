@@ -513,6 +513,21 @@ if(BUILD_TESTING)
     mylite_runtime_sql_replica_skip_counter_system_variable_test
   )
 
+  add_executable(mylite_runtime_sql_slave_skip_counter_system_variable_test
+    tests/runtime_sql_slave_skip_counter_system_variable_test.c
+  )
+  target_link_libraries(mylite_runtime_sql_slave_skip_counter_system_variable_test
+    PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_sql_slave_skip_counter_system_variable_test
+    PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(
+    mylite_runtime_sql_slave_skip_counter_system_variable_test
+  )
+
   add_executable(mylite_runtime_sql_safe_updates_system_variable_test
     tests/runtime_sql_safe_updates_system_variable_test.c
   )
@@ -939,6 +954,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.sql_replica_skip_counter_system_variable
     COMMAND mylite_runtime_sql_replica_skip_counter_system_variable_test
+  )
+  add_test(
+    NAME libmylite.runtime.sql_slave_skip_counter_system_variable
+    COMMAND mylite_runtime_sql_slave_skip_counter_system_variable_test
   )
   add_test(
     NAME libmylite.runtime.sql_safe_updates_system_variable

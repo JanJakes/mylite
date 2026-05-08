@@ -49,14 +49,14 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `CREATE TABLE` | 🟡 | Limited persistent base-table creation with explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, `NULL`/`NOT NULL`, and optional explicit `ENGINE [=] InnoDB`; no other options, keys, defaults, temporary tables, or `IF NOT EXISTS`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `CREATE TABLE` | 🟡 | Limited persistent base-table creation with explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, `NULL`/`NOT NULL`, optional explicit `ENGINE [=] InnoDB`, and optional fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table charset/collation options; no other options, keys, defaults, temporary tables, or `IF NOT EXISTS`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CREATE TEMPORARY TABLE` | ❌ | Session-scoped creation. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CREATE TABLE ... LIKE` | ❌ | Metadata cloning. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CREATE TABLE ... SELECT` | ❌ | CTAS inference and atomicity. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Column definition grammar | 🟡 | Limited integer column descriptors and nullability only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Default expressions | ❌ | Literal and expression defaults. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Table engine options | 🟡 | Optional explicit `ENGINE [=] InnoDB` only for the limited persistent `CREATE TABLE` subset; non-InnoDB engines are rejected with MyLite's embedded InnoDB-only diagnostic. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| Table charset and collation options | ❌ | Table defaults and metadata. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
+| Table charset and collation options | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options only for the limited persistent `CREATE TABLE` subset; no non-default charsets/collations, descriptor metadata, string semantics, or charset/collation catalogs. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
 | `ADD COLUMN` | ❌ | Positioning, defaults, metadata. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `DROP COLUMN` | ❌ | Dependency checks and errors. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `RENAME COLUMN` | ❌ | Metadata rewrite. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |

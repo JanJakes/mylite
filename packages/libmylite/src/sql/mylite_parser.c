@@ -344,7 +344,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_token right_paren,
-    struct mylite_sql_ast_node *engine_option
+    struct mylite_sql_ast_node *table_options
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&create_token), span_from_token(&right_paren));
@@ -356,11 +356,42 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, columns);
-    if (engine_option != NULL) {
-        mylite_sql_ast_node_append_child(statement, engine_option);
-        mylite_sql_ast_node_set_span(statement, span_join(statement->span, engine_option->span));
+    if (table_options != NULL) {
+        mylite_sql_ast_node_append_child(statement, table_options);
+        mylite_sql_ast_node_set_span(statement, span_join(statement->span, table_options->span));
     }
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_option_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *option
+) {
+    struct mylite_sql_source_span span =
+        option == NULL ? (struct mylite_sql_source_span){0} : option->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_TABLE_OPTION_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, option);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_table_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, option);
+    if (option != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, option->span));
+    }
+    return list;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_engine_option(
@@ -381,6 +412,48 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_engine_option(
     }
 
     mylite_sql_ast_node_append_child(option, engine_name);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_charset_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token charset_token,
+    struct mylite_sql_ast_node *charset_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&charset_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (charset_name != NULL) {
+        span = span_join(span, charset_name->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_CHARSET_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, charset_name);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_collation_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token collate_token,
+    struct mylite_sql_ast_node *collation_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&collate_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (collation_name != NULL) {
+        span = span_join(span, collation_name->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_COLLATION_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, collation_name);
     return option;
 }
 
@@ -1565,6 +1638,10 @@ static bool map_keyword_token(
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
         {"ENGINES", MYLITE_SQL_PARSE_ENGINES},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
+        {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
+        {"CHARACTER", MYLITE_SQL_PARSE_CHARACTER},
+        {"CHARSET", MYLITE_SQL_PARSE_CHARSET},
+        {"COLLATE", MYLITE_SQL_PARSE_COLLATE},
         {"LIKE", MYLITE_SQL_PARSE_LIKE},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
         {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},

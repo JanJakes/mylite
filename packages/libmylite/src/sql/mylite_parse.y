@@ -111,28 +111,47 @@ use_statement(A) ::= USE(T) identifier(B). {
 
 create_table_statement(A) ::=
     CREATE(C) TABLE table_name(T) LPAREN column_definition_list(L) RPAREN(R)
-    table_engine_option_opt(E). {
-    A = mylite_sql_parser_make_create_table_statement(state, C, T, L, R, E);
+    table_option_list_opt(O). {
+    A = mylite_sql_parser_make_create_table_statement(state, C, T, L, R, O);
 }
 
-table_engine_option_opt(A) ::= . {
+table_option_list_opt(A) ::= . {
     A = NULL;
 }
-table_engine_option_opt(A) ::= table_engine_option(B). {
+table_option_list_opt(A) ::= table_option_list(B). {
     A = B;
 }
 
-table_engine_option(A) ::= ENGINE(E) equal_opt engine_name(N). {
+table_option_list(A) ::= table_option(B). {
+    A = mylite_sql_parser_make_table_option_list(state, B);
+}
+table_option_list(A) ::= table_option_list(B) table_option(C). {
+    A = mylite_sql_parser_append_table_option(state, B, C);
+}
+
+table_option(A) ::= ENGINE(E) equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_engine_option(state, E, N);
 }
+table_option(A) ::= default_opt CHARSET(C) equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_charset_option(state, C, N);
+}
+table_option(A) ::= default_opt CHARACTER(C) SET equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_charset_option(state, C, N);
+}
+table_option(A) ::= default_opt COLLATE(C) equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_collation_option(state, C, N);
+}
+
+default_opt ::= .
+default_opt ::= DEFAULT.
 
 equal_opt ::= .
 equal_opt ::= EQUAL.
 
-engine_name(A) ::= identifier(B). {
+option_name(A) ::= identifier(B). {
     A = B;
 }
-engine_name(A) ::= STRING(T). {
+option_name(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
@@ -674,6 +693,15 @@ identifier(A) ::= ENGINES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= STORAGE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CHARSET(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CHARACTER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COLLATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

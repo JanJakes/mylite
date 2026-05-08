@@ -34,10 +34,12 @@ enum {
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
     mysql_error_column_specified_twice = 1110,
+    mysql_error_unknown_character_set = 1115,
     mysql_error_column_count_mismatch = 1136,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_column_name = 1166,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_unknown_collation = 1273,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
     mysql_error_unknown_storage_engine = 1286,
@@ -196,6 +198,11 @@ struct dynamic_string {
     size_t capacity;
 };
 
+struct table_option_name_policy {
+    const char *identifier_kind;
+    const char *nul_message;
+};
+
 struct show_like_filter {
     bool has_pattern;
     char *pattern;
@@ -344,25 +351,44 @@ static int plan_create_table(
     const struct mylite_sql_ast_node *statement,
     struct planned_create_table *out_plan
 );
+static int validate_create_table_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options
+);
+static int validate_create_table_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option
+);
 static int validate_create_table_engine_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *engine_option
 );
-static int copy_engine_name_text(
+static int validate_create_table_charset_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *engine_name_node,
+    const struct mylite_sql_ast_node *charset_option
+);
+static int validate_create_table_collation_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *collation_option
+);
+static int copy_table_option_name_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option_name_node,
     char *destination,
-    size_t destination_size
+    size_t destination_size,
+    struct table_option_name_policy policy
 );
-static int decode_engine_string_literal(
+static int decode_table_option_string_literal(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *engine_name_node,
-    char **out_name
+    const struct mylite_sql_ast_node *option_name_node,
+    char **out_name,
+    struct table_option_name_policy policy
 );
-static int append_decoded_engine_name_escape(
+static int append_decoded_table_option_name_escape(
     struct mylite_db *database,
     struct dynamic_string *string,
-    char escaped_byte
+    char escaped_byte,
+    struct table_option_name_policy policy
 );
 static void planned_create_table_deinit(struct planned_create_table *plan);
 static int create_table_from_plan(
@@ -1056,6 +1082,8 @@ static void set_unknown_table_error(
     const char *table_name
 );
 static void set_unknown_storage_engine_error(struct mylite_db *database, const char *engine_name);
+static void set_unknown_character_set_error(struct mylite_db *database, const char *charset_name);
+static void set_unknown_collation_error(struct mylite_db *database, const char *collation_name);
 static void set_table_does_not_exist_error(
     struct mylite_db *database,
     const char *schema_name,
@@ -1248,6 +1276,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_TABLE_ENGINE_OPTION:
+    case MYLITE_SQL_AST_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:
+    case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -2178,6 +2209,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
     case MYLITE_SQL_AST_TABLE_ENGINE_OPTION:
+    case MYLITE_SQL_AST_TABLE_OPTION_LIST:
+    case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:
+    case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -2229,7 +2263,7 @@ static int plan_create_table(
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         return MYLITE_ERROR;
     }
-    rc = validate_create_table_engine_option(database, child_at(statement, 2U));
+    rc = validate_create_table_options(database, child_at(statement, 2U));
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -2263,6 +2297,56 @@ static int plan_create_table(
     return MYLITE_OK;
 }
 
+static int validate_create_table_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options
+) {
+    const struct mylite_sql_ast_node *table_option = NULL;
+
+    if (table_options == NULL) {
+        return MYLITE_OK;
+    }
+    if (table_options->kind != MYLITE_SQL_AST_TABLE_OPTION_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    table_option = child_at(table_options, 0U);
+    while (table_option != NULL) {
+        int rc = validate_create_table_option(database, table_option);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        table_option = table_option->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_create_table_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_option
+) {
+    if (table_option == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_ENGINE_OPTION) {
+        return validate_create_table_engine_option(database, table_option);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_CHARSET_OPTION) {
+        return validate_create_table_charset_option(database, table_option);
+    }
+    if (table_option->kind == MYLITE_SQL_AST_TABLE_COLLATION_OPTION) {
+        return validate_create_table_collation_option(database, table_option);
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
 static int validate_create_table_engine_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *engine_option
@@ -2278,11 +2362,15 @@ static int validate_create_table_engine_option(
         return MYLITE_ERROR;
     }
 
-    rc = copy_engine_name_text(
+    rc = copy_table_option_name_text(
         database,
         child_at(engine_option, 0U),
         engine_name,
-        sizeof(engine_name)
+        sizeof(engine_name),
+        (struct table_option_name_policy){
+            .identifier_kind = "storage engine",
+            .nul_message = "table engine names do not support NUL bytes",
+        }
     );
     if (rc != MYLITE_OK) {
         return rc;
@@ -2295,40 +2383,108 @@ static int validate_create_table_engine_option(
     return MYLITE_OK;
 }
 
-static int copy_engine_name_text(
+static int validate_create_table_charset_option(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *engine_name_node,
+    const struct mylite_sql_ast_node *charset_option
+) {
+    char charset_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (charset_option == NULL || charset_option->kind != MYLITE_SQL_AST_TABLE_CHARSET_OPTION) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_table_option_name_text(
+        database,
+        child_at(charset_option, 0U),
+        charset_name,
+        sizeof(charset_name),
+        (struct table_option_name_policy){
+            .identifier_kind = "character set",
+            .nul_message = "table character set names do not support NUL bytes",
+        }
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_equals_ascii_case_insensitive(charset_name, "utf8mb4")) {
+        set_unknown_character_set_error(database, charset_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_create_table_collation_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *collation_option
+) {
+    char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (collation_option == NULL ||
+        collation_option->kind != MYLITE_SQL_AST_TABLE_COLLATION_OPTION) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_table_option_name_text(
+        database,
+        child_at(collation_option, 0U),
+        collation_name,
+        sizeof(collation_name),
+        (struct table_option_name_policy){
+            .identifier_kind = "collation",
+            .nul_message = "table collation names do not support NUL bytes",
+        }
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_equals_ascii_case_insensitive(collation_name, "utf8mb4_0900_ai_ci")) {
+        set_unknown_collation_error(database, collation_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int copy_table_option_name_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option_name_node,
     char *destination,
-    size_t destination_size
+    size_t destination_size,
+    struct table_option_name_policy policy
 ) {
     char *decoded = NULL;
     size_t decoded_length = 0U;
     int rc = MYLITE_OK;
 
-    if (engine_name_node == NULL || destination == NULL || destination_size == 0U) {
+    if (option_name_node == NULL || destination == NULL || destination_size == 0U) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (engine_name_node->span.text == NULL) {
+    if (option_name_node->span.text == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    for (size_t index = 0U; index < engine_name_node->span.length; ++index) {
-        if (engine_name_node->span.text[index] == '\0') {
-            set_unsupported_error(database, "table engine names do not support NUL bytes");
+    for (size_t index = 0U; index < option_name_node->span.length; ++index) {
+        if (option_name_node->span.text[index] == '\0') {
+            set_unsupported_error(database, policy.nul_message);
             return MYLITE_ERROR;
         }
     }
-    if (engine_name_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
-        return copy_identifier_text(engine_name_node, destination, destination_size, database);
+    if (option_name_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        return copy_identifier_text(option_name_node, destination, destination_size, database);
     }
-    if (engine_name_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(engine_name_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+    if (option_name_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(option_name_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
 
-    rc = decode_engine_string_literal(database, engine_name_node, &decoded);
+    rc = decode_table_option_string_literal(database, option_name_node, &decoded, policy);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -2336,7 +2492,7 @@ static int copy_engine_name_text(
     decoded_length = strlen(decoded);
     if (decoded_length >= destination_size) {
         free(decoded);
-        set_identifier_too_long_error(database, "storage engine");
+        set_identifier_too_long_error(database, policy.identifier_kind);
         return MYLITE_ERROR;
     }
 
@@ -2345,10 +2501,11 @@ static int copy_engine_name_text(
     return MYLITE_OK;
 }
 
-static int decode_engine_string_literal(
+static int decode_table_option_string_literal(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *engine_name_node,
-    char **out_name
+    const struct mylite_sql_ast_node *option_name_node,
+    char **out_name,
+    struct table_option_name_policy policy
 ) {
     struct dynamic_string string;
     const char *text = NULL;
@@ -2357,20 +2514,20 @@ static int decode_engine_string_literal(
     int rc = MYLITE_OK;
 
     if (out_name == NULL) {
-        set_runtime_error(database, "invalid table engine option");
+        set_runtime_error(database, "invalid table option name");
         return MYLITE_ERROR;
     }
     *out_name = NULL;
-    if (engine_name_node == NULL || engine_name_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(engine_name_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+    if (option_name_node == NULL || option_name_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(option_name_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
 
-    text = engine_name_node->span.text;
-    length = engine_name_node->span.length;
+    text = option_name_node->span.text;
+    length = option_name_node->span.length;
     if (text == NULL || length < 2U) {
-        set_runtime_error(database, "invalid table engine option");
+        set_runtime_error(database, "invalid table option name");
         return MYLITE_ERROR;
     }
 
@@ -2384,7 +2541,7 @@ static int decode_engine_string_literal(
             ++index;
         } else if (byte == '\\' && index + 2U < length) {
             ++index;
-            rc = append_decoded_engine_name_escape(database, &string, text[index]);
+            rc = append_decoded_table_option_name_escape(database, &string, text[index], policy);
         } else {
             rc = dynamic_string_append_char(&string, byte);
         }
@@ -2405,14 +2562,15 @@ static int decode_engine_string_literal(
     return rc;
 }
 
-static int append_decoded_engine_name_escape(
+static int append_decoded_table_option_name_escape(
     struct mylite_db *database,
     struct dynamic_string *string,
-    char escaped_byte
+    char escaped_byte,
+    struct table_option_name_policy policy
 ) {
     switch (escaped_byte) {
     case '0':
-        set_unsupported_error(database, "table engine names do not support NUL bytes");
+        set_unsupported_error(database, policy.nul_message);
         return MYLITE_ERROR;
     case 'n':
         return dynamic_string_append_char(string, '\n');
@@ -7630,6 +7788,36 @@ static void set_unknown_storage_engine_error(struct mylite_db *database, const c
         mylite_connection_diagnostics(database),
         mysql_error_unknown_storage_engine,
         "42000",
+        message
+    );
+}
+
+static void set_unknown_character_set_error(struct mylite_db *database, const char *charset_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Unknown character set: '%s'", charset_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_character_set,
+        "42000",
+        message
+    );
+}
+
+static void set_unknown_collation_error(struct mylite_db *database, const char *collation_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Unknown collation: '%s'", collation_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_collation,
+        "HY000",
         message
     );
 }

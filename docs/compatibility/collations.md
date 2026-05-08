@@ -9,7 +9,7 @@ are compiled in MySQL 8.4.9.
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Collation catalog entries | ❌ | `SHOW COLLATION`, `INFORMATION_SCHEMA.COLLATIONS`, `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`, `mysql.collations` |
-| Default collation selection | ❌ | `SET NAMES`, `SET CHARACTER SET`, `CREATE DATABASE`, `ALTER DATABASE`, `CREATE TABLE`, `ALTER TABLE` |
+| Default collation selection | 🟡 | Limited `CREATE TABLE` acceptance of fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table options only; no `SET NAMES`, `SET CHARACTER SET`, database defaults, `ALTER` changes, string semantics, or charset/collation catalogs |
 | Unicode Collation Algorithm families | ❌ | UCA families and sensitivity |
 | Binary collations | ❌ | Binary ordering and metadata |
 | PAD SPACE and NO PAD collations | ❌ | Trailing-space semantics |

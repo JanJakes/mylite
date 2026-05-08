@@ -323,6 +323,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "table_engine_option";
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
         return "show_engines_statement";
+    case MYLITE_SQL_AST_TABLE_OPTION_LIST:
+        return "table_option_list";
+    case MYLITE_SQL_AST_TABLE_CHARSET_OPTION:
+        return "table_charset_option";
+    case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
+        return "table_collation_option";
     }
 
     return "unknown";

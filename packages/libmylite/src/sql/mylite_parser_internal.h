@@ -55,12 +55,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_token right_paren,
-    struct mylite_sql_ast_node *engine_option
+    struct mylite_sql_ast_node *table_options
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_option_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *option
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_table_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_engine_option(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token engine_token,
     struct mylite_sql_ast_node *engine_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_charset_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token charset_token,
+    struct mylite_sql_ast_node *charset_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_collation_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token collate_token,
+    struct mylite_sql_ast_node *collation_name
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     struct mylite_sql_parser_state *state,

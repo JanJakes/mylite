@@ -16,12 +16,12 @@
 enum {
     test_path_capacity = 1024,
     show_create_sql_capacity = 256,
-    show_engines_column_count = 6,
     show_create_column_count = 2,
     decimal_base = 10,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
-    mysql_error_unknown_storage_engine = 1286,
+    mysql_error_unknown_character_set = 1115,
+    mysql_error_unknown_collation = 1273,
 };
 
 struct expected_sql_error {
@@ -36,28 +36,16 @@ struct expected_single_row_result {
     size_t column_count;
 };
 
-struct expected_show_create_single_int {
-    const char *sql;
+struct create_form {
+    const char *create_sql;
+    const char *show_sql;
     const char *table_name;
     const char *context;
 };
 
-static const char *const show_engines_columns[show_engines_column_count] = {
-    "Engine",
-    "Support",
-    "Comment",
-    "Transactions",
-    "XA",
-    "Savepoints",
-};
-
-static const char *const show_engines_values[show_engines_column_count] = {
-    "InnoDB",
-    "DEFAULT",
-    "Supports transactions, row-level locking, and foreign keys",
-    "YES",
-    "YES",
-    "YES",
+struct create_table_statement {
+    const char *sql;
+    const char *context;
 };
 
 static const char *const show_create_columns[show_create_column_count] = {
@@ -65,14 +53,10 @@ static const char *const show_create_columns[show_create_column_count] = {
     "Create Table",
 };
 
-static int test_innodb_create_forms_persistence_and_preamble(void);
-static int test_innodb_engine_diagnostics(void);
-static int test_independent_innodb_engine_handles(void);
-static int expect_show_engines_result(mylite_db *database, const char *sql, const char *context);
-static int expect_show_create_single_int(
-    mylite_db *database,
-    struct expected_show_create_single_int expected
-);
+static int test_charset_collation_create_forms_persistence_and_preamble(void);
+static int test_charset_collation_diagnostics(void);
+static int test_independent_charset_collation_handles(void);
+static int expect_show_create_single_int(mylite_db *database, struct create_form expected);
 static int expect_single_row_result(
     mylite_db *database,
     const char *sql,
@@ -80,6 +64,7 @@ static int expect_single_row_result(
     const char *context
 );
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context);
+static int execute_create_table_ok(mylite_db *database, struct create_table_statement statement);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -110,16 +95,91 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_innodb_create_forms_persistence_and_preamble();
-    failures += test_innodb_engine_diagnostics();
-    failures += test_independent_innodb_engine_handles();
+    failures += test_charset_collation_create_forms_persistence_and_preamble();
+    failures += test_charset_collation_diagnostics();
+    failures += test_independent_charset_collation_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_innodb_create_forms_persistence_and_preamble(void) {
+static int test_charset_collation_create_forms_persistence_and_preamble(void) {
     static const char *const select_columns[] = {"id"};
     static const char *const select_values[] = {"1"};
+    static const struct create_form forms[] = {
+        {
+            .create_sql = "CREATE TABLE default_charset (id INT) DEFAULT CHARSET=utf8mb4",
+            .show_sql = "SHOW CREATE TABLE default_charset",
+            .table_name = "default_charset",
+            .context = "default charset",
+        },
+        {
+            .create_sql =
+                "CREATE TABLE default_character_set (id INT) DEFAULT CHARACTER SET utf8mb4",
+            .show_sql = "SHOW CREATE TABLE default_character_set",
+            .table_name = "default_character_set",
+            .context = "default character set",
+        },
+        {
+            .create_sql = "CREATE TABLE character_set_equal (id INT) CHARACTER SET=utf8mb4",
+            .show_sql = "SHOW CREATE TABLE character_set_equal",
+            .table_name = "character_set_equal",
+            .context = "character set equal",
+        },
+        {
+            .create_sql = "CREATE TABLE charset_space (id INT) CHARSET utf8mb4",
+            .show_sql = "SHOW CREATE TABLE charset_space",
+            .table_name = "charset_space",
+            .context = "charset space",
+        },
+        {
+            .create_sql = "CREATE TABLE collate_only (id INT) COLLATE=utf8mb4_0900_ai_ci",
+            .show_sql = "SHOW CREATE TABLE collate_only",
+            .table_name = "collate_only",
+            .context = "collate only",
+        },
+        {
+            .create_sql = "CREATE TABLE default_collate (id INT) DEFAULT COLLATE "
+                          "utf8mb4_0900_ai_ci",
+            .show_sql = "SHOW CREATE TABLE default_collate",
+            .table_name = "default_collate",
+            .context = "default collate",
+        },
+        {
+            .create_sql = "CREATE TABLE string_names (id INT) DEFAULT CHARSET='utf8mb4' "
+                          "COLLATE=\"utf8mb4_0900_ai_ci\"",
+            .show_sql = "SHOW CREATE TABLE string_names",
+            .table_name = "string_names",
+            .context = "string option names",
+        },
+        {
+            .create_sql = "CREATE TABLE quoted_names (id INT) DEFAULT CHARSET=`utf8mb4` "
+                          "COLLATE=`utf8mb4_0900_ai_ci`",
+            .show_sql = "SHOW CREATE TABLE quoted_names",
+            .table_name = "quoted_names",
+            .context = "quoted option names",
+        },
+        {
+            .create_sql = "CREATE TABLE uppercase_names (id INT) DEFAULT CHARSET=UTF8MB4 "
+                          "COLLATE=UTF8MB4_0900_AI_CI",
+            .show_sql = "SHOW CREATE TABLE uppercase_names",
+            .table_name = "uppercase_names",
+            .context = "uppercase option names",
+        },
+        {
+            .create_sql = "CREATE TABLE engine_charset (id INT) ENGINE=InnoDB DEFAULT "
+                          "CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+            .show_sql = "SHOW CREATE TABLE engine_charset",
+            .table_name = "engine_charset",
+            .context = "engine charset collation",
+        },
+        {
+            .create_sql = "CREATE TABLE app.qualified_options (id INT) "
+                          "COLLATE=utf8mb4_0900_ai_ci DEFAULT CHARSET=utf8mb4 ENGINE=InnoDB",
+            .show_sql = "SHOW CREATE TABLE app.qualified_options",
+            .table_name = "qualified_options",
+            .context = "qualified reverse options",
+        },
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -133,15 +193,10 @@ static int test_innodb_create_forms_persistence_and_preamble(void) {
     mylite_file_preamble_init(expected_preamble);
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open forms database");
-    failures += expect_show_engines_result(database, "SHOW ENGINES", "show engines");
-    failures +=
-        expect_show_engines_result(database, "SHOW STORAGE ENGINES", "show storage engines");
-    failures += expect_row_count(database, -1, "row count after show engines");
-
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_error(
         database,
-        "CREATE TABLE no_schema (id INT) ENGINE=InnoDB",
+        "CREATE TABLE no_schema (id INT) DEFAULT CHARSET=utf8mb4",
         (struct expected_sql_error){
             .code = mysql_error_no_database_selected,
             .sqlstate = "3D000",
@@ -149,97 +204,37 @@ static int test_innodb_create_forms_persistence_and_preamble(void) {
         }
     );
     failures += execute_statement_ok(database, "USE app");
-    failures += execute_statement_ok(database, "CREATE TABLE no_engine (id INT)");
-    failures +=
-        execute_statement_ok(database, "CREATE TABLE explicit_equal (id INT) ENGINE=InnoDB");
-    failures +=
-        execute_statement_ok(database, "CREATE TABLE explicit_space (id INT) ENGINE InnoDB");
-    failures += execute_statement_ok(database, "CREATE TABLE lower_name (id INT) ENGINE=innodb");
-    failures += execute_statement_ok(database, "CREATE TABLE string_name (id INT) ENGINE='InnoDB'");
-    failures += execute_statement_ok(
+
+    for (size_t form_index = 0U; form_index < sizeof(forms) / sizeof(forms[0]); ++form_index) {
+        failures += execute_create_table_ok(
+            database,
+            (struct create_table_statement){
+                .sql = forms[form_index].create_sql,
+                .context = forms[form_index].context,
+            }
+        );
+        failures += expect_show_create_single_int(database, forms[form_index]);
+    }
+    failures += execute_create_table_ok(
         database,
-        "CREATE TABLE double_string_name (id INT) ENGINE=\"InnoDB\""
+        (struct create_table_statement){
+            .sql = "CREATE TABLE row_count_status (id INT) DEFAULT CHARSET=utf8mb4 "
+                   "COLLATE=utf8mb4_0900_ai_ci",
+            .context = "row count status create",
+        }
     );
-    failures += execute_statement_ok(database, "CREATE TABLE quoted_name (id INT) ENGINE=`InnoDB`");
-    failures +=
-        execute_statement_ok(database, "CREATE TABLE app.qualified_engine (id INT) ENGINE=InnoDB");
     failures += expect_row_count(database, 0, "row count after create");
 
-    failures += expect_show_create_single_int(
-        database,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE no_engine",
-            .table_name = "no_engine",
-            .context = "show create no engine",
-        }
-    );
-    failures += expect_show_create_single_int(
-        database,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE explicit_equal",
-            .table_name = "explicit_equal",
-            .context = "show create explicit equal",
-        }
-    );
-    failures += expect_show_create_single_int(
-        database,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE explicit_space",
-            .table_name = "explicit_space",
-            .context = "show create explicit space",
-        }
-    );
-    failures += expect_show_create_single_int(
-        database,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE lower_name",
-            .table_name = "lower_name",
-            .context = "show create lower engine",
-        }
-    );
-    failures += expect_show_create_single_int(
-        database,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE string_name",
-            .table_name = "string_name",
-            .context = "show create string engine",
-        }
-    );
-    failures += expect_show_create_single_int(
-        database,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE double_string_name",
-            .table_name = "double_string_name",
-            .context = "show create double string engine",
-        }
-    );
-    failures += expect_show_create_single_int(
-        database,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE quoted_name",
-            .table_name = "quoted_name",
-            .context = "show create quoted engine",
-        }
-    );
-    failures += expect_show_create_single_int(
-        database,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE app.qualified_engine",
-            .table_name = "qualified_engine",
-            .context = "show create qualified engine",
-        }
-    );
-
-    failures += execute_statement_ok(database, "INSERT INTO explicit_equal VALUES (1)");
+    failures += execute_statement_ok(database, "INSERT INTO engine_charset VALUES (1)");
     failures += expect_single_row_result(
         database,
-        "SELECT id FROM explicit_equal",
+        "SELECT id FROM engine_charset",
         (struct expected_single_row_result){
             .columns = select_columns,
             .values = select_values,
             .column_count = sizeof(select_columns) / sizeof(select_columns[0]),
         },
-        "row from explicit engine table"
+        "row from explicit charset table"
     );
 
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -247,7 +242,7 @@ static int test_innodb_create_forms_persistence_and_preamble(void) {
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "preamble after explicit engine create"
+        "preamble after explicit charset create"
     );
 
     mylite_close(database);
@@ -257,21 +252,21 @@ static int test_innodb_create_forms_persistence_and_preamble(void) {
     failures += execute_statement_ok(database, "USE app");
     failures += expect_show_create_single_int(
         database,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE explicit_equal",
-            .table_name = "explicit_equal",
-            .context = "reopened show create explicit engine",
+        (struct create_form){
+            .show_sql = "SHOW CREATE TABLE engine_charset",
+            .table_name = "engine_charset",
+            .context = "reopened show create explicit charset",
         }
     );
     failures += expect_single_row_result(
         database,
-        "SELECT id FROM explicit_equal",
+        "SELECT id FROM engine_charset",
         (struct expected_single_row_result){
             .columns = select_columns,
             .values = select_values,
             .column_count = sizeof(select_columns) / sizeof(select_columns[0]),
         },
-        "reopened row from explicit engine table"
+        "reopened row from explicit charset table"
     );
 
     mylite_close(database);
@@ -279,15 +274,15 @@ static int test_innodb_create_forms_persistence_and_preamble(void) {
     return failures;
 }
 
-static int test_innodb_engine_diagnostics(void) {
-    static const char raw_nul_string_engine_sql[] =
-        "CREATE TABLE raw_nul_string_engine (id INT) ENGINE='InnoDB"
+static int test_charset_collation_diagnostics(void) {
+    static const char raw_nul_charset_sql[] =
+        "CREATE TABLE raw_nul_charset (id INT) DEFAULT CHARSET='utf8"
         "\0"
-        "junk'";
-    static const char raw_nul_identifier_engine_sql[] =
-        "CREATE TABLE raw_nul_identifier_engine (id INT) ENGINE=`InnoDB"
+        "mb4'";
+    static const char raw_nul_collation_sql[] =
+        "CREATE TABLE raw_nul_collation (id INT) COLLATE=`utf8mb4"
         "\0"
-        "junk`";
+        "_0900_ai_ci`";
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -303,122 +298,105 @@ static int test_innodb_engine_diagnostics(void) {
 
     failures += execute_error(
         database,
-        "CREATE TABLE myisam_table (id INT) ENGINE=MyISAM",
+        "CREATE TABLE unknown_charset (id INT) DEFAULT CHARSET=nosuch_charset",
         (struct expected_sql_error){
-            .code = mysql_error_unknown_storage_engine,
+            .code = mysql_error_unknown_character_set,
             .sqlstate = "42000",
-            .message_part = "Unknown storage engine 'MyISAM'",
+            .message_part = "Unknown character set: 'nosuch_charset'",
         }
     );
     failures += execute_error(
         database,
-        "CREATE TABLE unknown_engine (id INT) ENGINE=NoSuchEngine",
+        "CREATE TABLE unsupported_charset (id INT) DEFAULT CHARSET=latin1",
         (struct expected_sql_error){
-            .code = mysql_error_unknown_storage_engine,
+            .code = mysql_error_unknown_character_set,
             .sqlstate = "42000",
-            .message_part = "Unknown storage engine 'NoSuchEngine'",
+            .message_part = "Unknown character set: 'latin1'",
         }
     );
     failures += execute_error(
         database,
-        "CREATE TABLE string_unknown (id INT) ENGINE='MyISAM'",
+        "CREATE TABLE unknown_collation (id INT) COLLATE=nosuch_collation",
         (struct expected_sql_error){
-            .code = mysql_error_unknown_storage_engine,
-            .sqlstate = "42000",
-            .message_part = "Unknown storage engine 'MyISAM'",
+            .code = mysql_error_unknown_collation,
+            .sqlstate = "HY000",
+            .message_part = "Unknown collation: 'nosuch_collation'",
         }
     );
     failures += execute_error(
         database,
-        "CREATE TABLE empty_engine (id INT) ENGINE=''",
+        "CREATE TABLE unsupported_collation (id INT) COLLATE=utf8mb4_bin",
         (struct expected_sql_error){
-            .code = mysql_error_unknown_storage_engine,
-            .sqlstate = "42000",
-            .message_part = "Unknown storage engine ''",
+            .code = mysql_error_unknown_collation,
+            .sqlstate = "HY000",
+            .message_part = "Unknown collation: 'utf8mb4_bin'",
         }
     );
     failures += execute_error(
         database,
-        "CREATE TABLE nul_engine (id INT) ENGINE='In\\0noDB'",
+        "CREATE TABLE charset_default (id INT) DEFAULT CHARSET=DEFAULT",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "table engine names do not support NUL bytes",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE collate_default (id INT) COLLATE=DEFAULT",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE nul_charset (id INT) DEFAULT CHARSET='utf8\\0mb4'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "table character set names do not support NUL bytes",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE nul_collation (id INT) COLLATE='utf8mb4\\0_0900_ai_ci'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "table collation names do not support NUL bytes",
         }
     );
     failures += execute_error_with_length(
         database,
-        raw_nul_string_engine_sql,
-        sizeof(raw_nul_string_engine_sql) - 1U,
+        raw_nul_charset_sql,
+        sizeof(raw_nul_charset_sql) - 1U,
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "table engine names do not support NUL bytes",
+            .message_part = "table character set names do not support NUL bytes",
         },
-        "raw NUL string engine"
+        "raw NUL charset"
     );
     failures += execute_error_with_length(
         database,
-        raw_nul_identifier_engine_sql,
-        sizeof(raw_nul_identifier_engine_sql) - 1U,
+        raw_nul_collation_sql,
+        sizeof(raw_nul_collation_sql) - 1U,
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "table engine names do not support NUL bytes",
+            .message_part = "table collation names do not support NUL bytes",
         },
-        "raw NUL identifier engine"
+        "raw NUL collation"
     );
-    failures += execute_error(
-        database,
-        "SHOW ENGINES LIKE 'InnoDB'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SHOW ENGINES WHERE Engine = 'InnoDB'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SHOW FULL ENGINES",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SHOW ENGINE InnoDB STATUS",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE TABLE default_engine (id INT) ENGINE=DEFAULT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+
     mylite_close(database);
     remove_related_files(path);
     return failures;
 }
 
-static int test_independent_innodb_engine_handles(void) {
+static int test_independent_charset_collation_handles(void) {
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -437,30 +415,32 @@ static int test_independent_innodb_engine_handles(void) {
 
     failures += execute_statement_ok(first, "CREATE DATABASE app");
     failures += execute_statement_ok(first, "USE app");
-    failures += execute_statement_ok(first, "CREATE TABLE only_first (id INT) ENGINE=InnoDB");
+    failures +=
+        execute_statement_ok(first, "CREATE TABLE only_first (id INT) DEFAULT CHARSET=utf8mb4");
 
     failures += execute_statement_ok(second, "CREATE DATABASE app");
     failures += execute_statement_ok(second, "USE app");
-    failures += execute_statement_ok(second, "CREATE TABLE only_second (id INT) ENGINE=InnoDB");
+    failures += execute_statement_ok(
+        second,
+        "CREATE TABLE only_second (id INT) COLLATE=utf8mb4_0900_ai_ci"
+    );
 
     failures += expect_show_create_single_int(
         first,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE only_first",
+        (struct create_form){
+            .show_sql = "SHOW CREATE TABLE only_first",
             .table_name = "only_first",
-            .context = "first handle engine table",
+            .context = "first handle charset table",
         }
     );
     failures += expect_show_create_single_int(
         second,
-        (struct expected_show_create_single_int){
-            .sql = "SHOW CREATE TABLE only_second",
+        (struct create_form){
+            .show_sql = "SHOW CREATE TABLE only_second",
             .table_name = "only_second",
-            .context = "second handle engine table",
+            .context = "second handle collation table",
         }
     );
-    failures += expect_show_engines_result(first, "SHOW ENGINES", "first show engines");
-    failures += expect_show_engines_result(second, "SHOW ENGINES", "second show engines");
 
     mylite_close(first);
     mylite_close(second);
@@ -469,23 +449,7 @@ static int test_independent_innodb_engine_handles(void) {
     return failures;
 }
 
-static int expect_show_engines_result(mylite_db *database, const char *sql, const char *context) {
-    return expect_single_row_result(
-        database,
-        sql,
-        (struct expected_single_row_result){
-            .columns = show_engines_columns,
-            .values = show_engines_values,
-            .column_count = show_engines_column_count,
-        },
-        context
-    );
-}
-
-static int expect_show_create_single_int(
-    mylite_db *database,
-    struct expected_show_create_single_int expected
-) {
+static int expect_show_create_single_int(mylite_db *database, struct create_form expected) {
     char create_sql[show_create_sql_capacity];
     int written = snprintf(
         create_sql,
@@ -504,7 +468,7 @@ static int expect_show_create_single_int(
 
     return expect_single_row_result(
         database,
-        expected.sql,
+        expected.show_sql,
         (struct expected_single_row_result){
             .columns = show_create_columns,
             .values = values,
@@ -570,6 +534,23 @@ static int expect_row_count(mylite_db *database, int64_t expected, const char *c
             context
         );
     }
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int execute_create_table_ok(mylite_db *database, struct create_table_statement statement) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, statement.sql, &result);
+
+    if (result == NULL) {
+        return failures + 1;
+    }
+
+    failures += expect_size(mylite_result_column_count(result), 0U, statement.context);
+    failures += expect_size(mylite_result_row_count(result), 0U, statement.context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, statement.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, statement.context);
 
     mylite_result_free(result);
     return failures;
@@ -644,7 +625,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "/tmp/mylite_innodb_engine_%s_%d.mylite",
+        "/tmp/mylite_table_charset_collation_%s_%d.mylite",
         name,
         current_process_id()
     );
@@ -653,7 +634,6 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
         fprintf(stderr, "failed to build test path for %s\n", name);
         return 1;
     }
-
     return 0;
 }
 
@@ -666,7 +646,7 @@ static int current_process_id(void) {
 }
 
 static void remove_related_files(const char *path) {
-    remove_with_suffix(path, "");
+    remove(path);
     remove_with_suffix(path, "-wal");
     remove_with_suffix(path, "-shm");
 }
@@ -675,40 +655,34 @@ static void remove_with_suffix(const char *path, const char *suffix) {
     char related_path[test_path_capacity];
     int written = snprintf(related_path, sizeof(related_path), "%s%s", path, suffix);
 
-    if (written < 0 || (size_t)written >= sizeof(related_path)) {
-        return;
+    if (written >= 0 && (size_t)written < sizeof(related_path)) {
+        remove(related_path);
     }
-
-    (void)remove(related_path);
 }
 
 static int read_file_at(const char *path, long offset, void *buffer, size_t size) {
     FILE *file = fopen(path, "rb");
+    int failures = 0;
 
     if (file == NULL) {
         fprintf(stderr, "%s: failed to open file\n", path);
         return 1;
     }
     if (fseek(file, offset, SEEK_SET) != 0) {
-        fprintf(stderr, "%s: failed to seek file\n", path);
-        fclose(file);
-        return 1;
+        fprintf(stderr, "%s: failed to seek to %ld\n", path, offset);
+        failures += 1;
+    } else if (fread(buffer, 1U, size, file) != size) {
+        fprintf(stderr, "%s: failed to read %zu bytes\n", path, size);
+        failures += 1;
     }
-    if (fread(buffer, 1U, size, file) != size) {
-        fprintf(stderr, "%s: failed to read file\n", path);
-        fclose(file);
-        return 1;
-    }
-
     fclose(file);
-    return 0;
+    return failures;
 }
 
 static int expect_int(int actual, int expected, const char *context) {
     if (actual == expected) {
         return 0;
     }
-
     fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
     return 1;
 }
@@ -717,7 +691,6 @@ static int expect_int64(int64_t actual, int64_t expected, const char *context) {
     if (actual == expected) {
         return 0;
     }
-
     fprintf(stderr, "%s: expected %" PRId64 ", got %" PRId64 "\n", context, expected, actual);
     return 1;
 }
@@ -726,7 +699,6 @@ static int expect_size(size_t actual, size_t expected, const char *context) {
     if (actual == expected) {
         return 0;
     }
-
     fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
     return 1;
 }
@@ -741,7 +713,7 @@ static int expect_text_or_null(const char *actual, const char *expected, const c
 
     fprintf(
         stderr,
-        "%s: expected [%s], got [%s]\n",
+        "%s: expected text [%s], got [%s]\n",
         context,
         expected == NULL ? "NULL" : expected,
         actual == NULL ? "NULL" : actual
@@ -756,7 +728,7 @@ static int expect_text_contains(const char *actual, const char *needle, const ch
 
     fprintf(
         stderr,
-        "%s: expected [%s] to contain [%s]\n",
+        "%s: expected text [%s] to contain [%s]\n",
         context,
         actual == NULL ? "NULL" : actual,
         needle == NULL ? "NULL" : needle
@@ -773,7 +745,6 @@ static int expect_bytes(
     if (memcmp(actual, expected, size) == 0) {
         return 0;
     }
-
-    fprintf(stderr, "%s: byte comparison failed\n", context);
+    fprintf(stderr, "%s: byte buffer differs\n", context);
     return 1;
 }

@@ -294,6 +294,15 @@ static unsigned int time_function_argument_decimals(
     if (time_function_argument_is_approximate(argument, descriptor)) {
         return mylite_mysql_temporal_max_fsp;
     }
+    if (descriptor != NULL && (descriptor->type == MYLITE_FIELD_TYPE_TIME ||
+                               descriptor->type == MYLITE_FIELD_TYPE_DATETIME ||
+                               descriptor->type == MYLITE_FIELD_TYPE_TIMESTAMP)) {
+        return descriptor->decimals;
+    }
+    if (descriptor != NULL && (descriptor->type == MYLITE_FIELD_TYPE_DATE ||
+                               descriptor->type == MYLITE_FIELD_TYPE_NULL)) {
+        return 0U;
+    }
     if (descriptor != NULL && descriptor->type == MYLITE_FIELD_TYPE_NEWDECIMAL) {
         return descriptor->decimals > mylite_mysql_temporal_max_fsp ? mylite_mysql_temporal_max_fsp
                                                                     : descriptor->decimals;

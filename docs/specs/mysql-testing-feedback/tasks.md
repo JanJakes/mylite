@@ -487,6 +487,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `EXTRACT(QUARTER FROM ...)` and `EXTRACT(MICROSECOND FROM ...)` now parse
       and execute with MySQL-shaped signed `LONGLONG` descriptors, including the
       MySQL-observed `EXTRACT(MICROSECOND...)` display width.
+      `TIMEDIFF()` now preserves table-backed fractional `TIME` and `DATETIME`
+      operand precision in result metadata, including mixed `TIME(6)`/`TIME`
+      and `DATETIME(6)`/`DATETIME(3)` operands.
       Table-backed `DECIMAL` arithmetic with exact operands now reports
       MySQL-shaped `NEWDECIMAL` descriptors for the covered `+`, `-`, `*`, and
       `/` result columns, including division scale, unsigned flags, and

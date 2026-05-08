@@ -21177,6 +21177,47 @@ static int test_timediff_function_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
          1},
     };
+    static const struct expected_result_metadata table_metadata[] = {
+        {"td_tm",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         17U,
+         MYLITE_FIELD_TYPE_TIME,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"td_dt",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         17U,
+         MYLITE_FIELD_TYPE_TIME,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"td_date",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         10U,
+         MYLITE_FIELD_TYPE_TIME,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
     static const char *const projection_columns[] = {"id", "delta"};
     static const char *const projection_values[] = {
         "2",
@@ -21297,6 +21338,29 @@ static int test_timediff_function_execution(void) {
 
     failures += execute_sql(database, "CREATE DATABASE timediff_functions", MYLITE_DONE);
     failures += execute_sql(database, "USE timediff_functions", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE timediff_metadata ("
+        "tm6 TIME(6), tm0 TIME, dt6 DATETIME(6), dt3 DATETIME(3), d DATE)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "SELECT TIMEDIFF(tm6, tm0) AS td_tm, "
+        "TIMEDIFF(dt6, dt3) AS td_dt, "
+        "TIMEDIFF(d, d) AS td_date FROM timediff_metadata LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        table_metadata,
+        (int)(sizeof(table_metadata) / sizeof(table_metadata[0])),
+        "TIMEDIFF table metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMEDIFF table metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
     failures += execute_sql(
         database,
         "CREATE TABLE temporal_timediff ("

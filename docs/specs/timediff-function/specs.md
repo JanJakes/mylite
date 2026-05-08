@@ -90,6 +90,8 @@ Observed metadata:
 | --- | --- | ---: | ---: | --- | --- | --- |
 | whole-second arguments | `TIME` | 10 | 0 | binary | `BINARY` | yes |
 | fractional arguments with max scale `N` | `TIME` | `11 + N` | `N` | binary | `BINARY` | yes |
+| table-backed `TIME(6)` with `TIME` or `DATETIME(6)` with `DATETIME(3)` | `TIME` | 17 | 6 | binary | `BINARY` | yes |
+| table-backed `DATE` operands | `TIME` | 10 | 0 | binary | `BINARY` | yes |
 | unresolved textual precision | `TIME` | 17 | 6 | binary | `BINARY` | yes |
 
 ## MyLite Compatibility Decisions
@@ -166,6 +168,7 @@ Parser tests should cover:
 Runtime tests should cover:
 
 - result metadata for whole-second, fractional, and `NULL` expressions
+- table-backed fractional `TIME` and `DATETIME` result metadata
 - positive, negative, over-24-hour, fractional, and `NULL` time inputs
 - datetime differences across dates and negative datetime differences
 - typed `DATE`, `TIME(6)`, and `DATETIME(6)` column behavior

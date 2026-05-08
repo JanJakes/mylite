@@ -19,10 +19,16 @@ The supported units in this slice are:
 - `HOUR`
 - `MINUTE`
 - `SECOND`
+- `QUARTER`
+- `MICROSECOND`
+
+The MySQL-supported `SQL_TSI_YEAR`, `SQL_TSI_QUARTER`, `SQL_TSI_MONTH`,
+`SQL_TSI_WEEK`, `SQL_TSI_DAY`, `SQL_TSI_HOUR`, `SQL_TSI_MINUTE`, and
+`SQL_TSI_SECOND` aliases are accepted and normalized to the corresponding
+unit. MySQL 8.4.9 rejects `SQL_TSI_MICROSECOND`, and MyLite rejects it too.
 
 Out of scope:
 
-- `MICROSECOND`, `QUARTER`, and `SQL_TSI_` unit spellings
 - combined interval units such as `YEAR_MONTH`, which MySQL rejects for
   `TIMESTAMPADD()`
 - time-only input conversion
@@ -72,6 +78,11 @@ Verified results for this slice:
 | `TIMESTAMPADD(HOUR,1,'2024-01-01')` | `2024-01-01 01:00:00` | none |
 | `TIMESTAMPADD(MINUTE,-1,'2024-01-01 00:01:00')` | `2024-01-01 00:00:00` | none |
 | `TIMESTAMPADD(SECOND,1,'2024-01-01 23:59:59.999999')` | `2024-01-02 00:00:00.999999` | none |
+| `TIMESTAMPADD(QUARTER,1,'2024-01-31')` | `2024-04-30` | none |
+| `TIMESTAMPADD(MICROSECOND,2,'2024-01-01')` | `2024-01-01 00:00:00.000002` | none |
+| `TIMESTAMPADD(MICROSECOND,1000000,'2024-01-01')` | `2024-01-01 00:00:01` | none |
+| `TIMESTAMPADD(SQL_TSI_DAY,1,'2024-01-01')` | `2024-01-02` | none |
+| `TIMESTAMPADD(SQL_TSI_QUARTER,1,'2024-01-31')` | `2024-04-30` | none |
 | `TIMESTAMPADD(DAY,1.9,'2024-01-01')` | `2024-01-03` | none |
 | `TIMESTAMPADD(DAY,-1.9,'2024-01-02')` | `2023-12-31` | none |
 | `TIMESTAMPADD(SECOND,1,NOW(6))` after the timestamp setting above | `2023-11-14 22:13:21.987654` | none |
@@ -97,19 +108,17 @@ Invalid interval text contributes warning 1292 and uses zero as the interval
 amount after the datetime expression has produced a non-`NULL`, valid temporal
 value.
 
-Valid MySQL units not included in this slice:
-
-| Expression | MySQL result |
-| --- | --- |
-| `TIMESTAMPADD(MICROSECOND,2,'2024-01-01 00:00:00.000001')` | `2024-01-01 00:00:00.000003` |
-| `TIMESTAMPADD(QUARTER,1,'2024-01-31')` | `2024-04-30` |
-| `TIMESTAMPADD(SQL_TSI_DAY,1,'2024-01-01')` | `2024-01-02` |
+For string datetime inputs, MySQL prints a fractional part only when the
+resulting microsecond component is nonzero. For typed `DATE`, `DATETIME`, and
+`TIMESTAMP` inputs, `MICROSECOND` arithmetic returns a typed `DATETIME(6)`,
+including `.000000` when the result lands on a whole second.
 
 Malformed syntax:
 
 | SQL | MySQL behavior |
 | --- | --- |
 | `SELECT TIMESTAMPADD(YEAR_MONTH,1,'2024-01-01')` | syntax error 1064 |
+| `SELECT TIMESTAMPADD(SQL_TSI_MICROSECOND,1,'2024-01-01')` | syntax error 1064 |
 | `SELECT TIMESTAMPADD('DAY',1,'2024-01-01')` | syntax error 1064 |
 | `SELECT TIMESTAMPADD(DAY,1)` | syntax error 1064 |
 | `SELECT TIMESTAMPADD(DAY,1,'2024-01-01','x')` | syntax error 1064 |
@@ -122,6 +131,8 @@ Observed metadata:
 | `TIMESTAMPADD(DAY,2,CURDATE())` | `DATE` | `10` | `0` | binary (63) | `BINARY` | yes |
 | `TIMESTAMPADD(HOUR,2,CURDATE())` | `DATETIME` | `19` | `0` | binary (63) | `BINARY` | yes |
 | `TIMESTAMPADD(SECOND,1,NOW(6))` | `DATETIME` | `26` | `6` | binary (63) | `BINARY` | yes |
+| `TIMESTAMPADD(MICROSECOND,2,CURDATE())` | `DATETIME` | `26` | `6` | binary (63) | `BINARY` | yes |
+| `TIMESTAMPADD(MICROSECOND,2,NOW(3))` | `DATETIME` | `26` | `6` | binary (63) | `BINARY` | yes |
 
 ## MyLite compatibility decisions
 
@@ -136,10 +147,10 @@ This normalized order intentionally differs from the source syntax so
 `TIMESTAMPADD()` can use the same evaluator path as `DATE_ADD()` while
 preserving MySQL's datetime-first short-circuit behavior.
 
-The first slice accepts only the seven units listed in scope. `MICROSECOND`,
-`QUARTER`, and `SQL_TSI_` spellings are documented as deferred and rejected by
-the current parser. Combined interval units remain rejected, matching MySQL for
-`YEAR_MONTH`.
+The supported simple units listed in scope are accepted as interval-unit
+keywords. MySQL's `SQL_TSI_` aliases are accepted for all observed units except
+`SQL_TSI_MICROSECOND`, which MySQL rejects. Combined interval units remain
+rejected, matching MySQL for `YEAR_MONTH`.
 
 For invalid temporal values, MyLite should match the existing temporal parser's
 warning text family and default strict-mode warning policy. In `UPDATE` and
@@ -165,14 +176,16 @@ interval_unit ::= YEAR.
 interval_unit ::= HOUR.
 interval_unit ::= MINUTE.
 interval_unit ::= SECOND.
+interval_unit ::= QUARTER.
+interval_unit ::= MICROSECOND.
 ```
 
 When `function_name` text is `TIMESTAMPADD`, MyLite validates that the argument
 list has exactly three parsed arguments, that the first argument is one of the
-supported interval-unit identifiers above, and then stores the unit as
-function-call metadata while preserving `datetime_expr` and `interval` as
-runtime arguments. `TIMESTAMPADD` remains a nonreserved identifier when it is
-not used as a call name.
+supported interval-unit identifiers above or a supported `SQL_TSI_` alias, and
+then stores the unit as function-call metadata while preserving `datetime_expr`
+and `interval` as runtime arguments. `TIMESTAMPADD` remains a nonreserved
+identifier when it is not used as a call name.
 
 ## Runtime semantics
 
@@ -187,11 +200,12 @@ not used as a call name.
    integer conversion path.
 7. Add the signed amount in the requested unit to the temporal value.
 8. Return a date for date-only input plus date-only units; otherwise return a
-   datetime preserving available fractional precision.
+   datetime preserving available fractional precision. `MICROSECOND` arithmetic
+   over typed temporal inputs returns `DATETIME(6)`.
 
 `DAY`, `WEEK`, `HOUR`, `MINUTE`, and `SECOND` use MyLite's day and second
 arithmetic helpers. `MONTH` and `YEAR` use calendar month arithmetic with
-target-month clipping.
+target-month clipping; `QUARTER` is month arithmetic scaled by three.
 
 ## Tests
 
@@ -200,8 +214,9 @@ Parser tests should cover:
 - all supported units
 - normalized AST unit metadata and runtime argument order
 - `timestampadd` as a nonreserved identifier outside calls
-- rejected `MICROSECOND`, `QUARTER`, `SQL_TSI_`, quoted-unit, missing-argument,
-  extra-argument, and combined-unit forms
+- supported `SQL_TSI_` aliases and rejected `SQL_TSI_MICROSECOND`
+- rejected quoted-unit, missing-argument, extra-argument, and combined-unit
+  forms
 
 Runtime tests should cover:
 
@@ -221,7 +236,7 @@ Runtime tests should cover:
 ## Compatibility status
 
 This feature moves `TIMESTAMPADD()` to partial compatibility for the supported
-simple units and supported scalar expression call sites. The deferred units,
-time-only conversion, time-zone-sensitive `TIMESTAMP` behavior, exact native
-syntax diagnostics, and broader expression contexts remain tracked as
-incomplete scalar temporal function work.
+simple units and supported scalar expression call sites. Time-only conversion,
+time-zone-sensitive `TIMESTAMP` behavior, exact native syntax diagnostics, and
+broader expression contexts remain tracked as incomplete scalar temporal
+function work.

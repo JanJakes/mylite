@@ -68,6 +68,7 @@ enum {
     MYLITE_TEMPORAL_SECONDS_PER_HOUR = 3600,
     MYLITE_TEMPORAL_SECONDS_PER_DAY = 86400,
     MYLITE_TEMPORAL_MICROSECOND_LIMIT = 1000000,
+    MYLITE_TEMPORAL_MONTHS_PER_QUARTER = 3,
     MYLITE_TEMPORAL_MONTHS_PER_YEAR = 12,
     MYLITE_TEMPORAL_FEBRUARY = 2,
     MYLITE_TEMPORAL_MAX_MONTH_DAY = 31,
@@ -1804,6 +1805,8 @@ static bool add_temporal_months(struct temporal_date_value *date, int64_t months
 static bool add_temporal_days(struct temporal_date_value *date, int64_t days);
 
 static bool add_temporal_seconds(struct temporal_date_value *date, int64_t seconds);
+
+static bool add_temporal_microseconds(struct temporal_date_value *date, int64_t microseconds);
 
 static bool temporal_date_from_day_number(int64_t day_number, struct temporal_date_value *out_date);
 
@@ -11994,6 +11997,9 @@ static bool timestampdiff_value(
     case MYLITE_SQL_AST_INTERVAL_UNIT_YEAR:
         *out_value = timestampdiff_months(start, end) / MYLITE_TEMPORAL_MONTHS_PER_YEAR;
         return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER:
+        *out_value = timestampdiff_months(start, end) / MYLITE_TEMPORAL_MONTHS_PER_QUARTER;
+        return true;
     case MYLITE_SQL_AST_INTERVAL_UNIT_HOUR:
         diff = timestampdiff_seconds(start, end);
         *out_value = diff / MYLITE_TEMPORAL_SECONDS_PER_HOUR;
@@ -12005,8 +12011,9 @@ static bool timestampdiff_value(
     case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
         *out_value = timestampdiff_seconds(start, end);
         return true;
-    case MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER:
     case MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND:
+        *out_value = timediff_datetime_microseconds(end) - timediff_datetime_microseconds(start);
+        return true;
     case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
         return false;
     }
@@ -12515,6 +12522,14 @@ static int eval_date_arithmetic_function(
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         goto cleanup;
     }
+    if (node->interval_unit == MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND) {
+        date.preserve_fraction_digits =
+            temporal.temporal_type == MYLITE_EXPRESSION_TEMPORAL_DATE ||
+            temporal.temporal_type == MYLITE_EXPRESSION_TEMPORAL_DATETIME ||
+            temporal.temporal_type == MYLITE_EXPRESSION_TEMPORAL_TIMESTAMP;
+        date.fraction_digits =
+            date.preserve_fraction_digits || date.microsecond != 0 ? MYLITE_TEMPORAL_MAX_FSP : 0U;
+    }
 
     status = datetime_result ? set_temporal_datetime_text_value(&date, out_value)
                              : set_temporal_date_text_value(&date, out_value);
@@ -12558,6 +12573,9 @@ static bool apply_date_interval_arithmetic(
     case MYLITE_SQL_AST_INTERVAL_UNIT_YEAR:
         return multiply_interval_amount(value, MYLITE_TEMPORAL_MONTHS_PER_YEAR, &scaled) &&
                add_temporal_months(date, scaled);
+    case MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER:
+        return multiply_interval_amount(value, MYLITE_TEMPORAL_MONTHS_PER_QUARTER, &scaled) &&
+               add_temporal_months(date, scaled);
     case MYLITE_SQL_AST_INTERVAL_UNIT_HOUR:
         return multiply_interval_amount(value, MYLITE_TEMPORAL_SECONDS_PER_HOUR, &scaled) &&
                add_temporal_seconds(date, scaled);
@@ -12566,8 +12584,8 @@ static bool apply_date_interval_arithmetic(
                add_temporal_seconds(date, scaled);
     case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
         return add_temporal_seconds(date, value);
-    case MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER:
     case MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND:
+        return add_temporal_microseconds(date, value);
     case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
         return false;
     }
@@ -12666,6 +12684,60 @@ static bool add_temporal_seconds(struct temporal_date_value *date, int64_t secon
     return true;
 }
 
+static bool add_temporal_microseconds(struct temporal_date_value *date, int64_t microseconds) {
+    const int64_t microseconds_per_day =
+        (int64_t)MYLITE_TEMPORAL_SECONDS_PER_DAY * (int64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    const struct temporal_date_value minimum_date = {.year = 1, .month = 1, .day = 1};
+    const struct temporal_date_value maximum_date = {
+        .year = MYLITE_TEMPORAL_MAX_YEAR,
+        .month = MYLITE_TEMPORAL_MONTHS_PER_YEAR,
+        .day = MYLITE_TEMPORAL_MAX_MONTH_DAY,
+    };
+    int64_t minimum = temporal_day_number(&minimum_date) * microseconds_per_day;
+    int64_t maximum =
+        (temporal_day_number(&maximum_date) * microseconds_per_day) + microseconds_per_day - 1;
+    int64_t base = 0;
+    int64_t total = 0;
+    int64_t day_number = 0;
+    int64_t remainder = 0;
+
+    if (date == NULL) {
+        return false;
+    }
+
+    base = timediff_datetime_microseconds(date);
+    if ((microseconds > 0 && base > INT64_MAX - microseconds) ||
+        (microseconds < 0 && base < INT64_MIN - microseconds)) {
+        return false;
+    }
+    total = base + microseconds;
+    if (total < minimum || total > maximum) {
+        return false;
+    }
+
+    day_number = total / microseconds_per_day;
+    remainder = total % microseconds_per_day;
+    if (remainder < 0) {
+        remainder += microseconds_per_day;
+        --day_number;
+    }
+    if (!temporal_date_from_day_number(day_number, date)) {
+        return false;
+    }
+    date->hour = (int)(remainder / ((int64_t)MYLITE_TEMPORAL_SECONDS_PER_HOUR *
+                                    (int64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT));
+    remainder %=
+        (int64_t)MYLITE_TEMPORAL_SECONDS_PER_HOUR * (int64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    date->minute = (int)(remainder / ((int64_t)MYLITE_TEMPORAL_SECONDS_PER_MINUTE *
+                                      (int64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT));
+    remainder %=
+        (int64_t)MYLITE_TEMPORAL_SECONDS_PER_MINUTE * (int64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT;
+    date->second = (int)(remainder / (int64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    date->microsecond = (int)(remainder % (int64_t)MYLITE_TEMPORAL_MICROSECOND_LIMIT);
+    date->has_time = true;
+    return true;
+}
+
 static bool temporal_date_from_day_number(
     int64_t day_number,
     struct temporal_date_value *out_date
@@ -12724,7 +12796,10 @@ static bool interval_unit_has_time_part(enum mylite_sql_ast_interval_unit unit) 
     if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE) {
         return true;
     }
-    return unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
+    if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND) {
+        return true;
+    }
+    return unit == MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND;
 }
 
 static int set_temporal_datetime_text_value(

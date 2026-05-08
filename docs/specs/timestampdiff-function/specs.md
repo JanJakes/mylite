@@ -19,10 +19,16 @@ The supported units in this slice are:
 - `HOUR`
 - `MINUTE`
 - `SECOND`
+- `QUARTER`
+- `MICROSECOND`
+
+The MySQL-supported `SQL_TSI_YEAR`, `SQL_TSI_QUARTER`, `SQL_TSI_MONTH`,
+`SQL_TSI_WEEK`, `SQL_TSI_DAY`, `SQL_TSI_HOUR`, `SQL_TSI_MINUTE`, and
+`SQL_TSI_SECOND` aliases are accepted and normalized to the corresponding
+unit. MySQL 8.4.9 rejects `SQL_TSI_MICROSECOND`, and MyLite rejects it too.
 
 Out of scope:
 
-- `MICROSECOND`, `QUARTER`, and `SQL_TSI_` unit spellings
 - combined interval units such as `YEAR_MONTH`, which MySQL rejects for
   `TIMESTAMPDIFF()`
 - time-only input conversion
@@ -86,6 +92,11 @@ Verified results for this slice:
 | `TIMESTAMPDIFF(HOUR,'2024-02-28 00:00:00','2024-02-29 12:00:00')` | `36` | none |
 | `TIMESTAMPDIFF(MINUTE,'2024-02-28 00:00:30','2024-02-28 00:02:29')` | `1` | none |
 | `TIMESTAMPDIFF(SECOND,'2024-02-28 00:00:00','2024-02-28 00:00:01.900000')` | `1` | none |
+| `TIMESTAMPDIFF(MICROSECOND,'2024-01-01 00:00:00.000001','2024-01-01 00:00:01.000003')` | `1000002` | none |
+| `TIMESTAMPDIFF(QUARTER,'2024-01-31','2024-10-30')` | `2` | none |
+| `TIMESTAMPDIFF(QUARTER,'2024-01-31','2024-10-31')` | `3` | none |
+| `TIMESTAMPDIFF(SQL_TSI_DAY,'2024-01-01','2024-01-03')` | `2` | none |
+| `TIMESTAMPDIFF(SQL_TSI_QUARTER,'2024-01-01','2024-07-01')` | `2` | none |
 | `TIMESTAMPDIFF(SECOND,'2024-01-01 00:00:00.900000','2024-01-01 00:00:01.000000')` | `0` | none |
 | `TIMESTAMPDIFF(MINUTE,'2024-01-01 00:00:00.900000','2024-01-01 00:01:00.000000')` | `0` | none |
 
@@ -101,6 +112,8 @@ Negative differences are truncated toward zero at the requested unit boundary:
 | `TIMESTAMPDIFF(MONTH,'2025-02-28','2024-02-29')` | `-11` |
 | `TIMESTAMPDIFF(YEAR,'2025-02-28','2024-02-29')` | `0` |
 | `TIMESTAMPDIFF(YEAR,'2001-03-01','2000-02-29')` | `-1` |
+| `TIMESTAMPDIFF(MICROSECOND,'2024-01-01 00:00:01.000003','2024-01-01 00:00:00.000001')` | `-1000002` |
+| `TIMESTAMPDIFF(QUARTER,'2024-10-31','2024-01-31')` | `-3` |
 
 `MONTH` and `YEAR` count complete month or year boundaries. They are not
 derived from fixed day counts.
@@ -126,19 +139,12 @@ integer temporal text with warning 1292 when fractional digits are nonzero,
 two-digit year normalization, fractional seconds, and values produced by
 current temporal and date-arithmetic functions.
 
-Valid MySQL units not included in this slice:
-
-| Expression | MySQL result |
-| --- | ---: |
-| `TIMESTAMPDIFF(MICROSECOND,'2024-01-01 00:00:00','2024-01-01 00:00:00.000002')` | `2` |
-| `TIMESTAMPDIFF(QUARTER,'2024-01-01','2024-07-01')` | `2` |
-| `TIMESTAMPDIFF(SQL_TSI_DAY,'2024-01-01','2024-01-02')` | `1` |
-
 Malformed syntax:
 
 | SQL | MySQL behavior |
 | --- | --- |
 | `SELECT TIMESTAMPDIFF(YEAR_MONTH,'2024-01-01','2024-02-01')` | syntax error 1064 |
+| `SELECT TIMESTAMPDIFF(SQL_TSI_MICROSECOND,'2024-01-01','2024-01-02')` | syntax error 1064 |
 | `SELECT TIMESTAMPDIFF('DAY','2024-01-01','2024-01-02')` | syntax error 1064 |
 | `SELECT TIMESTAMPDIFF(DAY,'2024-01-01')` | syntax error 1064 |
 | `SELECT TIMESTAMPDIFF(DAY,'2024-01-01','2024-01-02','x')` | syntax error 1064 |
@@ -155,11 +161,10 @@ MyLite stores the interval unit as metadata on the function-call AST node. The
 argument list contains exactly the two datetime expressions, preserving the
 existing rule that argument-list children are evaluatable expressions.
 
-The first slice accepts only the seven units listed in scope. `MICROSECOND`,
-`QUARTER`, and `SQL_TSI_` spellings are documented as deferred and rejected by
-the current parser because MyLite does not yet implement those unit tokens for
-this function. Combined interval units remain rejected, matching MySQL for
-`YEAR_MONTH`.
+The supported simple units listed in scope are accepted as interval-unit
+keywords. MySQL's `SQL_TSI_` aliases are accepted for all observed units except
+`SQL_TSI_MICROSECOND`, which MySQL rejects. Combined interval units remain
+rejected, matching MySQL for `YEAR_MONTH`.
 
 For invalid temporal values, MyLite should match the existing temporal parser's
 warning text family and default strict-mode warning policy. In `UPDATE` and
@@ -190,14 +195,16 @@ interval_unit ::= YEAR.
 interval_unit ::= HOUR.
 interval_unit ::= MINUTE.
 interval_unit ::= SECOND.
+interval_unit ::= QUARTER.
+interval_unit ::= MICROSECOND.
 ```
 
 When `function_name` text is `TIMESTAMPDIFF`, MyLite validates that the
 argument list has exactly three parsed arguments, that the first argument is one
-of the supported interval-unit identifiers above, and then stores the unit as
-function-call metadata while preserving the two datetime expressions as runtime
-arguments. `TIMESTAMPDIFF` remains a nonreserved identifier when it is not used
-as a call name.
+of the supported interval-unit identifiers above or a supported `SQL_TSI_`
+alias, and then stores the unit as function-call metadata while preserving the
+two datetime expressions as runtime arguments. `TIMESTAMPDIFF` remains a
+nonreserved identifier when it is not used as a call name.
 
 ## Runtime semantics
 
@@ -213,10 +220,11 @@ as a call name.
 7. Compute `datetime_expr2 - datetime_expr1` in the requested unit and return a
    signed integer.
 
-`DAY`, `WEEK`, `HOUR`, `MINUTE`, and `SECOND` use complete elapsed boundaries
-from day and second arithmetic. `MONTH` and `YEAR` use calendar boundary logic
-so partial final months or years are not counted. Negative results use the
-same truncation direction observed in MySQL.
+`DAY`, `WEEK`, `HOUR`, `MINUTE`, `SECOND`, and `MICROSECOND` use complete
+elapsed boundaries from day, second, and microsecond arithmetic. `MONTH`,
+`QUARTER`, and `YEAR` use calendar boundary logic so partial final months,
+quarters, or years are not counted. Negative results use the same truncation
+direction observed in MySQL.
 
 The feature has no file-format, schema-catalog, or SQLite storage impact.
 
@@ -224,11 +232,11 @@ The feature has no file-format, schema-catalog, or SQLite storage impact.
 
 Parser tests:
 
-- `TIMESTAMPDIFF(DAY|WEEK|MONTH|YEAR|HOUR|MINUTE|SECOND, expr, expr)`
+- `TIMESTAMPDIFF(DAY|WEEK|MONTH|YEAR|HOUR|MINUTE|SECOND|QUARTER|MICROSECOND, expr, expr)`
 - nested temporal inputs such as `TIMESTAMPDIFF(DAY, CURDATE(), DATE(NOW()))`
 - `timestampdiff` as a nonreserved column identifier
 - parser rejection for quoted units, missing arguments, extra arguments,
-  `YEAR_MONTH`, and deferred `MICROSECOND`
+  `YEAR_MONTH`, and MySQL-rejected `SQL_TSI_MICROSECOND`
 
 Runtime tests:
 
@@ -248,7 +256,6 @@ Runtime tests:
 ## Compatibility status
 
 After implementation, `TIMESTAMPDIFF()` has partial compatibility for the
-supported scalar expression paths and the seven first-slice units. Remaining
-gaps are `MICROSECOND`, `QUARTER`, `SQL_TSI_` unit spellings, time-only input
-conversion, exact native diagnostics, and broader temporal storage/time-zone
-semantics.
+supported scalar expression paths and supported simple units. Remaining gaps
+are time-only input conversion, exact native diagnostics, and broader temporal
+storage/time-zone semantics.

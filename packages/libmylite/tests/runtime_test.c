@@ -19117,6 +19117,39 @@ static int test_timestampdiff_function_execution(void) {
 
     failures += prepare_sql(
         database,
+        "SELECT TIMESTAMPDIFF(MICROSECOND,'2024-01-01 00:00:00.000001',"
+        "'2024-01-01 00:00:01.000003') AS td_microsecond, "
+        "TIMESTAMPDIFF(MICROSECOND,'2024-01-01 00:00:01.000003',"
+        "'2024-01-01 00:00:00.000001') AS td_microsecond_negative, "
+        "TIMESTAMPDIFF(QUARTER,'2024-01-31','2024-10-30') AS td_quarter_before, "
+        "TIMESTAMPDIFF(QUARTER,'2024-01-31','2024-10-31') AS td_quarter_exact, "
+        "TIMESTAMPDIFF(QUARTER,'2024-10-31','2024-01-31') AS td_quarter_negative, "
+        "TIMESTAMPDIFF(SQL_TSI_DAY,'2024-01-01','2024-01-03') AS td_alias_day, "
+        "TIMESTAMPDIFF(SQL_TSI_QUARTER,'2024-01-01','2024-07-01') AS td_alias_quarter",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPDIFF extended unit row");
+    failures += expect_string(mylite_column_text(stmt, 0), "1000002", "TIMESTAMPDIFF MICROSECOND");
+    failures += expect_string(
+        mylite_column_text(stmt, 1),
+        "-1000002",
+        "TIMESTAMPDIFF MICROSECOND negative"
+    );
+    failures += expect_string(mylite_column_text(stmt, 2), "2", "TIMESTAMPDIFF QUARTER boundary");
+    failures += expect_string(mylite_column_text(stmt, 3), "3", "TIMESTAMPDIFF QUARTER exact");
+    failures += expect_string(mylite_column_text(stmt, 4), "-3", "TIMESTAMPDIFF QUARTER negative");
+    failures += expect_string(mylite_column_text(stmt, 5), "2", "TIMESTAMPDIFF SQL_TSI_DAY alias");
+    failures +=
+        expect_string(mylite_column_text(stmt, 6), "2", "TIMESTAMPDIFF SQL_TSI_QUARTER alias");
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "TIMESTAMPDIFF extended unit warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPDIFF extended unit done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
         "SELECT TIMESTAMPDIFF(SECOND,'2024-01-01 00:00:00.900000',"
         "'2024-01-01 00:00:01.000000') AS second_short_positive, "
         "TIMESTAMPDIFF(SECOND,'2024-01-01 00:00:01.000000',"
@@ -19365,18 +19398,18 @@ static int test_timestampdiff_function_execution(void) {
 
     failures += prepare_sql(
         database,
-        "SELECT TIMESTAMPDIFF(MICROSECOND,'2024-01-01','2024-01-02')",
-        MYLITE_PARSE_ERROR,
-        &stmt
-    );
-    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPDIFF MICROSECOND deferred");
-    failures += prepare_sql(
-        database,
         "SELECT TIMESTAMPDIFF(YEAR_MONTH,'2024-01-01','2024-02-01')",
         MYLITE_PARSE_ERROR,
         &stmt
     );
     failures += expect_no_stmt_handle(&stmt, "TIMESTAMPDIFF combined unit rejected");
+    failures += prepare_sql(
+        database,
+        "SELECT TIMESTAMPDIFF(SQL_TSI_MICROSECOND,'2024-01-01','2024-01-02')",
+        MYLITE_PARSE_ERROR,
+        &stmt
+    );
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPDIFF SQL_TSI_MICROSECOND rejected");
     failures += prepare_sql(
         database,
         "SELECT TIMESTAMPDIFF('DAY','2024-01-01','2024-01-02')",
@@ -19456,6 +19489,32 @@ static int test_timestampadd_function_execution(void) {
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"ta_date_us",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         26U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"ta_now3_us",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         26U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const char *const projection_columns[] = {"id", "next_day", "next_hour"};
     static const char *const projection_values[] = {
@@ -19488,7 +19547,9 @@ static int test_timestampadd_function_execution(void) {
         "SELECT TIMESTAMPADD(DAY,2,'2024-02-28') AS ta_text, "
         "TIMESTAMPADD(DAY,2,CURDATE()) AS ta_date, "
         "TIMESTAMPADD(HOUR,2,CURDATE()) AS ta_datetime, "
-        "TIMESTAMPADD(SECOND,1,NOW(6)) AS ta_now6",
+        "TIMESTAMPADD(SECOND,1,NOW(6)) AS ta_now6, "
+        "TIMESTAMPADD(MICROSECOND,2,CURDATE()) AS ta_date_us, "
+        "TIMESTAMPADD(MICROSECOND,2,NOW(3)) AS ta_now3_us",
         MYLITE_OK,
         &stmt
     );
@@ -19512,6 +19573,16 @@ static int test_timestampadd_function_execution(void) {
     );
     failures +=
         expect_datetime_text(mylite_column_text(stmt, 3), 6U, "TIMESTAMPADD NOW(6) metadata shape");
+    failures += expect_datetime_text(
+        mylite_column_text(stmt, 4),
+        6U,
+        "TIMESTAMPADD date microsecond metadata shape"
+    );
+    failures += expect_datetime_text(
+        mylite_column_text(stmt, 5),
+        6U,
+        "TIMESTAMPADD NOW(3) microsecond metadata shape"
+    );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPADD metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
@@ -19560,6 +19631,50 @@ static int test_timestampadd_function_execution(void) {
     );
     failures += expect_int(mylite_warning_count(database), 0, "TIMESTAMPADD scalar warnings");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPADD scalar done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT TIMESTAMPADD(MICROSECOND,2,'2024-01-01') AS add_us_date, "
+        "TIMESTAMPADD(MICROSECOND,1000000,'2024-01-01') AS add_us_second, "
+        "TIMESTAMPADD(MICROSECOND,-100001,'2024-01-01 00:00:00.100000') AS add_us_neg, "
+        "TIMESTAMPADD(QUARTER,1,'2024-01-31') AS add_quarter, "
+        "TIMESTAMPADD(QUARTER,-1,'2024-03-31') AS add_quarter_negative, "
+        "TIMESTAMPADD(SQL_TSI_DAY,1,'2024-01-01') AS add_alias_day, "
+        "TIMESTAMPADD(SQL_TSI_QUARTER,1,'2024-01-31') AS add_alias_quarter",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "TIMESTAMPADD extended unit row");
+    failures += expect_string(
+        mylite_column_text(stmt, 0),
+        "2024-01-01 00:00:00.000002",
+        "TIMESTAMPADD MICROSECOND"
+    );
+    failures += expect_string(
+        mylite_column_text(stmt, 1),
+        "2024-01-01 00:00:01",
+        "TIMESTAMPADD MICROSECOND whole second text"
+    );
+    failures += expect_string(
+        mylite_column_text(stmt, 2),
+        "2023-12-31 23:59:59.999999",
+        "TIMESTAMPADD MICROSECOND negative"
+    );
+    failures += expect_string(mylite_column_text(stmt, 3), "2024-04-30", "TIMESTAMPADD QUARTER");
+    failures +=
+        expect_string(mylite_column_text(stmt, 4), "2023-12-31", "TIMESTAMPADD QUARTER negative");
+    failures +=
+        expect_string(mylite_column_text(stmt, 5), "2024-01-02", "TIMESTAMPADD SQL_TSI_DAY alias");
+    failures += expect_string(
+        mylite_column_text(stmt, 6),
+        "2024-04-30",
+        "TIMESTAMPADD SQL_TSI_QUARTER alias"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "TIMESTAMPADD extended unit warnings");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "TIMESTAMPADD extended unit done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -19798,32 +19913,18 @@ static int test_timestampadd_function_execution(void) {
 
     failures += prepare_sql(
         database,
-        "SELECT TIMESTAMPADD(MICROSECOND,2,'2024-01-01')",
-        MYLITE_PARSE_ERROR,
-        &stmt
-    );
-    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD MICROSECOND deferred");
-    failures += prepare_sql(
-        database,
-        "SELECT TIMESTAMPADD(QUARTER,1,'2024-01-31')",
-        MYLITE_PARSE_ERROR,
-        &stmt
-    );
-    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD QUARTER deferred");
-    failures += prepare_sql(
-        database,
-        "SELECT TIMESTAMPADD(SQL_TSI_DAY,1,'2024-01-01')",
-        MYLITE_PARSE_ERROR,
-        &stmt
-    );
-    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD SQL_TSI alias deferred");
-    failures += prepare_sql(
-        database,
         "SELECT TIMESTAMPADD(YEAR_MONTH,1,'2024-01-01')",
         MYLITE_PARSE_ERROR,
         &stmt
     );
     failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD combined unit rejected");
+    failures += prepare_sql(
+        database,
+        "SELECT TIMESTAMPADD(SQL_TSI_MICROSECOND,1,'2024-01-01')",
+        MYLITE_PARSE_ERROR,
+        &stmt
+    );
+    failures += expect_no_stmt_handle(&stmt, "TIMESTAMPADD SQL_TSI_MICROSECOND rejected");
     failures += prepare_sql(
         database,
         "SELECT TIMESTAMPADD('DAY',1,'2024-01-01')",
@@ -25550,6 +25651,19 @@ static int test_date_add_sub_functions_execution(void) {
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"date_add_date_us",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         26U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         6U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const char *const updated_columns[] = {"id", "d", "dt"};
     static const char *const updated_values[] = {"1", "2024-01-02", "2024-01-01 00:00:01"};
@@ -25581,7 +25695,8 @@ static int test_date_add_sub_functions_execution(void) {
         database,
         "SELECT DATE_ADD('2024-02-29', INTERVAL 1 DAY) AS date_add_text, "
         "DATE_ADD(CURDATE(), INTERVAL 1 DAY) AS date_add_date, "
-        "DATE_ADD(CURDATE(), INTERVAL 1 HOUR) AS date_add_datetime",
+        "DATE_ADD(CURDATE(), INTERVAL 1 HOUR) AS date_add_datetime, "
+        "DATE_ADD(CURDATE(), INTERVAL 1 MICROSECOND) AS date_add_date_us",
         MYLITE_OK,
         &stmt
     );
@@ -25596,6 +25711,11 @@ static int test_date_add_sub_functions_execution(void) {
     failures += expect_date_text(mylite_column_text(stmt, 1), "DATE_ADD date metadata shape");
     failures +=
         expect_datetime_text(mylite_column_text(stmt, 2), 0U, "DATE_ADD datetime metadata shape");
+    failures += expect_datetime_text(
+        mylite_column_text(stmt, 3),
+        6U,
+        "DATE_ADD date microsecond metadata shape"
+    );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE_ADD metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
@@ -25609,12 +25729,17 @@ static int test_date_add_sub_functions_execution(void) {
         "DATE_ADD('2024-01-01', INTERVAL 1 WEEK) AS add_week, "
         "DATE_ADD('2024-01-31', INTERVAL 1 MONTH) AS add_month_clip, "
         "DATE_ADD('2024-02-29', INTERVAL 1 YEAR) AS add_year_clip, "
+        "DATE_ADD('2024-01-01', INTERVAL 1 QUARTER) AS add_quarter, "
+        "ADDDATE('2024-01-01', INTERVAL 1 QUARTER) AS alias_add_quarter, "
         "DATE_SUB('2024-03-31', INTERVAL 1 MONTH) AS sub_month_clip, "
         "DATE_ADD('2024-01-01', INTERVAL -1 DAY) AS add_negative, "
         "DATE_SUB('2024-01-01', INTERVAL -1 DAY) AS sub_negative, "
         "DATE_ADD('2024-01-01', INTERVAL 1 HOUR) AS add_hour, "
         "DATE_ADD('2024-01-01 23:59:59', INTERVAL 1 SECOND) AS add_second, "
         "DATE_ADD('2024-01-01 00:01:00', INTERVAL -1 MINUTE) AS add_minute, "
+        "DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND) AS add_microsecond, "
+        "SUBDATE('2024-01-01 00:00:00.000001', INTERVAL 2 MICROSECOND) "
+        "AS alias_sub_microsecond, "
         "DATE_ADD(20240229, INTERVAL 1 DAY) AS numeric_date, "
         "DATE_ADD('20240101235959', INTERVAL 1 SECOND) AS compact_datetime",
         MYLITE_OK,
@@ -25628,17 +25753,29 @@ static int test_date_add_sub_functions_execution(void) {
     failures += expect_string(mylite_column_text(stmt, 4), "2024-01-08", "DATE_ADD week");
     failures += expect_string(mylite_column_text(stmt, 5), "2024-02-29", "DATE_ADD month clip");
     failures += expect_string(mylite_column_text(stmt, 6), "2025-02-28", "DATE_ADD year clip");
-    failures += expect_string(mylite_column_text(stmt, 7), "2024-02-29", "DATE_SUB month clip");
-    failures += expect_string(mylite_column_text(stmt, 8), "2023-12-31", "DATE_ADD negative");
-    failures += expect_string(mylite_column_text(stmt, 9), "2024-01-02", "DATE_SUB negative");
-    failures += expect_string(mylite_column_text(stmt, 10), "2024-01-01 01:00:00", "DATE_ADD hour");
+    failures += expect_string(mylite_column_text(stmt, 7), "2024-04-01", "DATE_ADD quarter");
+    failures += expect_string(mylite_column_text(stmt, 8), "2024-04-01", "ADDDATE quarter");
+    failures += expect_string(mylite_column_text(stmt, 9), "2024-02-29", "DATE_SUB month clip");
+    failures += expect_string(mylite_column_text(stmt, 10), "2023-12-31", "DATE_ADD negative");
+    failures += expect_string(mylite_column_text(stmt, 11), "2024-01-02", "DATE_SUB negative");
+    failures += expect_string(mylite_column_text(stmt, 12), "2024-01-01 01:00:00", "DATE_ADD hour");
     failures +=
-        expect_string(mylite_column_text(stmt, 11), "2024-01-02 00:00:00", "DATE_ADD second");
+        expect_string(mylite_column_text(stmt, 13), "2024-01-02 00:00:00", "DATE_ADD second");
     failures +=
-        expect_string(mylite_column_text(stmt, 12), "2024-01-01 00:00:00", "DATE_ADD minute");
-    failures += expect_string(mylite_column_text(stmt, 13), "2024-03-01", "DATE_ADD numeric date");
+        expect_string(mylite_column_text(stmt, 14), "2024-01-01 00:00:00", "DATE_ADD minute");
     failures += expect_string(
-        mylite_column_text(stmt, 14),
+        mylite_column_text(stmt, 15),
+        "2024-01-01 00:00:00.000001",
+        "DATE_ADD microsecond"
+    );
+    failures += expect_string(
+        mylite_column_text(stmt, 16),
+        "2023-12-31 23:59:59.999999",
+        "SUBDATE microsecond"
+    );
+    failures += expect_string(mylite_column_text(stmt, 17), "2024-03-01", "DATE_ADD numeric date");
+    failures += expect_string(
+        mylite_column_text(stmt, 18),
         "2024-01-02 00:00:00",
         "DATE_ADD compact datetime"
     );
@@ -25865,14 +26002,6 @@ static int test_date_add_sub_functions_execution(void) {
     failures += expect_no_stmt_handle(&stmt, "ADDDATE day overload deferred");
     failures += prepare_sql(database, "SELECT SUBDATE('2024-01-01', 1)", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "SUBDATE day overload deferred");
-    failures += prepare_sql(
-        database,
-        "SELECT DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND)",
-        MYLITE_PARSE_ERROR,
-        &stmt
-    );
-    failures += expect_no_stmt_handle(&stmt, "DATE_ADD microsecond deferred");
-
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
     return failures;

@@ -558,6 +558,12 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `EXTRACT(QUARTER FROM ...)` and `EXTRACT(MICROSECOND FROM ...)` now parse
       and execute with MySQL-shaped signed `LONGLONG` descriptors, including the
       MySQL-observed `EXTRACT(MICROSECOND...)` display width.
+      `DATE_ADD()` / `DATE_SUB()` / `ADDDATE()` / `SUBDATE()` now cover
+      `QUARTER` and `MICROSECOND` interval units, and `TIMESTAMPADD()` /
+      `TIMESTAMPDIFF()` now cover `QUARTER`, `MICROSECOND`, and the
+      MySQL-supported `SQL_TSI_*` aliases except MySQL-rejected
+      `SQL_TSI_MICROSECOND`, with parser, runtime, metadata, and MySQL-runtime
+      regression coverage.
       `TIMEDIFF()` now preserves table-backed fractional `TIME` and `DATETIME`
       operand precision in result metadata, including mixed `TIME(6)`/`TIME`
       and `DATETIME(6)`/`DATETIME(3)` operands.

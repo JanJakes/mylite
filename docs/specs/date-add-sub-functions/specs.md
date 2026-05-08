@@ -16,17 +16,19 @@ The supported interval units in this slice are:
 - `WEEK`
 - `MONTH`
 - `YEAR`
+- `QUARTER`
 - `HOUR`
 - `MINUTE`
 - `SECOND`
+- `MICROSECOND`
 
 The `ADDDATE(date, days)` and `SUBDATE(date, days)` non-`INTERVAL` overloads
 are intentionally deferred. MySQL 8.4.9 probes confirmed those overloads exist,
 but they are a separate argument-shape surface from this feature. Combined
 units such as `YEAR_MONTH`, `DAY_SECOND`, `HOUR_MINUTE`,
-`SECOND_MICROSECOND`, and `MICROSECOND` are also deferred in this slice so that
-the first implementation does not guess interval-string parsing behavior beyond
-the units tested here.
+and `SECOND_MICROSECOND` are also deferred in this slice so that the
+implementation does not guess interval-string parsing behavior beyond the units
+tested here.
 
 References used for this independently authored specification:
 
@@ -57,7 +59,11 @@ SELECT
   DATE_SUB('2024-01-01', INTERVAL -1 DAY),
   DATE_ADD('2024-01-01', INTERVAL 1 WEEK),
   DATE_ADD('2024-01-01', INTERVAL 1 HOUR),
-  DATE_ADD('2024-01-01 23:59:59', INTERVAL 1 SECOND);
+  DATE_ADD('2024-01-01 23:59:59', INTERVAL 1 SECOND),
+  DATE_ADD('2024-01-01', INTERVAL 1 QUARTER),
+  ADDDATE('2024-01-01', INTERVAL 1 QUARTER),
+  DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND),
+  SUBDATE('2024-01-01 00:00:00.000001', INTERVAL 2 MICROSECOND);
 ```
 
 Verified results:
@@ -76,6 +82,10 @@ Verified results:
 | `DATE_ADD('2024-01-01', INTERVAL 1 WEEK)` | `2024-01-08` | none |
 | `DATE_ADD('2024-01-01', INTERVAL 1 HOUR)` | `2024-01-01 01:00:00` | none |
 | `DATE_ADD('2024-01-01 23:59:59', INTERVAL 1 SECOND)` | `2024-01-02 00:00:00` | none |
+| `DATE_ADD('2024-01-01', INTERVAL 1 QUARTER)` | `2024-04-01` | none |
+| `ADDDATE('2024-01-01', INTERVAL 1 QUARTER)` | `2024-04-01` | none |
+| `DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND)` | `2024-01-01 00:00:00.000001` | none |
+| `SUBDATE('2024-01-01 00:00:00.000001', INTERVAL 2 MICROSECOND)` | `2023-12-31 23:59:59.999999` | none |
 | `DATE_ADD('2024-02-29 23:59:59.1234', INTERVAL 1 SECOND)` | `2024-03-01 00:00:00.123400` | none |
 | `DATE_ADD('2024-02-29 23:59:59.0000005', INTERVAL 0 SECOND)` | `2024-02-29 23:59:59.000001` | none |
 | `DATE_ADD('2024-02-29 23:59:59.9999995', INTERVAL 0 SECOND)` | `2024-03-01 00:00:00` | none |
@@ -86,6 +96,12 @@ columns. Temporal-column fractional seconds keep the column value's fractional
 display precision. Verified `VARCHAR`, `DATETIME(3)`, and `DATETIME(6)` columns
 produce `.123400`, `.123` / `.000`, and `.123456` / `.000000` respectively
 after second arithmetic.
+
+For string-like operands, `MICROSECOND` interval arithmetic emits a fractional
+part only when the resulting microsecond value is nonzero. For typed `DATE`,
+`DATETIME`, and `TIMESTAMP` operands, `MICROSECOND` arithmetic returns typed
+`DATETIME(6)` metadata and display behavior, including `.000000` when the
+result lands on a whole second.
 
 Invalid and NULL behavior:
 
@@ -113,6 +129,7 @@ Metadata probes with `mysql --column-type-info -vvv` verified:
 | `DATE_ADD('2024-02-29', INTERVAL 1 DAY)` after `SET NAMES utf8mb4` | `STRING` | 116 | 31 | `utf8mb4_0900_ai_ci` | yes |
 | `DATE_ADD(CURDATE(), INTERVAL 1 DAY)` | `DATE` | 10 | 0 | `binary` | yes |
 | `DATE_ADD(CURDATE(), INTERVAL 1 HOUR)` | `DATETIME` | 19 | 0 | `binary` | yes |
+| `DATE_ADD(CURDATE(), INTERVAL 1 MICROSECOND)` | `DATETIME` | 26 | 6 | `binary` | yes |
 
 Strict DML probes verified that warnings from invalid temporal operands are
 promoted by MyLite's existing DML warning-promotion path: an update assigning
@@ -139,10 +156,10 @@ expression to a signed integer using MyLite's existing MySQL-style integer
 conversion path. Invalid text therefore contributes warning 1292 and uses zero
 as the interval value.
 
-`DAY`, `WEEK`, `MONTH`, and `YEAR` preserve a date result when the first operand
-has no time part. `HOUR`, `MINUTE`, and `SECOND` produce a datetime result even
-when the first operand is a date. Date/datetime inputs with an explicit time
-part return datetime values.
+`DAY`, `WEEK`, `MONTH`, `QUARTER`, and `YEAR` preserve a date result when the
+first operand has no time part. `HOUR`, `MINUTE`, `SECOND`, and `MICROSECOND`
+produce a datetime result even when the first operand is a date. Date/datetime
+inputs with an explicit time part return datetime values.
 
 Month and year arithmetic clips the day to the final valid day of the target
 month. This covers leap-day and month-end behavior such as January 31 plus one
@@ -174,9 +191,11 @@ interval_unit ::= DAY.
 interval_unit ::= WEEK.
 interval_unit ::= MONTH.
 interval_unit ::= YEAR.
+interval_unit ::= QUARTER.
 interval_unit ::= HOUR.
 interval_unit ::= MINUTE.
 interval_unit ::= SECOND.
+interval_unit ::= MICROSECOND.
 ```
 
 The parser helper accepts this special form only for `DATE_ADD`, `DATE_SUB`,
@@ -199,11 +218,11 @@ The runtime steps are:
 5. Evaluate the interval amount.
 6. Return `NULL` for a `NULL` interval amount.
 7. Convert the interval amount to a signed integer.
-8. Apply year/month components first, with month-end clipping.
-9. Apply day/week and time components using MyLite's day-number helpers and
-   deterministic carry/borrow normalization.
-10. Format `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS` text according to the result
-    shape.
+8. Apply year/month/quarter components first, with month-end clipping.
+9. Apply day/week, second-scale time, and microsecond components using MyLite's
+   day-number helpers and deterministic carry/borrow normalization.
+10. Format `YYYY-MM-DD`, `YYYY-MM-DD HH:MM:SS`, or fractional datetime text
+    according to the result shape.
 
 The runtime should keep `NOW()`, `CURDATE()`, and related current temporal
 inputs statement-stable by relying on the existing expression evaluation
@@ -218,9 +237,12 @@ MyLite should infer result metadata without evaluating expressions:
   decimals 0, binary charset/collation, `BINARY` flag
 - known `DATE` first operand plus time unit: nullable `DATETIME`, length 19,
   decimals 0, binary charset/collation, `BINARY` flag
+- known `DATE` first operand plus `MICROSECOND`: nullable `DATETIME`, length
+  26, decimals 6, binary charset/collation, `BINARY` flag
 - known `DATETIME` or `TIMESTAMP` first operand: nullable `DATETIME`, length
-  19 plus fractional precision if already present on the first operand,
-  binary charset/collation, `BINARY` flag
+  19 plus fractional precision if already present on the first operand, or
+  length 26 and decimals 6 for `MICROSECOND`, binary charset/collation,
+  `BINARY` flag
 - unknown/string first operand: nullable connection-character-set `STRING`,
   length 29 characters times connection max bytes per character, decimals 31
 
@@ -232,13 +254,14 @@ MyLite does not yet expose prepared parameters.
 Parser tests should cover:
 
 - `DATE_ADD`, `DATE_SUB`, `ADDDATE`, and `SUBDATE` interval form
-- supported simple units
+- supported simple units, including `QUARTER` and `MICROSECOND`
 - nested temporal expressions such as `DATE_ADD(CURDATE(), INTERVAL 1 DAY)`
 - malformed interval units and unsupported arities/forms
 
 Runtime tests should cover:
 
-- literal date arithmetic for day, week, month, year, hour, minute, and second
+- literal date arithmetic for day, week, month, quarter, year, hour, minute,
+  second, and microsecond
 - alias behavior for the shared interval form
 - compact and numeric temporal inputs reused from the `DATE()` / `DATEDIFF()`
   parser
@@ -263,7 +286,6 @@ units listed above.
 Remaining gaps:
 
 - non-`INTERVAL` `ADDDATE(date, days)` and `SUBDATE(date, days)` overloads
-- `MICROSECOND`
 - combined interval units such as `YEAR_MONTH`, `DAY_SECOND`, and
   `SECOND_MICROSECOND`
 - general interval expressions outside the four function calls

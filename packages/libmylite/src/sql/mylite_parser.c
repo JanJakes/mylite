@@ -164,7 +164,7 @@ static bool extract_interval_unit_from_expression(
     enum mylite_sql_ast_interval_unit *out_unit
 );
 
-static bool extract_function_interval_unit_from_expression(
+static bool extract_timestamp_interval_unit_from_expression(
     const struct mylite_sql_ast_node *expression,
     enum mylite_sql_ast_interval_unit *out_unit
 );
@@ -6986,7 +6986,7 @@ static bool normalize_timestampdiff_function_call(
     }
 
     if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 3U ||
-        !extract_interval_unit_from_expression(unit_argument, &unit)) {
+        !extract_timestamp_interval_unit_from_expression(unit_argument, &unit)) {
         mylite_sql_parser_state_parse_failed(state);
         return false;
     }
@@ -7027,7 +7027,7 @@ static bool normalize_timestampadd_function_call(
     }
 
     if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 3U ||
-        !extract_interval_unit_from_expression(unit_argument, &unit)) {
+        !extract_timestamp_interval_unit_from_expression(unit_argument, &unit)) {
         mylite_sql_parser_state_parse_failed(state);
         return false;
     }
@@ -7086,7 +7086,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
         struct mylite_sql_ast_node *list = NULL;
         struct mylite_sql_ast_node *call = NULL;
 
-        if (!extract_function_interval_unit_from_expression(first, &unit)) {
+        if (!extract_interval_unit_from_expression(first, &unit)) {
             mylite_sql_parser_state_parse_failed(state);
             return NULL;
         }
@@ -8364,6 +8364,7 @@ static bool lookup_keyword_parser_token(
         {"MEMORY", MYLITE_SQL_PARSE_MEMORY},
         {"MESSAGE_TEXT", MYLITE_SQL_PARSE_MESSAGE_TEXT},
         {"MIDDLEINT", MYLITE_SQL_PARSE_MIDDLEINT},
+        {"MICROSECOND", MYLITE_SQL_PARSE_MICROSECOND},
         {"MINUTE", MYLITE_SQL_PARSE_MINUTE},
         {"MINUTE_SECOND", MYLITE_SQL_PARSE_MINUTE_SECOND},
         {"MOD", MYLITE_SQL_PARSE_MOD},
@@ -8802,39 +8803,52 @@ static bool extract_interval_unit_from_expression(
     const struct mylite_sql_ast_node *expression,
     enum mylite_sql_ast_interval_unit *out_unit
 ) {
-    enum mylite_sql_ast_interval_unit unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
+    static const struct {
+        const char *name;
+        enum mylite_sql_ast_interval_unit unit;
+    } units[] = {
+        {"YEAR", MYLITE_SQL_AST_INTERVAL_UNIT_YEAR},
+        {"MONTH", MYLITE_SQL_AST_INTERVAL_UNIT_MONTH},
+        {"DAY", MYLITE_SQL_AST_INTERVAL_UNIT_DAY},
+        {"HOUR", MYLITE_SQL_AST_INTERVAL_UNIT_HOUR},
+        {"MINUTE", MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE},
+        {"SECOND", MYLITE_SQL_AST_INTERVAL_UNIT_SECOND},
+        {"WEEK", MYLITE_SQL_AST_INTERVAL_UNIT_WEEK},
+        {"QUARTER", MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER},
+        {"MICROSECOND", MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND},
+    };
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER || out_unit == NULL) {
         return false;
     }
 
-    if (span_text_equals(expression->span, "YEAR")) {
-        unit = MYLITE_SQL_AST_INTERVAL_UNIT_YEAR;
-    } else if (span_text_equals(expression->span, "MONTH")) {
-        unit = MYLITE_SQL_AST_INTERVAL_UNIT_MONTH;
-    } else if (span_text_equals(expression->span, "DAY")) {
-        unit = MYLITE_SQL_AST_INTERVAL_UNIT_DAY;
-    } else if (span_text_equals(expression->span, "HOUR")) {
-        unit = MYLITE_SQL_AST_INTERVAL_UNIT_HOUR;
-    } else if (span_text_equals(expression->span, "MINUTE")) {
-        unit = MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE;
-    } else if (span_text_equals(expression->span, "SECOND")) {
-        unit = MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
-    } else if (span_text_equals(expression->span, "WEEK")) {
-        unit = MYLITE_SQL_AST_INTERVAL_UNIT_WEEK;
-    } else {
-        return false;
+    for (size_t index = 0; index < sizeof(units) / sizeof(units[0]); ++index) {
+        if (span_text_equals(expression->span, units[index].name)) {
+            *out_unit = units[index].unit;
+            return true;
+        }
     }
 
-    *out_unit = unit;
-    return true;
+    return false;
 }
 
-static bool extract_function_interval_unit_from_expression(
+static bool extract_timestamp_interval_unit_from_expression(
     const struct mylite_sql_ast_node *expression,
     enum mylite_sql_ast_interval_unit *out_unit
 ) {
-    enum mylite_sql_ast_interval_unit unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
+    static const struct {
+        const char *name;
+        enum mylite_sql_ast_interval_unit unit;
+    } aliases[] = {
+        {"SQL_TSI_YEAR", MYLITE_SQL_AST_INTERVAL_UNIT_YEAR},
+        {"SQL_TSI_MONTH", MYLITE_SQL_AST_INTERVAL_UNIT_MONTH},
+        {"SQL_TSI_DAY", MYLITE_SQL_AST_INTERVAL_UNIT_DAY},
+        {"SQL_TSI_HOUR", MYLITE_SQL_AST_INTERVAL_UNIT_HOUR},
+        {"SQL_TSI_MINUTE", MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE},
+        {"SQL_TSI_SECOND", MYLITE_SQL_AST_INTERVAL_UNIT_SECOND},
+        {"SQL_TSI_WEEK", MYLITE_SQL_AST_INTERVAL_UNIT_WEEK},
+        {"SQL_TSI_QUARTER", MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER},
+    };
 
     if (extract_interval_unit_from_expression(expression, out_unit)) {
         return true;
@@ -8843,16 +8857,14 @@ static bool extract_function_interval_unit_from_expression(
         return false;
     }
 
-    if (span_text_equals(expression->span, "QUARTER")) {
-        unit = MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER;
-    } else if (span_text_equals(expression->span, "MICROSECOND")) {
-        unit = MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND;
-    } else {
-        return false;
+    for (size_t index = 0; index < sizeof(aliases) / sizeof(aliases[0]); ++index) {
+        if (span_text_equals(expression->span, aliases[index].name)) {
+            *out_unit = aliases[index].unit;
+            return true;
+        }
     }
 
-    *out_unit = unit;
-    return true;
+    return false;
 }
 
 static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name) {

@@ -200,11 +200,12 @@ by common scalar expressions:
   `DATE`, `DATEDIFF`, `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE`,
   `YEAR`, `MONTH`, `DAY`, `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`, `QUARTER`,
   `WEEK`, `HOUR`, `MINUTE`, `SECOND`, `MICROSECOND`,
-  `EXTRACT` for the simple `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, and
-  `SECOND` units, `TIMESTAMP`, `TIMESTAMPADD` for the simple `DAY`, `WEEK`,
-  `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and `SECOND` units, and `TIMESTAMPDIFF`
-  for the simple `DAY`, `WEEK`, `MONTH`, `YEAR`, `HOUR`, `MINUTE`, and
-  `SECOND` units, plus `TO_DAYS`, `TO_SECONDS`, `FROM_DAYS`, `TIME`,
+  `EXTRACT` for the simple `YEAR`, `QUARTER`, `MONTH`, `WEEK`, `DAY`, `HOUR`,
+  `MINUTE`, `SECOND`, and `MICROSECOND` units, `TIMESTAMP`, `TIMESTAMPADD` for
+  the simple `DAY`, `WEEK`, `MONTH`, `QUARTER`, `YEAR`, `HOUR`, `MINUTE`,
+  `SECOND`, and `MICROSECOND` units plus MySQL-supported `SQL_TSI_*` aliases,
+  and `TIMESTAMPDIFF` for the same units and aliases, plus `TO_DAYS`,
+  `TO_SECONDS`, `FROM_DAYS`, `TIME`,
   `TIME_TO_SEC`, `SEC_TO_TIME`, `TIMEDIFF`, `ADDTIME`, `SUBTIME`, `LAST_DAY`,
   `UNIX_TIMESTAMP`, `FROM_UNIXTIME`, `DATE_FORMAT`, `STR_TO_DATE`, and
   `TIME_FORMAT`;
@@ -602,11 +603,14 @@ representative runtime results were:
 | `DATEDIFF('2024-03-01','2024-02-28')` | `2` |
 | `TIMESTAMPDIFF(DAY,'2024-02-28','2024-03-01')` | `2` |
 | `TIMESTAMPDIFF(HOUR,'2024-02-28 00:00:00','2024-02-29 12:00:00')` | `36` |
+| `TIMESTAMPDIFF(MICROSECOND,'2024-01-01 00:00:00.000001','2024-01-01 00:00:01.000003')` | `1000002` |
 | `DATE_ADD('2024-02-29', INTERVAL 1 DAY)` | `2024-03-01` |
+| `DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND)` | `2024-01-01 00:00:00.000001` |
 | `DATE_SUB('2024-03-01', INTERVAL 1 DAY)` | `2024-02-29` |
 | `EXTRACT(YEAR FROM '2024-02-29 12:34:56')` | `2024` |
 | `EXTRACT(SECOND FROM '2024-02-29 12:34:56')` | `56` |
 | `TIMESTAMPADD(DAY, 2, '2024-02-28')` | `2024-03-01` |
+| `TIMESTAMPADD(SQL_TSI_QUARTER, 1, '2024-01-31')` | `2024-04-30` |
 
 `NOW`, `CURDATE`, `CURTIME`, UTC variants, and their synonyms are evaluated
 once per statement. MyLite should add a statement timestamp to expression
@@ -739,7 +743,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `DATE(...) AS date_value` | `DATE` | `10` | `0` | `binary` | `BINARY` |
 | `DATEDIFF(...) AS datediff_value` | `LONGLONG` | `9` | `0` | `binary` | `BINARY NUM` |
 | `DATE_ADD('2024-02-29', INTERVAL 1 DAY) AS date_add_value` | `STRING` | `116` | `31` | `utf8mb4_0900_ai_ci` | none |
-| `TIMESTAMPADD(DAY,...) AS timestampadd_value` | `STRING` / `DATE` / `DATETIME` depending on input | `116`, `10`, `19`, or fractional datetime length | `31`, `0`, or source datetime scale | connection collation or `binary` | none or `BINARY` |
+| `TIMESTAMPADD(DAY,...) AS timestampadd_value` | `STRING` / `DATE` / `DATETIME` depending on input | `116`, `10`, `19`, or fractional datetime length | `31`, `0`, source datetime scale, or `6` for typed `MICROSECOND` arithmetic | connection collation or `binary` | none or `BINARY` |
 | `TIMESTAMPDIFF(DAY,...) AS timestampdiff_value` | `LONGLONG` | `21` | `0` | `binary` | `BINARY NUM` |
 | `TO_DAYS(...) AS to_days_value` | `LONGLONG` | `8` | `0` | `binary` | `BINARY NUM` |
 | `TO_SECONDS(...) AS to_seconds_value` | `LONGLONG` | `21` | `0` | `binary` | `BINARY NUM` |

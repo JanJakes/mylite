@@ -10965,7 +10965,7 @@ static int test_scalar_function_call_syntax(void) {
         );
         failures += expect_int(
             (int)child_at(child_at(select_list, 13U), 0U)->interval_unit,
-            (int)MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER,
+            MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER,
             "EXTRACT QUARTER interval unit"
         );
         failures += expect_function_call(
@@ -10976,7 +10976,7 @@ static int test_scalar_function_call_syntax(void) {
         );
         failures += expect_int(
             (int)child_at(child_at(select_list, 14U), 0U)->interval_unit,
-            (int)MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND,
+            MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND,
             "EXTRACT MICROSECOND interval unit"
         );
     } else {
@@ -11021,6 +11021,12 @@ static int test_scalar_function_call_syntax(void) {
 
     failures += parse_sql("SELECT extract FROM temporal_part_names;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT EXTRACT(SQL_TSI_DAY FROM '2024-01-01')",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
         "SELECT DATE_ADD('2024-02-29', INTERVAL 1 DAY), "
@@ -11029,7 +11035,9 @@ static int test_scalar_function_call_syntax(void) {
         "SUBDATE(DATE(NOW()), INTERVAL 1 YEAR), "
         "DATE_ADD('2024-01-01', INTERVAL 1 HOUR), "
         "DATE_ADD('2024-01-01', INTERVAL 1 MINUTE), "
-        "DATE_ADD('2024-01-01', INTERVAL 1 SECOND);",
+        "DATE_ADD('2024-01-01', INTERVAL 1 SECOND), "
+        "DATE_ADD('2024-01-01', INTERVAL 1 QUARTER), "
+        "DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -11076,6 +11084,18 @@ static int test_scalar_function_call_syntax(void) {
         MYLITE_SQL_AST_INTERVAL_UNIT_SECOND,
         "DATE_ADD SECOND interval call"
     );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 7U), 0U),
+        "DATE_ADD",
+        MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER,
+        "DATE_ADD QUARTER interval call"
+    );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 8U), 0U),
+        "DATE_ADD",
+        MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND,
+        "DATE_ADD MICROSECOND interval call"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -11085,7 +11105,11 @@ static int test_scalar_function_call_syntax(void) {
         "TIMESTAMPDIFF(YEAR,'2020-02-29','2024-02-29'), "
         "TIMESTAMPDIFF(HOUR,NOW(),DATE_ADD(NOW(), INTERVAL 1 HOUR)), "
         "TIMESTAMPDIFF(MINUTE,'2024-01-01','2024-01-01 00:01:00'), "
-        "TIMESTAMPDIFF(SECOND,'2024-01-01','2024-01-01 00:00:01');",
+        "TIMESTAMPDIFF(SECOND,'2024-01-01','2024-01-01 00:00:01'), "
+        "TIMESTAMPDIFF(QUARTER,'2024-01-01','2024-07-01'), "
+        "TIMESTAMPDIFF(MICROSECOND,'2024-01-01','2024-01-01 00:00:00.000002'), "
+        "TIMESTAMPDIFF(SQL_TSI_DAY,'2024-01-01','2024-01-02'), "
+        "TIMESTAMPDIFF(SQL_TSI_QUARTER,'2024-01-01','2024-07-01');",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -11132,6 +11156,30 @@ static int test_scalar_function_call_syntax(void) {
         MYLITE_SQL_AST_INTERVAL_UNIT_SECOND,
         "TIMESTAMPDIFF SECOND interval call"
     );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 7U), 0U),
+        "TIMESTAMPDIFF",
+        MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER,
+        "TIMESTAMPDIFF QUARTER interval call"
+    );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 8U), 0U),
+        "TIMESTAMPDIFF",
+        MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND,
+        "TIMESTAMPDIFF MICROSECOND interval call"
+    );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 9U), 0U),
+        "TIMESTAMPDIFF",
+        MYLITE_SQL_AST_INTERVAL_UNIT_DAY,
+        "TIMESTAMPDIFF SQL_TSI_DAY interval call"
+    );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 10U), 0U),
+        "TIMESTAMPDIFF",
+        MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER,
+        "TIMESTAMPDIFF SQL_TSI_QUARTER interval call"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -11145,7 +11193,11 @@ static int test_scalar_function_call_syntax(void) {
         "TIMESTAMPADD(YEAR,1,'2024-02-29'), "
         "TIMESTAMPADD(HOUR,1,CURDATE()), "
         "TIMESTAMPADD(MINUTE,-1,'2024-01-01 00:01:00'), "
-        "TIMESTAMPADD(SECOND,1,NOW(6));",
+        "TIMESTAMPADD(SECOND,1,NOW(6)), "
+        "TIMESTAMPADD(QUARTER,1,'2024-01-31'), "
+        "TIMESTAMPADD(MICROSECOND,2,'2024-01-01'), "
+        "TIMESTAMPADD(SQL_TSI_DAY,1,'2024-01-01'), "
+        "TIMESTAMPADD(SQL_TSI_QUARTER,1,'2024-01-31');",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -11201,6 +11253,30 @@ static int test_scalar_function_call_syntax(void) {
         MYLITE_SQL_AST_INTERVAL_UNIT_SECOND,
         "TIMESTAMPADD SECOND interval call"
     );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 7U), 0U),
+        "TIMESTAMPADD",
+        MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER,
+        "TIMESTAMPADD QUARTER interval call"
+    );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 8U), 0U),
+        "TIMESTAMPADD",
+        MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND,
+        "TIMESTAMPADD MICROSECOND interval call"
+    );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 9U), 0U),
+        "TIMESTAMPADD",
+        MYLITE_SQL_AST_INTERVAL_UNIT_DAY,
+        "TIMESTAMPADD SQL_TSI_DAY interval call"
+    );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 10U), 0U),
+        "TIMESTAMPADD",
+        MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER,
+        "TIMESTAMPADD SQL_TSI_QUARTER interval call"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -11220,19 +11296,7 @@ static int test_scalar_function_call_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
-        "SELECT TIMESTAMPADD(MICROSECOND,2,'2024-01-01')",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql(
-        "SELECT TIMESTAMPADD(QUARTER,1,'2024-01-31')",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql(
-        "SELECT TIMESTAMPADD(SQL_TSI_DAY,1,'2024-01-01')",
+        "SELECT TIMESTAMPADD(SQL_TSI_MICROSECOND,1,'2024-01-01')",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -11258,7 +11322,7 @@ static int test_scalar_function_call_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
-        "SELECT TIMESTAMPDIFF(MICROSECOND,'2024-01-01','2024-01-02')",
+        "SELECT TIMESTAMPDIFF(SQL_TSI_MICROSECOND,'2024-01-01','2024-01-02')",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

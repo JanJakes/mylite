@@ -416,7 +416,10 @@ bool mylite_expression_descriptor_interval_unit_has_time_part(
     if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE) {
         return true;
     }
-    return unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
+    if (unit == MYLITE_SQL_AST_INTERVAL_UNIT_SECOND) {
+        return true;
+    }
+    return unit == MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND;
 }
 
 static int infer_str_to_date_function_descriptor(
@@ -912,7 +915,12 @@ static int infer_date_interval_function_descriptor(
     }
     if (temporal_descriptor.type == MYLITE_FIELD_TYPE_DATE) {
         if (mylite_expression_descriptor_interval_unit_has_time_part(expression->interval_unit)) {
-            *out_descriptor = date_interval_datetime_descriptor(0U);
+            unsigned int decimals =
+                expression->interval_unit == MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND
+                    ? mylite_mysql_temporal_max_fsp
+                    : 0U;
+
+            *out_descriptor = date_interval_datetime_descriptor(decimals);
         } else {
             *out_descriptor = (struct mylite_field_descriptor){
                 .type = MYLITE_FIELD_TYPE_DATE,
@@ -927,7 +935,12 @@ static int infer_date_interval_function_descriptor(
     }
     if (temporal_descriptor.type == MYLITE_FIELD_TYPE_DATETIME ||
         temporal_descriptor.type == MYLITE_FIELD_TYPE_TIMESTAMP) {
-        *out_descriptor = date_interval_datetime_descriptor(temporal_descriptor.decimals);
+        unsigned int decimals =
+            expression->interval_unit == MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND
+                ? mylite_mysql_temporal_max_fsp
+                : temporal_descriptor.decimals;
+
+        *out_descriptor = date_interval_datetime_descriptor(decimals);
         return MYLITE_OK;
     }
 

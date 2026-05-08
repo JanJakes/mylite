@@ -7,6 +7,7 @@
 #include "mylite_span.h"
 
 #include <ctype.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -39,6 +40,11 @@ static int apply_catalog_numeric_column_descriptor(
 );
 
 static int apply_catalog_temporal_column_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+);
+
+static int apply_catalog_spatial_column_descriptor(
     const struct mylite_catalog_column_descriptor_source *source,
     struct mylite_field_descriptor *descriptor
 );
@@ -90,6 +96,10 @@ int mylite_select_catalog_apply_column_type_descriptor(
         return status;
     }
     status = apply_catalog_temporal_column_descriptor(source, descriptor);
+    if (status != MYLITE_UNSUPPORTED) {
+        return status;
+    }
+    status = apply_catalog_spatial_column_descriptor(source, descriptor);
     if (status != MYLITE_UNSUPPORTED) {
         return status;
     }
@@ -323,6 +333,33 @@ static int apply_catalog_temporal_column_descriptor(
         return MYLITE_UNSUPPORTED;
     }
     return MYLITE_OK;
+}
+
+static int apply_catalog_spatial_column_descriptor(
+    const struct mylite_catalog_column_descriptor_source *source,
+    struct mylite_field_descriptor *descriptor
+) {
+    static const char *const spatial_types[] = {
+        "geometry",
+        "point",
+        "linestring",
+        "polygon",
+        "multipoint",
+        "multilinestring",
+        "multipolygon",
+        "geomcollection",
+    };
+
+    for (size_t index = 0U; index < sizeof(spatial_types) / sizeof(spatial_types[0]); ++index) {
+        if (mylite_ascii_case_equal(source->data_type, spatial_types[index])) {
+            descriptor->type = MYLITE_FIELD_TYPE_GEOMETRY;
+            descriptor->charset_id = mylite_mysql_binary_charset_id;
+            descriptor->length = UINT64_C(4294967295);
+            descriptor->flags |= MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY;
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_UNSUPPORTED;
 }
 
 static int field_descriptor_collation_id(

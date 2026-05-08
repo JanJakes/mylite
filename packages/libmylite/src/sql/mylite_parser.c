@@ -80,6 +80,8 @@ static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type 
 
 static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type);
 
+static bool column_type_uses_spatial_descriptor(enum mylite_sql_ast_column_type column_type);
+
 static bool map_lexer_token(
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
@@ -5631,7 +5633,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_validate_column_type(
         (!column_type_uses_bit_descriptor(column_type->column_type) &&
          !column_type_uses_string_binary_descriptor(column_type->column_type) &&
          !column_type_uses_numeric_descriptor(column_type->column_type) &&
-         !column_type_uses_temporal_descriptor(column_type->column_type))) {
+         !column_type_uses_temporal_descriptor(column_type->column_type) &&
+         !column_type_uses_spatial_descriptor(column_type->column_type))) {
         return column_type;
     }
 
@@ -5675,6 +5678,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_validate_column_type(
             mylite_column_type_describe_bit(type_name, strlen(type_name), attributes, &descriptor);
     } else if (column_type_uses_temporal_descriptor(column_type->column_type)) {
         status = mylite_column_type_describe_temporal(
+            type_name,
+            strlen(type_name),
+            attributes,
+            &descriptor
+        );
+    } else if (column_type_uses_spatial_descriptor(column_type->column_type)) {
+        status = mylite_column_type_describe_spatial(
             type_name,
             strlen(type_name),
             attributes,
@@ -5927,6 +5937,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_serial_default_value_a
         attribute,
         MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SERIAL_DEFAULT_VALUE
     );
+    return attribute;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_srid_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token srid_token,
+    struct mylite_sql_token integer_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&srid_token), span_from_token(&integer_token));
+    struct mylite_sql_ast_node *attribute = make_node(state, MYLITE_SQL_AST_COLUMN_ATTRIBUTE, span);
+    struct mylite_sql_ast_node integer_node = {
+        .span = span_from_token(&integer_token),
+    };
+    uint64_t value = 0ULL;
+
+    if (attribute == NULL) {
+        return NULL;
+    }
+    if (!parse_column_length(&integer_node, &value)) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_INTEGER, integer_token);
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_column_attribute(attribute, MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SRID);
+    mylite_sql_ast_node_set_column_srs_id(attribute, value);
     return attribute;
 }
 
@@ -7918,6 +7954,22 @@ static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type c
     switch (column_type) {
     case MYLITE_SQL_AST_COLUMN_TYPE_BIT:
         return "BIT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_GEOMETRY:
+        return "GEOMETRY";
+    case MYLITE_SQL_AST_COLUMN_TYPE_POINT:
+        return "POINT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_LINESTRING:
+        return "LINESTRING";
+    case MYLITE_SQL_AST_COLUMN_TYPE_POLYGON:
+        return "POLYGON";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOINT:
+        return "MULTIPOINT";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MULTILINESTRING:
+        return "MULTILINESTRING";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOLYGON:
+        return "MULTIPOLYGON";
+    case MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION:
+        return "GEOMCOLLECTION";
     case MYLITE_SQL_AST_COLUMN_TYPE_CHAR:
         return "CHAR";
     case MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR:
@@ -7989,6 +8041,11 @@ static bool column_type_uses_numeric_descriptor(enum mylite_sql_ast_column_type 
 static bool column_type_uses_temporal_descriptor(enum mylite_sql_ast_column_type column_type) {
     return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_DATE &&
             column_type <= MYLITE_SQL_AST_COLUMN_TYPE_YEAR) != 0;
+}
+
+static bool column_type_uses_spatial_descriptor(enum mylite_sql_ast_column_type column_type) {
+    return (column_type >= MYLITE_SQL_AST_COLUMN_TYPE_GEOMETRY &&
+            column_type <= MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION) != 0;
 }
 
 static void record_parse_error(
@@ -8209,7 +8266,10 @@ static bool lookup_keyword_parser_token(
         {"FULL", MYLITE_SQL_PARSE_FULL},
         {"FULLTEXT", MYLITE_SQL_PARSE_FULLTEXT},
         {"FUNCTION", MYLITE_SQL_PARSE_FUNCTION},
+        {"GEOMCOLLECTION", MYLITE_SQL_PARSE_GEOMCOLLECTION},
         {"GENERATED", MYLITE_SQL_PARSE_GENERATED},
+        {"GEOMETRY", MYLITE_SQL_PARSE_GEOMETRY},
+        {"GEOMETRYCOLLECTION", MYLITE_SQL_PARSE_GEOMETRYCOLLECTION},
         {"GLOBAL", MYLITE_SQL_PARSE_GLOBAL},
         {"GRANT", MYLITE_SQL_PARSE_GRANT},
         {"GRANTS", MYLITE_SQL_PARSE_GRANTS},
@@ -8264,6 +8324,7 @@ static bool lookup_keyword_parser_token(
         {"LOCALTIMESTAMP", MYLITE_SQL_PARSE_LOCALTIMESTAMP},
         {"LIKE", MYLITE_SQL_PARSE_LIKE},
         {"LIMIT", MYLITE_SQL_PARSE_LIMIT},
+        {"LINESTRING", MYLITE_SQL_PARSE_LINESTRING},
         {"LOCK", MYLITE_SQL_PARSE_LOCK},
         {"LOW_PRIORITY", MYLITE_SQL_PARSE_LOW_PRIORITY},
         {"MATCH", MYLITE_SQL_PARSE_MATCH},
@@ -8281,6 +8342,9 @@ static bool lookup_keyword_parser_token(
         {"MODIFY", MYLITE_SQL_PARSE_MODIFY},
         {"MODIFIES", MYLITE_SQL_PARSE_MODIFIES},
         {"MONTH", MYLITE_SQL_PARSE_MONTH},
+        {"MULTILINESTRING", MYLITE_SQL_PARSE_MULTILINESTRING},
+        {"MULTIPOINT", MYLITE_SQL_PARSE_MULTIPOINT},
+        {"MULTIPOLYGON", MYLITE_SQL_PARSE_MULTIPOLYGON},
         {"MYSQL_ERRNO", MYLITE_SQL_PARSE_MYSQL_ERRNO},
         {"NAMES", MYLITE_SQL_PARSE_NAMES},
         {"NATIONAL", MYLITE_SQL_PARSE_NATIONAL},
@@ -8313,6 +8377,8 @@ static bool lookup_keyword_parser_token(
         {"PARSER", MYLITE_SQL_PARSE_PARSER},
         {"PASSWORD", MYLITE_SQL_PARSE_PASSWORD},
         {"PERCENT_RANK", MYLITE_SQL_PARSE_PERCENT_RANK},
+        {"POINT", MYLITE_SQL_PARSE_POINT},
+        {"POLYGON", MYLITE_SQL_PARSE_POLYGON},
         {"PRECEDES", MYLITE_SQL_PARSE_PRECEDES},
         {"PRECEDING", MYLITE_SQL_PARSE_PRECEDING},
         {"PRECISION", MYLITE_SQL_PARSE_PRECISION},
@@ -8383,6 +8449,7 @@ static bool lookup_keyword_parser_token(
         {"SQL_CALC_FOUND_ROWS", MYLITE_SQL_PARSE_SQL_CALC_FOUND_ROWS},
         {"SQL_SMALL_RESULT", MYLITE_SQL_PARSE_SQL_SMALL_RESULT},
         {"SQLSTATE", MYLITE_SQL_PARSE_SQLSTATE},
+        {"SRID", MYLITE_SQL_PARSE_SRID},
         {"SSL", MYLITE_SQL_PARSE_SSL},
         {"START", MYLITE_SQL_PARSE_START},
         {"STARTS", MYLITE_SQL_PARSE_STARTS},

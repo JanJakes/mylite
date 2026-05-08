@@ -198,6 +198,15 @@ void mylite_sql_ast_node_set_column_scale(struct mylite_sql_ast_node *node, uint
     node->column_scale = scale;
 }
 
+void mylite_sql_ast_node_set_column_srs_id(struct mylite_sql_ast_node *node, uint64_t srs_id) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->has_column_srs_id = true;
+    node->column_srs_id = srs_id;
+}
+
 void mylite_sql_ast_node_set_column_character_set(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_source_span span
@@ -1233,6 +1242,22 @@ const char *mylite_sql_ast_column_type_name(enum mylite_sql_ast_column_type colu
         return "serial";
     case MYLITE_SQL_AST_COLUMN_TYPE_BIT:
         return "bit";
+    case MYLITE_SQL_AST_COLUMN_TYPE_GEOMETRY:
+        return "geometry";
+    case MYLITE_SQL_AST_COLUMN_TYPE_POINT:
+        return "point";
+    case MYLITE_SQL_AST_COLUMN_TYPE_LINESTRING:
+        return "linestring";
+    case MYLITE_SQL_AST_COLUMN_TYPE_POLYGON:
+        return "polygon";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOINT:
+        return "multipoint";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MULTILINESTRING:
+        return "multilinestring";
+    case MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOLYGON:
+        return "multipolygon";
+    case MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION:
+        return "geomcollection";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
         return "bool";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:
@@ -1320,6 +1345,8 @@ const char *mylite_sql_ast_column_attribute_name(
         return "check";
     case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SERIAL_DEFAULT_VALUE:
         return "serial_default_value";
+    case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SRID:
+        return "srid";
     }
 
     return "unknown";

@@ -60,6 +60,8 @@ static int test_display_width_metadata(void);
 
 static int test_bit_type_metadata(void);
 
+static int test_spatial_type_metadata(void);
+
 static int test_string_binary_type_metadata(void);
 
 static int test_string_binary_aliases_and_charsets(void);
@@ -103,6 +105,13 @@ static int describe_bit_type(
     struct mylite_column_type_descriptor *out_descriptor
 );
 
+static int describe_spatial_type(
+    const char *type_name,
+    struct mylite_column_type_attributes attributes,
+    enum mylite_column_type_status expected_status,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
 static int describe_numeric_type(
     const char *type_name,
     struct mylite_column_type_attributes attributes,
@@ -136,6 +145,7 @@ int main(void) {
     failures += test_integer_aliases();
     failures += test_display_width_metadata();
     failures += test_bit_type_metadata();
+    failures += test_spatial_type_metadata();
     failures += test_string_binary_type_metadata();
     failures += test_string_binary_aliases_and_charsets();
     failures += test_text_blob_length_mapping();
@@ -378,6 +388,157 @@ static int test_bit_type_metadata(void) {
     attributes = character_set_attribute("utf8mb4");
     failures +=
         describe_bit_type("BIT", attributes, MYLITE_COLUMN_TYPE_INVALID_SYNTAX, &descriptor);
+
+    return failures;
+}
+
+static int test_spatial_type_metadata(void) {
+    struct mylite_column_type_descriptor descriptor;
+    int failures = 0;
+
+    failures += describe_spatial_type(
+        "GEOMETRY",
+        no_column_type_attributes(),
+        MYLITE_COLUMN_TYPE_OK,
+        &descriptor
+    );
+    failures += expect_bool(descriptor.is_spatial, true, "geometry descriptor flag");
+    failures += expect_string(descriptor.data_type, "geometry", "geometry data type");
+    failures += expect_string(descriptor.column_type, "geometry", "geometry column type");
+    failures +=
+        expect_uint(descriptor.spatial_type, MYLITE_COLUMN_SPATIAL_GEOMETRY, "geometry type");
+    failures += expect_bool(descriptor.has_numeric_scale, false, "geometry numeric scale null");
+    failures +=
+        expect_bool(descriptor.has_datetime_precision, false, "geometry datetime precision null");
+    failures +=
+        expect_bool(descriptor.is_character_string, false, "geometry is not character string");
+    failures += expect_bool(descriptor.is_binary_string, false, "geometry is not binary string");
+
+    failures += describe_spatial_type(
+        "POINT",
+        no_column_type_attributes(),
+        MYLITE_COLUMN_TYPE_OK,
+        &descriptor
+    );
+    failures += expect_string(descriptor.data_type, "point", "point data type");
+    failures += expect_string(descriptor.column_type, "point", "point column type");
+    failures += expect_uint(descriptor.spatial_type, MYLITE_COLUMN_SPATIAL_POINT, "point type");
+
+    failures += describe_spatial_type(
+        "LINESTRING",
+        no_column_type_attributes(),
+        MYLITE_COLUMN_TYPE_OK,
+        &descriptor
+    );
+    failures += expect_string(descriptor.data_type, "linestring", "linestring data type");
+    failures +=
+        expect_uint(descriptor.spatial_type, MYLITE_COLUMN_SPATIAL_LINESTRING, "linestring type");
+
+    failures += describe_spatial_type(
+        "POLYGON",
+        no_column_type_attributes(),
+        MYLITE_COLUMN_TYPE_OK,
+        &descriptor
+    );
+    failures += expect_string(descriptor.data_type, "polygon", "polygon data type");
+    failures += expect_uint(descriptor.spatial_type, MYLITE_COLUMN_SPATIAL_POLYGON, "polygon type");
+
+    failures += describe_spatial_type(
+        "MULTIPOINT",
+        no_column_type_attributes(),
+        MYLITE_COLUMN_TYPE_OK,
+        &descriptor
+    );
+    failures += expect_string(descriptor.data_type, "multipoint", "multipoint data type");
+    failures +=
+        expect_uint(descriptor.spatial_type, MYLITE_COLUMN_SPATIAL_MULTIPOINT, "multipoint type");
+
+    failures += describe_spatial_type(
+        "MULTILINESTRING",
+        no_column_type_attributes(),
+        MYLITE_COLUMN_TYPE_OK,
+        &descriptor
+    );
+    failures += expect_string(descriptor.data_type, "multilinestring", "multilinestring data type");
+    failures += expect_uint(
+        descriptor.spatial_type,
+        MYLITE_COLUMN_SPATIAL_MULTILINESTRING,
+        "multilinestring type"
+    );
+
+    failures += describe_spatial_type(
+        "MULTIPOLYGON",
+        no_column_type_attributes(),
+        MYLITE_COLUMN_TYPE_OK,
+        &descriptor
+    );
+    failures += expect_string(descriptor.data_type, "multipolygon", "multipolygon data type");
+    failures += expect_uint(
+        descriptor.spatial_type,
+        MYLITE_COLUMN_SPATIAL_MULTIPOLYGON,
+        "multipolygon type"
+    );
+
+    failures += describe_spatial_type(
+        "GEOMETRYCOLLECTION",
+        no_column_type_attributes(),
+        MYLITE_COLUMN_TYPE_OK,
+        &descriptor
+    );
+    failures +=
+        expect_string(descriptor.data_type, "geomcollection", "geometrycollection data type");
+    failures += expect_string(descriptor.column_type, "geomcollection", "geometrycollection type");
+    failures += expect_uint(
+        descriptor.spatial_type,
+        MYLITE_COLUMN_SPATIAL_GEOMCOLLECTION,
+        "geometrycollection type"
+    );
+
+    failures += describe_spatial_type(
+        "GEOMCOLLECTION",
+        no_column_type_attributes(),
+        MYLITE_COLUMN_TYPE_OK,
+        &descriptor
+    );
+    failures += expect_string(descriptor.data_type, "geomcollection", "geomcollection data type");
+
+    failures += describe_spatial_type(
+        "GEOMETRY",
+        length_attribute(1ULL),
+        MYLITE_COLUMN_TYPE_INVALID_SYNTAX,
+        &descriptor
+    );
+    failures += describe_spatial_type(
+        "GEOMETRY",
+        (struct mylite_column_type_attributes){
+            .has_precision = true,
+            .precision = 1ULL,
+        },
+        MYLITE_COLUMN_TYPE_INVALID_SYNTAX,
+        &descriptor
+    );
+    failures += describe_spatial_type(
+        "GEOMETRY",
+        (struct mylite_column_type_attributes){
+            .has_unsigned = true,
+        },
+        MYLITE_COLUMN_TYPE_INVALID_SYNTAX,
+        &descriptor
+    );
+    failures += describe_spatial_type(
+        "POINT",
+        character_set_attribute("utf8mb4"),
+        MYLITE_COLUMN_TYPE_INVALID_SYNTAX,
+        &descriptor
+    );
+    failures += describe_spatial_type(
+        "POINT",
+        (struct mylite_column_type_attributes){
+            .has_binary_attribute = true,
+        },
+        MYLITE_COLUMN_TYPE_INVALID_SYNTAX,
+        &descriptor
+    );
 
     return failures;
 }
@@ -1562,6 +1723,32 @@ static int describe_bit_type(
 ) {
     enum mylite_column_type_status actual =
         mylite_column_type_describe_bit(type_name, strlen(type_name), attributes, out_descriptor);
+
+    if (actual != expected_status) {
+        fprintf(
+            stderr,
+            "%s: expected %s, got %s\n",
+            type_name,
+            mylite_column_type_status_name(expected_status),
+            mylite_column_type_status_name(actual)
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int describe_spatial_type(
+    const char *type_name,
+    struct mylite_column_type_attributes attributes,
+    enum mylite_column_type_status expected_status,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
+    enum mylite_column_type_status actual = mylite_column_type_describe_spatial(
+        type_name,
+        strlen(type_name),
+        attributes,
+        out_descriptor
+    );
 
     if (actual != expected_status) {
         fprintf(

@@ -40525,6 +40525,207 @@ static int test_create_table_base_execution(void) {
         "  `b64` bit(64) DEFAULT NULL\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin";
     static const char *const bit_show_create_values[] = {"bit_columns", bit_show_create};
+    static const char *const spatial_metadata_columns[] = {
+        "COLUMN_NAME",
+        "DATA_TYPE",
+        "COLUMN_TYPE",
+        "IS_NULLABLE",
+        "CHARACTER_MAXIMUM_LENGTH",
+        "CHARACTER_OCTET_LENGTH",
+        "NUMERIC_PRECISION",
+        "NUMERIC_SCALE",
+        "DATETIME_PRECISION",
+        "CHARACTER_SET_NAME",
+        "COLLATION_NAME",
+        "SRS_ID",
+    };
+    static const char *const spatial_metadata_values[] = {
+        "g",
+        "geometry",
+        "geometry",
+        "YES",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "p",
+        "point",
+        "point",
+        "YES",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "ls",
+        "linestring",
+        "linestring",
+        "YES",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "pg",
+        "polygon",
+        "polygon",
+        "YES",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "mp",
+        "multipoint",
+        "multipoint",
+        "YES",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "ml",
+        "multilinestring",
+        "multilinestring",
+        "YES",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "mpg",
+        "multipolygon",
+        "multipolygon",
+        "YES",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "gc",
+        "geomcollection",
+        "geomcollection",
+        "YES",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "ps",
+        "point",
+        "point",
+        "YES",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "4326",
+        "gn",
+        "geometry",
+        "geometry",
+        "NO",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "0",
+    };
+    static const char *const spatial_show_columns[] =
+        {"Field", "Type", "Null", "Key", "Default", "Extra"};
+    static const char *const spatial_show_values[] = {
+        "g",   "geometry",     "YES", "", NULL, "", "p",  "point",           "YES", "", NULL, "",
+        "ls",  "linestring",   "YES", "", NULL, "", "pg", "polygon",         "YES", "", NULL, "",
+        "mp",  "multipoint",   "YES", "", NULL, "", "ml", "multilinestring", "YES", "", NULL, "",
+        "mpg", "multipolygon", "YES", "", NULL, "", "gc", "geomcollection",  "YES", "", NULL, "",
+        "ps",  "point",        "YES", "", NULL, "", "gn", "geometry",        "NO",  "", NULL, "",
+    };
+    static const char spatial_show_create[] =
+        "CREATE TABLE `spatial_columns` (\n"
+        "  `g` geometry DEFAULT NULL,\n"
+        "  `p` point DEFAULT NULL,\n"
+        "  `ls` linestring DEFAULT NULL,\n"
+        "  `pg` polygon DEFAULT NULL,\n"
+        "  `mp` multipoint DEFAULT NULL,\n"
+        "  `ml` multilinestring DEFAULT NULL,\n"
+        "  `mpg` multipolygon DEFAULT NULL,\n"
+        "  `gc` geomcollection DEFAULT NULL,\n"
+        "  `ps` point /*!80003 SRID 4326 */ DEFAULT NULL,\n"
+        "  `gn` geometry NOT NULL /*!80003 SRID 0 */\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin";
+    static const char *const spatial_show_create_values[] = {
+        "spatial_columns",
+        spatial_show_create,
+    };
+    static const struct expected_result_metadata spatial_result_metadata[] = {
+        {.name = "g",
+         .schema_name = "mylite_ct11",
+         .table_name = "spatial_columns",
+         .origin_schema_name = "mylite_ct11",
+         .origin_table_name = "spatial_columns",
+         .origin_column_name = "g",
+         .declared_length = 4294967295U,
+         .field_type = MYLITE_FIELD_TYPE_GEOMETRY,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         .nullable = 1},
+        {.name = "gc",
+         .schema_name = "mylite_ct11",
+         .table_name = "spatial_columns",
+         .origin_schema_name = "mylite_ct11",
+         .origin_table_name = "spatial_columns",
+         .origin_column_name = "gc",
+         .declared_length = 4294967295U,
+         .field_type = MYLITE_FIELD_TYPE_GEOMETRY,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY,
+         .flags_clear = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         .nullable = 1},
+        {.name = "gn",
+         .schema_name = "mylite_ct11",
+         .table_name = "spatial_columns",
+         .origin_schema_name = "mylite_ct11",
+         .origin_table_name = "spatial_columns",
+         .origin_column_name = "gn",
+         .declared_length = 4294967295U,
+         .field_type = MYLITE_FIELD_TYPE_GEOMETRY,
+         .charset_id = 63U,
+         .flags_set = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BLOB |
+                      MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE,
+         .flags_clear = MYLITE_FIELD_FLAG_NUM,
+         .nullable = 0},
+    };
     static const unsigned char bit_b_value[] = {0x01U};
     static const unsigned char bit_b8_value[] = {0xAAU};
     static const unsigned char bit_b9_value[] = {0x01U, 0x55U};
@@ -40891,6 +41092,84 @@ static int test_create_table_base_execution(void) {
         mysql_error_data_too_long,
         "BIT ignore overflow warning code"
     );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE spatial_columns ("
+        "g GEOMETRY, p POINT, ls LINESTRING, pg POLYGON, "
+        "mp MULTIPOINT, ml MULTILINESTRING, mpg MULTIPOLYGON, "
+        "gc GEOMETRYCOLLECTION, ps POINT SRID 4326, gn GEOMETRY NOT NULL SRID 0)",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, "
+        "CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
+        "NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, "
+        "CHARACTER_SET_NAME, COLLATION_NAME, SRS_ID "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'spatial_columns' "
+        "ORDER BY ORDINAL_POSITION",
+        spatial_metadata_columns,
+        12,
+        spatial_metadata_values,
+        10,
+        "spatial column metadata"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW COLUMNS FROM spatial_columns",
+        spatial_show_columns,
+        6,
+        spatial_show_values,
+        10,
+        "spatial show columns"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW CREATE TABLE spatial_columns",
+        serial_show_create_columns,
+        2,
+        spatial_show_create_values,
+        1,
+        "spatial show create"
+    );
+    failures += prepare_sql(database, "SELECT g, gc, gn FROM spatial_columns", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, spatial_result_metadata, 3, "spatial result metadata");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE bad_non_spatial_srid (id INT SRID 4326)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "non-spatial SRID create table");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Incorrect usage of SRID and non-geometry column",
+        "non-spatial SRID error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE bad_spatial_srid (p POINT SRID 999999)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "unsupported SRID create table");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "There's no spatial reference system with SRID 999999.",
+        "unsupported SRID error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += execute_sql(
         database,

@@ -122,6 +122,10 @@ int mylite_table_ddl_init_alter_table_column_from_definition(
         out_column->datetime_precision = (int64_t)descriptor.datetime_precision;
         out_column->has_datetime_precision = true;
     }
+    if (definition->has_srs_id) {
+        out_column->srs_id = (int64_t)definition->srs_id;
+        out_column->has_srs_id = true;
+    }
     if (descriptor.character_set_name != NULL) {
         out_column->character_set_name =
             mylite_copy_nonempty_cstring(descriptor.character_set_name);

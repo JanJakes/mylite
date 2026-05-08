@@ -282,6 +282,10 @@ static int copy_create_table_column_attributes(
             column->auto_increment = true;
             column->unique_key = true;
             break;
+        case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SRID:
+            column->srs_id = attribute->column_srs_id;
+            column->has_srs_id = true;
+            break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_PRIMARY_KEY:
             column->primary_key = true;
             column->nullable = false;

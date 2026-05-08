@@ -338,6 +338,14 @@ enum mylite_sql_ast_column_type {
     MYLITE_SQL_AST_COLUMN_TYPE_YEAR = 27,
     MYLITE_SQL_AST_COLUMN_TYPE_SERIAL = 28,
     MYLITE_SQL_AST_COLUMN_TYPE_BIT = 29,
+    MYLITE_SQL_AST_COLUMN_TYPE_GEOMETRY = 30,
+    MYLITE_SQL_AST_COLUMN_TYPE_POINT = 31,
+    MYLITE_SQL_AST_COLUMN_TYPE_LINESTRING = 32,
+    MYLITE_SQL_AST_COLUMN_TYPE_POLYGON = 33,
+    MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOINT = 34,
+    MYLITE_SQL_AST_COLUMN_TYPE_MULTILINESTRING = 35,
+    MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOLYGON = 36,
+    MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION = 37,
 };
 
 enum mylite_sql_ast_column_attribute {
@@ -358,6 +366,7 @@ enum mylite_sql_ast_column_attribute {
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_REFERENCES = 14,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_CHECK = 15,
     MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SERIAL_DEFAULT_VALUE = 16,
+    MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SRID = 17,
 };
 
 enum mylite_sql_ast_generated_column_storage {
@@ -644,6 +653,7 @@ struct mylite_sql_ast_node {
     uint64_t column_length;
     uint64_t column_precision;
     uint64_t column_scale;
+    uint64_t column_srs_id;
     uint64_t limit_bound_value;
     size_t select_duplicate_modifier_count;
     struct mylite_sql_source_span span;
@@ -705,6 +715,7 @@ struct mylite_sql_ast_node {
     bool has_column_length;
     bool has_column_precision;
     bool has_column_scale;
+    bool has_column_srs_id;
     bool has_limit_bound_value;
     bool has_column_character_set;
     bool has_column_collation;
@@ -791,6 +802,7 @@ void mylite_sql_ast_node_set_column_display_width(
 void mylite_sql_ast_node_set_column_length(struct mylite_sql_ast_node *node, uint64_t length);
 void mylite_sql_ast_node_set_column_precision(struct mylite_sql_ast_node *node, uint64_t precision);
 void mylite_sql_ast_node_set_column_scale(struct mylite_sql_ast_node *node, uint64_t scale);
+void mylite_sql_ast_node_set_column_srs_id(struct mylite_sql_ast_node *node, uint64_t srs_id);
 void mylite_sql_ast_node_set_column_character_set(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_source_span span

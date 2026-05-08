@@ -220,7 +220,7 @@ static int insert_column_catalog_rows(
         "collation_name, column_type, column_key, extra, privileges, column_comment, "
         "generation_expression, srs_id)"
         " VALUES('def', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-        "'select,insert,update,references', ?, ?, NULL)",
+        "'select,insert,update,references', ?, ?, ?)",
         mylite_catalog_column_catalog_name(plan->temporary)
     );
     int rc = SQLITE_OK;
@@ -558,6 +558,7 @@ static int insert_column_catalog_row(
         bind_extra = 18,
         bind_column_comment = 19,
         bind_generation_expression = 20,
+        bind_srs_id = 21,
     };
     struct mylite_column_type_descriptor descriptor;
     const char *column_key = create_table_column_key(plan, column->name);
@@ -675,6 +676,11 @@ static int insert_column_catalog_row(
         -1,
         sqlite_transient_destructor()
     );
+    if (column->has_srs_id) {
+        sqlite3_bind_int64(insert, bind_srs_id, (sqlite3_int64)column->srs_id);
+    } else {
+        sqlite3_bind_null(insert, bind_srs_id);
+    }
 
     rc = sqlite3_step(insert);
     if (rc != SQLITE_DONE) {

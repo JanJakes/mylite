@@ -188,11 +188,12 @@ static void mylite_sql_parser_stack_free(void *pointer, void *context)
     CONSISTENT CONSTRAINT_CATALOG CONSTRAINT_NAME CONSTRAINT_SCHEMA CONTAINS COUNT CURRENT
     CURSOR_NAME DATA DATE DATETIME DATE_ADD DATE_SUB DAY DEFINER DISABLE DISK DO DYNAMIC ENABLE ENDS
     ENGINE ENGINES ENGINE_ATTRIBUTE ENCRYPTION ERRORS EVENT EVERY EXTRACT FIRST FIXED FOLLOWING
-    FOLLOWS HASH HOUR IMMEDIATE INSTANT
+    FOLLOWS GEOMCOLLECTION GEOMETRY GEOMETRYCOLLECTION HASH HOUR IMMEDIATE INSTANT
     INVISIBLE INVOKER KEY_BLOCK_SIZE LANGUAGE MEMORY MESSAGE_TEXT MINUTE MODIFY MONTH MYSQL_ERRNO
-    NCHAR NO NULLS NVARCHAR OFFSET ONLY POSITION PRECEDES PRECEDING PRESERVE QUARTER REPLICA
+    LINESTRING MULTILINESTRING MULTIPOINT MULTIPOLYGON NCHAR NO NULLS NVARCHAR OFFSET ONLY
+    POINT POLYGON POSITION PRECEDES PRECEDING PRESERVE QUARTER REPLICA
     RESPECT RETURNS ROLLBACK SAVEPOINT SCHEDULE SCHEMA_NAME SECOND SECONDARY_ENGINE_ATTRIBUTE SERIAL
-    SECURITY SIGNED SLAVE SNAPSHOT SONAME START STARTS STORAGE STRINGKW SUBCLASS_ORIGIN SUBDATE
+    SECURITY SIGNED SLAVE SNAPSHOT SONAME SRID START STARTS STORAGE STRINGKW SUBCLASS_ORIGIN SUBDATE
     TABLE_NAME TEMPORARY TEXT TIME TIMESTAMP TRANSACTION TYPE UNBOUNDED VISIBLE VALUE WARNINGS WEEK
     WORK YEAR.
 
@@ -2964,6 +2965,9 @@ column_type(A) ::= temporal_column_type(B). {
 column_type(A) ::= serial_column_type(B). {
     A = B;
 }
+column_type(A) ::= spatial_column_type(B). {
+    A = B;
+}
 
 serial_column_type(A) ::= SERIAL(T). {
     A = mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_SERIAL);
@@ -3048,6 +3052,44 @@ opt_bit_precision(A) ::= . {
 }
 opt_bit_precision(A) ::= column_precision(B). {
     A = B;
+}
+
+spatial_column_type(A) ::= GEOMETRY(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_GEOMETRY));
+}
+spatial_column_type(A) ::= POINT(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_POINT));
+}
+spatial_column_type(A) ::= LINESTRING(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_LINESTRING));
+}
+spatial_column_type(A) ::= POLYGON(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_POLYGON));
+}
+spatial_column_type(A) ::= MULTIPOINT(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOINT));
+}
+spatial_column_type(A) ::= MULTILINESTRING(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state,
+        mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MULTILINESTRING));
+}
+spatial_column_type(A) ::= MULTIPOLYGON(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOLYGON));
+}
+spatial_column_type(A) ::= GEOMCOLLECTION(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION));
+}
+spatial_column_type(A) ::= GEOMETRYCOLLECTION(T). {
+    A = mylite_sql_parser_validate_column_type(
+        state, mylite_sql_parser_make_column_type(state, T, MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION));
 }
 
 character_column_type(A) ::= CHAR(T) opt_column_length(B) character_type_attribute_list(C). {
@@ -3476,6 +3518,9 @@ column_attribute(A) ::= AUTO_INCREMENT(T). {
 }
 column_attribute(A) ::= SERIAL(S) DEFAULT(D) VALUE(V). {
     A = mylite_sql_parser_make_column_serial_default_value_attribute(state, S, D, V);
+}
+column_attribute(A) ::= SRID(S) INTEGER(V). {
+    A = mylite_sql_parser_make_column_srid_attribute(state, S, V);
 }
 column_attribute(A) ::= PRIMARY(P) KEY(K). {
     A = mylite_sql_parser_make_column_primary_key_attribute(state, P, K);

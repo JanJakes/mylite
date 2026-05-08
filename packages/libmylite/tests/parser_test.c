@@ -16,6 +16,8 @@ static int test_create_table_integer_boolean_columns(void);
 
 static int test_create_table_bit_columns(void);
 
+static int test_create_table_spatial_columns(void);
+
 static int test_create_table_string_binary_columns(void);
 
 static int test_create_table_numeric_columns(void);
@@ -396,6 +398,7 @@ int main(void) {
     failures += test_connection_charset_statements();
     failures += test_create_table_integer_boolean_columns();
     failures += test_create_table_bit_columns();
+    failures += test_create_table_spatial_columns();
     failures += test_create_table_string_binary_columns();
     failures += test_create_table_numeric_columns();
     failures += test_create_table_temporal_columns();
@@ -1255,6 +1258,142 @@ static int test_create_table_bit_columns(void) {
     failures += parse_sql(
         "CREATE TABLE bad_bit_charset (a BIT CHARACTER SET utf8mb4);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_spatial_columns(void) {
+    enum {
+        expected_column_count = 10,
+        point_column = 1,
+        linestring_column = 2,
+        polygon_column = 3,
+        multipoint_column = 4,
+        multilinestring_column = 5,
+        multipolygon_column = 6,
+        geometrycollection_column = 7,
+        geomcollection_column = 8,
+        srid_column = 9,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
+    const struct mylite_sql_ast_node *attributes = NULL;
+    const struct mylite_sql_ast_node *attribute = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE app.spatial_types ("
+        "g GEOMETRY, p POINT, ls LINESTRING, pg POLYGON, "
+        "mp MULTIPOINT, ml MULTILINESTRING, mpg MULTIPOLYGON, "
+        "gc GEOMETRYCOLLECTION, gc2 GEOMCOLLECTION, s POINT SRID 4326 NOT NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    columns = child_at(child_at(result.root, 0U), 1U);
+    failures += expect_node(columns, MYLITE_SQL_AST_COLUMN_DEFINITION_LIST, "spatial column list");
+    failures += expect_child_count(columns, expected_column_count, "spatial column count");
+
+    column_type = child_at(child_at(columns, 0U), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_GEOMETRY, "geometry column");
+    column_type = child_at(child_at(columns, point_column), 1U);
+    failures += expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_POINT, "point column");
+    column_type = child_at(child_at(columns, linestring_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_LINESTRING, "linestring column");
+    column_type = child_at(child_at(columns, polygon_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_POLYGON, "polygon column");
+    column_type = child_at(child_at(columns, multipoint_column), 1U);
+    failures +=
+        expect_column_type(column_type, MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOINT, "multipoint column");
+    column_type = child_at(child_at(columns, multilinestring_column), 1U);
+    failures += expect_column_type(
+        column_type,
+        MYLITE_SQL_AST_COLUMN_TYPE_MULTILINESTRING,
+        "multilinestring column"
+    );
+    column_type = child_at(child_at(columns, multipolygon_column), 1U);
+    failures += expect_column_type(
+        column_type,
+        MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOLYGON,
+        "multipolygon column"
+    );
+    column_type = child_at(child_at(columns, geometrycollection_column), 1U);
+    failures += expect_column_type(
+        column_type,
+        MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION,
+        "geometrycollection column"
+    );
+    column_type = child_at(child_at(columns, geomcollection_column), 1U);
+    failures += expect_column_type(
+        column_type,
+        MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION,
+        "geomcollection column"
+    );
+
+    attributes = child_at(child_at(columns, srid_column), 2U);
+    failures += expect_child_count(attributes, 2U, "spatial SRID attribute count");
+    attribute = child_at(attributes, 0U);
+    failures += expect_column_attribute(
+        attribute,
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_SRID,
+        "spatial SRID attribute"
+    );
+    if (attribute != NULL &&
+        (!attribute->has_column_srs_id || attribute->column_srs_id != 4326ULL)) {
+        fprintf(stderr, "spatial SRID attribute did not record 4326\n");
+        failures = 1;
+    }
+    failures += expect_column_attribute(
+        child_at(attributes, 1U),
+        MYLITE_SQL_AST_COLUMN_ATTRIBUTE_NOT_NULL,
+        "spatial not null attribute"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE spatial_keyword_names (geometry INT, point INT, srid INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_geometry_length (a GEOMETRY(1));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_geometry_charset (a GEOMETRY CHARACTER SET utf8mb4);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_point_srid_missing (a POINT SRID);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bad_point_srid_negative (a POINT SRID -1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE non_spatial_srid_runtime_error (a INT SRID 4326);",
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

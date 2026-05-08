@@ -64,6 +64,18 @@ enum mylite_column_temporal_type {
     MYLITE_COLUMN_TEMPORAL_YEAR = 5,
 };
 
+enum mylite_column_spatial_type {
+    MYLITE_COLUMN_SPATIAL_NONE = 0,
+    MYLITE_COLUMN_SPATIAL_GEOMETRY = 1,
+    MYLITE_COLUMN_SPATIAL_POINT = 2,
+    MYLITE_COLUMN_SPATIAL_LINESTRING = 3,
+    MYLITE_COLUMN_SPATIAL_POLYGON = 4,
+    MYLITE_COLUMN_SPATIAL_MULTIPOINT = 5,
+    MYLITE_COLUMN_SPATIAL_MULTILINESTRING = 6,
+    MYLITE_COLUMN_SPATIAL_MULTIPOLYGON = 7,
+    MYLITE_COLUMN_SPATIAL_GEOMCOLLECTION = 8,
+};
+
 struct mylite_column_type_attributes {
     uint64_t length;
     uint64_t precision;
@@ -92,9 +104,11 @@ struct mylite_column_type_descriptor {
     enum mylite_column_string_binary_type string_binary_type;
     enum mylite_column_numeric_type numeric_type;
     enum mylite_column_temporal_type temporal_type;
+    enum mylite_column_spatial_type spatial_type;
     bool is_unsigned;
     bool is_boolean_alias;
     bool is_bit;
+    bool is_spatial;
     bool is_binary_string;
     bool is_character_string;
     bool is_exact_numeric;
@@ -154,6 +168,13 @@ enum mylite_column_type_status mylite_column_type_describe_numeric(
 );
 
 enum mylite_column_type_status mylite_column_type_describe_temporal(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+enum mylite_column_type_status mylite_column_type_describe_spatial(
     const char *type_name,
     size_t type_name_length,
     struct mylite_column_type_attributes attributes,

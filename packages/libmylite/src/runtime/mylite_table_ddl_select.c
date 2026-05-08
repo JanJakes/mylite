@@ -624,6 +624,14 @@ static bool create_select_lookup_ast_type(
         {"int", MYLITE_SQL_AST_COLUMN_TYPE_INT},
         {"bigint", MYLITE_SQL_AST_COLUMN_TYPE_BIGINT},
         {"bit", MYLITE_SQL_AST_COLUMN_TYPE_BIT},
+        {"geometry", MYLITE_SQL_AST_COLUMN_TYPE_GEOMETRY},
+        {"point", MYLITE_SQL_AST_COLUMN_TYPE_POINT},
+        {"linestring", MYLITE_SQL_AST_COLUMN_TYPE_LINESTRING},
+        {"polygon", MYLITE_SQL_AST_COLUMN_TYPE_POLYGON},
+        {"multipoint", MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOINT},
+        {"multilinestring", MYLITE_SQL_AST_COLUMN_TYPE_MULTILINESTRING},
+        {"multipolygon", MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOLYGON},
+        {"geomcollection", MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION},
         {"char", MYLITE_SQL_AST_COLUMN_TYPE_CHAR},
         {"varchar", MYLITE_SQL_AST_COLUMN_TYPE_VARCHAR},
         {"binary", MYLITE_SQL_AST_COLUMN_TYPE_BINARY},
@@ -780,6 +788,9 @@ static int assign_create_select_type_from_descriptor(
         column->type.ast_type = MYLITE_SQL_AST_COLUMN_TYPE_BIT;
         column->type.attributes.has_precision = true;
         column->type.attributes.precision = descriptor->length == 0U ? 1U : descriptor->length;
+        break;
+    case MYLITE_FIELD_TYPE_GEOMETRY:
+        column->type.ast_type = MYLITE_SQL_AST_COLUMN_TYPE_GEOMETRY;
         break;
     case MYLITE_FIELD_TYPE_FLOAT:
         column->type.ast_type = MYLITE_SQL_AST_COLUMN_TYPE_FLOAT;

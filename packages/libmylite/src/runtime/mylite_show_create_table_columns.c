@@ -74,7 +74,8 @@ int mylite_show_create_table_append_columns(
     sqlite3_stmt *select = NULL;
     char *sql = sqlite3_mprintf(
         "SELECT column_name, column_type, is_nullable, column_default, extra, column_comment, "
-        "character_set_name, collation_name, data_type, has_default, generation_expression "
+        "character_set_name, collation_name, data_type, has_default, generation_expression, "
+        "srs_id "
         "FROM %s WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position",
         mylite_catalog_column_catalog_name(target->temporary)
@@ -128,6 +129,7 @@ static int append_show_create_table_column(
         data_type_column = 8,
         has_default_column = 9,
         generation_expression_column = 10,
+        srs_id_column = 11,
     };
 
     const char *column_name = (const char *)sqlite3_column_text(select, column_name_column);
@@ -163,6 +165,13 @@ static int append_show_create_table_column(
         show_create_column_needs_explicit_null_current_timestamp(data_type, column_default)
     ) {
         sqlite3_str_appendall(create_sql, " NULL");
+    }
+    if (sqlite3_column_type(select, srs_id_column) != SQLITE_NULL) {
+        sqlite3_str_appendf(
+            create_sql,
+            " /*!80003 SRID %lld */",
+            sqlite3_column_int64(select, srs_id_column)
+        );
     }
     if (generated) {
         append_show_create_column_generation_expression(create_sql, generation_expression, extra);

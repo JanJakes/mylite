@@ -70,6 +70,12 @@ struct mylite_temporal_type_info {
     const char *range_max;
 };
 
+struct mylite_spatial_type_info {
+    const char *name;
+    const char *canonical_type_name;
+    enum mylite_column_spatial_type type;
+};
+
 struct mylite_precision_scale {
     uint64_t precision;
     uint64_t scale;
@@ -135,6 +141,11 @@ static const struct mylite_temporal_type_info *lookup_temporal_type_info(
     size_t type_name_length
 );
 
+static const struct mylite_spatial_type_info *lookup_spatial_type_info(
+    const char *type_name,
+    size_t type_name_length
+);
+
 static const struct mylite_charset_info *effective_charset(
     struct mylite_column_type_attributes attributes,
     enum mylite_column_type_status *out_status
@@ -172,6 +183,11 @@ static void format_integer_column_type(
 
 static void fill_bit_descriptor(
     unsigned int precision,
+    struct mylite_column_type_descriptor *out_descriptor
+);
+
+static void fill_spatial_descriptor(
+    const struct mylite_spatial_type_info *info,
     struct mylite_column_type_descriptor *out_descriptor
 );
 
@@ -482,6 +498,36 @@ enum mylite_column_type_status mylite_column_type_describe_temporal(
     return MYLITE_COLUMN_TYPE_OK;
 }
 
+enum mylite_column_type_status mylite_column_type_describe_spatial(
+    const char *type_name,
+    size_t type_name_length,
+    struct mylite_column_type_attributes attributes,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
+    const struct mylite_spatial_type_info *info = NULL;
+
+    if (out_descriptor == NULL) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+    *out_descriptor = (struct mylite_column_type_descriptor){0};
+
+    info = lookup_spatial_type_info(type_name, type_name_length);
+    if (info == NULL) {
+        return MYLITE_COLUMN_TYPE_UNKNOWN;
+    }
+
+    if (attributes.has_display_width || attributes.has_length || attributes.has_precision ||
+        attributes.has_scale || attributes.has_signed || attributes.has_unsigned ||
+        attributes.has_character_set || attributes.has_collation ||
+        attributes.has_binary_attribute || attributes.has_byte_attribute ||
+        attributes.has_zerofill_attribute || attributes.is_national) {
+        return MYLITE_COLUMN_TYPE_INVALID_SYNTAX;
+    }
+
+    fill_spatial_descriptor(info, out_descriptor);
+    return MYLITE_COLUMN_TYPE_OK;
+}
+
 const char *mylite_column_type_status_name(enum mylite_column_type_status status) {
     switch (status) {
     case MYLITE_COLUMN_TYPE_OK:
@@ -754,6 +800,33 @@ static const struct mylite_temporal_type_info *lookup_temporal_type_info(
     return NULL;
 }
 
+static const struct mylite_spatial_type_info *lookup_spatial_type_info(
+    const char *type_name,
+    size_t type_name_length
+) {
+    static const struct mylite_spatial_type_info types[] = {
+        {"GEOMETRY", "geometry", MYLITE_COLUMN_SPATIAL_GEOMETRY},
+        {"POINT", "point", MYLITE_COLUMN_SPATIAL_POINT},
+        {"LINESTRING", "linestring", MYLITE_COLUMN_SPATIAL_LINESTRING},
+        {"POLYGON", "polygon", MYLITE_COLUMN_SPATIAL_POLYGON},
+        {"MULTIPOINT", "multipoint", MYLITE_COLUMN_SPATIAL_MULTIPOINT},
+        {"MULTILINESTRING", "multilinestring", MYLITE_COLUMN_SPATIAL_MULTILINESTRING},
+        {"MULTIPOLYGON", "multipolygon", MYLITE_COLUMN_SPATIAL_MULTIPOLYGON},
+        {"GEOMCOLLECTION", "geomcollection", MYLITE_COLUMN_SPATIAL_GEOMCOLLECTION},
+        {"GEOMETRYCOLLECTION", "geomcollection", MYLITE_COLUMN_SPATIAL_GEOMCOLLECTION},
+    };
+
+    if (type_name == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < sizeof(types) / sizeof(types[0]); ++index) {
+        if (ascii_case_equal(type_name, type_name_length, types[index].name)) {
+            return &types[index];
+        }
+    }
+    return NULL;
+}
+
 static const struct mylite_charset_info *effective_charset(
     struct mylite_column_type_attributes attributes,
     enum mylite_column_type_status *out_status
@@ -974,6 +1047,25 @@ static void fill_bit_descriptor(
         sizeof(out_descriptor->column_type),
         "bit(%u)",
         precision
+    );
+}
+
+static void fill_spatial_descriptor(
+    const struct mylite_spatial_type_info *info,
+    struct mylite_column_type_descriptor *out_descriptor
+) {
+    *out_descriptor = (struct mylite_column_type_descriptor){
+        .spatial_type = info->type,
+        .is_spatial = true,
+        .storage_bytes = 0U,
+        .canonical_type_name = info->canonical_type_name,
+        .data_type = info->canonical_type_name,
+    };
+    (void)snprintf(
+        out_descriptor->column_type,
+        sizeof(out_descriptor->column_type),
+        "%s",
+        info->canonical_type_name
     );
 }
 

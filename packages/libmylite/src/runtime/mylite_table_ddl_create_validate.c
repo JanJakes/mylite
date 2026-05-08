@@ -22,6 +22,11 @@ static bool validate_create_table_column_names(
     const struct mylite_create_table_plan *plan
 );
 
+static int validate_create_table_column_srid(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+);
+
 static bool validate_create_table_indexes(
     mylite_db *database,
     const struct mylite_create_table_plan *plan
@@ -137,6 +142,14 @@ static bool create_table_index_name_exists(
     size_t before_index
 );
 
+static bool create_table_column_is_spatial(const struct mylite_create_table_column *column);
+
+static bool create_table_srs_id_is_supported(uint64_t srs_id);
+
+static int set_create_table_non_spatial_srid_error(mylite_db *database);
+
+static int set_create_table_srs_not_found_error(mylite_db *database, uint64_t srs_id);
+
 int mylite_table_ddl_validate_create_table_plan(
     mylite_db *database,
     const char *schema_name,
@@ -208,6 +221,10 @@ int mylite_table_ddl_validate_create_table_plan(
     if (!validate_create_table_column_names(database, plan)) {
         return MYLITE_EXEC_ERROR;
     }
+    status = validate_create_table_column_srid(database, plan);
+    if (status != MYLITE_OK) {
+        return status;
+    }
     status = mylite_table_ddl_assign_generated_index_names(database, plan);
     if (status != MYLITE_OK) {
         return status;
@@ -246,6 +263,67 @@ static bool validate_create_table_column_names(
         }
     }
     return true;
+}
+
+static int validate_create_table_column_srid(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+) {
+    for (size_t index = 0U; index < plan->column_count; ++index) {
+        const struct mylite_create_table_column *column = &plan->columns[index];
+
+        if (!column->has_srs_id) {
+            continue;
+        }
+        if (!create_table_column_is_spatial(column)) {
+            return set_create_table_non_spatial_srid_error(database);
+        }
+        if (!create_table_srs_id_is_supported(column->srs_id)) {
+            return set_create_table_srs_not_found_error(database, column->srs_id);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool create_table_column_is_spatial(const struct mylite_create_table_column *column) {
+    if (column == NULL) {
+        return false;
+    }
+    return column->type.ast_type >= MYLITE_SQL_AST_COLUMN_TYPE_GEOMETRY &&
+           column->type.ast_type <= MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION;
+}
+
+static bool create_table_srs_id_is_supported(uint64_t srs_id) {
+    return srs_id == 0U || srs_id == 4326U;
+}
+
+static int set_create_table_non_spatial_srid_error(mylite_db *database) {
+    static const char message[] = "Incorrect usage of SRID and non-geometry column";
+    int status = mylite_diagnostics_set_error_message(database, message);
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_USAGE, message);
+    }
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_create_table_srs_not_found_error(mylite_db *database, uint64_t srs_id) {
+    char *message = sqlite3_mprintf(
+        "There's no spatial reference system with SRID %llu.",
+        (unsigned long long)srs_id
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_SRS_NOT_FOUND, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static bool validate_create_table_indexes(

@@ -72,6 +72,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Support or intentionally diagnose `CREATE FULLTEXT INDEX`.
 - [x] Support or intentionally diagnose `ALTER TABLE ... ADD FULLTEXT INDEX`.
 - [x] Support or intentionally diagnose `CREATE SPATIAL INDEX`.
+- [x] Support first-slice spatial column DDL and metadata, including geometry
+      subtypes, `GEOMETRYCOLLECTION` normalization, SRID catalog metadata,
+      `SHOW COLUMNS`, `SHOW CREATE TABLE`, `INFORMATION_SCHEMA.COLUMNS`, and
+      table-backed `GEOMETRY` result metadata.
 - [x] Complete `CREATE INDEX` forms with ordering, comments, and complex index
       options.
 - [x] Verify and complete `DROP INDEX ...`.

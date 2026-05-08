@@ -38,6 +38,8 @@ struct mylite_create_table_column {
     bool has_generated_default;
     bool has_default;
     bool has_on_update_current_timestamp;
+    uint64_t srs_id;
+    bool has_srs_id;
     enum mylite_sql_ast_generated_column_storage generated_column_storage;
 };
 

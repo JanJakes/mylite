@@ -884,7 +884,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `sql_replica_skip_counter` | ❌ | Value, scope, SET, diagnostics |
 | `sql_require_primary_key` | ❌ | Value, scope, SET, diagnostics |
 | `sql_safe_updates` | 🟡 | Limited read-only scalar `SELECT @@sql_safe_updates` with no scope, `session`, `local`, or `global`; returns MyLite's fixed disabled value `0`; no `SET`, mutable global/session state, `sql_select_limit`, `max_join_size`, key-aware DML checks, changed `UPDATE`/`DELETE` behavior, `SHOW VARIABLES`, or Performance Schema variable tables |
-| `sql_select_limit` | ❌ | Value, scope, SET, diagnostics |
+| `sql_select_limit` | 🟡 | Limited read-only scalar `SELECT @@sql_select_limit` with no scope, `session`, `local`, or `global`; returns MyLite's fixed no-limit value `18446744073709551615`; no `SET`, mutable global/session state, implicit row caps for descriptor-backed `SELECT`, safe-updates initialization, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `sql_slave_skip_counter` | ❌ | Value, scope, SET, diagnostics |
 | `sql_warnings` | 🟡 | Limited read-only scalar `SELECT @@sql_warnings` with no scope, `session`, `local`, or `global`; returns MyLite's fixed disabled value `0`; no `SET`, mutable global/session state, warning-producing DML conversions, protocol information strings, changed `INSERT` behavior, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `ssl_ca` | ❌ | Value, scope, SET, diagnostics |

@@ -300,6 +300,11 @@ static int execute_insert_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_insert_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_delete_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -456,6 +461,11 @@ static int rename_table_from_plan(
 );
 
 static int plan_insert(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert *out_plan
+);
+static int plan_insert_set(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_insert *out_plan
@@ -716,6 +726,13 @@ static int collect_insert_target_indexes(
     size_t **out_indexes,
     size_t *out_index_count
 );
+static int collect_insert_set_target_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct planned_insert *plan,
+    size_t **out_indexes,
+    size_t *out_index_count
+);
 static int check_insert_target_duplicate(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
@@ -742,6 +759,18 @@ static int plan_insert_row(
     const size_t *target_indexes,
     size_t target_count,
     struct planned_insert *plan,
+    struct planned_insert_row *out_row
+);
+static int plan_insert_set_row(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const size_t *target_indexes,
+    size_t target_count,
+    struct planned_insert *plan
+);
+static int allocate_insert_row_values(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
     struct planned_insert_row *out_row
 );
 static int convert_insert_value(
@@ -1232,6 +1261,8 @@ static int execute_parsed_statement(
         return execute_rename_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_STATEMENT:
         return execute_insert_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+        return execute_insert_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DELETE_STATEMENT:
         return execute_delete_statement(database, statement, out_result);
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
@@ -1266,6 +1297,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_IDENTIFIER_LIST:
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
+    case MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_ASSIGNMENT:
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
@@ -1560,6 +1593,33 @@ static int execute_insert_statement(
     }
 
     rc = plan_insert(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = execute_insert_from_plan(database, &plan, result);
+    }
+    planned_insert_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_insert_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_insert plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_insert_set(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = execute_insert_from_plan(database, &plan, result);
     }
@@ -2163,6 +2223,7 @@ static int64_t row_count_for_completed_statement(
     switch (statement->kind) {
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_INSERT_STATEMENT:
+    case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_DELETE_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
         return result == NULL ? 0 : mylite_result_affected_rows(result);
@@ -2199,6 +2260,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_IDENTIFIER_LIST:
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
+    case MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST:
+    case MYLITE_SQL_AST_INSERT_ASSIGNMENT:
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
@@ -3128,6 +3191,65 @@ static int plan_insert(
     }
     if (rc == MYLITE_OK) {
         rc = plan_insert_rows(database, row_list, target_indexes, target_count, out_plan);
+    }
+
+    free(target_indexes);
+    if (rc != MYLITE_OK) {
+        planned_insert_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int plan_insert_set(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_insert *out_plan
+) {
+    const struct mylite_sql_ast_node *assignment_list = child_at(statement, 1U);
+    size_t *target_indexes = NULL;
+    size_t target_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_insert){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &out_plan->target, &out_plan->table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &out_plan->columns,
+            &out_plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = collect_insert_set_target_indexes(
+            database,
+            assignment_list,
+            out_plan,
+            &target_indexes,
+            &target_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_insert_target_duplicate(
+            database,
+            out_plan->columns,
+            target_indexes,
+            target_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_insert_set_row(database, assignment_list, target_indexes, target_count, out_plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = check_insert_omitted_columns(database, out_plan, target_indexes, target_count);
     }
 
     free(target_indexes);
@@ -5026,6 +5148,88 @@ static int collect_insert_target_indexes(
     return MYLITE_OK;
 }
 
+static int collect_insert_set_target_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const struct planned_insert *plan,
+    size_t **out_indexes,
+    size_t *out_index_count
+) {
+    const struct mylite_sql_ast_node *assignment = NULL;
+    size_t assignment_count = 0U;
+    size_t *indexes = NULL;
+
+    *out_indexes = NULL;
+    *out_index_count = 0U;
+    if (assignment_list == NULL || assignment_list->kind != MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    assignment_count = mylite_sql_ast_node_child_count(assignment_list);
+    if (assignment_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (assignment_count > SIZE_MAX / sizeof(*indexes)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    indexes = calloc(assignment_count, sizeof(*indexes));
+    if (indexes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    assignment = child_at(assignment_list, 0U);
+    for (size_t assignment_index = 0U; assignment_index < assignment_count; ++assignment_index) {
+        const struct mylite_sql_ast_node *target = NULL;
+        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        int rc = MYLITE_OK;
+
+        if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_INSERT_ASSIGNMENT) {
+            set_parse_error(database, NULL);
+            free(indexes);
+            return MYLITE_ERROR;
+        }
+
+        target = child_at(assignment, 0U);
+        if (target == NULL || target->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            set_unsupported_error(
+                database,
+                "INSERT ... SET supports only unqualified assignment columns"
+            );
+            free(indexes);
+            return MYLITE_ERROR;
+        }
+
+        rc = copy_identifier_text(target, column_name, sizeof(column_name), database);
+        if (rc == MYLITE_OK) {
+            rc = find_column_index(
+                plan->columns,
+                plan->column_count,
+                column_name,
+                &indexes[assignment_index]
+            );
+            if (rc != MYLITE_OK) {
+                set_unknown_column_error(database, column_name);
+                free(indexes);
+                return MYLITE_ERROR;
+            }
+        } else {
+            free(indexes);
+            return rc;
+        }
+        assignment = assignment->next_sibling;
+    }
+
+    *out_indexes = indexes;
+    *out_index_count = assignment_count;
+
+    return MYLITE_OK;
+}
+
 static int check_insert_target_duplicate(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
@@ -5125,6 +5329,7 @@ static int plan_insert_row(
     struct planned_insert_row *out_row
 ) {
     const struct mylite_sql_ast_node *value_node = child_at(row_node, 0U);
+    int rc = MYLITE_OK;
 
     if (row_node == NULL || row_node->kind != MYLITE_SQL_AST_INSERT_ROW) {
         set_parse_error(database, NULL);
@@ -5134,6 +5339,71 @@ static int plan_insert_row(
         set_column_count_mismatch_error(database, row_number);
         return MYLITE_ERROR;
     }
+    rc = allocate_insert_row_values(database, plan, out_row);
+
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < target_count; ++target_index) {
+        size_t column_index = target_indexes[target_index];
+        rc = convert_insert_value(
+            database,
+            value_node,
+            &plan->columns[column_index],
+            row_number,
+            &out_row->values[column_index]
+        );
+
+        value_node = value_node == NULL ? NULL : value_node->next_sibling;
+    }
+
+    return rc;
+}
+
+static int plan_insert_set_row(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *assignment_list,
+    const size_t *target_indexes,
+    size_t target_count,
+    struct planned_insert *plan
+) {
+    const struct mylite_sql_ast_node *assignment = NULL;
+    int rc = MYLITE_OK;
+
+    plan->row_count = 1U;
+    plan->rows = calloc(1U, sizeof(*plan->rows));
+    if (plan->rows == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = allocate_insert_row_values(database, plan, &plan->rows[0]);
+    assignment = child_at(assignment_list, 0U);
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < target_count; ++target_index) {
+        const struct mylite_sql_ast_node *value_node = NULL;
+        size_t column_index = target_indexes[target_index];
+
+        if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_INSERT_ASSIGNMENT) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+
+        value_node = child_at(assignment, 1U);
+        rc = convert_insert_value(
+            database,
+            value_node,
+            &plan->columns[column_index],
+            1U,
+            &plan->rows[0].values[column_index]
+        );
+        assignment = assignment->next_sibling;
+    }
+
+    return rc;
+}
+
+static int allocate_insert_row_values(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    struct planned_insert_row *out_row
+) {
     if (plan->column_count > SIZE_MAX / sizeof(*out_row->values)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -5144,21 +5414,8 @@ static int plan_insert_row(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-
-    for (size_t target_index = 0U; target_index < target_count; ++target_index) {
-        size_t column_index = target_indexes[target_index];
-        int rc = convert_insert_value(
-            database,
-            value_node,
-            &plan->columns[column_index],
-            row_number,
-            &out_row->values[column_index]
-        );
-
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-        value_node = value_node == NULL ? NULL : value_node->next_sibling;
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        out_row->values[column_index].is_null = true;
     }
 
     return MYLITE_OK;

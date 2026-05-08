@@ -202,29 +202,23 @@ statement(A) ::= insert_set_statement(B). {
 }
 
 insert_set_statement(A) ::=
-    INSERT(I) into_opt table_name(T) SET assignment_list(S). {
+    INSERT(I) INTO table_name(T) SET insert_assignment_list(S). {
+    A = mylite_sql_parser_make_insert_set_statement(state, I, T, S);
+}
+insert_set_statement(A) ::=
+    INSERT(I) table_name(T) SET insert_assignment_list(S). {
     A = mylite_sql_parser_make_insert_set_statement(state, I, T, S);
 }
 
-into_opt ::= .
-into_opt ::= INTO.
-
-assignment_list(A) ::= assignment(B). {
+insert_assignment_list(A) ::= insert_assignment(B). {
     A = mylite_sql_parser_make_insert_assignment_list(state, B);
 }
-assignment_list(A) ::= assignment_list(B) COMMA assignment(C). {
+insert_assignment_list(A) ::= insert_assignment_list(B) COMMA insert_assignment(C). {
     A = mylite_sql_parser_append_insert_assignment(state, B, C);
 }
 
-assignment(A) ::= assignment_target(T) EQUAL insert_value(V). {
-    A = mylite_sql_parser_make_insert_assignment(state, T, V);
-}
-
-assignment_target(A) ::= identifier(B). {
-    A = B;
-}
-assignment_target(A) ::= identifier(B) DOT identifier(C). {
-    A = mylite_sql_parser_make_qualified_identifier(state, B, C);
+insert_assignment(A) ::= qualified_identifier(T) EQUAL(E) insert_value(V). {
+    A = mylite_sql_parser_make_insert_assignment(state, T, E, V);
 }
 
 insert_value(A) ::= INTEGER(T). {
@@ -276,6 +270,8 @@ The planner must:
 - reject unknown assignment targets before conversion or SQLite execution;
 - preserve assignment order for duplicate detection and diagnostics, but build
   the physical insert row in descriptor/target order for generated SQL;
+- convert explicit assignment values before checking omitted `NOT NULL`
+  descriptors, matching MySQL's explicit-value diagnostic precedence;
 - bind omitted nullable columns as SQL `NULL`;
 - reject omitted `NOT NULL` columns because MyLite has no explicit default
   descriptors yet.

@@ -98,6 +98,9 @@ statement(A) ::= rename_table_statement(B). {
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
+statement(A) ::= insert_set_statement(B). {
+    A = B;
+}
 statement(A) ::= delete_statement(B). {
     A = B;
 }
@@ -272,6 +275,15 @@ insert_values_statement(A) ::=
     A = mylite_sql_parser_make_insert_statement(state, I, T, C, R);
 }
 
+insert_set_statement(A) ::=
+    INSERT(I) INTO table_name(T) SET insert_assignment_list(S). {
+    A = mylite_sql_parser_make_insert_set_statement(state, I, T, S);
+}
+insert_set_statement(A) ::=
+    INSERT(I) table_name(T) SET insert_assignment_list(S). {
+    A = mylite_sql_parser_make_insert_set_statement(state, I, T, S);
+}
+
 delete_statement(A) ::=
     DELETE(D) FROM table_name(T) where_clause_opt(W) order_clause_opt(O) delete_limit_clause_opt(L). {
     A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
@@ -292,6 +304,17 @@ update_assignment_list(A) ::= update_assignment_list(B) COMMA update_assignment(
 
 update_assignment(A) ::= qualified_identifier(T) EQUAL(E) update_value(V). {
     A = mylite_sql_parser_make_update_assignment(state, T, E, V);
+}
+
+insert_assignment_list(A) ::= insert_assignment(B). {
+    A = mylite_sql_parser_make_insert_assignment_list(state, B);
+}
+insert_assignment_list(A) ::= insert_assignment_list(B) COMMA insert_assignment(C). {
+    A = mylite_sql_parser_append_insert_assignment(state, B, C);
+}
+
+insert_assignment(A) ::= qualified_identifier(T) EQUAL(E) insert_value(V). {
+    A = mylite_sql_parser_make_insert_assignment(state, T, E, V);
 }
 
 insert_column_list_opt(A) ::= . {

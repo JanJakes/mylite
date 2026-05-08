@@ -157,7 +157,7 @@ tests.
 | `ENUM` | ❌ | Indexing, sorting, invalid values. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `SET` | ❌ | Bitmap membership metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `JSON` | ❌ | Validation and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
-| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES` and single-table `UPDATE` assignment inputs plus supported filtered `SELECT`/`DELETE`/`UPDATE` predicate right operands; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE`/`UPDATE LIMIT`; no expression-level numeric semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES`, `INSERT ... SET`, and single-table `UPDATE` assignment inputs plus supported filtered `SELECT`/`DELETE`/`UPDATE` predicate right operands; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE`/`UPDATE LIMIT`; no expression-level numeric semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | String literals | ❌ | Escapes, introducers, SQL modes. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP syntax. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | JSON path literals | ❌ | Path grammar and errors. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
@@ -265,7 +265,7 @@ tests.
 | `DELETE` (multi-table) | ❌ | Multi-table forms. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `DELETE` with joins | ❌ | Joined delete target semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md), [SQL joins](docs/compatibility/sql-joins.md) |
 | `INSERT ... VALUES` | 🟡 | Limited single- and multi-row inserts into persistent base tables with integer/`NULL` values, descriptor column resolution, strict range checks, affected rows, and statement atomicity; no defaults, keys, generated values, or insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
-| `INSERT ... SET` | ❌ | SET-form insert. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `INSERT ... SET` | 🟡 | Limited one-row `INSERT [INTO] table SET column = integer_or_NULL[, ...]` into persistent base tables with descriptor assignment resolution, omitted nullable columns stored as `NULL`, strict required-column/range/nullability diagnostics, affected rows, and statement atomicity; no modifiers, qualified assignment targets, expressions, defaults, generated values, or insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `INSERT ... SELECT` | ❌ | Query insert and metadata inference. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | Duplicate-key update semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `INSERT IGNORE` | ❌ | Warning demotion rules. | [SQL table DML](docs/compatibility/sql-table-dml.md) |

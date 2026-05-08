@@ -185,11 +185,27 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "null into not null before omitted not null" \
+    1048 \
+    23000 \
+    "Column 'id' cannot be null" \
+    "INSERT INTO numbers SET id = NULL;" \
+    "$DATABASE"
+
+expect_error \
     "signed int above range" \
     1264 \
     22003 \
     "Out of range value for column 'i' at row 1" \
     "INSERT INTO numbers SET id = 5, i = 2147483648, nn = 1;" \
+    "$DATABASE"
+
+expect_error \
+    "range before omitted not null" \
+    1264 \
+    22003 \
+    "Out of range value for column 'i' at row 1" \
+    "INSERT INTO numbers SET id = 5, i = 2147483648;" \
     "$DATABASE"
 
 expect_error \

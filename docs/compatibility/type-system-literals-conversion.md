@@ -82,7 +82,7 @@
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES` and single-table `UPDATE` assignment inputs plus supported filtered `SELECT`/`DELETE`/`UPDATE` predicate right operands; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE`/`UPDATE LIMIT`; no expression-level numeric semantics, non-decimal formats, decimals, floats, hex, or bit literals |
+| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES`, `INSERT ... SET`, and single-table `UPDATE` assignment inputs plus supported filtered `SELECT`/`DELETE`/`UPDATE` predicate right operands; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE`/`UPDATE LIMIT`; no expression-level numeric semantics, non-decimal formats, decimals, floats, hex, or bit literals |
 | String literals | ❌ | Escapes, introducers, sql_mode |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP literal syntax and coercion |
 | JSON path literals | ❌ | Path grammar, quoting, wildcards, ranges, and errors |

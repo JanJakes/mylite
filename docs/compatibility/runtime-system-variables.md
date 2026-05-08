@@ -123,7 +123,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `character_set_filesystem` | ❌ | Value, scope, SET, diagnostics |
 | `character_set_results` | 🟡 | Limited read-only scalar `SELECT @@character_set_results` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` connection baseline; no `SET`, `SET NAMES`, result conversion, `NULL` results mode, `SHOW VARIABLES`, or protocol charset metadata |
 | `character_set_server` | 🟡 | Limited read-only scalar `SELECT @@character_set_server` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` embedded server default; no `SET`, startup options, mutable global state, database defaults, `SHOW VARIABLES`, or protocol charset metadata |
-| `character_set_system` | ❌ | Value, scope, SET, diagnostics |
+| `character_set_system` | 🟡 | Limited read-only scalar `SELECT @@character_set_system` with no scope or `global`; returns MyLite's fixed identifier-system charset placeholder `utf8mb3`; no `session`/`local`, `SET`, mutable state, identifier conversion, string conversion, `SHOW VARIABLES`, or protocol charset metadata |
 | `character_sets_dir` | ❌ | Value, scope, SET, diagnostics |
 | `check_proxy_users` | ❌ | Value, scope, SET, diagnostics |
 | `clone_autotune_concurrency` | ❌ | Value, scope, SET, diagnostics |

@@ -883,7 +883,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `sql_quote_show_create` | 🟡 | Limited read-only scalar `SELECT @@sql_quote_show_create` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled SHOW CREATE quote-control value `1`; no `SET`, mutable global/session state, disabled SHOW CREATE rendering, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `sql_replica_skip_counter` | ❌ | Value, scope, SET, diagnostics |
 | `sql_require_primary_key` | ❌ | Value, scope, SET, diagnostics |
-| `sql_safe_updates` | ❌ | Value, scope, SET, diagnostics |
+| `sql_safe_updates` | 🟡 | Limited read-only scalar `SELECT @@sql_safe_updates` with no scope, `session`, `local`, or `global`; returns MyLite's fixed disabled value `0`; no `SET`, mutable global/session state, `sql_select_limit`, `max_join_size`, key-aware DML checks, changed `UPDATE`/`DELETE` behavior, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `sql_select_limit` | ❌ | Value, scope, SET, diagnostics |
 | `sql_slave_skip_counter` | ❌ | Value, scope, SET, diagnostics |
 | `sql_warnings` | ❌ | Value, scope, SET, diagnostics |

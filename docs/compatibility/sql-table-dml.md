@@ -25,5 +25,6 @@ statements.
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | Priority and deprecated delayed modifiers for REPLACE |
 | `UPDATE` (single-table) | 🟡 | Limited persistent base-table `UPDATE table_name SET column_name = value` with one unqualified assignment column, supported decimal integer/`NULL` assignment values, optional baseline `WHERE`, optional one-column `ORDER BY` with `ASC`/`DESC`, and optional `LIMIT row_count` using unsigned decimal literals in signed 64-bit range; affected rows report changed rows; no aliases, table-qualified assignment targets, multiple assignments, expression assignments, defaults, partitions, modifiers, joined updates, multi-table updates, table-qualified/order expression/ordinal/multiple-key ordering, offset forms, triggers, cascades, foreign keys, generated columns, or privilege semantics |
 | `UPDATE` (multi-table) | ❌ | Joined update semantics |
+| SQL safe updates variable | 🟡 | Limited scalar `@@sql_safe_updates` reads report fixed disabled value `0`; no mutable safe-updates state, `sql_select_limit`, `max_join_size`, key-aware DML checks, or changed `UPDATE`/`DELETE` behavior |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

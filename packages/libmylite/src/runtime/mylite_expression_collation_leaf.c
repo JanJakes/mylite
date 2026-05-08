@@ -118,6 +118,12 @@ int mylite_expression_infer_cast_collation_info(
         char *charset_name = NULL;
         int status = MYLITE_OK;
 
+        if (target->column_national_attribute) {
+            *out_info = mylite_expression_utf8mb3_general_collation_info(
+                mylite_mysql_coercibility_implicit
+            );
+            return MYLITE_OK;
+        }
         if (!target->has_column_character_set) {
             *out_info = mylite_expression_connection_collation_info(
                 database,

@@ -42,10 +42,17 @@ struct mylite_uuid_short_state {
     bool initialized;
 };
 
+struct mylite_diagnostic_span_key {
+    const char *text;
+    size_t length;
+};
+
 struct mylite_db {
     sqlite3 *sqlite;
     char *error_message;
     struct mylite_expression_warnings warnings;
+    struct mylite_diagnostic_span_key *national_charset_warning_spans;
+    size_t national_charset_warning_span_count;
     char *selected_schema;
     uint64_t connection_id;
     uint64_t last_insert_id;

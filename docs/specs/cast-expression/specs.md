@@ -177,6 +177,12 @@ truncate by byte count, right-pad shorter values with `0x00`, and use
 | `COLLATION(CAST('abc' AS CHAR ASCII))` | `latin1_swedish_ci` | none |
 | `COERCIBILITY(CAST('abc' AS CHAR ASCII))` | `2` | none |
 | `CHARSET(CAST('abc' AS CHAR(3) ASCII))` | `latin1` | none |
+| `CHARSET(CAST('abc' AS NCHAR))` | `utf8mb3` | 3720 deprecated national charset |
+| `COLLATION(CAST('abc' AS NCHAR))` | `utf8mb3_general_ci` | 3720 deprecated national charset |
+| `COERCIBILITY(CAST('abc' AS NCHAR))` | `2` | 3720 deprecated national charset |
+| `HEX(CAST(UNHEX('61FF62') AS NCHAR))` | `NULL` | 3720 deprecated national charset, 1300 invalid character string |
+| `HEX(CAST('abcd' AS NCHAR(2)))` | `6162` | 3720 deprecated national charset, 1292 truncated char |
+| `HEX(CAST(CONVERT(UNHEX('F09F988078') USING utf8mb4) AS NCHAR(2)))` | `3F78` | 3720 deprecated national charset |
 | `SET NAMES utf8mb4; HEX(CAST(UNHEX('61FF62') AS CHAR))` | `NULL` | 1300 invalid character string |
 | `SET NAMES latin1; HEX(CAST(UNHEX('61FF62') AS CHAR))` | `61FF62` | none |
 | `SET NAMES latin1; HEX(CAST(UNHEX('E282AC62') AS CHAR(1)))` | `E2` | 1292 truncated char |
@@ -406,9 +412,14 @@ deferred to the broader decimal type task.
   input handled by the current expression engine
 - truncation emits warning 1292 using
   `Truncated incorrect CHAR(N) value: '<value>'`
-- `NCHAR` sets the target as a national character cast in the AST but maps to
-  the current connection charset descriptor until the national charset task
-  expands the registry
+- `NCHAR` and `NCHAR(N)` use MySQL's national character target semantics:
+  charset/collation/coercibility introspection reports `utf8mb3`,
+  `utf8mb3_general_ci`, and coercibility `2`; each national target emits
+  warning 3720; invalid byte strings are validated as `utf8mb3`; and
+  length-qualified targets truncate by UTF-8 character count
+- direct result-column metadata for `CAST(... AS NCHAR)` remains
+  character-set-results dependent like MySQL, while expression collation
+  introspection observes the national target
 - `CHAR CHARACTER SET binary` returns the same bytes as text with binary
   metadata; length-qualified `CHAR(N) CHARACTER SET binary` uses the same
   byte truncation and right-padding path as `BINARY(N)`

@@ -37,6 +37,10 @@ int mylite_diagnostics_set_collation_charset_error(
     const char *character_set
 );
 int mylite_diagnostics_append_utf8_alias_warning(mylite_db *database);
+int mylite_diagnostics_append_national_charset_warning(
+    mylite_db *database,
+    struct mylite_sql_source_span span
+);
 int mylite_diagnostics_append_warning(mylite_db *database, unsigned int code, const char *message);
 int mylite_diagnostics_append_note(mylite_db *database, unsigned int code, const char *message);
 int mylite_diagnostics_append_error(mylite_db *database, unsigned int code, const char *message);

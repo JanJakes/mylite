@@ -174,6 +174,7 @@ static const uint32_t mylite_expression_crc32_polynomial = UINT32_C(0xEDB88320);
 static const double mylite_expression_round_half = 0.5;
 static const long double mylite_expression_long_double_one = 1.0L;
 static const char mylite_default_connection_charset_name[] = "utf8mb4";
+static const char mylite_national_charset_name[] = "utf8mb3";
 
 struct numeric_value {
     double real_value;
@@ -932,6 +933,13 @@ static int transcode_latin1_to_utf8(
 );
 
 static int transcode_utf8_to_latin1(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+);
+
+static int transcode_utf8mb4_to_utf8mb3(
     const char *text,
     size_t text_length,
     char **out_text,
@@ -5859,6 +5867,10 @@ static int transcode_known_charset_text(
         target_charset == CHAR_FUNCTION_CHARSET_LATIN1) {
         return transcode_utf8_to_latin1(text, text_length, out_text, out_length);
     }
+    if (source_charset == CHAR_FUNCTION_CHARSET_UTF8MB4 &&
+        target_charset == CHAR_FUNCTION_CHARSET_UTF8MB3) {
+        return transcode_utf8mb4_to_utf8mb3(text, text_length, out_text, out_length);
+    }
     return 0;
 }
 
@@ -5917,6 +5929,40 @@ static int transcode_utf8_to_latin1(
             return 0;
         }
         result[result_length++] = (char)codepoint;
+    }
+    result[result_length] = '\0';
+    *out_text = result;
+    *out_length = result_length;
+    return 0;
+}
+
+static int transcode_utf8mb4_to_utf8mb3(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+) {
+    char *result = malloc(text_length + 1U);
+    size_t input_offset = 0U;
+    size_t result_length = 0U;
+
+    if (result == NULL) {
+        return -1;
+    }
+    while (input_offset < text_length) {
+        size_t sequence_start = input_offset;
+        uint32_t codepoint = 0U;
+
+        if (!utf8_codepoint_at(text, text_length, &input_offset, &codepoint)) {
+            free(result);
+            return 0;
+        }
+        if (codepoint > UINT32_C(0xFFFF)) {
+            result[result_length++] = '?';
+            continue;
+        }
+        memcpy(result + result_length, text + sequence_start, input_offset - sequence_start);
+        result_length += input_offset - sequence_start;
     }
     result[result_length] = '\0';
     *out_text = result;
@@ -6000,6 +6046,11 @@ static enum char_function_charset char_cast_target_charset(
             return CHAR_FUNCTION_CHARSET_UNKNOWN;
         }
         charset_name = owned_charset_name;
+    } else if (
+        target != NULL && target->kind == MYLITE_SQL_AST_COLUMN_TYPE &&
+        target->column_type == MYLITE_SQL_AST_COLUMN_TYPE_CHAR && target->column_national_attribute
+    ) {
+        charset_name = mylite_national_charset_name;
     } else {
         charset_name = default_char_cast_charset_name(context);
     }
@@ -6089,6 +6140,8 @@ static int truncate_char_cast_text(
             return -1;
         }
         charset_name = owned_charset_name;
+    } else if (target->column_national_attribute) {
+        charset_name = mylite_national_charset_name;
     } else {
         charset_name = default_char_cast_charset_name(context);
     }
@@ -6168,6 +6221,8 @@ static int validate_char_cast_text(
             return -1;
         }
         charset_name = owned_charset_name;
+    } else if (target->column_national_attribute) {
+        charset_name = mylite_national_charset_name;
     } else {
         charset_name = default_char_cast_charset_name(context);
     }

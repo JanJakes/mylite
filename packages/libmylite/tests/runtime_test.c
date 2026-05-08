@@ -191,6 +191,7 @@ enum {
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
     mysql_warning_deprecated_utf8_alias = 3719,
+    mysql_warning_deprecated_national = 3720,
     mysql_warning_invalid_default_collation_for_utf8mb4 = 3721,
     mysql_warning_foreign_key_drop_parent = 3730,
     mysql_warning_foreign_key_incompatible_columns = 3780,
@@ -36845,6 +36846,19 @@ static int test_cast_expression_execution(void) {
         "latin1_swedish_ci",
         "2",
     };
+    static const char *const cast_nchar_introspection_columns[] = {
+        "cs_nchar",
+        "co_nchar",
+        "cc_nchar",
+    };
+    static const char *const cast_nchar_introspection_values[] = {
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "2",
+    };
+    static const char *const cast_nchar_value_columns[] = {"bad_nchar", "trunc_nchar"};
+    static const char *const cast_nchar_value_values[] = {NULL, "6162"};
+    static const char *const cast_nchar_four_byte_values[] = {"3F78"};
     static const char *const cast_connection_charset_column[] = {"value"};
     static const unsigned char binary_padded[] = {'a', '\0', '\0'};
     static const unsigned char binary_truncated[] = {'a', 'b', 'c'};
@@ -37923,6 +37937,64 @@ static int test_cast_expression_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += expect_select_rows(
+        database,
+        "SELECT CHARSET(CAST('abc' AS NCHAR)) AS cs_nchar, "
+        "COLLATION(CAST('abc' AS NCHAR)) AS co_nchar, "
+        "COERCIBILITY(CAST('abc' AS NCHAR)) AS cc_nchar",
+        cast_nchar_introspection_columns,
+        (int)(sizeof(cast_nchar_introspection_columns) /
+              sizeof(cast_nchar_introspection_columns[0])),
+        cast_nchar_introspection_values,
+        1,
+        "CAST NCHAR introspection"
+    );
+    failures += expect_int(mylite_warning_count(database), 3, "CAST NCHAR introspection warnings");
+    for (int index = 0; index < 3; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_deprecated_national,
+            "CAST NCHAR introspection warning code"
+        );
+    }
+
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(CAST(UNHEX('61FF62') AS NCHAR)) AS bad_nchar, "
+        "HEX(CAST('abcd' AS NCHAR(2))) AS trunc_nchar",
+        cast_nchar_value_columns,
+        (int)(sizeof(cast_nchar_value_columns) / sizeof(cast_nchar_value_columns[0])),
+        cast_nchar_value_values,
+        1,
+        "CAST NCHAR invalid and truncation values"
+    );
+    failures += expect_int(mylite_warning_count(database), 4, "CAST NCHAR value warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_national,
+        "CAST NCHAR invalid warning 0 code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_deprecated_national,
+        "CAST NCHAR invalid warning 1 code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_invalid_character_string,
+        "CAST NCHAR invalid warning 2 code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 2),
+        "Invalid utf8mb3 character string: 'FF62'",
+        "CAST NCHAR invalid warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_truncated_wrong_value,
+        "CAST NCHAR invalid warning 3 code"
+    );
+
     failures += prepare_sql(
         database,
         "SELECT HEX(CAST(UNHEX('E282AC62') AS CHAR(1))), "
@@ -37964,6 +38036,22 @@ static int test_cast_expression_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(CAST(CONVERT(UNHEX('F09F988078') USING utf8mb4) AS NCHAR(2))) AS value",
+        cast_connection_charset_column,
+        1,
+        cast_nchar_four_byte_values,
+        1,
+        "CAST NCHAR utf8mb4 four-byte replacement"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "CAST NCHAR utf8mb4 warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_national,
+        "CAST NCHAR utf8mb4 warning code"
+    );
 
     failures += execute_sql(
         database,
@@ -38254,6 +38342,18 @@ static int test_convert_expression_execution(void) {
     };
     static const char *const convert_transcode_values[] = {"C3A9", "E9"};
     static const char *const convert_connection_charset_column[] = {"value"};
+    static const char *const convert_nchar_introspection_columns[] = {
+        "cs_nchar",
+        "co_nchar",
+        "cc_nchar",
+    };
+    static const char *const convert_nchar_introspection_values[] = {
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "2",
+    };
+    static const char *const convert_nchar_value_columns[] = {"bad_nchar", "trunc_nchar"};
+    static const char *const convert_nchar_value_values[] = {NULL, "6162"};
     static const struct expected_result_metadata metadata[] = {
         {"signed_value",
          NULL,
@@ -38818,6 +38918,65 @@ static int test_convert_expression_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT latin1 length done");
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT CHARSET(CONVERT('abc', NCHAR)) AS cs_nchar, "
+        "COLLATION(CONVERT('abc', NCHAR)) AS co_nchar, "
+        "COERCIBILITY(CONVERT('abc', NCHAR)) AS cc_nchar",
+        convert_nchar_introspection_columns,
+        (int)(sizeof(convert_nchar_introspection_columns) /
+              sizeof(convert_nchar_introspection_columns[0])),
+        convert_nchar_introspection_values,
+        1,
+        "CONVERT NCHAR introspection"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 3, "CONVERT NCHAR introspection warnings");
+    for (int index = 0; index < 3; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_deprecated_national,
+            "CONVERT NCHAR introspection warning code"
+        );
+    }
+
+    failures += expect_select_rows(
+        database,
+        "SELECT HEX(CONVERT(UNHEX('61FF62'), NCHAR)) AS bad_nchar, "
+        "HEX(CONVERT('abcd', NCHAR(2))) AS trunc_nchar",
+        convert_nchar_value_columns,
+        (int)(sizeof(convert_nchar_value_columns) / sizeof(convert_nchar_value_columns[0])),
+        convert_nchar_value_values,
+        1,
+        "CONVERT NCHAR invalid and truncation values"
+    );
+    failures += expect_int(mylite_warning_count(database), 4, "CONVERT NCHAR value warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_national,
+        "CONVERT NCHAR invalid warning 0 code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_deprecated_national,
+        "CONVERT NCHAR invalid warning 1 code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_invalid_character_string,
+        "CONVERT NCHAR invalid warning 2 code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 2),
+        "Invalid utf8mb3 character string: 'FF62'",
+        "CONVERT NCHAR invalid warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT NCHAR invalid warning 3 code"
+    );
 
     failures += prepare_sql(
         database,

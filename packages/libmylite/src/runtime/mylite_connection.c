@@ -187,7 +187,7 @@ void mylite_close(mylite_db *database) {
     mylite_advisory_locks_release_handle(database);
     sqlite3_close(database->sqlite);
     free(database->error_message);
-    mylite_expression_warnings_deinit(&database->warnings);
+    mylite_diagnostics_clear_warnings(database);
     free(database->selected_schema);
     free(database->sql_mode);
     free(database->default_storage_engine);
@@ -858,7 +858,7 @@ static int open_sqlite_database(
     if (rc != MYLITE_OK) {
         sqlite3_close(database->sqlite);
         free(database->error_message);
-        mylite_expression_warnings_deinit(&database->warnings);
+        mylite_diagnostics_clear_warnings(database);
         free(database->selected_schema);
         free(database->sql_mode);
         free(database->default_storage_engine);

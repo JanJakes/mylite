@@ -10,11 +10,23 @@ static bool database_has_error_condition(const mylite_db *database);
 
 static bool promote_current_error_message_condition(mylite_db *database);
 
+static void clear_national_charset_warning_spans(mylite_db *database);
+
 static int append_database_condition(
     mylite_db *database,
     enum mylite_expression_warning_level level,
     unsigned int code,
     const char *message
+);
+
+static bool national_charset_warning_span_recorded(
+    const mylite_db *database,
+    struct mylite_sql_source_span span
+);
+
+static int record_national_charset_warning_span(
+    mylite_db *database,
+    struct mylite_sql_source_span span
 );
 
 static unsigned int current_error_condition_code(mylite_db *database, unsigned int fallback_code);
@@ -78,6 +90,7 @@ void mylite_diagnostics_clear_warnings(mylite_db *database) {
     }
 
     mylite_expression_warnings_deinit(&database->warnings);
+    clear_national_charset_warning_spans(database);
 }
 
 int mylite_diagnostics_set_error_message(mylite_db *database, const char *message) {
@@ -260,6 +273,28 @@ int mylite_diagnostics_append_utf8_alias_warning(mylite_db *database) {
     );
 }
 
+int mylite_diagnostics_append_national_charset_warning(
+    mylite_db *database,
+    struct mylite_sql_source_span span
+) {
+    int status = MYLITE_OK;
+
+    if (national_charset_warning_span_recorded(database, span)) {
+        return MYLITE_OK;
+    }
+    status = record_national_charset_warning_span(database, span);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return mylite_diagnostics_append_warning(
+        database,
+        MYLITE_MYSQL_ER_WARN_DEPRECATED_NATIONAL,
+        "NATIONAL/NCHAR/NVARCHAR implies the character set UTF8MB3, which will be replaced by "
+        "UTF8MB4 in a future release. Please consider using CHAR(x) CHARACTER SET UTF8MB4 in "
+        "order to be unambiguous."
+    );
+}
+
 int mylite_diagnostics_append_warning(mylite_db *database, unsigned int code, const char *message) {
     return append_database_condition(
         database,
@@ -355,6 +390,15 @@ static bool promote_current_error_message_condition(mylite_db *database) {
     return false;
 }
 
+static void clear_national_charset_warning_spans(mylite_db *database) {
+    if (database == NULL) {
+        return;
+    }
+    free(database->national_charset_warning_spans);
+    database->national_charset_warning_spans = NULL;
+    database->national_charset_warning_span_count = 0U;
+}
+
 static int append_database_condition(
     mylite_db *database,
     enum mylite_expression_warning_level level,
@@ -387,6 +431,50 @@ static int append_database_condition(
     database->warnings.items = items;
     database->warnings.items[database->warnings.count++] =
         (struct mylite_expression_warning){.code = code, .message = copy, .level = level};
+    return MYLITE_OK;
+}
+
+static bool national_charset_warning_span_recorded(
+    const mylite_db *database,
+    struct mylite_sql_source_span span
+) {
+    if (database == NULL || span.text == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < database->national_charset_warning_span_count; ++index) {
+        const struct mylite_diagnostic_span_key *key =
+            &database->national_charset_warning_spans[index];
+
+        if (key->text == span.text && key->length == span.length) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int record_national_charset_warning_span(
+    mylite_db *database,
+    struct mylite_sql_source_span span
+) {
+    struct mylite_diagnostic_span_key *spans = NULL;
+
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (span.text == NULL) {
+        return MYLITE_OK;
+    }
+    spans = realloc(
+        database->national_charset_warning_spans,
+        (database->national_charset_warning_span_count + 1U) * sizeof(*spans)
+    );
+    if (spans == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    database->national_charset_warning_spans = spans;
+    database->national_charset_warning_spans[database->national_charset_warning_span_count++] =
+        (struct mylite_diagnostic_span_key){.text = span.text, .length = span.length};
     return MYLITE_OK;
 }
 

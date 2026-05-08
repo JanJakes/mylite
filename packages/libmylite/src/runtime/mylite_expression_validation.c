@@ -46,8 +46,13 @@ int mylite_expression_validate_cast_target_charset(
     int status = MYLITE_OK;
 
     if (target == NULL || target->kind != MYLITE_SQL_AST_COLUMN_TYPE ||
-        target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR ||
-        !target->has_column_character_set) {
+        target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR) {
+        return MYLITE_OK;
+    }
+    if (target->column_national_attribute) {
+        return mylite_diagnostics_append_national_charset_warning(database, target->span);
+    }
+    if (!target->has_column_character_set) {
         return MYLITE_OK;
     }
 

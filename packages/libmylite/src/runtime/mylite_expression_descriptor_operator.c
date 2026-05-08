@@ -878,6 +878,11 @@ static bool cast_target_collation_info(
     if (target->column_type != MYLITE_SQL_AST_COLUMN_TYPE_CHAR) {
         return false;
     }
+    if (target->column_national_attribute) {
+        *out_info =
+            mylite_expression_utf8mb3_general_collation_info(mylite_mysql_coercibility_implicit);
+        return true;
+    }
     if (!target->has_column_character_set) {
         *out_info = mylite_expression_connection_collation_info(
             database,

@@ -133,6 +133,11 @@ bytes while updating charset/collation introspection metadata for supported
 charsets. Explicit `utf8mb4` and `utf8mb3` targets validate the resulting byte
 sequence; invalid input returns `NULL` with warning 1300. `CONVERT(expr, CHAR)`
 uses the connection character set for the same validation decision.
+`CONVERT(expr, NCHAR)` and `CONVERT(expr, NCHAR(N))` use MySQL's national
+character target: expression introspection reports `utf8mb3` /
+`utf8mb3_general_ci` with coercibility `2`, each target emits warning 3720,
+invalid byte strings are validated as `utf8mb3`, and length-qualified targets
+truncate by UTF-8 character count.
 
 | SQL | Result |
 | --- | --- |
@@ -156,6 +161,11 @@ uses the connection character set for the same validation decision.
 | `COERCIBILITY(CONVERT('abc', CHAR ASCII))` | `2` |
 | `COLLATION(CONVERT('abc', CHAR ASCII) COLLATE latin1_bin)` | `latin1_bin` |
 | `COERCIBILITY(CONVERT('abc', CHAR ASCII) COLLATE latin1_bin)` | `0` |
+| `CHARSET(CONVERT('abc', NCHAR))` | `utf8mb3`, warning 3720 |
+| `COLLATION(CONVERT('abc', NCHAR))` | `utf8mb3_general_ci`, warning 3720 |
+| `COERCIBILITY(CONVERT('abc', NCHAR))` | `2`, warning 3720 |
+| `HEX(CONVERT(UNHEX('61FF62'), NCHAR))` | `NULL`, warnings 3720 and 1300 |
+| `HEX(CONVERT('abcd', NCHAR(2)))` | `6162`, warnings 3720 and 1292 |
 | `SET NAMES latin1; HEX(CONVERT(UNHEX('61FF62'), CHAR))` | `61FF62` |
 | `SET NAMES latin1; HEX(CONVERT(UNHEX('E282AC62'), CHAR(1)))` | `E2`, warning 1292 |
 | `COLLATION(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `latin1_bin` |

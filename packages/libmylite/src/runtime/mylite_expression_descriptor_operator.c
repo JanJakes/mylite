@@ -361,7 +361,10 @@ int mylite_expression_descriptor_infer_binary_expression(
     switch (expression->operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_ADD:
     case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
-    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY: {
+        bool result_unsigned = (left.flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U ||
+                               (right.flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U;
+
         if (infer_decimal_arithmetic_descriptor(
                 expression->operator_kind,
                 &left,
@@ -372,13 +375,17 @@ int mylite_expression_descriptor_infer_binary_expression(
             return MYLITE_OK;
         }
         *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);
-        out_descriptor->length =
-            mylite_expression_descriptor_max_u64(left.length, right.length) + 1U;
-        if ((left.flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U ||
-            (right.flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U) {
+        if (result_unsigned) {
             out_descriptor->flags |= MYLITE_FIELD_FLAG_UNSIGNED;
         }
+        if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_MULTIPLY) {
+            out_descriptor->length = result_unsigned ? 20U : 21U;
+        } else {
+            out_descriptor->length =
+                mylite_expression_descriptor_max_u64(left.length, right.length) + 1U;
+        }
         return MYLITE_OK;
+    }
     case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_MODULO:
         *out_descriptor = mylite_expression_descriptor_signed_longlong(nullable);

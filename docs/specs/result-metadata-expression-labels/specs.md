@@ -253,6 +253,8 @@ tasks. Unsupported column families should stay deferred rather than guessed.
 | `BINARY b` for `b VARBINARY(8)` | `VAR_STRING` | length `8`, decimals `31` | `BINARY`; nullable |
 | `1 + 2 AS sum_expr` | `LONGLONG` | length `3`, decimals `0` | `NOT_NULL BINARY NUM` |
 | `n + 1 AS n_plus` where `n INT NULL` | `LONGLONG` | length `12`, decimals `0` | `BINARY NUM` |
+| `id * id AS id_mul` where `id INT NOT NULL` | `LONGLONG` | length `21`, decimals `0` | `NOT_NULL BINARY NUM` |
+| `u * n AS u_n_mul` where `u INT UNSIGNED NOT NULL` and `n INT NULL` | `LONGLONG` | length `20`, decimals `0` | `UNSIGNED BINARY NUM`; nullable |
 | `-n AS n_neg` where `n INT NULL` | `LONGLONG` | length `11`, decimals `0` | `BINARY NUM`; nullable |
 | `-u AS u_neg` where `u INT UNSIGNED NOT NULL` | `LONGLONG` | length `11`, decimals `0` | `NOT_NULL BINARY NUM` |
 | `+n AS n_pos` where `n INT NULL` | same descriptor and origin metadata as `n` |

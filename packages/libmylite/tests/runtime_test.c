@@ -76443,6 +76443,32 @@ static int test_result_metadata_expression_labels_execution(void) {
              MYLITE_FIELD_FLAG_NUM,
          0U,
          0},
+        {"id_mul",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"u_n_mul",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         20U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
         {"n_is_null",
          NULL,
          NULL,
@@ -77616,6 +77642,7 @@ static int test_result_metadata_expression_labels_execution(void) {
     failures += prepare_sql(
         database,
         "SELECT 'abc', n + 1 AS n_plus, u + 1 AS u_plus, "
+        "id * id AS id_mul, u * n AS u_n_mul, "
         "n IS NULL AS n_is_null, n <=> NULL AS nullsafe, "
         "n IN (1,2) AS n_in, n BETWEEN 1 AND 20 AS n_between, "
         "s LIKE 'a%' AS s_like, -n AS n_neg, -u AS u_neg, +n AS n_pos, "

@@ -95,6 +95,9 @@ statement(A) ::= show_open_tables_statement(B). {
 statement(A) ::= show_routine_status_statement(B). {
     A = B;
 }
+statement(A) ::= show_processlist_statement(B). {
+    A = B;
+}
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
@@ -290,6 +293,15 @@ show_routine_status_statement(A) ::= SHOW(S) PROCEDURE STATUS(T) show_like_claus
 show_routine_status_statement(A) ::= SHOW(S) FUNCTION STATUS(T) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_routine_status_statement(
         state, S, T, MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT, L);
+}
+
+show_processlist_statement(A) ::= SHOW(S) PROCESSLIST(P). {
+    A = mylite_sql_parser_make_show_processlist_statement(
+        state, S, P, MYLITE_SQL_AST_SHOW_PROCESSLIST_STATEMENT);
+}
+show_processlist_statement(A) ::= SHOW(S) FULL PROCESSLIST(P). {
+    A = mylite_sql_parser_make_show_processlist_statement(
+        state, S, P, MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT);
 }
 
 show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) show_like_clause_opt(L). {
@@ -866,6 +878,9 @@ identifier(A) ::= EVENTS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= OPEN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= PROCESSLIST(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ENGINE(T). {

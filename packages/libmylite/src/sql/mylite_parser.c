@@ -746,6 +746,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_routine_status_statement
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_processlist_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token processlist_token,
+    enum mylite_sql_ast_node_kind statement_kind
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&show_token), span_from_token(&processlist_token));
+
+    return make_node(state, statement_kind, span);
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,
@@ -1974,6 +1986,7 @@ static bool map_keyword_token(
         {"TRIGGERS", MYLITE_SQL_PARSE_TRIGGERS},
         {"EVENTS", MYLITE_SQL_PARSE_EVENTS},
         {"OPEN", MYLITE_SQL_PARSE_OPEN},
+        {"PROCESSLIST", MYLITE_SQL_PARSE_PROCESSLIST},
         {"PROCEDURE", MYLITE_SQL_PARSE_PROCEDURE},
         {"FUNCTION", MYLITE_SQL_PARSE_FUNCTION},
         {"ENGINE", MYLITE_SQL_PARSE_ENGINE},

@@ -40,6 +40,7 @@ enum {
     mysql_error_incorrect_column_name = 1166,
     mysql_error_data_out_of_range = 1264,
     mysql_error_unknown_collation = 1273,
+    mysql_warning_information_schema_processlist_deprecated = 1287,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
     mysql_error_unknown_storage_engine = 1286,
@@ -59,6 +60,10 @@ enum {
     show_events_result_column_count = 15,
     show_open_tables_result_column_count = 4,
     show_routine_status_result_column_count = 12,
+    show_processlist_result_column_count = 8,
+    show_processlist_info_truncation_length = 100,
+    show_processlist_db_column = 3,
+    show_processlist_info_column = 7,
     show_engines_result_column_count = 6,
 };
 
@@ -272,6 +277,7 @@ struct session_scalar_cell {
 
 static int execute_parsed_statement(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
@@ -378,6 +384,12 @@ static int execute_show_open_tables_statement(
 );
 static int execute_show_routine_status_statement(
     struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_processlist_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
@@ -639,6 +651,27 @@ static int copy_source_span_text(
     const struct mylite_sql_source_span *span,
     char **out_text
 );
+static int append_show_processlist_row(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result *result
+);
+static int format_show_processlist_user_host(
+    struct mylite_db *database,
+    char *user,
+    size_t user_size,
+    char *host,
+    size_t host_size
+);
+static int copy_show_processlist_info(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    char **out_info
+);
+static size_t statement_info_length_without_terminator(const char *sql, size_t sql_size);
+static int append_show_processlist_warning(struct mylite_db *database);
 
 static int plan_show_create_table(
     struct mylite_db *database,
@@ -1315,7 +1348,7 @@ int mylite_execute(
         rc = execute_empty_statement(database, out_result);
     } else if (rc == MYLITE_OK && statement_count == 1U) {
         statement = child_at(parse_result.root, 0U);
-        rc = execute_parsed_statement(database, statement, out_result);
+        rc = execute_parsed_statement(database, &context, statement, out_result);
     } else if (rc == MYLITE_OK) {
         set_unsupported_error(database, "multiple statements are not supported");
         rc = MYLITE_ERROR;
@@ -1341,6 +1374,7 @@ int mylite_execute(
 
 static int execute_parsed_statement(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
@@ -1393,6 +1427,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT:
         return execute_show_routine_status_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_PROCESSLIST_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
+        return execute_show_processlist_statement(database, context, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -2445,6 +2482,206 @@ static int execute_show_routine_status_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_processlist_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_processlist_result_column_count] = {
+        "Id",
+        "User",
+        "Host",
+        "db",
+        "Command",
+        "Time",
+        "State",
+        "Info",
+    };
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_processlist_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_processlist_row(database, context, statement, result);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_processlist_warning(database);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int append_show_processlist_row(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result *result
+) {
+    char connection_id_text[integer_text_capacity];
+    char user[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+    char host[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+    char *info = NULL;
+    const char *selected_schema = NULL;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    const char *values[show_processlist_result_column_count] = {
+        connection_id_text,
+        user,
+        host,
+        NULL,
+        "Query",
+        "0",
+        "init",
+        NULL,
+    };
+
+    written = snprintf(
+        connection_id_text,
+        sizeof(connection_id_text),
+        "%" PRIu64,
+        database->session.connection_id
+    );
+    if (written < 0 || (size_t)written >= sizeof(connection_id_text)) {
+        set_runtime_error(database, "failed to format SHOW PROCESSLIST Id");
+        return MYLITE_ERROR;
+    }
+    if (database->session.has_selected_schema) {
+        selected_schema = database->session.selected_schema;
+    }
+    values[show_processlist_db_column] = selected_schema;
+
+    rc = format_show_processlist_user_host(database, user, sizeof(user), host, sizeof(host));
+    if (rc == MYLITE_OK) {
+        rc = copy_show_processlist_info(database, context, statement, &info);
+    }
+    if (rc == MYLITE_OK) {
+        values[show_processlist_info_column] = info;
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    free(info);
+    return rc;
+}
+
+static int format_show_processlist_user_host(
+    struct mylite_db *database,
+    char *user,
+    size_t user_size,
+    char *host,
+    size_t host_size
+) {
+    const char *identity = database->session.client_user_identity;
+    const char *at_sign = strchr(identity, '@');
+    const char *host_part = at_sign == NULL ? "" : at_sign + 1;
+    size_t user_length = at_sign == NULL ? strlen(identity) : (size_t)(at_sign - identity);
+    size_t host_length = strlen(host_part);
+
+    if (user_length >= user_size || host_length >= host_size) {
+        set_runtime_error(database, "failed to format SHOW PROCESSLIST user identity");
+        return MYLITE_ERROR;
+    }
+
+    memcpy(user, identity, user_length);
+    user[user_length] = '\0';
+    memcpy(host, host_part, host_length);
+    host[host_length] = '\0';
+
+    return MYLITE_OK;
+}
+
+static int copy_show_processlist_info(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    char **out_info
+) {
+    const char *sql = mylite_statement_context_sql(context);
+    size_t sql_size = mylite_statement_context_sql_size(context);
+    size_t length = 0U;
+    char *info = NULL;
+
+    if (out_info == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_info = NULL;
+    if (sql == NULL) {
+        set_runtime_error(database, "failed to read SHOW PROCESSLIST statement text");
+        return MYLITE_ERROR;
+    }
+
+    length = statement_info_length_without_terminator(sql, sql_size);
+    if (statement->kind != MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT &&
+        length > show_processlist_info_truncation_length) {
+        length = show_processlist_info_truncation_length;
+    }
+    if (length == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    info = (char *)malloc(length + 1U);
+    if (info == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (length > 0U) {
+        memcpy(info, sql, length);
+    }
+    info[length] = '\0';
+    *out_info = info;
+
+    return MYLITE_OK;
+}
+
+static size_t statement_info_length_without_terminator(const char *sql, size_t sql_size) {
+    size_t length = sql_size;
+
+    while (length > 0U &&
+           (sql[length - 1U] == ' ' || sql[length - 1U] == '\t' || sql[length - 1U] == '\n' ||
+            sql[length - 1U] == '\r' || sql[length - 1U] == '\f' || sql[length - 1U] == '\v')) {
+        --length;
+    }
+    if (length > 0U && sql[length - 1U] == ';') {
+        --length;
+    }
+    while (length > 0U &&
+           (sql[length - 1U] == ' ' || sql[length - 1U] == '\t' || sql[length - 1U] == '\n' ||
+            sql[length - 1U] == '\r' || sql[length - 1U] == '\f' || sql[length - 1U] == '\v')) {
+        --length;
+    }
+
+    return length;
+}
+
+static int append_show_processlist_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_information_schema_processlist_deprecated,
+        "HY000",
+        "'INFORMATION_SCHEMA.PROCESSLIST' is deprecated and will be removed in a future "
+        "release. Please use performance_schema.processlist instead"
+    );
+}
+
 static int execute_show_columns_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -3032,6 +3269,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_PROCESSLIST_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:

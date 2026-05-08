@@ -23,6 +23,7 @@ static int test_show_triggers_empty_introspection_statements(void);
 static int test_show_events_empty_introspection_statements(void);
 static int test_show_open_tables_empty_introspection_statements(void);
 static int test_show_routine_status_empty_introspection_statements(void);
+static int test_show_processlist_introspection_statements(void);
 static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
@@ -109,6 +110,7 @@ int main(void) {
     failures += test_show_events_empty_introspection_statements();
     failures += test_show_open_tables_empty_introspection_statements();
     failures += test_show_routine_status_empty_introspection_statements();
+    failures += test_show_processlist_introspection_statements();
     failures += test_show_index_empty_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
@@ -2158,6 +2160,77 @@ static int test_show_routine_status_empty_introspection_statements(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_processlist_introspection_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW PROCESSLIST;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_PROCESSLIST_STATEMENT, "show processlist");
+    failures += expect_child_count(statement, 0U, "show processlist child count");
+    failures += expect_span_text(statement, "SHOW PROCESSLIST", "show processlist span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL PROCESSLIST;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT,
+        "show full processlist"
+    );
+    failures += expect_child_count(statement, 0U, "show full processlist child count");
+    failures += expect_span_text(statement, "SHOW FULL PROCESSLIST", "show full processlist span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL /* keep */ PROCESSLIST;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT,
+        "show full processlist with comment"
+    );
+    failures += expect_span_text(
+        statement,
+        "SHOW FULL /* keep */ PROCESSLIST",
+        "show full processlist commented span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE processlist (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "processlist table");
+    failures += expect_span_text(child_at(statement, 0U), "processlist", "processlist identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW PROCESSLIST LIKE 'root%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW PROCESSLIST WHERE Id > 0;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW PROCESSLIST ORDER BY Id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW PROCESSLIST LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL PROCESSLIST LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW PROCESSLIST FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW PROCESSLIST IN app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EXTENDED PROCESSLIST;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

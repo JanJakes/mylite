@@ -362,8 +362,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       literal numeric value and text/binary columns receive decoded bytes before
       normal column coercion.
       Scalar `CONVERT(... USING ...)` now transcodes between known `latin1` and
-      `utf8mb4` character values for the covered representable-value slice
-      while preserving invalid unknown byte-string validation behavior.
+      `utf8mb4` character values, including `?` substitution for valid UTF-8
+      codepoints outside latin1, while preserving invalid unknown byte-string
+      validation behavior.
       `CAST(... AS CHAR ASCII)` and `CONVERT(..., CHAR ASCII)` now parse as
       MySQL's `latin1` shorthand, including charset/collation/coercibility
       introspection and incompatible-collation diagnostics.

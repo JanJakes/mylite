@@ -130,10 +130,11 @@ The `CONVERT(expr USING charset_name)` form returns `NULL` when `expr` is
 `NULL`. Otherwise, MySQL returns string bytes exposed with the requested
 charset and that charset's default collation. In MyLite's current slice, known
 `latin1` character values transcode to `utf8mb4`/`utf8mb3`, known
-`utf8mb4`/`utf8mb3` character values transcode to `latin1` when every codepoint
-is representable, and other nonbinary conversions preserve the source text
-bytes while updating charset/collation introspection metadata for supported
-charsets. Explicit `utf8mb4` and `utf8mb3` targets validate the resulting byte
+`utf8mb4`/`utf8mb3` character values transcode to `latin1` with `?`
+substitution for valid unrepresentable codepoints, and other nonbinary
+conversions preserve the source text bytes while updating charset/collation
+introspection metadata for supported charsets. Explicit `utf8mb4` and
+`utf8mb3` targets validate the resulting byte
 sequence; invalid input returns `NULL` with warning 1300. `CONVERT(expr, CHAR)`
 uses the connection character set for the same validation decision.
 `CONVERT(expr, NCHAR)` and `CONVERT(expr, NCHAR(N))` use MySQL's national
@@ -154,6 +155,7 @@ truncate by UTF-8 character count.
 | `HEX(CONVERT(UNHEX('61E282AC62') USING utf8mb4))` | `61E282AC62` |
 | `HEX(CONVERT(CAST(UNHEX('E9') AS CHAR CHARACTER SET latin1) USING utf8mb4))` | `C3A9` |
 | `HEX(CONVERT(CAST(UNHEX('C3A9') AS CHAR CHARACTER SET utf8mb4) USING latin1))` | `E9` |
+| `HEX(CONVERT(CAST(UNHEX('E6B5B7') AS CHAR CHARACTER SET utf8mb4) USING latin1))` | `3F` |
 | `HEX(CONVERT(UNHEX('61FF62') USING binary))` | `61FF62` |
 | `HEX(CONVERT(UNHEX('61FF62') USING ascii))` | `61FF62` |
 | `COLLATION(CONVERT('abc' USING ascii))` | `ascii_general_ci` |
@@ -297,7 +299,8 @@ the result is `NULL` without conversion warnings.
 - converts non-`NULL` input to MyLite text bytes using the same string
   conversion path as character casts
 - transcodes known scalar `latin1` character values to UTF-8 and known scalar
-  UTF-8 character values to `latin1` when representable
+  UTF-8 character values to `latin1`, substituting `?` for valid codepoints
+  outside latin1
 - exposes the requested charset and default collation to
   `CHARSET()`, `COLLATION()`, and `COERCIBILITY()`
 - treats `binary` as the existing binary-string cast target
@@ -402,7 +405,8 @@ transcoding project. Known differences after this implementation:
 
 - `CONVERT(... USING nonbinary_charset)` preserves text bytes rather than
   transcoding between character sets except for known scalar `latin1` to UTF-8
-  and UTF-8 to `latin1` values
+  and UTF-8 to `latin1` values, including MySQL-style `?` substitution for
+  unrepresentable UTF-8 codepoints
 - binary strings cannot yet preserve embedded NUL bytes through every public
   text-value path
 - `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; JSON,

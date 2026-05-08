@@ -5974,10 +5974,13 @@ static int transcode_utf8_to_latin1(
     while (input_offset < text_length) {
         uint32_t codepoint = 0U;
 
-        if (!utf8_codepoint_at(text, text_length, &input_offset, &codepoint) ||
-            codepoint > UINT8_MAX) {
+        if (!utf8_codepoint_at(text, text_length, &input_offset, &codepoint)) {
             free(result);
             return 0;
+        }
+        if (codepoint > UINT8_MAX) {
+            result[result_length++] = '?';
+            continue;
         }
         result[result_length++] = (char)codepoint;
     }

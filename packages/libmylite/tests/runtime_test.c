@@ -39252,9 +39252,10 @@ static int test_convert_expression_execution(void) {
     };
     static const char *const convert_transcode_columns[] = {
         "latin1_to_utf8mb4",
-        "utf8mb4_to_latin1"
+        "utf8mb4_to_latin1",
+        "utf8mb4_to_latin1_lossy",
     };
-    static const char *const convert_transcode_values[] = {"C3A9", "E9"};
+    static const char *const convert_transcode_values[] = {"C3A9", "E9", "3F"};
     static const char *const convert_connection_charset_column[] = {"value"};
     static const char *const convert_nchar_introspection_columns[] = {
         "cs_nchar",
@@ -39662,9 +39663,11 @@ static int test_convert_expression_execution(void) {
         "SELECT HEX(CONVERT(CAST(UNHEX('E9') AS CHAR CHARACTER SET latin1) USING utf8mb4)) "
         "AS latin1_to_utf8mb4, "
         "HEX(CONVERT(CAST(UNHEX('C3A9') AS CHAR CHARACTER SET utf8mb4) USING latin1)) "
-        "AS utf8mb4_to_latin1",
+        "AS utf8mb4_to_latin1, "
+        "HEX(CONVERT(CAST(UNHEX('E6B5B7') AS CHAR CHARACTER SET utf8mb4) USING latin1)) "
+        "AS utf8mb4_to_latin1_lossy",
         convert_transcode_columns,
-        2,
+        3,
         convert_transcode_values,
         1,
         "CONVERT known charset transcoding"

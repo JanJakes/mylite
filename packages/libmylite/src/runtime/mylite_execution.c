@@ -58,6 +58,7 @@ enum {
     show_triggers_result_column_count = 11,
     show_events_result_column_count = 15,
     show_open_tables_result_column_count = 4,
+    show_routine_status_result_column_count = 12,
     show_engines_result_column_count = 6,
 };
 
@@ -371,6 +372,11 @@ static int execute_show_events_statement(
     mylite_result **out_result
 );
 static int execute_show_open_tables_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_routine_status_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -1384,6 +1390,9 @@ static int execute_parsed_statement(
         return execute_show_events_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT:
         return execute_show_open_tables_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT:
+        return execute_show_routine_status_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -2383,6 +2392,59 @@ static int execute_show_open_tables_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_routine_status_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_routine_status_result_column_count] = {
+        "Db",
+        "Name",
+        "Type",
+        "Language",
+        "Definer",
+        "Modified",
+        "Created",
+        "Security_type",
+        "Comment",
+        "character_set_client",
+        "collation_connection",
+        "Database Collation",
+    };
+    const struct mylite_sql_ast_node *like_node = child_at(statement, 0U);
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    rc = make_show_like_filter(database, like_node, &filter);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_routine_status_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        show_like_filter_deinit(&filter);
+        return rc;
+    }
+
+    show_like_filter_deinit(&filter);
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_columns_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -2968,6 +3030,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:

@@ -22,6 +22,7 @@ static int test_show_columns_introspection_statements(void);
 static int test_show_triggers_empty_introspection_statements(void);
 static int test_show_events_empty_introspection_statements(void);
 static int test_show_open_tables_empty_introspection_statements(void);
+static int test_show_routine_status_empty_introspection_statements(void);
 static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
@@ -107,6 +108,7 @@ int main(void) {
     failures += test_show_triggers_empty_introspection_statements();
     failures += test_show_events_empty_introspection_statements();
     failures += test_show_open_tables_empty_introspection_statements();
+    failures += test_show_routine_status_empty_introspection_statements();
     failures += test_show_index_empty_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
@@ -2036,6 +2038,126 @@ static int test_show_open_tables_empty_introspection_statements(void) {
 
     failures +=
         parse_sql("SHOW OPEN TABLES FROM app LIKE NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_routine_status_empty_introspection_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW PROCEDURE STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT,
+        "show procedure status"
+    );
+    failures += expect_child_count(statement, 0U, "show procedure status child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW PROCEDURE STATUS LIKE 'routine\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT,
+        "show procedure status like"
+    );
+    failures += expect_child_count(statement, 1U, "show procedure status like child count");
+    failures += expect_literal(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "procedure status like"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 0U), "'routine\\_%'", "procedure like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FUNCTION STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT,
+        "show function status"
+    );
+    failures += expect_child_count(statement, 0U, "show function status child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FUNCTION STATUS LIKE 'routine%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT,
+        "show function status like"
+    );
+    failures += expect_child_count(statement, 1U, "show function status like child count");
+    failures += expect_literal(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "function status like"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "'routine%'", "function like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE status (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "status table");
+    failures += expect_span_text(child_at(statement, 0U), "status", "status identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW PROCEDURE STATUS FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FUNCTION STATUS IN app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL PROCEDURE STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EXTENDED FUNCTION STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW PROCEDURE STATUS WHERE Name = 'routine_proc';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW PROCEDURE STATUS LIKE 'routine%' WHERE Name = 'routine_proc';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW PROCEDURE STATUS ORDER BY Name;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FUNCTION STATUS LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW PROCEDURE STATUS LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW FUNCTION STATUS LIKE NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW PROCEDURE STATUS LIKE N'routine';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW FUNCTION STATUS LIKE _utf8mb4'routine';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

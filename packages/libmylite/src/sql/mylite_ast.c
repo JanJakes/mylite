@@ -353,6 +353,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_events_statement";
     case MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT:
         return "show_open_tables_statement";
+    case MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT:
+        return "show_procedure_status_statement";
+    case MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT:
+        return "show_function_status_statement";
     }
 
     return "unknown";

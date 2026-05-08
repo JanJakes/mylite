@@ -92,6 +92,9 @@ statement(A) ::= show_events_statement(B). {
 statement(A) ::= show_open_tables_statement(B). {
     A = B;
 }
+statement(A) ::= show_routine_status_statement(B). {
+    A = B;
+}
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
@@ -278,6 +281,15 @@ show_open_tables_statement(A) ::= SHOW(S) OPEN TABLES(T) FROM identifier(D) show
 }
 show_open_tables_statement(A) ::= SHOW(S) OPEN TABLES(T) IN identifier(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_open_tables_statement(state, S, T, D, L);
+}
+
+show_routine_status_statement(A) ::= SHOW(S) PROCEDURE STATUS(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_routine_status_statement(
+        state, S, T, MYLITE_SQL_AST_SHOW_PROCEDURE_STATUS_STATEMENT, L);
+}
+show_routine_status_statement(A) ::= SHOW(S) FUNCTION STATUS(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_routine_status_statement(
+        state, S, T, MYLITE_SQL_AST_SHOW_FUNCTION_STATUS_STATEMENT, L);
 }
 
 show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) show_like_clause_opt(L). {

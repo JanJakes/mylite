@@ -130,6 +130,8 @@ Metadata follows the selected comparison domain:
   descriptor system can infer it
 - string and mixed string/numeric calls return `VAR_STRING` with the connection
   result collation and `NOT_NULL` only when all arguments are non-nullable
+- if any string-domain argument is binary, string-domain metadata uses binary
+  collation, byte-counted length, and the `BINARY` flag
 - `NULL` propagation makes the result nullable
 
 Observed MySQL 8.4.9 metadata:
@@ -142,6 +144,8 @@ Observed MySQL 8.4.9 metadata:
 | `LEAST(34.0,3,5) AS l` | `NEWDECIMAL` | `5` | `1` | `binary` | `NOT_NULL BINARY NUM` |
 | `GREATEST(2,'9') AS g` after `SET NAMES utf8mb4` | `VAR_STRING` | `8` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `LEAST(10,'2') AS l` after `SET NAMES utf8mb4` | `VAR_STRING` | `12` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
+| `GREATEST(_binary'ab','cdef') AS g` after `SET NAMES utf8mb4` | `VAR_STRING` | `16` | `31` | `binary` | `NOT_NULL BINARY` |
+| `LEAST(_binary'a','b') AS l` after `SET NAMES utf8mb4` | `VAR_STRING` | `4` | `31` | `binary` | `NOT_NULL BINARY` |
 | `GREATEST(1,NULL,2) AS g` | `LONGLONG` | `2` | `0` | `binary` | `BINARY NUM` |
 | `GREATEST(NULL,NULL) AS g` | `NULL` | `0` | `0` | `binary` | `BINARY NUM` |
 
@@ -199,7 +203,7 @@ Implementation tests should cover:
 - `NULL` propagation and `NULL` short-circuit warning suppression
 - default ASCII case-insensitive comparisons
 - trailing-space comparison equality and tie-breaking
-- metadata for numeric, string, mixed, and nullable calls
+- metadata for numeric, string, binary-string, mixed, and nullable calls
 - projection, `WHERE`, and `ORDER BY`
 - supported `UPDATE` assignment and `WHERE` paths
 - supported `DELETE` predicate paths
@@ -211,7 +215,7 @@ Known current MyLite limitations:
 - exact native 1582 arity diagnostics remain deferred with the broader
   scalar-function diagnostic surface
 - full collation repertoire, accent sensitivity, character-set introducers,
-  `COLLATE`, and binary-string aggregation are deferred
+  `COLLATE`, and binary-string comparison semantics are deferred
 - temporal argument aggregation and comparison are deferred
 - exact fixed-point runtime storage and exhaustive DECIMAL metadata aggregation
   remain part of broader numeric compatibility work

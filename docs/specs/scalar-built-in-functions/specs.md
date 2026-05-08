@@ -731,6 +731,7 @@ Verified `mysql --column-type-info -vvv` examples:
 | `IFNULL(NULL,'fallback') AS ifnull_value` | `VAR_STRING` | `32` | `31` | `utf8mb4_0900_ai_ci` | `NOT_NULL` |
 | `COALESCE(NULL,1.25) AS coalesce_value` | `NEWDECIMAL` | `5` | `2` | `binary` | `NOT_NULL BINARY NUM` |
 | `GREATEST(11,45,2) AS greatest_value` | `LONGLONG` | `3` | `0` | `binary` | `NOT_NULL BINARY NUM` |
+| `GREATEST(_binary'ab','cdef') AS greatest_binary` | `VAR_STRING` | `16` | `31` | `binary` | `NOT_NULL BINARY` |
 | `STRCMP('text','text2') AS strcmp_value` | `LONGLONG` | `2` | `0` | `binary` | `NOT_NULL BINARY NUM` |
 | `NOW(6) AS now6` | `DATETIME` | `26` | `6` | `binary` | `NOT_NULL BINARY` |
 | `CURDATE() AS curdate_value` | `DATE` | `10` | `0` | `binary` | `NOT_NULL BINARY` |

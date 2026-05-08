@@ -25,10 +25,12 @@ static int infer_greatest_least_string_descriptor(
     const struct mylite_expression_descriptor_compare_callbacks *callbacks
 );
 
-static uint64_t greatest_least_string_result_length(
+static int infer_greatest_least_string_properties(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool *out_is_binary,
+    uint64_t *out_length,
     const struct mylite_expression_descriptor_compare_callbacks *callbacks
 );
 
@@ -141,12 +143,32 @@ static int infer_greatest_least_string_descriptor(
     struct mylite_field_descriptor *out_descriptor,
     const struct mylite_expression_descriptor_compare_callbacks *callbacks
 ) {
+    bool is_binary = false;
+    uint64_t length = 0U;
+    unsigned int flags = 0U;
+    unsigned int charset_id = mylite_expression_descriptor_connection_charset_id(database);
+    int status = infer_greatest_least_string_properties(
+        database,
+        plan,
+        arguments,
+        &is_binary,
+        &length,
+        callbacks
+    );
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (is_binary) {
+        flags = MYLITE_FIELD_FLAG_BINARY;
+        charset_id = mylite_mysql_binary_charset_id;
+    }
     *out_descriptor = (struct mylite_field_descriptor){
         .type = MYLITE_FIELD_TYPE_VAR_STRING,
-        .flags = 0U,
-        .length = greatest_least_string_result_length(database, plan, arguments, callbacks),
+        .flags = flags,
+        .length = length,
         .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .charset_id = charset_id,
         .nullable = result_nullable,
     };
     mylite_field_descriptor_set_nullable(out_descriptor, result_nullable);
@@ -154,30 +176,40 @@ static int infer_greatest_least_string_descriptor(
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static uint64_t greatest_least_string_result_length(
+static int infer_greatest_least_string_properties(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *arguments,
+    bool *out_is_binary,
+    uint64_t *out_length,
     const struct mylite_expression_descriptor_compare_callbacks *callbacks
 ) {
     uint64_t length = 0U;
 
+    *out_is_binary = false;
     for (const struct mylite_sql_ast_node *child = arguments == NULL ? NULL
                                                                      : arguments->first_child;
          child != NULL;
          child = child->next_sibling) {
         struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
+        int status =
+            callbacks->infer_expression_descriptor(database, plan, child, NULL, &descriptor);
 
-        if (callbacks->infer_expression_descriptor(database, plan, child, NULL, &descriptor) !=
-            MYLITE_OK) {
-            return mylite_mysql_long_text_length;
+        if (status != MYLITE_OK) {
+            return status;
         }
         length = mylite_expression_descriptor_max_u64(
             length,
             greatest_least_argument_string_length(database, &descriptor)
         );
+        if (descriptor.charset_id == mylite_mysql_binary_charset_id &&
+            (mylite_expression_descriptor_has_text_result(&descriptor) ||
+             descriptor.type == MYLITE_FIELD_TYPE_BLOB)) {
+            *out_is_binary = true;
+        }
     }
-    return length;
+    *out_length = length;
+    return MYLITE_OK;
 }
 
 static uint64_t greatest_least_argument_string_length(

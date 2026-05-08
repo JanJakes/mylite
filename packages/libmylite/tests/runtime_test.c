@@ -31673,6 +31673,32 @@ static int test_greatest_least_scalar_function_execution(mylite_db *database) {
          MYLITE_FIELD_FLAG_NOT_NULL,
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
          0},
+        {"greatest_binary_meta",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         16U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         0U,
+         0},
+        {"least_binary_meta",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         4U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         0U,
+         0},
         {"greatest_null_meta",
          NULL,
          NULL,
@@ -31799,6 +31825,8 @@ static int test_greatest_least_scalar_function_execution(mylite_db *database) {
         "GREATEST(2,'9') AS greatest_mixed_meta, "
         "LEAST(10,'2') AS least_mixed_meta, "
         "GREATEST('a','B') AS greatest_text_meta, "
+        "GREATEST(_binary'ab','cdef') AS greatest_binary_meta, "
+        "LEAST(_binary'a','b') AS least_binary_meta, "
         "GREATEST(1,NULL,2) AS greatest_null_meta, "
         "GREATEST(NULL,NULL) AS greatest_all_null_meta, "
         "LEAST(NULL,NULL) AS least_all_null_meta",

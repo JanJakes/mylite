@@ -23,6 +23,7 @@ enum sha2_descriptor_constant {
 static bool infer_session_function_descriptor(
     mylite_db *database,
     const struct mylite_sql_ast_node *name,
+    bool result_nullable,
     struct mylite_field_descriptor *out_descriptor
 );
 
@@ -159,9 +160,10 @@ bool mylite_expression_descriptor_infer_hash_function(
 bool mylite_expression_descriptor_infer_session_or_inet_function(
     mylite_db *database,
     const struct mylite_sql_ast_node *name,
+    bool result_nullable,
     struct mylite_field_descriptor *out_descriptor
 ) {
-    if (infer_session_function_descriptor(database, name, out_descriptor)) {
+    if (infer_session_function_descriptor(database, name, result_nullable, out_descriptor)) {
         return true;
     }
     return infer_inet_function_descriptor(database, name, out_descriptor);
@@ -449,6 +451,7 @@ static uint64_t sha2_result_chars_from_bits(uint64_t bits) {
 static bool infer_session_function_descriptor(
     mylite_db *database,
     const struct mylite_sql_ast_node *name,
+    bool result_nullable,
     struct mylite_field_descriptor *out_descriptor
 ) {
     if (name == NULL) {
@@ -546,14 +549,8 @@ static bool infer_session_function_descriptor(
         return true;
     }
     if (mylite_span_equal_ci(name->span, "LAST_INSERT_ID")) {
-        *out_descriptor = (struct mylite_field_descriptor){
-            .type = MYLITE_FIELD_TYPE_LONGLONG,
-            .flags = MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED |
-                     MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-            .length = mylite_mysql_session_integer_function_display_length,
-            .charset_id = mylite_mysql_binary_charset_id,
-            .nullable = false,
-        };
+        *out_descriptor = mylite_expression_descriptor_unsigned_longlong(result_nullable);
+        out_descriptor->length = mylite_mysql_session_integer_function_display_length;
         return true;
     }
     if (mylite_span_equal_ci(name->span, "CONNECTION_ID")) {

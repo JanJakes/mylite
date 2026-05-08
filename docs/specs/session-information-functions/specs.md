@@ -177,15 +177,17 @@ With `SET NAMES utf8mb4`, MySQL 8.4.9 reports:
 | `SCHEMA()` | `VAR_STRING` | connection result charset, `utf8mb4_0900_ai_ci` in the probe | 256 | 31 | nullable | none |
 | `VERSION()` | `VAR_STRING` | connection result charset | 20 | 31 | not null | `NOT_NULL` |
 | `LAST_INSERT_ID()` | `LONGLONG` | binary numeric | 21 | 0 | not null | `NOT_NULL`, `UNSIGNED`, `BINARY`, `NUM` |
-| `LAST_INSERT_ID(expr)` | `LONGLONG` | binary numeric | 21 | 0 | not null | `NOT_NULL`, `UNSIGNED`, `BINARY`, `NUM` |
+| `LAST_INSERT_ID(nonnullable_expr)` | `LONGLONG` | binary numeric | 21 | 0 | not null | `NOT_NULL`, `UNSIGNED`, `BINARY`, `NUM` |
+| `LAST_INSERT_ID(nullable_expr)` | `LONGLONG` | binary numeric | 21 | 0 | nullable | `UNSIGNED`, `BINARY`, `NUM` |
 | `ROW_COUNT()` | `LONGLONG` | binary numeric | 21 | 0 | not null | `NOT_NULL`, `BINARY`, `NUM` |
 
 MyLite should use the active connection result charset id for text-returning
 functions. For `SET NAMES utf8mb4`, that is charset id `255`.
 
-`LAST_INSERT_ID(expr)` is metadata-not-null even though a `NULL` argument returns
-`NULL` at runtime in the verified probe. This follows MySQL's reported metadata
-and is intentionally different from ordinary NULL-propagating functions.
+`LAST_INSERT_ID(expr)` metadata follows the argument expression's inferred
+nullability. `LAST_INSERT_ID(NULL)` and expressions such as
+`LAST_INSERT_ID(NULLIF(1,2))` are nullable, while literal non-`NULL` arguments
+remain metadata-not-null.
 
 ## Errors and warnings
 

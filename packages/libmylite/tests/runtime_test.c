@@ -35992,10 +35992,9 @@ static int test_session_information_functions_execution(void) {
          MYLITE_FIELD_TYPE_LONGLONG,
          0U,
          63U,
-         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
-             MYLITE_FIELD_FLAG_NUM,
-         0U,
-         0},
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
         {"row_count",
          NULL,
          NULL,
@@ -36118,6 +36117,37 @@ static int test_session_information_functions_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          0U,
          0},
+    };
+    static const struct expected_result_metadata last_insert_id_not_null_metadata[] = {
+        {"last_id",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+    };
+    static const struct expected_result_metadata last_insert_id_nullable_metadata[] = {
+        {"last_id",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
     };
     mylite_db *database = NULL;
     mylite_db *fresh_database = NULL;
@@ -36440,6 +36470,12 @@ static int test_session_information_functions_execution(void) {
         1,
         "prepared last insert id columns"
     );
+    failures += expect_result_metadata(
+        stmt,
+        last_insert_id_not_null_metadata,
+        1,
+        "prepared last insert id metadata"
+    );
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "prepared last insert id row");
     failures += expect_string(
         mylite_column_text(stmt, 0),
@@ -36452,6 +36488,22 @@ static int test_session_information_functions_execution(void) {
         "prepared last insert id mutates at step"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "prepared last insert id done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        prepare_sql(database, "SELECT LAST_INSERT_ID(NULLIF(1,2)) AS last_id", MYLITE_OK, &stmt);
+    failures += expect_column_names(
+        stmt,
+        (const char *const[]){"last_id"},
+        1,
+        "nullable last insert id columns"
+    );
+    failures += expect_result_metadata(
+        stmt,
+        last_insert_id_nullable_metadata,
+        1,
+        "nullable last insert id metadata"
+    );
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(database, "SELECT ROW_COUNT() AS row_count", MYLITE_OK, &stmt);

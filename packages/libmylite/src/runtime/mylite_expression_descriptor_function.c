@@ -1316,6 +1316,7 @@ static bool infer_common_scalar_function_descriptor(
     if (mylite_expression_descriptor_infer_session_or_inet_function(
             database,
             name,
+            result_nullable,
             out_descriptor
         )) {
         return true;

@@ -505,6 +505,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       result character set and collation, including MySQL-shaped `utf8mb4`
       metadata after `SET NAMES utf8mb4` and latin1 metadata after
       `SET NAMES latin1`.
+      `LAST_INSERT_ID(expr)` result metadata now follows MySQL's argument
+      nullability: no-argument and non-null literal calls keep `NOT_NULL`,
+      while `NULL` and nullable expressions omit it.
       Table-dependent `HEX()` expressions now report MySQL-shaped latin1
       result descriptors with byte-counted widths for string and numeric
       source columns, while scalar literals retain connection-charset metadata.

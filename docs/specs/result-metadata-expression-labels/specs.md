@@ -122,6 +122,8 @@ Observed behavior:
 | --- | --- |
 | `SELECT id FROM t` | `name='id'`, `org_name='id'`, table/origin table both `t` |
 | `SELECT id AS label FROM t` | `name='label'`, `org_name='id'`; alias does not change origin |
+| `SELECT (id) AS label FROM t AS tt` | parenthesized direct references keep base-column metadata, with `table='tt'`, `org_table='t'`, and `org_name='id'` |
+| `SELECT +((n)) AS label FROM t AS tt` | unary positive references through parentheses keep the referenced column descriptor and origin metadata |
 | `SELECT id AS label, n AS label FROM t` | both output labels are exactly `label`; duplicates are allowed |
 | `SELECT n + 1 AS expr FROM t` | `name='expr'`, empty `org_name`, `db`, `table`, and `org_table` |
 | `SELECT n + 1 FROM t` | default label is the expression text as normalized by MySQL formatting |
@@ -506,6 +508,7 @@ byte lengths.
 | --- | --- |
 | `SELECT id, n AS alias_n, n AS alias_n FROM meta_t AS mt LIMIT 0` | three result fields, duplicate `alias_n` labels preserved; base columns expose `db=mylite_task23_metadata`, visible table `mt`, origin table `meta_t`, origin names `id`/`n` |
 | `SELECT id AS label, n AS label FROM meta_t LIMIT 0` | both labels are `label`; origin names remain `id` and `n` |
+| `SELECT (id) AS paren_id, +((n)) AS plus_n FROM meta_t AS mt LIMIT 0` | parenthesized references and unary-positive references preserve base-column descriptors and origin metadata through the table alias |
 | `SELECT n + 1 AS expr FROM meta_t LIMIT 0` | label `expr`; empty origin schema/table/column; `LONGLONG`, length `12`, nullable |
 | `SELECT 1 AS one, NULL AS nil, 'abc' AS str_lit, _binary 'abc' AS bin_lit LIMIT 0` | literal metadata from the table above; all origins empty |
 | `SELECT id FROM meta_t ORDER BY n + 1 LIMIT 0` | one result field only, for `id`; hidden order key not exposed |

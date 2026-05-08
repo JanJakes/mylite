@@ -408,6 +408,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Standalone `VALUES ROW(...)` result metadata now has MySQL-verified
       regression coverage for zero-row mixed numeric/string descriptors,
       character-width widening, and multi-column numeric/string rows.
+      Parenthesized table-column references and unary-positive references
+      through parentheses now preserve base-column descriptor and origin
+      metadata instead of falling back to empty expression origins.
       Approximate numeric values stored into `VARCHAR` and `TEXT` through
       covered `INSERT ... VALUES` and single-table `UPDATE` paths now use
       MySQL-shaped compact DOUBLE display text, including lowercase exponent

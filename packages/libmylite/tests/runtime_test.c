@@ -74863,6 +74863,62 @@ static int test_result_metadata_expression_labels_execution(void) {
          0U,
          0},
     };
+    static const struct expected_result_metadata parenthesized_reference_metadata[] = {
+        {"paren_id",
+         "mylite_task23_metadata",
+         "tt",
+         "mylite_task23_metadata",
+         "t",
+         "id",
+         11U,
+         MYLITE_FIELD_TYPE_LONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_AUTO_INCREMENT |
+             MYLITE_FIELD_FLAG_PART_KEY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"paren_n",
+         "mylite_task23_metadata",
+         "tt",
+         "mylite_task23_metadata",
+         "t",
+         "n",
+         11U,
+         MYLITE_FIELD_TYPE_LONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_MULTIPLE_KEY | MYLITE_FIELD_FLAG_PART_KEY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"plus_id",
+         "mylite_task23_metadata",
+         "tt",
+         "mylite_task23_metadata",
+         "t",
+         "id",
+         11U,
+         MYLITE_FIELD_TYPE_LONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_AUTO_INCREMENT |
+             MYLITE_FIELD_FLAG_PART_KEY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"plus_n",
+         "mylite_task23_metadata",
+         "tt",
+         "mylite_task23_metadata",
+         "t",
+         "n",
+         11U,
+         MYLITE_FIELD_TYPE_LONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_MULTIPLE_KEY | MYLITE_FIELD_FLAG_PART_KEY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -75049,6 +75105,28 @@ static int test_result_metadata_expression_labels_execution(void) {
     failures += prepare_sql(database, "SELECT id FROM t ORDER BY n + 1 LIMIT 0", MYLITE_OK, &stmt);
     failures += expect_result_metadata(stmt, hidden_order_metadata, 1, "hidden order metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "hidden order limit zero");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT (id) AS paren_id, ((n)) AS paren_n, "
+        "+(id) AS plus_id, +((n)) AS plus_n FROM t AS tt LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        parenthesized_reference_metadata,
+        (int)(sizeof(parenthesized_reference_metadata) /
+              sizeof(parenthesized_reference_metadata[0])),
+        "parenthesized reference metadata"
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_DONE,
+        "parenthesized reference metadata limit zero"
+    );
     mylite_finalize(stmt);
 
     mylite_close(database);

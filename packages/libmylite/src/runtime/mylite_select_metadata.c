@@ -6,6 +6,8 @@
 #include "mylite_select.h"
 #include "mylite_select_resolve.h"
 #include "mylite_span.h"
+#include "mylite_system_variables.h"
+#include "mylite_user_variables.h"
 #include "sql/mylite_ast.h"
 
 #include <stdbool.h>
@@ -26,7 +28,7 @@ static int copy_select_base_column_metadata(
     size_t column_index
 );
 
-static bool expression_is_unary_positive_column_reference(
+static bool expression_is_column_origin_reference(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node **out_reference
 );
@@ -86,18 +88,15 @@ static int copy_select_result_column_metadata(
         return status;
     }
     if (output->kind == MYLITE_SELECT_OUTPUT_EXPRESSION) {
-        const struct mylite_sql_ast_node *positive_reference = NULL;
+        const struct mylite_sql_ast_node *origin_reference = NULL;
 
-        if (expression_is_unary_positive_column_reference(
-                output->expression,
-                &positive_reference
-            )) {
+        if (expression_is_column_origin_reference(output->expression, &origin_reference)) {
             size_t column_index = mylite_select_plan_column_count(plan);
 
             status = mylite_select_resolve_plan_column_reference(
                 database,
                 plan,
-                positive_reference,
+                origin_reference,
                 "field list",
                 &column_index
             );
@@ -168,26 +167,34 @@ static int copy_select_base_column_metadata(
     return status;
 }
 
-static bool expression_is_unary_positive_column_reference(
+static bool expression_is_column_origin_reference(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node **out_reference
 ) {
-    const struct mylite_sql_ast_node *child = NULL;
+    const struct mylite_sql_ast_node *candidate = NULL;
 
     if (out_reference == NULL) {
         return false;
     }
     *out_reference = NULL;
-    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UNARY_EXPRESSION ||
-        expression->operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+    candidate = mylite_sql_ast_unwrap_parenthesized_expression(expression);
+    if (candidate == NULL) {
         return false;
     }
-    child = mylite_ast_child_at(expression, 0U);
-    if (child == NULL || (child->kind != MYLITE_SQL_AST_IDENTIFIER &&
-                          child->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+    if (candidate->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        candidate->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        candidate =
+            mylite_sql_ast_unwrap_parenthesized_expression(mylite_ast_child_at(candidate, 0U));
+    }
+    if (candidate == NULL || (candidate->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                              candidate->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return false;
+    }
+    if (mylite_system_variable_identifier_is_system_variable(candidate) ||
+        mylite_user_variable_identifier_is_user_variable(candidate)) {
         return false;
     }
 
-    *out_reference = child;
+    *out_reference = candidate;
     return true;
 }

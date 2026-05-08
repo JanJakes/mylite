@@ -20,11 +20,13 @@ enum {
     scoped_variable_column_count = 4,
     server_variable_column_count = 10,
     database_variable_full_column_count = 10,
-    mixed_variable_column_count = 15,
-    diagnostics_variable_column_count = 5,
-    reopen_variable_column_count = 6,
-    database_variable_column_count = 3,
+    system_variable_column_count = 4,
+    mixed_variable_column_count = 17,
+    diagnostics_variable_column_count = 6,
+    reopen_variable_column_count = 7,
+    database_variable_column_count = 4,
     mysql_error_parse = 1064,
+    mysql_error_session_variable_only = 1238,
     mysql_error_unknown_system_variable = 1193,
 };
 
@@ -162,29 +164,68 @@ static int test_character_set_system_variable_values_and_persistence(void) {
         "0",
         "-1",
     };
+    static const char *const system_columns[] = {
+        "@@character_set_system",
+        "@@global.character_set_system",
+        "@@warning_count",
+        "ROW_COUNT()",
+    };
+    static const char *const system_values[] = {
+        "utf8mb3",
+        "utf8mb3",
+        "0",
+        "-1",
+    };
     static const char *const warning_columns[] = {
+        "@@character_set_system",
         "@@character_set_database",
         "@@collation_database",
         "@@warning_count",
         "@@error_count",
         "ROW_COUNT()",
     };
-    static const char *const warning_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci", "1", "0", "-1"};
+    static const char *const warning_values[] = {
+        "utf8mb3",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "1",
+        "0",
+        "-1",
+    };
     static const char *const error_columns[] = {
+        "@@character_set_system",
         "@@character_set_database",
         "@@collation_database",
         "@@warning_count",
         "@@error_count",
         "ROW_COUNT()",
     };
-    static const char *const error_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci", "1", "1", "-1"};
+    static const char *const error_values[] = {
+        "utf8mb3",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "1",
+        "1",
+        "-1",
+    };
     static const char *const database_columns[] = {
+        "@@character_set_system",
         "@@character_set_database",
         "@@collation_database",
         "DATABASE()",
     };
-    static const char *const database_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci", "app"};
-    static const char *const dropped_database_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci", NULL};
+    static const char *const database_values[] = {
+        "utf8mb3",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "app",
+    };
+    static const char *const dropped_database_values[] = {
+        "utf8mb3",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        NULL,
+    };
     static const char *const reopen_columns[] = {
         "@@character_set_client",
         "@@collation_connection",
@@ -192,6 +233,7 @@ static int test_character_set_system_variable_values_and_persistence(void) {
         "@@collation_server",
         "@@character_set_database",
         "@@collation_database",
+        "@@character_set_system",
     };
     static const char *const reopen_values[] = {
         "utf8mb4",
@@ -200,6 +242,7 @@ static int test_character_set_system_variable_values_and_persistence(void) {
         "utf8mb4_0900_ai_ci",
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
+        "utf8mb3",
     };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -298,11 +341,29 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_system, @@global.character_set_system, @@warning_count, "
+        "ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = system_columns,
+            .values = system_values,
+            .count = system_variable_column_count,
+            .context = "system charset variable values",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
     failures += execute_ok(
         database,
-        "SELECT @@character_set_database, @@collation_database, @@warning_count, @@error_count, "
-        "ROW_COUNT()",
+        "SELECT @@character_set_system, @@character_set_database, @@collation_database, "
+        "@@warning_count, @@error_count, ROW_COUNT()",
         &result
     );
     failures += expect_scalar_result(
@@ -329,8 +390,8 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     );
     failures += execute_ok(
         database,
-        "SELECT @@character_set_database, @@collation_database, @@warning_count, @@error_count, "
-        "ROW_COUNT()",
+        "SELECT @@character_set_system, @@character_set_database, @@collation_database, "
+        "@@warning_count, @@error_count, ROW_COUNT()",
         &result
     );
     failures += expect_scalar_result(
@@ -363,7 +424,8 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     failures += execute_statement_ok(database, "USE app");
     failures += execute_ok(
         database,
-        "SELECT @@character_set_database, @@collation_database, DATABASE()",
+        "SELECT @@character_set_system, @@character_set_database, @@collation_database, "
+        "DATABASE()",
         &result
     );
     failures += expect_scalar_result(
@@ -381,7 +443,8 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     failures += execute_statement_ok(database, "DROP DATABASE app");
     failures += execute_ok(
         database,
-        "SELECT @@character_set_database, @@collation_database, DATABASE()",
+        "SELECT @@character_set_system, @@character_set_database, @@collation_database, "
+        "DATABASE()",
         &result
     );
     failures += expect_scalar_result(
@@ -410,7 +473,8 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     failures += execute_ok(
         database,
         "SELECT @@character_set_client, @@collation_connection, @@character_set_server, "
-        "@@collation_server, @@character_set_database, @@collation_database",
+        "@@collation_server, @@character_set_database, @@collation_database, "
+        "@@character_set_system",
         &result
     );
     failures += expect_scalar_result(
@@ -462,6 +526,8 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
         "@@Session.Collation_Database",
         "@@session.`character_set_database`",
         "@@global.`collation_database`",
+        "@@CHARACTER_SET_SYSTEM",
+        "@@global.`character_set_system`",
     };
     static const char *const mixed_values[] = {
         "utf8mb4",
@@ -479,6 +545,8 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
         "utf8mb4_0900_ai_ci",
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
+        "utf8mb3",
+        "utf8mb3",
     };
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -495,7 +563,8 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
         "@@Session.Collation_Server, @@session.`character_set_server`, "
         "@@global.`collation_server`, @@CHARACTER_SET_DATABASE, "
         "@@Session.Collation_Database, @@session.`character_set_database`, "
-        "@@global.`collation_database`",
+        "@@global.`collation_database`, @@CHARACTER_SET_SYSTEM, "
+        "@@global.`character_set_system`",
         &result
     );
     failures += expect_scalar_result(
@@ -584,6 +653,42 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
     );
     failures += execute_error(
         database,
+        "SELECT @@session.character_set_system",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@local.character_set_system",
+        (struct expected_sql_error){
+            .code = mysql_error_session_variable_only,
+            .sqlstate = "HY000",
+            .message_part = "GLOBAL variable",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@no_such_system_charset_variable",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_system_variable,
+            .sqlstate = "HY000",
+            .message_part = "Unknown system variable 'no_such_system_charset_variable'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@global.no_such_system_charset_variable",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_system_variable,
+            .sqlstate = "HY000",
+            .message_part = "Unknown system variable 'no_such_system_charset_variable'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT @@`session`.character_set_client",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -593,7 +698,7 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SELECT @@character_set_database + 1",
+        "SELECT @@character_set_system + 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -613,6 +718,7 @@ static int test_independent_character_set_system_variable_handles(void) {
         "@@collation_server",
         "@@character_set_database",
         "@@collation_database",
+        "@@character_set_system",
         "@@warning_count",
     };
     static const char *const first_values[] = {
@@ -622,6 +728,7 @@ static int test_independent_character_set_system_variable_handles(void) {
         "utf8mb4_0900_ai_ci",
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
+        "utf8mb3",
         "1",
     };
     static const char *const second_values[] = {
@@ -631,6 +738,7 @@ static int test_independent_character_set_system_variable_handles(void) {
         "utf8mb4_0900_ai_ci",
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
+        "utf8mb3",
         "0",
     };
     mylite_db *first = NULL;
@@ -645,7 +753,8 @@ static int test_independent_character_set_system_variable_handles(void) {
     failures += execute_ok(
         first,
         "SELECT @@character_set_client, @@collation_connection, @@character_set_server, "
-        "@@collation_server, @@character_set_database, @@collation_database, @@warning_count",
+        "@@collation_server, @@character_set_database, @@collation_database, "
+        "@@character_set_system, @@warning_count",
         &result
     );
     failures += expect_scalar_result(
@@ -663,7 +772,8 @@ static int test_independent_character_set_system_variable_handles(void) {
     failures += execute_ok(
         second,
         "SELECT @@character_set_client, @@collation_connection, @@character_set_server, "
-        "@@collation_server, @@character_set_database, @@collation_database, @@warning_count",
+        "@@collation_server, @@character_set_database, @@collation_database, "
+        "@@character_set_system, @@warning_count",
         &result
     );
     failures += expect_scalar_result(

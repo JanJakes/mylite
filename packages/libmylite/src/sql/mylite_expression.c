@@ -25334,6 +25334,8 @@ static int set_float_cast_value(double value, struct mylite_expression_value *ou
     if (length <= 0 || (size_t)length >= sizeof(buffer)) {
         return -1;
     }
+    normalize_real_exponent_text(buffer);
+    length = (int)strlen(buffer);
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_REAL,
         .real_value = value,

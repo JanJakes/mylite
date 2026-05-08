@@ -208,11 +208,13 @@ returns `NULL` without warnings.
 | SQL | Result | Warnings |
 | --- | --- | --- |
 | `CAST('1.23456789' AS FLOAT)` | `1.23457` | none |
+| `CAST(3.4028234663852886e38 AS FLOAT)` | `3.40282e38` | none |
 | `CAST('1.23456789' AS FLOAT(24))` | `1.23457` | none |
 | `CAST('1.23456789' AS FLOAT(25))` | `1.23456789` | none |
 | `CAST('1.23456789' AS DOUBLE)` | `1.23456789` | none |
 | `CAST('1.23456789' AS REAL)` | `1.23456789` | none |
 | `SET sql_mode='REAL_AS_FLOAT'; CAST('1.23456789' AS REAL)` | `1.23457` | none |
+| `SET sql_mode='REAL_AS_FLOAT'; CAST(3.4028234663852886e38 AS REAL)` | `3.40282e38` | none |
 | `CAST('1.23456789' AS FLOAT4(10))` | `1.23457` | none |
 | `CAST('1.23456789' AS FLOAT8)` | `1.23456789` | none |
 | `CAST('x' AS DOUBLE)` | `0` | 1292 truncated double |

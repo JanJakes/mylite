@@ -36306,6 +36306,7 @@ static int test_cast_expression_execution(void) {
         "unsigned_wrap",
         "decimal_value",
         "float_value",
+        "float_exp_value",
         "double_value",
         "real_value",
         "float_precision_value",
@@ -36654,7 +36655,33 @@ static int test_cast_expression_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          0U,
          0},
+        {"real_cast_exp",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_FLOAT,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
         {"real_convert",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_FLOAT,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"real_convert_exp",
          NULL,
          NULL,
          NULL,
@@ -36876,6 +36903,7 @@ static int test_cast_expression_execution(void) {
         "CAST(-1 AS UNSIGNED) AS unsigned_wrap, "
         "CAST(12.345 AS DECIMAL(5,2)) AS decimal_value, "
         "CAST('1.23456789' AS FLOAT) AS float_value, "
+        "CAST(3.4028234663852886e38 AS FLOAT) AS float_exp_value, "
         "CAST('1.23456789' AS DOUBLE) AS double_value, "
         "CAST('1.23456789' AS REAL) AS real_value, "
         "CAST('1.23456789' AS FLOAT(25)) AS float_precision_value, "
@@ -36900,12 +36928,13 @@ static int test_cast_expression_execution(void) {
     );
     failures += expect_string(mylite_column_text(stmt, 3), "12.35", "CAST decimal value");
     failures += expect_string(mylite_column_text(stmt, 4), "1.23457", "CAST float value");
-    failures += expect_string(mylite_column_text(stmt, 5), "1.23456789", "CAST double value");
-    failures += expect_string(mylite_column_text(stmt, 6), "1.23456789", "CAST real value");
+    failures += expect_string(mylite_column_text(stmt, 5), "3.40282e38", "CAST float exponent");
+    failures += expect_string(mylite_column_text(stmt, 6), "1.23456789", "CAST double value");
+    failures += expect_string(mylite_column_text(stmt, 7), "1.23456789", "CAST real value");
     failures +=
-        expect_string(mylite_column_text(stmt, 7), "1.23456789", "CAST float precision value");
-    failures += expect_string(mylite_column_text(stmt, 8), "38.8", "CAST char value");
-    failures += expect_string(mylite_column_text(stmt, 9), "abc", "CAST binary value");
+        expect_string(mylite_column_text(stmt, 8), "1.23456789", "CAST float precision value");
+    failures += expect_string(mylite_column_text(stmt, 9), "38.8", "CAST char value");
+    failures += expect_string(mylite_column_text(stmt, 10), "abc", "CAST binary value");
     failures += expect_int(mylite_warning_count(database), 0, "CAST rowless warning count");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST rowless done");
     mylite_finalize(stmt);
@@ -37107,7 +37136,9 @@ static int test_cast_expression_execution(void) {
     failures += prepare_sql(
         database,
         "SELECT CAST('1.23456789' AS REAL) AS real_cast, "
-        "CONVERT('1.23456789', REAL) AS real_convert",
+        "CAST(3.4028234663852886e38 AS REAL) AS real_cast_exp, "
+        "CONVERT('1.23456789', REAL) AS real_convert, "
+        "CONVERT(3.4028234663852886e38, REAL) AS real_convert_exp",
         MYLITE_OK,
         &stmt
     );
@@ -37120,7 +37151,11 @@ static int test_cast_expression_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST REAL_AS_FLOAT row");
     failures += expect_string(mylite_column_text(stmt, 0), "1.23457", "CAST REAL_AS_FLOAT value");
     failures +=
-        expect_string(mylite_column_text(stmt, 1), "1.23457", "CONVERT REAL_AS_FLOAT value");
+        expect_string(mylite_column_text(stmt, 1), "3.40282e38", "CAST REAL_AS_FLOAT exponent");
+    failures +=
+        expect_string(mylite_column_text(stmt, 2), "1.23457", "CONVERT REAL_AS_FLOAT value");
+    failures +=
+        expect_string(mylite_column_text(stmt, 3), "3.40282e38", "CONVERT REAL_AS_FLOAT exponent");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST REAL_AS_FLOAT done");
     mylite_finalize(stmt);
     stmt = NULL;
@@ -38310,6 +38345,7 @@ static int test_convert_expression_execution(void) {
         "unsigned_value",
         "decimal_value",
         "float_value",
+        "float_exp_value",
         "double_value",
         "char_value",
         "binary_value",
@@ -38325,6 +38361,7 @@ static int test_convert_expression_execution(void) {
         "18446744073709551615",
         "12.35",
         "1.23457",
+        "3.40282e38",
         "1.23456789",
         "abc",
         "abc",
@@ -38659,12 +38696,13 @@ static int test_convert_expression_execution(void) {
         "CONVERT('-1', UNSIGNED) AS unsigned_value, "
         "CONVERT('12.345', DECIMAL(5,2)) AS decimal_value, "
         "CONVERT('1.23456789', FLOAT) AS float_value, "
+        "CONVERT(3.4028234663852886e38, FLOAT) AS float_exp_value, "
         "CONVERT('1.23456789', DOUBLE) AS double_value, "
         "CONVERT('abcdef', CHAR(3)) AS char_value, "
         "CONVERT('abc', BINARY) AS binary_value, "
         "CONVERT('abc' USING latin1) AS using_latin1",
         rowless_columns,
-        13,
+        (int)(sizeof(rowless_columns) / sizeof(rowless_columns[0])),
         rowless_values,
         1,
         "CONVERT rowless values"

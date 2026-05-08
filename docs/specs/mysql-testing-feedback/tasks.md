@@ -347,6 +347,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       introspection, warning 3720, invalid-byte validation, and
       length-qualified truncation while preserving direct result metadata
       behavior.
+      Scalar `CAST`/`CONVERT` to `FLOAT`, including `REAL` under
+      `REAL_AS_FLOAT`, now normalize positive exponent display without the
+      optional plus sign, matching MySQL's `3.40282e38` text form.
       `LONGTEXT` and `LONGBLOB` now enter the covered string/binary DML
       coercion path for approximate numeric text conversion, and covered
       `LONGTEXT` invalid UTF-8 writes reject or demote like MySQL while paired

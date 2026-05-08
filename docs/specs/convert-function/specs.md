@@ -113,10 +113,12 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `HEX(CONVERT('abcdef', BINARY(3)))` | `616263` | 1292 truncated binary |
 | `HEX(CONVERT(UNHEX('E282AC62'), CHAR(3) CHARACTER SET binary))` | `E282AC` | 1292 truncated binary |
 | `CONVERT('1.23456789', FLOAT)` | `1.23457` | none |
+| `CONVERT(3.4028234663852886e38, FLOAT)` | `3.40282e38` | none |
 | `CONVERT('1.23456789', FLOAT(25))` | `1.23456789` | none |
 | `CONVERT('1.23456789', DOUBLE)` | `1.23456789` | none |
 | `CONVERT('1.23456789', REAL)` | `1.23456789` | none |
 | `SET sql_mode='REAL_AS_FLOAT'; CONVERT('1.23456789', REAL)` | `1.23457` | none |
+| `SET sql_mode='REAL_AS_FLOAT'; CONVERT(3.4028234663852886e38, REAL)` | `3.40282e38` | none |
 | `CONVERT('x', DOUBLE)` | `0` | 1292 truncated double |
 | `CONVERT(NULL, SIGNED)` | `NULL` | none |
 | `CONVERT('2024-01-02 03:04:05.123456', DATE)` | `2024-01-02` | none |

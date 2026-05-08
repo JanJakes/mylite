@@ -343,7 +343,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_token create_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *columns,
-    struct mylite_sql_token right_paren
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *engine_option
 ) {
     struct mylite_sql_source_span span =
         span_join(span_from_token(&create_token), span_from_token(&right_paren));
@@ -355,7 +356,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
 
     mylite_sql_ast_node_append_child(statement, table_name);
     mylite_sql_ast_node_append_child(statement, columns);
+    if (engine_option != NULL) {
+        mylite_sql_ast_node_append_child(statement, engine_option);
+        mylite_sql_ast_node_set_span(statement, span_join(statement->span, engine_option->span));
+    }
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_engine_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token engine_token,
+    struct mylite_sql_ast_node *engine_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&engine_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (engine_name != NULL) {
+        span = span_join(span, engine_name->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_ENGINE_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, engine_name);
+    return option;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
@@ -540,6 +566,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_table_statement(
 
     mylite_sql_ast_node_append_child(statement, table_name);
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token engines_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT,
+        span_join(span_from_token(&show_token), span_from_token(&engines_token))
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
@@ -1524,6 +1562,9 @@ static bool map_keyword_token(
         {"TABLES", MYLITE_SQL_PARSE_TABLES},
         {"COLUMNS", MYLITE_SQL_PARSE_COLUMNS},
         {"FIELDS", MYLITE_SQL_PARSE_FIELDS},
+        {"ENGINE", MYLITE_SQL_PARSE_ENGINE},
+        {"ENGINES", MYLITE_SQL_PARSE_ENGINES},
+        {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
         {"LIKE", MYLITE_SQL_PARSE_LIKE},
         {"SCHEMA", MYLITE_SQL_PARSE_SCHEMA},
         {"SCHEMAS", MYLITE_SQL_PARSE_SCHEMAS},

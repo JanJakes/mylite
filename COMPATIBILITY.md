@@ -35,7 +35,7 @@ tests.
 | Column flags | ❌ | Protocol and result flag bits. | [wire protocol](docs/compatibility/wire-protocol.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
 | Result column metadata | ❌ | Names, types, lengths, charset, decimals. | [wire protocol](docs/compatibility/wire-protocol.md), [error, warning, and result semantics](docs/compatibility/error-warning-result-semantics.md) |
 | Origin metadata | ❌ | Schema, table, and origin names. | [wire protocol](docs/compatibility/wire-protocol.md), [INFORMATION_SCHEMA tables](docs/compatibility/metadata-information-schema.md) |
-| InnoDB-only engine surface | ❌ | Expose only `InnoDB`. | [embedded-design decisions](docs/compatibility/embedded-design-decisions.md), [mysql schema](docs/compatibility/metadata-mysql-schema.md), [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| InnoDB-only engine surface | 🟡 | Limited embedded InnoDB-compatible surface: `CREATE TABLE ... ENGINE [=] InnoDB` is accepted for the current persistent base-table subset, `SHOW CREATE TABLE` emits the fixed InnoDB suffix, and `SHOW [STORAGE] ENGINES` exposes a single InnoDB default row; no alternate engines, plugins, `INFORMATION_SCHEMA.ENGINES`, or engine internals. | [embedded-design decisions](docs/compatibility/embedded-design-decisions.md), [mysql schema](docs/compatibility/metadata-mysql-schema.md), [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 
 ### Schema Objects
 
@@ -49,13 +49,13 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `CREATE TABLE` | 🟡 | Limited persistent base-table creation with explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, and `NULL`/`NOT NULL`; no options, keys, defaults, temporary tables, or `IF NOT EXISTS`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| `CREATE TABLE` | 🟡 | Limited persistent base-table creation with explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, `NULL`/`NOT NULL`, and optional explicit `ENGINE [=] InnoDB`; no other options, keys, defaults, temporary tables, or `IF NOT EXISTS`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CREATE TEMPORARY TABLE` | ❌ | Session-scoped creation. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CREATE TABLE ... LIKE` | ❌ | Metadata cloning. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `CREATE TABLE ... SELECT` | ❌ | CTAS inference and atomicity. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Column definition grammar | 🟡 | Limited integer column descriptors and nullability only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Default expressions | ❌ | Literal and expression defaults. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| Table engine options | ❌ | Accept and expose `InnoDB`. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
+| Table engine options | 🟡 | Optional explicit `ENGINE [=] InnoDB` only for the limited persistent `CREATE TABLE` subset; non-InnoDB engines are rejected with MyLite's embedded InnoDB-only diagnostic. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Table charset and collation options | ❌ | Table defaults and metadata. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
 | `ADD COLUMN` | ❌ | Positioning, defaults, metadata. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `DROP COLUMN` | ❌ | Dependency checks and errors. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |

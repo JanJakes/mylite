@@ -25,7 +25,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW ENGINE LOGS` | ❌ | Result shape, filters, privileges |
 | `SHOW ENGINE MUTEX` | ❌ | Result shape, filters, privileges |
 | `SHOW ENGINE STATUS` | ❌ | Result shape, filters, privileges |
-| `SHOW ENGINES` | ❌ | Result shape, filters, privileges |
+| `SHOW ENGINES` | 🟡 | Limited `SHOW [STORAGE] ENGINES` exposes one embedded InnoDB default row with MySQL 8.4.9 column labels; no alternate engines, filters, privileges, plugins, or `INFORMATION_SCHEMA.ENGINES` |
 | `SHOW ERRORS` | ❌ | Result shape, filters, privileges |
 | `SHOW EVENTS` | ❌ | Result shape, filters, privileges |
 | `SHOW FUNCTION CODE` | ❌ | Debug-only routine bytecode listing |

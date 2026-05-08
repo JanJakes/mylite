@@ -40,12 +40,14 @@ enum {
     mysql_error_data_out_of_range = 1264,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
+    mysql_error_unknown_storage_engine = 1286,
     sqlite_use_nul_terminated_string = -1,
     decimal_base = 10,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
     show_columns_result_column_count = 6,
     show_create_table_result_column_count = 2,
+    show_engines_result_column_count = 6,
 };
 
 struct table_name_resolution {
@@ -321,6 +323,7 @@ static int execute_show_create_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_show_engines_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_show_databases_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -340,6 +343,26 @@ static int plan_create_table(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_create_table *out_plan
+);
+static int validate_create_table_engine_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *engine_option
+);
+static int copy_engine_name_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *engine_name_node,
+    char *destination,
+    size_t destination_size
+);
+static int decode_engine_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *engine_name_node,
+    char **out_name
+);
+static int append_decoded_engine_name_escape(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    char escaped_byte
 );
 static void planned_create_table_deinit(struct planned_create_table *plan);
 static int create_table_from_plan(
@@ -1032,6 +1055,7 @@ static void set_unknown_table_error(
     const char *schema_name,
     const char *table_name
 );
+static void set_unknown_storage_engine_error(struct mylite_db *database, const char *engine_name);
 static void set_table_does_not_exist_error(
     struct mylite_db *database,
     const char *schema_name,
@@ -1192,6 +1216,8 @@ static int execute_parsed_statement(
         return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
         return execute_show_create_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
+        return execute_show_engines_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return execute_show_databases_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SCRIPT:
@@ -1221,6 +1247,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_TABLE_ENGINE_OPTION:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -1797,6 +1824,53 @@ static int execute_show_create_table_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_engines_statement(struct mylite_db *database, mylite_result **out_result) {
+    static const char *const result_columns[show_engines_result_column_count] = {
+        "Engine",
+        "Support",
+        "Comment",
+        "Transactions",
+        "XA",
+        "Savepoints",
+    };
+    static const char *const values[show_engines_result_column_count] = {
+        "InnoDB",
+        "DEFAULT",
+        "Supports transactions, row-level locking, and foreign keys",
+        "YES",
+        "YES",
+        "YES",
+    };
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_engines_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_databases_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -2073,6 +2147,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return -1;
     case MYLITE_SQL_AST_SCRIPT:
@@ -2102,6 +2177,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT_LIST:
     case MYLITE_SQL_AST_UPDATE_ASSIGNMENT:
+    case MYLITE_SQL_AST_TABLE_ENGINE_OPTION:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -2153,6 +2229,10 @@ static int plan_create_table(
         set_reserved_name_error(database, "table", out_plan->target.table_name);
         return MYLITE_ERROR;
     }
+    rc = validate_create_table_engine_option(database, child_at(statement, 2U));
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     if (column_count == 0U) {
         set_parse_error(database, NULL);
@@ -2181,6 +2261,178 @@ static int plan_create_table(
     }
 
     return MYLITE_OK;
+}
+
+static int validate_create_table_engine_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *engine_option
+) {
+    char engine_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (engine_option == NULL) {
+        return MYLITE_OK;
+    }
+    if (engine_option->kind != MYLITE_SQL_AST_TABLE_ENGINE_OPTION) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_engine_name_text(
+        database,
+        child_at(engine_option, 0U),
+        engine_name,
+        sizeof(engine_name)
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_equals_ascii_case_insensitive(engine_name, "InnoDB")) {
+        set_unknown_storage_engine_error(database, engine_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int copy_engine_name_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *engine_name_node,
+    char *destination,
+    size_t destination_size
+) {
+    char *decoded = NULL;
+    size_t decoded_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (engine_name_node == NULL || destination == NULL || destination_size == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (engine_name_node->span.text == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < engine_name_node->span.length; ++index) {
+        if (engine_name_node->span.text[index] == '\0') {
+            set_unsupported_error(database, "table engine names do not support NUL bytes");
+            return MYLITE_ERROR;
+        }
+    }
+    if (engine_name_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        return copy_identifier_text(engine_name_node, destination, destination_size, database);
+    }
+    if (engine_name_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(engine_name_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_engine_string_literal(database, engine_name_node, &decoded);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    decoded_length = strlen(decoded);
+    if (decoded_length >= destination_size) {
+        free(decoded);
+        set_identifier_too_long_error(database, "storage engine");
+        return MYLITE_ERROR;
+    }
+
+    memcpy(destination, decoded, decoded_length + 1U);
+    free(decoded);
+    return MYLITE_OK;
+}
+
+static int decode_engine_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *engine_name_node,
+    char **out_name
+) {
+    struct dynamic_string string;
+    const char *text = NULL;
+    size_t length = 0U;
+    char quote = '\0';
+    int rc = MYLITE_OK;
+
+    if (out_name == NULL) {
+        set_runtime_error(database, "invalid table engine option");
+        return MYLITE_ERROR;
+    }
+    *out_name = NULL;
+    if (engine_name_node == NULL || engine_name_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(engine_name_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    text = engine_name_node->span.text;
+    length = engine_name_node->span.length;
+    if (text == NULL || length < 2U) {
+        set_runtime_error(database, "invalid table engine option");
+        return MYLITE_ERROR;
+    }
+
+    quote = text[0];
+    dynamic_string_init(&string);
+    for (size_t index = 1U; rc == MYLITE_OK && index + 1U < length; ++index) {
+        char byte = text[index];
+
+        if (byte == quote && index + 2U < length && text[index + 1U] == quote) {
+            rc = dynamic_string_append_char(&string, quote);
+            ++index;
+        } else if (byte == '\\' && index + 2U < length) {
+            ++index;
+            rc = append_decoded_engine_name_escape(database, &string, text[index]);
+        } else {
+            rc = dynamic_string_append_char(&string, byte);
+        }
+    }
+    if (rc == MYLITE_OK && string.text == NULL) {
+        rc = dynamic_string_append(&string, "");
+    }
+    if (rc == MYLITE_OK) {
+        *out_name = dynamic_string_take(&string);
+        if (*out_name == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_decoded_engine_name_escape(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    char escaped_byte
+) {
+    switch (escaped_byte) {
+    case '0':
+        set_unsupported_error(database, "table engine names do not support NUL bytes");
+        return MYLITE_ERROR;
+    case 'n':
+        return dynamic_string_append_char(string, '\n');
+    case 'r':
+        return dynamic_string_append_char(string, '\r');
+    case 't':
+        return dynamic_string_append_char(string, '\t');
+    case 'b':
+        return dynamic_string_append_char(string, '\b');
+    case 'Z':
+        return dynamic_string_append_char(string, '\032');
+    case '\\':
+        return dynamic_string_append_char(string, '\\');
+    case '\'':
+        return dynamic_string_append_char(string, '\'');
+    case '"':
+        return dynamic_string_append_char(string, '"');
+    default:
+        return dynamic_string_append_char(string, escaped_byte);
+    }
 }
 
 static void planned_create_table_deinit(struct planned_create_table *plan) {
@@ -7363,6 +7615,21 @@ static void set_table_does_not_exist_error(
         mylite_connection_diagnostics(database),
         mysql_error_table_does_not_exist,
         "42S02",
+        message
+    );
+}
+
+static void set_unknown_storage_engine_error(struct mylite_db *database, const char *engine_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Unknown storage engine '%s'", engine_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_storage_engine,
+        "42000",
         message
     );
 }

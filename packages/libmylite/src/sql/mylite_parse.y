@@ -80,6 +80,9 @@ statement(A) ::= show_columns_statement(B). {
 statement(A) ::= show_create_table_statement(B). {
     A = B;
 }
+statement(A) ::= show_engines_statement(B). {
+    A = B;
+}
 statement(A) ::= show_databases_statement(B). {
     A = B;
 }
@@ -106,8 +109,31 @@ use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
 }
 
-create_table_statement(A) ::= CREATE(C) TABLE table_name(T) LPAREN column_definition_list(L) RPAREN(R). {
-    A = mylite_sql_parser_make_create_table_statement(state, C, T, L, R);
+create_table_statement(A) ::=
+    CREATE(C) TABLE table_name(T) LPAREN column_definition_list(L) RPAREN(R)
+    table_engine_option_opt(E). {
+    A = mylite_sql_parser_make_create_table_statement(state, C, T, L, R, E);
+}
+
+table_engine_option_opt(A) ::= . {
+    A = NULL;
+}
+table_engine_option_opt(A) ::= table_engine_option(B). {
+    A = B;
+}
+
+table_engine_option(A) ::= ENGINE(E) equal_opt engine_name(N). {
+    A = mylite_sql_parser_make_table_engine_option(state, E, N);
+}
+
+equal_opt ::= .
+equal_opt ::= EQUAL.
+
+engine_name(A) ::= identifier(B). {
+    A = B;
+}
+engine_name(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 create_schema_statement(A) ::= CREATE(C) DATABASE identifier(S). {
@@ -191,6 +217,13 @@ show_databases_statement(A) ::= SHOW(S) SCHEMAS(D) show_like_clause_opt(L). {
 
 show_create_table_statement(A) ::= SHOW(S) CREATE TABLE table_name(T). {
     A = mylite_sql_parser_make_show_create_table_statement(state, S, T);
+}
+
+show_engines_statement(A) ::= SHOW(S) ENGINES(E). {
+    A = mylite_sql_parser_make_show_engines_statement(state, S, E);
+}
+show_engines_statement(A) ::= SHOW(S) STORAGE ENGINES(E). {
+    A = mylite_sql_parser_make_show_engines_statement(state, S, E);
 }
 
 describe_table_statement(A) ::= DESCRIBE(D) table_name(T). {
@@ -632,6 +665,15 @@ identifier(A) ::= COLUMNS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= FIELDS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ENGINE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ENGINES(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= STORAGE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

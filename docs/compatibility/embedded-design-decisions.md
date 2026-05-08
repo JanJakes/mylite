@@ -9,8 +9,8 @@ Some MySQL server features do not naturally map to an in-process single-file dat
 | Resource groups | ❌ | Resource group diagnostics |
 | Components and plugins | ❌ | Component/plugin metadata policy |
 | Server lifecycle commands | ❌ | Lifecycle command diagnostics |
-| Storage engines | ❌ | Engine syntax and metadata policy |
-| `InnoDB` engine surface | ❌ | InnoDB surface mapping |
+| Storage engines | 🟡 | Explicit InnoDB-only embedded surface for `CREATE TABLE ... ENGINE [=] InnoDB`, fixed `SHOW CREATE TABLE` suffixes, and one-row `SHOW [STORAGE] ENGINES`; no plugin architecture or alternate engines |
+| `InnoDB` engine surface | 🟡 | MyLite maps its current persistent base-table storage to a limited InnoDB-compatible default-engine surface for application detection |
 | `MyISAM` engine surface | ❌ | MyISAM surface mapping |
 | `MEMORY` engine surface | ❌ | MEMORY surface mapping |
 | `CSV` engine surface | ❌ | Decide log-table and ENGINE=CSV compatibility behavior |

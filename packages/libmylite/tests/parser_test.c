@@ -1025,6 +1025,7 @@ static int test_table_lifecycle_statements(void) {
     const struct mylite_sql_ast_node *table_name = NULL;
     const struct mylite_sql_ast_node *columns = NULL;
     const struct mylite_sql_ast_node *column = NULL;
+    const struct mylite_sql_ast_node *engine_option = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -1083,6 +1084,48 @@ static int test_table_lifecycle_statements(void) {
         "third column nullability"
     );
 
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE engine_forms (id INT) ENGINE=InnoDB;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    engine_option = child_at(statement, 2U);
+    failures += expect_child_count(statement, 3U, "engine create child count");
+    failures += expect_node(
+        engine_option,
+        MYLITE_SQL_AST_TABLE_ENGINE_OPTION,
+        "create table engine option"
+    );
+    failures += expect_span_text(child_at(engine_option, 0U), "InnoDB", "engine option name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE engine_space (id INT) ENGINE InnoDB;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE engine_string (id INT) ENGINE='InnoDB';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    engine_option = child_at(statement, 2U);
+    failures +=
+        expect_literal(child_at(engine_option, 0U), MYLITE_SQL_AST_LITERAL_STRING, "string engine");
+    failures += expect_span_text(child_at(engine_option, 0U), "'InnoDB'", "string engine name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE engine_quoted (id INT) ENGINE=`InnoDB`;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DROP TABLE app.simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
@@ -1144,6 +1187,18 @@ static int test_table_lifecycle_statements(void) {
     failures +=
         expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "schema like");
     failures += expect_span_text(child_at(statement, 1U), "'a\\_%'", "schema like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT, "show engines");
+    failures += expect_child_count(statement, 0U, "show engines child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW STORAGE ENGINES;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT, "show storage engines");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -1870,6 +1925,19 @@ static int test_syntax_errors(void) {
     failures += parse_sql("SHOW FULL DATABASES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SHOW ENGINES LIKE 'InnoDB';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW ENGINES WHERE Engine = 'InnoDB';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL ENGINES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ENGINE InnoDB STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SHOW FULL COLUMNS FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -1948,8 +2016,25 @@ static int test_syntax_errors(void) {
     failures += parse_sql("CREATE TABLE t (id INT(11));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("CREATE TABLE t (id INT) ENGINE=InnoDB;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "CREATE TABLE t (id INT) ENGINE=DEFAULT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE t (id INT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE t (id INT) ENGINE=InnoDB ENGINE=InnoDB;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DROP TABLE IF EXISTS t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

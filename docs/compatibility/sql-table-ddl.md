@@ -8,7 +8,7 @@ actions.
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `ALTER TABLE` | ❌ | See [ALTER TABLE actions](#alter-table-actions) |
-| `CREATE TABLE` | 🟡 | Limited persistent base-table creation from `baseline-basic-table-lifecycle`: explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, and `NULL`/`NOT NULL`; no options, keys, defaults, temporary tables, or `IF NOT EXISTS` |
+| `CREATE TABLE` | 🟡 | Limited persistent base-table creation: explicit `INT`/`INTEGER`/`BIGINT` columns, optional `UNSIGNED`, `NULL`/`NOT NULL`, and optional explicit `ENGINE [=] InnoDB`; no other options, keys, defaults, temporary tables, or `IF NOT EXISTS` |
 | `CREATE TEMPORARY TABLE` | ❌ | Session-scoped table lifecycle and name shadowing |
 | `CREATE TABLE ... LIKE` | ❌ | Exact metadata cloning rules |
 | `CREATE TABLE ... SELECT` | ❌ | CTAS inference and atomicity |
@@ -30,7 +30,7 @@ actions.
 | Invisible columns | ❌ | Implicit column lists, SELECT * behavior, and metadata flags |
 | Generated invisible primary keys | ❌ | Invisible primary key metadata |
 | AUTO_INCREMENT columns | ❌ | Allocation and metadata |
-| Table options: engine | ❌ | Engine option metadata |
+| Table options: engine | 🟡 | Optional explicit `ENGINE [=] InnoDB` only; no alternate engines, engine substitution, or durable per-table engine metadata |
 | Table options: charset/collation | ❌ | Charset/collation options |
 | Table options: storage | ❌ | Storage option metadata |
 | Table options: statistics | ❌ | Statistics option metadata |

@@ -25294,6 +25294,32 @@ static int test_round_scalar_function_execution(mylite_db *database) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          0U,
          0},
+        {"zero_scale",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         4U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"cast_zero_scale",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         4U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
         {"const_float",
          NULL,
          NULL,
@@ -25522,6 +25548,8 @@ static int test_round_scalar_function_execution(mylite_db *database) {
     failures += prepare_sql(
         database,
         "SELECT ROUND(123.456,2) AS const_decimal, "
+        "ROUND(12.34) AS zero_scale, "
+        "ROUND(CAST(12.34 AS DECIMAL(4,2))) AS cast_zero_scale, "
         "ROUND(25E-1) AS const_float, "
         "ROUND(150,2) AS const_int, "
         "ROUND('123.455',2) AS const_text, "

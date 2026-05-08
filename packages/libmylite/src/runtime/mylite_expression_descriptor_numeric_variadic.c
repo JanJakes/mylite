@@ -133,7 +133,7 @@ static int infer_round_function_descriptor(
         if (round_function_constant_scale(scale_argument, &scale)) {
             int rounded_scale = round_function_descriptor_scale(scale);
 
-            if (rounded_scale < 0) {
+            if (rounded_scale <= 0) {
                 out_descriptor->decimals = 0U;
                 if (out_descriptor->length > value_descriptor.decimals) {
                     out_descriptor->length -= value_descriptor.decimals;

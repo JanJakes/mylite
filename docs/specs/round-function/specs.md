@@ -111,8 +111,9 @@ Metadata follows MySQL's result-type family for the first argument:
 - approximate or nonnumeric `X` return `DOUBLE`, length `23`, decimals `31`,
   binary numeric collation
 - decimal `X` returns `NEWDECIMAL`; when `D` is a constant, positive scale
-  reduces the result scale to `min(D, input_scale)`, negative scale returns
-  scale `0`, and extreme positive/negative scale is clamped to `30`
+  reduces the result scale to `min(D, input_scale)`, zero and negative scales
+  return scale `0` and remove the input fractional digits from declared
+  length, and extreme positive/negative scale is clamped to `30`
 - nullability is nullable if either argument can be `NULL`
 
 Representative MySQL 8.4.9 metadata probes:
@@ -120,6 +121,8 @@ Representative MySQL 8.4.9 metadata probes:
 | Expression | Type | Length | Decimals | Flags |
 | --- | --- | ---: | ---: | --- |
 | `ROUND(123.456,2)` | `NEWDECIMAL` | `8` | `2` | `NOT_NULL BINARY NUM` |
+| `ROUND(12.34)` | `NEWDECIMAL` | `4` | `0` | `NOT_NULL BINARY NUM` |
+| `ROUND(CAST(12.34 AS DECIMAL(4,2)))` | `NEWDECIMAL` | `4` | `0` | `NOT_NULL BINARY NUM` |
 | `ROUND(25E-1)` | `DOUBLE` | `23` | `31` | `NOT_NULL BINARY NUM` |
 | `ROUND(150,2)` | `LONGLONG` | `21` | `0` | `NOT_NULL BINARY NUM` |
 | `ROUND('123.455',2)` | `DOUBLE` | `23` | `31` | `NOT_NULL BINARY NUM` |

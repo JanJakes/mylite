@@ -464,6 +464,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       no-argument, `NULL`, integer, date, and non-fractional temporal inputs,
       plus `NEWDECIMAL(13+fsp, fsp)` metadata for fractional temporal, text,
       approximate, and fixed-point inputs.
+      Exact `ROUND()` zero-scale result metadata now removes fractional digits
+      from DECIMAL declared lengths, matching MySQL's `NEWDECIMAL` descriptors
+      for literal and cast exact inputs.
       Table-backed `LEFT()` / `RIGHT()` expressions with nonnegative literal
       counts now infer MySQL-shaped connection-character-set widths capped at
       the source width, negative literal counts infer length 0, and dynamic or

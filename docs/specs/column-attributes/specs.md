@@ -140,11 +140,10 @@ MySQL rejects the following as syntax:
   `NOW(1,2)`
 - oversized `CURRENT_TIMESTAMP(18446744073709551616)` precision tokens
 
-MySQL accepts `VARCHAR(20) DEFAULT (UPPER('x'))`, but MyLite's current column
-default grammar rejects non-`NOW` function calls. This task therefore supports
+MySQL accepts `VARCHAR(20) DEFAULT (UPPER('x'))`, and MyLite supports
 parenthesized defaults using the expression subset already implemented by MyLite
-plus targeted `CURRENT_TIMESTAMP` and `NOW()` expressions; generic function-call
-defaults, `INTERVAL`, subqueries, variables, parameters, stored functions,
+plus targeted `CURRENT_TIMESTAMP` and `NOW()` expressions. `INTERVAL`,
+aggregate functions, subqueries, variables, parameters, stored functions,
 loadable functions, and full default-expression semantic validation are
 deferred.
 
@@ -312,7 +311,7 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | malformed or overflow `NOW(...)` defaults | parse error |
 | signed nonnumeric literal defaults | parse error |
 | `a VARCHAR(20) DEFAULT UPPER('x')` | parse error |
-| `a VARCHAR(20) DEFAULT (UPPER('x'))` | parse error until function-call expressions land |
+| `a VARCHAR(20) DEFAULT (UPPER('x'))` | parse OK for supported scalar function expressions |
 | `a INT AUTO_INCREMENT`, inline keys | parse error until later roadmap tasks |
 | `a INT REFERENCES parent(id)` | parse OK; ignored at execution like the verified MySQL 8.4.9 shape |
 | `a INT CHECK (a > 0)` | parse OK; supported `CREATE TABLE` execution records CHECK metadata and covered DML paths enforce it |

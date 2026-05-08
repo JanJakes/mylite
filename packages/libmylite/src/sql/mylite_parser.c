@@ -232,7 +232,7 @@ static bool delete_targets_are_unsupported_delete_modifier(
     const struct mylite_sql_ast_node *targets
 );
 
-static bool expression_contains_function_call(const struct mylite_sql_ast_node *expression);
+static bool expression_contains_aggregate_call(const struct mylite_sql_ast_node *expression);
 
 static void set_syntax_error_at_span(
     struct mylite_sql_parser_state *state,
@@ -7487,7 +7487,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_column_default_
     struct mylite_sql_ast_node *expression,
     struct mylite_sql_token right_paren
 ) {
-    if (expression_contains_function_call(expression)) {
+    if (expression_contains_aggregate_call(expression)) {
         mylite_sql_parser_state_parse_failed(state);
         return NULL;
     }
@@ -7500,19 +7500,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_parenthesized_column_default_
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static bool expression_contains_function_call(const struct mylite_sql_ast_node *expression) {
+static bool expression_contains_aggregate_call(const struct mylite_sql_ast_node *expression) {
     if (expression == NULL) {
         return false;
-    }
-    if (expression->kind == MYLITE_SQL_AST_FUNCTION_CALL) {
-        return !function_name_matches(expression->first_child, "NOW");
     }
     if (expression->kind == MYLITE_SQL_AST_AGGREGATE_CALL) {
         return true;
     }
     for (const struct mylite_sql_ast_node *child = expression->first_child; child != NULL;
          child = child->next_sibling) {
-        if (expression_contains_function_call(child)) {
+        if (expression_contains_aggregate_call(child)) {
             return true;
         }
     }

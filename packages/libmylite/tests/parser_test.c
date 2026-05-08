@@ -2618,6 +2618,17 @@ static int test_create_table_column_attributes(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE default_scalar_function_expression ("
+        "a VARCHAR(20) DEFAULT (UPPER('x')), "
+        "b VARCHAR(20) DEFAULT (CONCAT('a','b')), "
+        "c INT DEFAULT (ABS(-3)), "
+        "d DOUBLE DEFAULT (RAND()));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE bad_default_identifier (default INT);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -2799,8 +2810,8 @@ static int test_create_table_column_attributes(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE bad_default_parenthesized_function "
-        "(a VARCHAR(20) DEFAULT (UPPER('x')));",
+        "CREATE TABLE bad_default_parenthesized_aggregate "
+        "(a INT DEFAULT (COUNT(1)));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

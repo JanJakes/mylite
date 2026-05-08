@@ -59132,7 +59132,10 @@ static int test_show_create_table_execution(void) {
     static const char generated_default_expr_create[] =
         "CREATE TABLE `generated_default_expr` (\n"
         "  `a` int DEFAULT ((1 + 2)),\n"
-        "  `b` int DEFAULT (((3 * 4) + 5))\n"
+        "  `b` int DEFAULT (((3 * 4) + 5)),\n"
+        "  `c` varchar(20) DEFAULT ((UPPER('x'))),\n"
+        "  `d` varchar(20) DEFAULT ((CONCAT('a','b'))),\n"
+        "  `e` int DEFAULT ((ABS(-3)))\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
     static const char *const generated_default_expr_values[] = {
         "generated_default_expr",
@@ -59373,7 +59376,10 @@ static int test_show_create_table_execution(void) {
         database,
         "CREATE TABLE generated_default_expr ("
         "a INT DEFAULT (1 + 2), "
-        "b INT DEFAULT ((3 * 4) + 5))",
+        "b INT DEFAULT ((3 * 4) + 5), "
+        "c VARCHAR(20) DEFAULT (UPPER('x')), "
+        "d VARCHAR(20) DEFAULT (CONCAT('a','b')), "
+        "e INT DEFAULT (ABS(-3)))",
         MYLITE_DONE
     );
     failures += expect_select_rows(
@@ -61824,7 +61830,10 @@ static int test_insert_values_execution(void) {
         database,
         "CREATE TABLE expr_defaults ("
         "a INT DEFAULT (1 + 2), "
-        "b TIMESTAMP DEFAULT (CURRENT_TIMESTAMP))",
+        "b TIMESTAMP DEFAULT (CURRENT_TIMESTAMP), "
+        "c VARCHAR(20) DEFAULT (UPPER('x')), "
+        "d VARCHAR(20) DEFAULT (CONCAT('a','b')), "
+        "e INT DEFAULT (ABS(-3)))",
         MYLITE_DONE
     );
     expr_physical = expected_physical_table_name("mylite_iv13", "expr_defaults");
@@ -61834,8 +61843,11 @@ static int test_insert_values_execution(void) {
     }
     failures +=
         execute_sql(database, "INSERT INTO expr_defaults (a, b) VALUES (1, DEFAULT)", MYLITE_DONE);
-    failures +=
-        execute_sql(database, "INSERT INTO expr_defaults VALUES (DEFAULT, DEFAULT)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "INSERT INTO expr_defaults VALUES (DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT)",
+        MYLITE_DONE
+    );
     if (expr_physical != NULL) {
         failures += expect_sqlite_physical_int64(
             path,
@@ -61861,6 +61873,15 @@ static int test_insert_values_execution(void) {
             "parenthesized current timestamp default"
         );
     }
+    failures += expect_select_rows(
+        database,
+        "SELECT c, d, e FROM expr_defaults WHERE a = 3",
+        (const char *const[]){"c", "d", "e"},
+        3,
+        (const char *const[]){"X", "ab", "3"},
+        1,
+        "scalar function generated defaults"
+    );
 
     free(forms_physical);
     free(unique_physical);

@@ -11,10 +11,10 @@ the existing scalar expression evaluator:
 - string and numeric literal coercion through the existing write path
 - `CURRENT_TIMESTAMP` / `NOW()` generated defaults through the existing temporal
   default path
-
-Generic function-call defaults such as `DEFAULT (UPPER('x'))` remain outside
-this slice because the column-default parser still rejects non-`NOW` function
-calls.
+- parenthesized scalar function-call defaults when the function is already
+  implemented by the shared scalar expression evaluator, such as
+  `DEFAULT (UPPER('x'))`, `DEFAULT (CONCAT('a','b'))`, `DEFAULT (ABS(-3))`, and
+  `DEFAULT (RAND())`
 
 ## Behavior
 
@@ -38,12 +38,14 @@ stores `3`.
 
 Unsupported generated default expressions fail deterministically through the
 same expression/default diagnostics used by the covered write path. Full MySQL
-default-expression semantic validation, column references, subqueries, stored
-functions, loadable functions, variables, parameters, and broader function
-defaults remain deferred.
+default-expression semantic validation, aggregate functions, subqueries, stored
+functions, loadable functions, variables, parameters, column-reference
+validation, and unsupported scalar functions remain deferred.
 
 ## Tests
 
 Runtime tests cover an `INSERT ... VALUES` defaulted row for
 `INT DEFAULT (1 + 2)`, the existing parenthesized current-timestamp generated
-default, and `SHOW CREATE TABLE` formatting for generated arithmetic defaults.
+default, parenthesized scalar function defaults using `UPPER()`, `CONCAT()`,
+and `ABS()`, and `SHOW CREATE TABLE` formatting for generated arithmetic and
+scalar-function defaults.

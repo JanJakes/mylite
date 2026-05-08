@@ -39,8 +39,9 @@ Out of scope:
 - `INSERT IGNORE`, row aliases, and `ON DUPLICATE KEY UPDATE` are implemented
   in follow-up scoped feature slices
 - expression forms outside MyLite's shared scalar expression evaluator
-- arbitrary generated default-expression evaluation, including function calls
-  such as `concat('a','b')`
+- generated default-expression forms outside MyLite's shared scalar expression
+  evaluator, such as aggregate functions, subqueries, variables, stored
+  functions, and loadable functions
 - MySQL's complete type conversion, range enforcement, truncation warnings,
   character-set conversion, and temporal validation
 - trigger, generated-column, foreign-key, privilege, and warning-record
@@ -134,8 +135,9 @@ For a table with `DEFAULT (1 + 2)`, `DEFAULT (concat('a','b'))`, and
 `DEFAULT (CURRENT_TIMESTAMP)`, MySQL evaluates all generated default
 expressions at write time. MyLite evaluates parenthesized generated defaults
 that are constant expressions in the existing scalar expression subset, such as
-`DEFAULT (1 + 2)`, plus targeted `CURRENT_TIMESTAMP` / `NOW()` defaults.
-Generic function-call defaults remain deferred.
+`DEFAULT (1 + 2)` and supported scalar function calls like
+`DEFAULT (concat('a','b'))`, plus targeted `CURRENT_TIMESTAMP` / `NOW()`
+defaults.
 
 ### AUTO_INCREMENT
 

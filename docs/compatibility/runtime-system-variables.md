@@ -162,7 +162,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `debug_sync` | ❌ | Value, scope, SET, diagnostics |
 | `default_collation_for_utf8mb4` | ❌ | Value, scope, SET, diagnostics |
 | `default_password_lifetime` | ❌ | Value, scope, SET, diagnostics |
-| `default_storage_engine` | ❌ | Value, scope, SET, diagnostics |
+| `default_storage_engine` | 🟡 | Limited read-only scalar `SELECT @@default_storage_engine` with no scope, `session`, `local`, or `global`; returns MyLite's fixed embedded permanent-table default `InnoDB`; no `SET`, mutable global/session state, engine substitution, temporary-table defaults, alternate engines, plugins, or `SHOW VARIABLES` |
 | `default_table_encryption` | ❌ | Value, scope, SET, diagnostics |
 | `default_tmp_storage_engine` | ❌ | Value, scope, SET, diagnostics |
 | `default_week_format` | ❌ | Value, scope, SET, diagnostics |

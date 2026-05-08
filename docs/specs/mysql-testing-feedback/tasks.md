@@ -497,6 +497,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Standalone `VALUES ROW(...)` result metadata now has MySQL-verified
       regression coverage for zero-row mixed numeric/string descriptors,
       character-width widening, and multi-column numeric/string rows.
+      Top-level `UNION` result metadata now has MySQL-verified coverage for
+      mixed signed/unsigned integer expressions, including decimal promotion
+      when the unsigned side can exceed signed BIGINT range.
       Parenthesized table-column references and unary-positive references
       through parentheses now preserve base-column descriptor and origin
       metadata instead of falling back to empty expression origins.

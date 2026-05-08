@@ -72144,6 +72144,21 @@ static int test_union_query_expression_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
          1},
     };
+    static const struct expected_result_metadata mixed_integer_metadata[] = {
+        {"v",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         22U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_UNSIGNED,
+         0},
+    };
     static const struct expected_result_metadata values_mixed_metadata[] = {
         {"column_0",
          NULL,
@@ -72536,6 +72551,38 @@ static int test_union_query_expression_execution(void) {
     );
     failures += expect_result_metadata(stmt, metadata, 2, "union result metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "union metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST(1 AS SIGNED) AS v UNION SELECT CAST(1 AS UNSIGNED) LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        mixed_integer_metadata,
+        1,
+        "union mixed signed unsigned metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "union mixed integer metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST(1 AS UNSIGNED) AS v UNION SELECT CAST(1 AS SIGNED) LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        mixed_integer_metadata,
+        1,
+        "union mixed unsigned signed metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "union mixed integer reverse done");
     mylite_finalize(stmt);
     stmt = NULL;
 

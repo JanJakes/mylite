@@ -226,11 +226,15 @@ showed:
 | `SELECT bin_txt AS s FROM left_t WHERE id=1 UNION ALL SELECT bin_label FROM right_t WHERE id=10 LIMIT 0` | label `s`; empty origin; `VAR_STRING`; collation id `255`; length `40`; `BINARY` flag |
 | `SELECT CAST('a' AS CHAR(1)) AS c UNION ALL SELECT CAST('bbbb' AS CHAR(4)) LIMIT 0` | label `c`; empty origin; `VAR_STRING`; collation id `255`; length `16` |
 | `SELECT 1 AS mixed UNION ALL SELECT 'abc' LIMIT 0` | label `mixed`; empty origin; `VAR_STRING`; collation id `255`; length `12`; `NOT_NULL` flag |
+| `SELECT CAST(1 AS SIGNED) AS v UNION SELECT CAST(1 AS UNSIGNED) LIMIT 0` | label `v`; empty origin; `NEWDECIMAL`; collation id `63`; length `22`; decimals `0`; `NOT_NULL` and `NUM` flags; no `BINARY` or `UNSIGNED` flag |
 
 The first implementation should cover identical numeric descriptors, identical
 string descriptors, simple string widening, and the verified numeric/string
-literal coercion above. Broader descriptor aggregation is explicitly deferred
-until separate MySQL-runtime coverage exists.
+literal coercion above. Mixed signed/unsigned integer aggregation should return
+a signed `LONGLONG` descriptor when the unsigned range fits in signed BIGINT,
+and a `NEWDECIMAL` descriptor widened by one display character when it does
+not. Broader descriptor aggregation is explicitly deferred until separate
+MySQL-runtime coverage exists.
 
 ### Global ORDER BY, LIMIT, and OFFSET
 

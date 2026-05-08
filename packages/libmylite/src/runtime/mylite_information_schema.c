@@ -28,6 +28,8 @@ static int information_schema_dynamic_table_sql(
     char **out_sql
 );
 
+static int information_schema_tables_sql(mylite_db *database, char **out_sql);
+
 static const char *information_schema_table_sql(enum mylite_information_schema_table table);
 
 static int prepare_information_schema_sqlite_statement(
@@ -128,7 +130,7 @@ static const char information_schema_schemata_sql[] =
     "CASE WHEN upper(default_encryption) = 'Y' THEN 'YES' ELSE 'NO' END AS DEFAULT_ENCRYPTION "
     "FROM __mylite_schema_catalog ORDER BY name COLLATE BINARY";
 
-static const char information_schema_tables_sql[] =
+static const char information_schema_tables_sql_format[] =
     "SELECT * FROM ("
     "SELECT 'def' AS TABLE_CATALOG,"
     "'information_schema' AS TABLE_SCHEMA,"
@@ -144,7 +146,7 @@ static const char information_schema_tables_sql[] =
     "0 AS INDEX_LENGTH,"
     "0 AS DATA_FREE,"
     "NULL AS AUTO_INCREMENT,"
-    "strftime('%Y-%m-%d %H:%M:%S', 'now') AS CREATE_TIME,"
+    "strftime('%%Y-%%m-%%d %%H:%%M:%%S', %lld, 'unixepoch') AS CREATE_TIME,"
     "NULL AS UPDATE_TIME,"
     "NULL AS CHECK_TIME,"
     "NULL AS TABLE_COLLATION,"
@@ -480,9 +482,17 @@ static int information_schema_tables_filtered_select_sql(
     sqlite3_str_appendall(sql, "SELECT ");
     status = append_information_schema_tables_projection(sql, select_list);
     if (status == MYLITE_OK) {
+        char *tables_sql = NULL;
+
+        status = information_schema_tables_sql(database, &tables_sql);
+        if (status != MYLITE_OK) {
+            sqlite3_free(sqlite3_str_finish(sql));
+            return status;
+        }
         sqlite3_str_appendall(sql, " FROM (");
-        sqlite3_str_appendall(sql, information_schema_tables_sql);
+        sqlite3_str_appendall(sql, tables_sql);
         sqlite3_str_appendall(sql, ") AS mylite_information_schema_tables");
+        sqlite3_free(tables_sql);
     }
     if (status == MYLITE_OK) {
         status = append_information_schema_tables_filter(database, sql, where_clause);
@@ -954,8 +964,9 @@ static int information_schema_dynamic_table_sql(
         return mylite_storage_engine_information_schema_sql(database, out_sql);
     case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
         return mylite_information_schema_keywords_sql(database, out_sql);
-    case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
     case MYLITE_INFORMATION_SCHEMA_TABLES:
+        return information_schema_tables_sql(database, out_sql);
+    case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
     case MYLITE_INFORMATION_SCHEMA_TABLE_CONSTRAINTS:
@@ -966,6 +977,19 @@ static int information_schema_dynamic_table_sql(
         return MYLITE_UNSUPPORTED;
     }
     return MYLITE_UNSUPPORTED;
+}
+
+static int information_schema_tables_sql(mylite_db *database, char **out_sql) {
+    sqlite3_int64 started_at = database == NULL ? 0 : (sqlite3_int64)database->status_started_at;
+
+    *out_sql = sqlite3_mprintf(information_schema_tables_sql_format, started_at);
+    if (*out_sql == NULL) {
+        if (database != NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        }
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
 }
 
 static int information_schema_table_query_sql(
@@ -998,8 +1022,6 @@ static const char *information_schema_table_sql(enum mylite_information_schema_t
     switch (table) {
     case MYLITE_INFORMATION_SCHEMA_SCHEMATA:
         return information_schema_schemata_sql;
-    case MYLITE_INFORMATION_SCHEMA_TABLES:
-        return information_schema_tables_sql;
     case MYLITE_INFORMATION_SCHEMA_COLUMNS:
         return information_schema_columns_sql;
     case MYLITE_INFORMATION_SCHEMA_STATISTICS:
@@ -1017,6 +1039,7 @@ static const char *information_schema_table_sql(enum mylite_information_schema_t
     case MYLITE_INFORMATION_SCHEMA_COLLATIONS:
     case MYLITE_INFORMATION_SCHEMA_COLLATION_CHARACTER_SET_APPLICABILITY:
     case MYLITE_INFORMATION_SCHEMA_KEYWORDS:
+    case MYLITE_INFORMATION_SCHEMA_TABLES:
     case MYLITE_INFORMATION_SCHEMA_NONE:
         return NULL;
     }

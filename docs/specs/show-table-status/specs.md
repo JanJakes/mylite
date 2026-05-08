@@ -174,7 +174,10 @@ MySQL-shaped placeholder rows:
 - numeric status columns `Rows`, `Avg_row_length`, `Data_length`,
   `Max_data_length`, `Index_length`, and `Data_free` as `0`
 - `Auto_increment=NULL`
-- `Create_time`: a MySQL-shaped non-NULL datetime value.
+- `Create_time`: a MySQL-shaped non-NULL datetime value derived from the
+  connection start timestamp, so `INFORMATION_SCHEMA.TABLES` and
+  `SHOW TABLE STATUS FROM information_schema` expose stable matching values
+  during the connection.
 - `Update_time=NULL`
 - `Check_time=NULL`
 - `Collation=NULL`

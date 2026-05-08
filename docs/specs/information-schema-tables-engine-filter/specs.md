@@ -62,6 +62,8 @@ or implementation sources.
 `INFORMATION_SCHEMA.TABLES` includes one row per visible table or view. The
 `ENGINE` column contains a storage engine name for base tables and `NULL` for
 `INFORMATION_SCHEMA` system views.
+System-view rows expose a stable non-NULL `CREATE_TIME` for the lifetime of the
+connection; the value matches `SHOW TABLE STATUS FROM information_schema`.
 
 Verified probes:
 

@@ -1439,8 +1439,12 @@ int mylite_show_table_status_sql(
         "SELECT 'information_schema' AS TABLE_SCHEMA, table_name AS Name, NULL AS Engine, "
         "10 AS Version, NULL AS Row_format, 0 AS Rows, 0 AS Avg_row_length, 0 AS Data_length, "
         "0 AS Max_data_length, 0 AS Index_length, 0 AS Data_free, NULL AS Auto_increment, "
-        "strftime('%Y-%m-%d %H:%M:%S', 'now') AS Create_time, NULL AS Update_time, "
-        "NULL AS Check_time, "
+        "strftime('%Y-%m-%d %H:%M:%S', "
+    );
+    sqlite3_str_appendf(sql, "%lld", (sqlite3_int64)database->status_started_at);
+    sqlite3_str_appendall(
+        sql,
+        ", 'unixepoch') AS Create_time, NULL AS Update_time, NULL AS Check_time, "
         "NULL AS Collation, NULL AS Checksum, '' AS Create_options, '' AS Comment FROM ("
         "SELECT 'CHARACTER_SETS' AS table_name "
         "UNION ALL SELECT 'CHECK_CONSTRAINTS' "

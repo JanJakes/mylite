@@ -1,5 +1,6 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
 #include <inttypes.h>
@@ -18,9 +19,15 @@ enum {
     show_create_sql_capacity = 256,
     show_engines_column_count = 6,
     show_create_column_count = 2,
+    default_storage_engine_variable_column_count = 6,
+    scoped_default_storage_engine_variable_column_count = 4,
+    selected_default_storage_engine_variable_column_count = 2,
+    diagnostics_default_storage_engine_variable_column_count = 4,
+    independent_default_storage_engine_variable_column_count = 2,
     decimal_base = 10,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
+    mysql_error_unknown_system_variable = 1193,
     mysql_error_unknown_storage_engine = 1286,
 };
 
@@ -39,6 +46,12 @@ struct expected_single_row_result {
 struct expected_show_create_single_int {
     const char *sql;
     const char *table_name;
+    const char *context;
+};
+
+struct expected_count_result {
+    const char *sql;
+    const char *expected;
     const char *context;
 };
 
@@ -66,6 +79,7 @@ static const char *const show_create_columns[show_create_column_count] = {
 };
 
 static int test_innodb_create_forms_persistence_and_preamble(void);
+static int test_default_storage_engine_system_variable_values_and_diagnostics(void);
 static int test_innodb_engine_diagnostics(void);
 static int test_independent_innodb_engine_handles(void);
 static int expect_show_engines_result(mylite_db *database, const char *sql, const char *context);
@@ -80,6 +94,7 @@ static int expect_single_row_result(
     const char *context
 );
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context);
+static int expect_count_statement(mylite_db *database, struct expected_count_result expected);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -111,6 +126,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_innodb_create_forms_persistence_and_preamble();
+    failures += test_default_storage_engine_system_variable_values_and_diagnostics();
     failures += test_innodb_engine_diagnostics();
     failures += test_independent_innodb_engine_handles();
 
@@ -279,6 +295,236 @@ static int test_innodb_create_forms_persistence_and_preamble(void) {
     return failures;
 }
 
+static int test_default_storage_engine_system_variable_values_and_diagnostics(void) {
+    static const char *const variable_columns[] = {
+        "@@default_storage_engine",
+        "@@global.default_storage_engine",
+        "@@session.default_storage_engine",
+        "@@local.default_storage_engine",
+        "@@warning_count",
+        "ROW_COUNT()",
+    };
+    static const char *const variable_values[] = {
+        "InnoDB",
+        "InnoDB",
+        "InnoDB",
+        "InnoDB",
+        "0",
+        "-1",
+    };
+    static const char *const scoped_columns[] = {
+        "@@DEFAULT_STORAGE_ENGINE",
+        "@@Global.Default_Storage_Engine",
+        "@@session.`default_storage_engine`",
+        "@@`default_storage_engine`",
+    };
+    static const char *const scoped_values[] = {
+        "InnoDB",
+        "InnoDB",
+        "InnoDB",
+        "InnoDB",
+    };
+    static const char *const selected_columns[] = {
+        "@@default_storage_engine",
+        "DATABASE()",
+    };
+    static const char *const selected_values[] = {
+        "InnoDB",
+        "app",
+    };
+    static const char *const warning_columns[] = {
+        "@@default_storage_engine",
+        "@@warning_count",
+        "@@error_count",
+        "ROW_COUNT()",
+    };
+    static const char *const warning_values[] = {
+        "InnoDB",
+        "1",
+        "0",
+        "-1",
+    };
+    static const char *const error_values[] = {
+        "InnoDB",
+        "1",
+        "1",
+        "-1",
+    };
+    static const char *const mixed_columns[] = {
+        "@@default_storage_engine",
+        "@@character_set_server",
+        "@@version_comment",
+    };
+    static const char *const mixed_values[] = {
+        "InnoDB",
+        "utf8mb4",
+        "MyLite",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    const struct mylite_session_state *session = NULL;
+    uint64_t catalog_generation = 0U;
+    uint64_t sqlite_schema_generation = 0U;
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "default-variable") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open default engine variable file");
+    session = mylite_connection_session_state(database);
+    catalog_generation = session->catalog_generation;
+    sqlite_schema_generation = session->sqlite_schema_generation;
+
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_storage_engine, @@global.default_storage_engine, "
+        "@@session.default_storage_engine, @@local.default_storage_engine, @@warning_count, "
+        "ROW_COUNT() FROM DUAL",
+        (struct expected_single_row_result){
+            .columns = variable_columns,
+            .values = variable_values,
+            .column_count = default_storage_engine_variable_column_count,
+        },
+        "default storage engine variable values"
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@DEFAULT_STORAGE_ENGINE, @@Global.Default_Storage_Engine, "
+        "@@session.`default_storage_engine`, @@`default_storage_engine`",
+        (struct expected_single_row_result){
+            .columns = scoped_columns,
+            .values = scoped_values,
+            .column_count = scoped_default_storage_engine_variable_column_count,
+        },
+        "scoped default storage engine labels"
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_storage_engine, @@character_set_server, @@version_comment",
+        (struct expected_single_row_result){
+            .columns = mixed_columns,
+            .values = mixed_values,
+            .column_count = sizeof(mixed_columns) / sizeof(mixed_columns[0]),
+        },
+        "mixed default storage engine variable values"
+    );
+
+    failures += execute_statement_ok(database, "SHOW PROCESSLIST");
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_storage_engine, @@warning_count, @@error_count, ROW_COUNT()",
+        (struct expected_single_row_result){
+            .columns = warning_columns,
+            .values = warning_values,
+            .column_count = diagnostics_default_storage_engine_variable_column_count,
+        },
+        "default storage engine warning diagnostics"
+    );
+    failures += expect_count_statement(
+        database,
+        (struct expected_count_result){
+            .sql = "SHOW COUNT(*) WARNINGS",
+            .expected = "0",
+            .context = "scalar clears warnings",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "BAD SQL",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "BAD",
+        }
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_storage_engine, @@warning_count, @@error_count, ROW_COUNT()",
+        (struct expected_single_row_result){
+            .columns = warning_columns,
+            .values = error_values,
+            .column_count = diagnostics_default_storage_engine_variable_column_count,
+        },
+        "default storage engine error diagnostics"
+    );
+    failures += expect_count_statement(
+        database,
+        (struct expected_count_result){
+            .sql = "SHOW COUNT(*) ERRORS",
+            .expected = "0",
+            .context = "scalar clears errors",
+        }
+    );
+    failures += expect_count_statement(
+        database,
+        (struct expected_count_result){
+            .sql = "SHOW COUNT(*) WARNINGS",
+            .expected = "0",
+            .context = "scalar clears error warnings",
+        }
+    );
+
+    session = mylite_connection_session_state(database);
+    failures += expect_int64(
+        (int64_t)session->catalog_generation,
+        (int64_t)catalog_generation,
+        "catalog generation unchanged by default storage engine reads"
+    );
+    failures += expect_int64(
+        (int64_t)session->sqlite_schema_generation,
+        (int64_t)sqlite_schema_generation,
+        "sqlite schema generation unchanged by default storage engine reads"
+    );
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "preamble after default storage engine reads"
+    );
+
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_storage_engine, DATABASE()",
+        (struct expected_single_row_result){
+            .columns = selected_columns,
+            .values = selected_values,
+            .column_count = selected_default_storage_engine_variable_column_count,
+        },
+        "default storage engine with selected database"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "reopen default engine variable file");
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_storage_engine",
+        (struct expected_single_row_result){
+            .columns = variable_columns,
+            .values = variable_values,
+            .column_count = 1U,
+        },
+        "reopened default storage engine variable"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_innodb_engine_diagnostics(void) {
     static const char raw_nul_string_engine_sql[] =
         "CREATE TABLE raw_nul_string_engine (id INT) ENGINE='InnoDB"
@@ -413,6 +659,42 @@ static int test_innodb_engine_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT @@no_such_default_storage_engine_variable",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_system_variable,
+            .sqlstate = "HY000",
+            .message_part = "Unknown system variable 'no_such_default_storage_engine_variable'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@global.no_such_default_storage_engine_variable",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_system_variable,
+            .sqlstate = "HY000",
+            .message_part = "Unknown system variable 'no_such_default_storage_engine_variable'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@`session`.default_storage_engine",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "quoted system variable scope",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@default_storage_engine + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "descriptor-backed table reads",
+        }
+    );
     mylite_close(database);
     remove_related_files(path);
     return failures;
@@ -461,6 +743,34 @@ static int test_independent_innodb_engine_handles(void) {
     );
     failures += expect_show_engines_result(first, "SHOW ENGINES", "first show engines");
     failures += expect_show_engines_result(second, "SHOW ENGINES", "second show engines");
+    failures += expect_single_row_result(
+        first,
+        "SELECT @@default_storage_engine, @@global.default_storage_engine",
+        (struct expected_single_row_result){
+            .columns =
+                (const char *const[]){
+                    "@@default_storage_engine",
+                    "@@global.default_storage_engine"
+                },
+            .values = (const char *const[]){"InnoDB", "InnoDB"},
+            .column_count = independent_default_storage_engine_variable_column_count,
+        },
+        "first default storage engine variables"
+    );
+    failures += expect_single_row_result(
+        second,
+        "SELECT @@default_storage_engine, @@global.default_storage_engine",
+        (struct expected_single_row_result){
+            .columns =
+                (const char *const[]){
+                    "@@default_storage_engine",
+                    "@@global.default_storage_engine"
+                },
+            .values = (const char *const[]){"InnoDB", "InnoDB"},
+            .column_count = independent_default_storage_engine_variable_column_count,
+        },
+        "second default storage engine variables"
+    );
 
     mylite_close(first);
     mylite_close(second);
@@ -570,6 +880,26 @@ static int expect_row_count(mylite_db *database, int64_t expected, const char *c
             context
         );
     }
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_count_statement(mylite_db *database, struct expected_count_result expected) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, expected.sql, &result);
+
+    if (result == NULL) {
+        return failures + 1;
+    }
+
+    failures += expect_size(mylite_result_row_count(result), 1U, expected.context);
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, 0U, 0U),
+        expected.expected,
+        expected.context
+    );
+    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
 
     mylite_result_free(result);
     return failures;

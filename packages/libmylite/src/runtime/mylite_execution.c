@@ -306,6 +306,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE = 13,
     SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM = 14,
     SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM = 15,
+    SESSION_SYSTEM_VARIABLE_AUTOCOMMIT = 16,
 };
 
 struct system_variable_component {
@@ -6083,6 +6084,12 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
         out_cell->value = "binary";
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
+        rc = format_uint64(database, 1U, out_cell->integer_text, sizeof(out_cell->integer_text));
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->integer_text;
+        }
+        return rc;
     case SESSION_SYSTEM_VARIABLE_VERSION:
         out_cell->value = mylite_version();
         return MYLITE_OK;
@@ -6203,6 +6210,7 @@ static bool resolve_system_variable_kind(
         {"default_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE},
         {"character_set_system", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM},
         {"character_set_filesystem", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM},
+        {"autocommit", SESSION_SYSTEM_VARIABLE_AUTOCOMMIT},
         {"version", SESSION_SYSTEM_VARIABLE_VERSION},
         {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT},
     };
@@ -6230,6 +6238,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
+    case SESSION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
         return true;

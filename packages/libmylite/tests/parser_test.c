@@ -11360,6 +11360,8 @@ static int test_cast_expression_syntax(void) {
     failures += parse_sql(
         "SELECT CAST('abcdef' AS CHAR(3) CHARACTER SET 'utf8mb4'), "
         "CAST('abc' AS CHAR CHARSET binary), "
+        "CAST('abc' AS CHAR ASCII), "
+        "CAST('abcdef' AS CHAR(3) ASCII), "
         "CAST('abc' AS NCHAR(4)), CAST('abc' AS BINARY), "
         "CAST('abc' AS BINARY(3));",
         MYLITE_SQL_PARSE_OK,
@@ -11386,19 +11388,37 @@ static int test_cast_expression_syntax(void) {
     failures += expect_span_text(target, "CHAR CHARSET binary", "CHARSET CAST target span");
     cast_expression = child_at(child_at(select_list, 2U), 0U);
     target = child_at(cast_expression, 1U);
+    failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "ASCII CAST target");
+    if (target != NULL && !target->has_column_character_set) {
+        fprintf(stderr, "ASCII CAST did not record shorthand charset\n");
+        failures = 1;
+    }
+    failures += expect_span_text(target, "CHAR ASCII", "ASCII CAST target span");
+    cast_expression = child_at(child_at(select_list, 3U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "CHAR(3) ASCII CAST target");
+    if (target != NULL && (!target->has_column_length || target->column_length != 3U ||
+                           !target->has_column_character_set)) {
+        fprintf(stderr, "CHAR(3) ASCII CAST did not record length and shorthand charset\n");
+        failures = 1;
+    }
+    failures += expect_span_text(target, "CHAR(3) ASCII", "CHAR(3) ASCII CAST target span");
+    cast_expression = child_at(child_at(select_list, 4U), 0U);
+    target = child_at(cast_expression, 1U);
     failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "NCHAR CAST target");
     if (target != NULL && (!target->column_national_attribute || !target->has_column_length ||
                            target->column_length != 4U)) {
         fprintf(stderr, "NCHAR CAST did not record national length\n");
         failures = 1;
     }
-    cast_expression = child_at(child_at(select_list, 3U), 0U);
+    cast_expression = child_at(child_at(select_list, 5U), 0U);
     failures += expect_column_type(
         child_at(cast_expression, 1U),
         MYLITE_SQL_AST_COLUMN_TYPE_BINARY,
         "BINARY CAST target"
     );
-    cast_expression = child_at(child_at(select_list, 4U), 0U);
+    cast_expression = child_at(child_at(select_list, 6U), 0U);
     target = child_at(cast_expression, 1U);
     failures +=
         expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_BINARY, "BINARY(3) CAST target");
@@ -11607,6 +11627,8 @@ static int test_convert_expression_syntax(void) {
         "SELECT CONVERT('123', SIGNED INTEGER), "
         "CONVERT('12.34', DECIMAL(6,2)), "
         "CONVERT('abc', CHAR CHARACTER SET latin1), "
+        "CONVERT('abc', CHAR ASCII), "
+        "CONVERT('abcdef', CHAR(3) ASCII), "
         "CONVERT('abc', NCHAR(4)), "
         "CONVERT('abc', BINARY), "
         "CONVERT('abc', BINARY(3));",
@@ -11645,19 +11667,37 @@ static int test_convert_expression_syntax(void) {
     }
     cast_expression = child_at(child_at(select_list, 3U), 0U);
     target = child_at(cast_expression, 1U);
+    failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "ASCII CONVERT target");
+    if (target != NULL && !target->has_column_character_set) {
+        fprintf(stderr, "ASCII CONVERT did not record shorthand charset\n");
+        failures = 1;
+    }
+    failures += expect_span_text(target, "CHAR ASCII", "ASCII CONVERT target span");
+    cast_expression = child_at(child_at(select_list, 4U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures +=
+        expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "CHAR(3) ASCII CONVERT target");
+    if (target != NULL && (!target->has_column_length || target->column_length != 3U ||
+                           !target->has_column_character_set)) {
+        fprintf(stderr, "CHAR(3) ASCII CONVERT did not record length and shorthand charset\n");
+        failures = 1;
+    }
+    failures += expect_span_text(target, "CHAR(3) ASCII", "CHAR(3) ASCII CONVERT target span");
+    cast_expression = child_at(child_at(select_list, 5U), 0U);
+    target = child_at(cast_expression, 1U);
     failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_CHAR, "NCHAR CONVERT target");
     if (target != NULL && (!target->column_national_attribute || !target->has_column_length ||
                            target->column_length != 4U)) {
         fprintf(stderr, "NCHAR CONVERT did not record national length\n");
         failures = 1;
     }
-    cast_expression = child_at(child_at(select_list, 4U), 0U);
+    cast_expression = child_at(child_at(select_list, 6U), 0U);
     failures += expect_column_type(
         child_at(cast_expression, 1U),
         MYLITE_SQL_AST_COLUMN_TYPE_BINARY,
         "BINARY CONVERT target"
     );
-    cast_expression = child_at(child_at(select_list, 5U), 0U);
+    cast_expression = child_at(child_at(select_list, 7U), 0U);
     target = child_at(cast_expression, 1U);
     failures +=
         expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_BINARY, "BINARY(3) CONVERT target");

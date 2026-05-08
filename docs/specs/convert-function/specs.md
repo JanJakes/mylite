@@ -15,6 +15,8 @@ This task implements:
   `DEC(M,D)`
 - `CONVERT(expr, CHAR)`, `CHAR(N)`, `CHARACTER SET charset_name`, and
   `CHARSET charset_name`
+- `CONVERT(expr, CHAR ASCII)` and `CONVERT(expr, CHAR(N) ASCII)`, matching
+  MySQL's shorthand for `CHARACTER SET latin1`
 - `CONVERT(expr, NCHAR)` and `NCHAR(N)`
 - `CONVERT(expr, BINARY)` and `CONVERT(expr, BINARY(N))`
 - `CONVERT(expr, FLOAT)`, `FLOAT(p)`, `FLOAT4`, `FLOAT4(p)`, `DOUBLE`,
@@ -78,6 +80,8 @@ Floating-point target behavior, including `REAL_AS_FLOAT` for `REAL` targets,
 was additionally checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 Integer target overflow behavior for approximate inputs was additionally
 checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
+`CHAR ASCII` target shorthand behavior was additionally checked on 2026-05-07
+against the same MySQL 8.4.9 runtime.
 
 ## MySQL observations
 
@@ -138,6 +142,11 @@ uses the connection character set for the same validation decision.
 | `COLLATION(CONVERT('abc' USING ascii))` | `ascii_general_ci` |
 | `SET NAMES utf8mb4; HEX(CONVERT(UNHEX('61FF62'), CHAR))` | `NULL`, warning 1300 |
 | `HEX(CONVERT(UNHEX('61FF62'), CHAR CHARACTER SET ascii))` | `61FF62` |
+| `CHARSET(CONVERT('abc', CHAR ASCII))` | `latin1` |
+| `COLLATION(CONVERT('abc', CHAR ASCII))` | `latin1_swedish_ci` |
+| `COERCIBILITY(CONVERT('abc', CHAR ASCII))` | `2` |
+| `COLLATION(CONVERT('abc', CHAR ASCII) COLLATE latin1_bin)` | `latin1_bin` |
+| `COERCIBILITY(CONVERT('abc', CHAR ASCII) COLLATE latin1_bin)` | `0` |
 | `SET NAMES latin1; HEX(CONVERT(UNHEX('61FF62'), CHAR))` | `61FF62` |
 | `SET NAMES latin1; HEX(CONVERT(UNHEX('E282AC62'), CHAR(1)))` | `E2`, warning 1292 |
 | `COLLATION(CONVERT('abc' USING latin1) COLLATE latin1_bin)` | `latin1_bin` |
@@ -169,6 +178,7 @@ Parser and validation errors observed with MySQL 8.4.9:
 | `CONVERT(1)` | syntax error 1064 / `42000` |
 | `CONVERT(1, SIGNED, 2)` | syntax error 1064 / `42000` |
 | `CONVERT('abc' USING latin1) COLLATE utf8mb4_bin` | error 1253 / `42000` |
+| `CONVERT('abc', CHAR ASCII) COLLATE utf8mb4_bin` | error 1253 / `42000` |
 
 Metadata observations from `mysql --column-type-info -vvv`:
 
@@ -213,8 +223,9 @@ collate_expression ::= collate_expression COLLATE charset_value.
 ```
 
 The first production reuses the `cast_target_type` grammar from the CAST
-expression spec. The `USING` form constructs an internal character cast target
-with the requested charset. `USING binary` therefore uses the same
+expression spec, including `CHAR ASCII` shorthand as a `latin1` target. The
+`USING` form constructs an internal character cast target with the requested
+charset. `USING binary` therefore uses the same
 `CHARACTER SET binary` path as the current CAST-family binary-string subset.
 
 ## AST
@@ -253,6 +264,8 @@ the result is `NULL` without conversion warnings.
   CAST
 - date, time, and datetime parsing, fractional-second rounding, warnings, and
   metadata match CAST
+- `CHAR ASCII` and `CHAR(N) ASCII` match CAST's MySQL shorthand mapping to
+  `latin1`, distinct from `CONVERT(expr USING ascii)`
 
 `CONVERT(expr USING charset_name)`:
 
@@ -310,7 +323,8 @@ Parser tests:
   `UNSIGNED INTEGER`
 - `CONVERT('1.25', DECIMAL)`, `DECIMAL(5)`, `DECIMAL(5,2)`, and `DEC(5,2)`
 - `CONVERT('abcdef', CHAR(3))`, `CHAR CHARACTER SET latin1`,
-  `CHAR CHARSET utf8mb4`, `NCHAR(4)`, and `BINARY`
+  `CHAR CHARSET utf8mb4`, `CHAR ASCII`, `CHAR(3) ASCII`, `NCHAR(4)`, and
+  `BINARY`
 - `CONVERT('2024-01-02', DATE)`, `CONVERT('03:04:05.987654', TIME(2))`,
   and `CONVERT('2024-01-02 03:04:05.987654', DATETIME(6))`
 - `CONVERT('1.25', FLOAT)`, `FLOAT(25)`, `FLOAT4`, `DOUBLE`,
@@ -349,7 +363,8 @@ Runtime tests:
   binary, and nullable `USING`
 - charset/collation/coercibility introspection for `USING latin1`,
   `USING utf8`, `USING utf8mb4`, `USING binary`, and
-  `CHAR CHARACTER SET latin1`
+  `CHAR CHARACTER SET latin1`, plus `CHAR ASCII` shorthand and explicit
+  `latin1_bin` collation
 - table projection, `WHERE`, and `ORDER BY`
 - `UPDATE` assignment, predicate, and order-key expressions, including strict
   warning promotion

@@ -36152,6 +36152,22 @@ static int test_cast_expression_execution(void) {
     static const char *const decimal_nonfinite_columns[] = {"nan_value", "inf_value"};
     static const char *const decimal_nonfinite_values[] = {"0.00", "0.00"};
     static const char *const cast_charset_columns[] = {"bad_utf8mb4", "good_utf8mb4"};
+    static const char *const cast_ascii_columns[] = {
+        "cs_ascii",
+        "co_ascii",
+        "cc_ascii",
+        "cs_ascii_len",
+        "co_ascii_len",
+        "cc_ascii_len",
+    };
+    static const char *const cast_ascii_values[] = {
+        "latin1",
+        "latin1_swedish_ci",
+        "2",
+        "latin1",
+        "latin1_swedish_ci",
+        "2",
+    };
     static const char *const cast_connection_charset_column[] = {"value"};
     static const unsigned char binary_padded[] = {'a', '\0', '\0'};
     static const unsigned char binary_truncated[] = {'a', 'b', 'c'};
@@ -36924,6 +36940,22 @@ static int test_cast_expression_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += expect_select_rows(
+        database,
+        "SELECT CHARSET(CAST('abc' AS CHAR ASCII)) AS cs_ascii, "
+        "COLLATION(CAST('abc' AS CHAR ASCII)) AS co_ascii, "
+        "COERCIBILITY(CAST('abc' AS CHAR ASCII)) AS cc_ascii, "
+        "CHARSET(CAST('abc' AS CHAR(3) ASCII)) AS cs_ascii_len, "
+        "COLLATION(CAST('abc' AS CHAR(3) ASCII)) AS co_ascii_len, "
+        "COERCIBILITY(CAST('abc' AS CHAR(3) ASCII)) AS cc_ascii_len",
+        cast_ascii_columns,
+        (int)(sizeof(cast_ascii_columns) / sizeof(cast_ascii_columns[0])),
+        cast_ascii_values,
+        1,
+        "CAST ASCII shorthand introspection"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "CAST ASCII shorthand warning count");
+
     failures += prepare_sql(
         database,
         "SELECT HEX(CAST(UNHEX('61FF62') AS CHAR(1) CHARACTER SET utf8mb4)) AS value",
@@ -37596,6 +37628,11 @@ static int test_convert_expression_execution(void) {
         "co_binary",
         "cc_binary",
         "cs_char_latin1",
+        "cs_char_ascii",
+        "co_char_ascii",
+        "cc_char_ascii",
+        "co_char_ascii_bin",
+        "cc_char_ascii_bin",
         "cs_latin1_bin",
         "co_latin1_bin",
         "cc_latin1_bin",
@@ -37626,6 +37663,11 @@ static int test_convert_expression_execution(void) {
         "binary",
         "2",
         "latin1",
+        "latin1",
+        "latin1_swedish_ci",
+        "2",
+        "latin1_bin",
+        "0",
         "latin1",
         "latin1_bin",
         "0",
@@ -38090,6 +38132,11 @@ static int test_convert_expression_execution(void) {
         "COERCIBILITY(CONVERT('abc' USING binary)) AS cc_binary, "
         "CHARSET(CONVERT('abc', CHAR CHARACTER SET latin1)) "
         "AS cs_char_latin1, "
+        "CHARSET(CONVERT('abc', CHAR ASCII)) AS cs_char_ascii, "
+        "COLLATION(CONVERT('abc', CHAR ASCII)) AS co_char_ascii, "
+        "COERCIBILITY(CONVERT('abc', CHAR ASCII)) AS cc_char_ascii, "
+        "COLLATION(CONVERT('abc', CHAR ASCII) COLLATE latin1_bin) AS co_char_ascii_bin, "
+        "COERCIBILITY(CONVERT('abc', CHAR ASCII) COLLATE latin1_bin) AS cc_char_ascii_bin, "
         "CHARSET(CONVERT('abc' USING latin1) COLLATE latin1_bin) AS cs_latin1_bin, "
         "COLLATION(CONVERT('abc' USING latin1) COLLATE latin1_bin) AS co_latin1_bin, "
         "COERCIBILITY(CONVERT('abc' USING latin1) COLLATE latin1_bin) AS cc_latin1_bin, "
@@ -38136,6 +38183,13 @@ static int test_convert_expression_execution(void) {
         MYLITE_EXEC_ERROR,
         "not valid for CHARACTER SET 'latin1'",
         "COLLATE invalid charset"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT CONVERT('abc', CHAR ASCII) COLLATE utf8mb4_bin",
+        MYLITE_EXEC_ERROR,
+        "not valid for CHARACTER SET 'latin1'",
+        "CONVERT ASCII shorthand invalid collation"
     );
 
     failures += execute_sql(

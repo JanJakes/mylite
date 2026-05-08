@@ -298,10 +298,14 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Scalar `CONVERT(... USING ...)` now transcodes between known `latin1` and
       `utf8mb4` character values for the covered representable-value slice
       while preserving invalid unknown byte-string validation behavior.
+      `CAST(... AS CHAR ASCII)` and `CONVERT(..., CHAR ASCII)` now parse as
+      MySQL's `latin1` shorthand, including charset/collation/coercibility
+      introspection and incompatible-collation diagnostics.
 - [x] Complete `CAST(...)` and `CONVERT(...)` syntax, including
       MySQL-verified `CONVERT ... USING utf8` normalization to `utf8mb3`
-      with warning 3719, FLOAT/DOUBLE target casts, DATE/TIME/DATETIME
-      temporal target casts, and MySQL-observed character/binary
+      with warning 3719, `CHAR ASCII` shorthand mapping to `latin1`,
+      FLOAT/DOUBLE target casts, DATE/TIME/DATETIME temporal target casts, and
+      MySQL-observed character/binary
       result-column metadata for nullable literal character casts, no-length
       binary display lengths, and explicit nonbinary charset conversions.
 - [x] Complete `SELECT DATE(...)`, date-function predicates, and typed

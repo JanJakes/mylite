@@ -1556,6 +1556,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_character_set(
     struct mylite_sql_ast_node *attributes,
     struct mylite_sql_ast_node *character_set
 );
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_ascii_character_set(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *attributes,
+    struct mylite_sql_token ascii_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_collation(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *attributes,

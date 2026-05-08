@@ -5438,6 +5438,35 @@ struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_character_set(
     return attributes;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_ascii_character_set(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *attributes,
+    struct mylite_sql_token ascii_token
+) {
+    static const char latin1_charset[] = "latin1";
+
+    if (!is_parse_ok(state) || attributes == NULL) {
+        return attributes;
+    }
+    if (!token_text_equals(&ascii_token, "ASCII")) {
+        mylite_sql_parser_state_parse_failed(state);
+        return attributes;
+    }
+
+    mylite_sql_ast_node_set_column_character_set(
+        attributes,
+        (struct mylite_sql_source_span){
+            .text = latin1_charset,
+            .length = sizeof(latin1_charset) - 1U,
+        }
+    );
+    mylite_sql_ast_node_set_span(
+        attributes,
+        span_join(attributes->span, span_from_token(&ascii_token))
+    );
+    return attributes;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_set_column_type_collation(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *attributes,

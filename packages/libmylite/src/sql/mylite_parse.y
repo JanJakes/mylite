@@ -5254,6 +5254,10 @@ opt_cast_character_set(A) ::= CHARSET charset_value(B). {
     A = mylite_sql_parser_set_column_type_character_set(
         state, mylite_sql_parser_make_column_type_attribute_list(state), B);
 }
+opt_cast_character_set(A) ::= IDENTIFIER(T). {
+    A = mylite_sql_parser_set_column_type_ascii_character_set(
+        state, mylite_sql_parser_make_column_type_attribute_list(state), T);
+}
 
 case_expression(A) ::= CASE(T) expression(B) case_when_list(C) opt_case_else(D) END(E). {
     A = mylite_sql_parser_make_simple_case_expression(state, T, B, C, D, E);

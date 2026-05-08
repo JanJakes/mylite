@@ -15,6 +15,8 @@ The current implementation supports the application-facing CAST slice:
 - `CAST(expr AS CHAR)`, `CHAR(N)`, `NCHAR`, and `NCHAR(N)`
 - `CAST(expr AS CHAR CHARACTER SET charset_name)` and the `CHARSET` shorthand
   for the initial MyLite charset registry
+- `CAST(expr AS CHAR ASCII)` and `CAST(expr AS CHAR(N) ASCII)`, matching
+  MySQL's shorthand for `CHARACTER SET latin1`
 - `CAST(expr AS BINARY)` and `CAST(expr AS BINARY(N))`, including fixed-length
   byte padding and truncation
 - `CAST(expr AS FLOAT)`, `FLOAT(p)`, `FLOAT4`, and `FLOAT4(p)`, where
@@ -79,6 +81,8 @@ checked on 2026-05-07 against the same MySQL 8.4.9 runtime.
 Table-backed `DECIMAL` string coercions were additionally checked on
 2026-05-07 against the same MySQL 8.4.9 runtime with `DECIMAL(10,2)` values
 inserted as integers, quoted integers, quoted decimals, and exponent notation.
+`CHAR ASCII` target shorthand behavior was additionally checked on 2026-05-07
+against the same MySQL 8.4.9 runtime.
 
 ## MySQL observations
 
@@ -160,6 +164,10 @@ truncate by byte count, right-pad shorter values with `0x00`, and use
 | `HEX(CAST(UNHEX('61FF62') AS CHAR CHARACTER SET utf8mb4))` | `NULL` | 1300 invalid character string |
 | `HEX(CAST(UNHEX('61E282AC62') AS CHAR CHARACTER SET utf8mb4))` | `61E282AC62` | none |
 | `HEX(CAST(UNHEX('61FF62') AS CHAR CHARACTER SET ascii))` | `61FF62` | none |
+| `CHARSET(CAST('abc' AS CHAR ASCII))` | `latin1` | none |
+| `COLLATION(CAST('abc' AS CHAR ASCII))` | `latin1_swedish_ci` | none |
+| `COERCIBILITY(CAST('abc' AS CHAR ASCII))` | `2` | none |
+| `CHARSET(CAST('abc' AS CHAR(3) ASCII))` | `latin1` | none |
 | `SET NAMES utf8mb4; HEX(CAST(UNHEX('61FF62') AS CHAR))` | `NULL` | 1300 invalid character string |
 | `SET NAMES latin1; HEX(CAST(UNHEX('61FF62') AS CHAR))` | `61FF62` | none |
 | `SET NAMES latin1; HEX(CAST(UNHEX('E282AC62') AS CHAR(1)))` | `E2` | 1292 truncated char |
@@ -289,6 +297,7 @@ opt_cast_float_precision ::= column_precision.
 opt_cast_character_set ::= .
 opt_cast_character_set ::= CHARACTER SET charset_value.
 opt_cast_character_set ::= CHARSET charset_value.
+opt_cast_character_set ::= ASCII.
 ```
 
 `COLLATE` inside the cast target remains a syntax error. Applying standalone
@@ -391,6 +400,8 @@ deferred to the broader decimal type task.
 - `CHAR CHARACTER SET binary` returns the same bytes as text with binary
   metadata; length-qualified `CHAR(N) CHARACTER SET binary` uses the same
   byte truncation and right-padding path as `BINARY(N)`
+- `CHAR ASCII` and `CHAR(N) ASCII` are parsed as MySQL shorthand for
+  `CHARACTER SET latin1`, not as the `ascii` character set
 
 ### Temporal
 
@@ -455,7 +466,8 @@ Parser tests:
 - `CAST(1 AS SIGNED)`, `SIGNED INTEGER`, `UNSIGNED`, and `UNSIGNED INTEGER`
 - `CAST('1' AS DECIMAL)`, `DECIMAL(5)`, `DECIMAL(5,2)`, `DEC(5,2)`
 - `CAST(38.8 AS CHAR)`, `CHAR(3)`, `CHAR CHARACTER SET utf8mb4`,
-  `CHAR CHARACTER SET binary`, `NCHAR(4)`, and `BINARY`
+  `CHAR CHARACTER SET binary`, `CHAR ASCII`, `CHAR(3) ASCII`, `NCHAR(4)`,
+  and `BINARY`
 - `CAST('2024-01-02' AS DATE)`, `CAST('03:04:05.987654' AS TIME(2))`,
   and `CAST('2024-01-02 03:04:05.987654' AS DATETIME(6))`
 - `CAST('1.25' AS FLOAT)`, `FLOAT(24)`, `FLOAT(25)`, `FLOAT4`,
@@ -476,6 +488,7 @@ Runtime tests:
 - decimal default precision/scale, explicit scale rounding, invalid string
   warning, and result text formatting
 - character truncation and `CHAR(0)` warnings
+- `CHAR ASCII` charset, collation, and coercibility introspection
 - floating `FLOAT`/`DOUBLE`/`REAL`/`FLOAT4`/`FLOAT8` values, truncation
   warnings, `NULL` propagation, and metadata
 - temporal date/datetime/time parsing, fractional-second rounding, invalid

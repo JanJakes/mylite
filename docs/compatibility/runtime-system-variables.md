@@ -119,7 +119,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `caching_sha2_password_public_key_path` | ❌ | Value, scope, SET, diagnostics |
 | `character_set_client` | 🟡 | Limited read-only scalar `SELECT @@character_set_client` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` connection baseline; no `SET`, `SET NAMES`, conversion, client negotiation, `SHOW VARIABLES`, or protocol charset metadata |
 | `character_set_connection` | 🟡 | Limited read-only scalar `SELECT @@character_set_connection` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` connection baseline; no `SET`, `SET NAMES`, conversion, string literal semantics, `SHOW VARIABLES`, or protocol charset metadata |
-| `character_set_database` | ❌ | Value, scope, SET, diagnostics |
+| `character_set_database` | 🟡 | Limited read-only scalar `SELECT @@character_set_database` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` current-database default or fallback; no `SET`, `CREATE DATABASE` options, `ALTER DATABASE`, mutable schema defaults, `SHOW VARIABLES`, or protocol charset metadata |
 | `character_set_filesystem` | ❌ | Value, scope, SET, diagnostics |
 | `character_set_results` | 🟡 | Limited read-only scalar `SELECT @@character_set_results` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` connection baseline; no `SET`, `SET NAMES`, result conversion, `NULL` results mode, `SHOW VARIABLES`, or protocol charset metadata |
 | `character_set_server` | 🟡 | Limited read-only scalar `SELECT @@character_set_server` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` embedded server default; no `SET`, startup options, mutable global state, database defaults, `SHOW VARIABLES`, or protocol charset metadata |
@@ -141,7 +141,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `clone_ssl_key` | ❌ | Value, scope, SET, diagnostics |
 | `clone_valid_donor_list` | ❌ | Value, scope, SET, diagnostics |
 | `collation_connection` | 🟡 | Limited read-only scalar `SELECT @@collation_connection` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4_0900_ai_ci` connection baseline; no `SET`, `SET NAMES`, collation coercibility, string comparison semantics, `SHOW VARIABLES`, or protocol collation metadata |
-| `collation_database` | ❌ | Value, scope, SET, diagnostics |
+| `collation_database` | 🟡 | Limited read-only scalar `SELECT @@collation_database` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4_0900_ai_ci` current-database default or fallback; no `SET`, `CREATE DATABASE` options, `ALTER DATABASE`, mutable schema defaults, string comparison semantics, `SHOW VARIABLES`, or protocol collation metadata |
 | `collation_server` | 🟡 | Limited read-only scalar `SELECT @@collation_server` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4_0900_ai_ci` embedded server default; no `SET`, startup options, mutable global state, database defaults, string comparison semantics, `SHOW VARIABLES`, or protocol collation metadata |
 | `completion_type` | ❌ | Value, scope, SET, diagnostics |
 | `component_masking.dictionaries_flush_interval_seconds` | ❌ | Value, scope, SET, diagnostics |

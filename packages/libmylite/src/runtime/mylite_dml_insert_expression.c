@@ -387,6 +387,7 @@ static int resolve_insert_expression_text_value(
                        statement_row_count,
                        state,
                        ignore,
+                       false,
                        out_value
                    )
                  : mylite_dml_resolve_insert_text_value(

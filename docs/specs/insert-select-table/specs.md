@@ -83,6 +83,11 @@ Rows are inserted as if each selected row were a values row in source result
 order. Omitted target columns use the existing insert default path. Source
 `NULL` values remain `NULL`; non-`NULL` values are copied with byte length and
 then coerced by the target column's existing DML conversion logic.
+When a direct source string or binary column is inserted into a shorter string
+or binary target, MySQL reports strict truncation as error 1265,
+`Data truncated for column ...`; literal and computed string expressions still
+use error 1406, `Data too long ...`. MyLite preserves that distinction from
+source result metadata during materialization.
 
 ## Diagnostics And Side Effects
 
@@ -95,6 +100,8 @@ Observed MySQL 8.4.9 behavior for covered cases:
 | column-count mismatch | error 1136, no mutation |
 | duplicate key without `IGNORE` or ODKU | error 1062, statement rollback |
 | `INSERT IGNORE ... SELECT` duplicate row | warning 1062, duplicate skipped, affected rows count accepted rows |
+| strict direct source string/binary column truncation | error 1265, statement rollback |
+| strict literal/computed string truncation | error 1406, statement rollback |
 | `AUTO_INCREMENT` target with omitted id | generated ids allocated in source order, `LAST_INSERT_ID()` is first generated id |
 | persistent self-insert | source rows are materialized before insertion |
 | temporary self-insert | error 1137, message `Can't reopen table: '<name>'` |
@@ -130,6 +137,8 @@ Runtime tests must cover:
 - source column-count mismatch diagnostics
 - duplicate-key rollback without `IGNORE`
 - `INSERT IGNORE ... SELECT` duplicate skipping and warnings
+- strict and non-strict string/binary target truncation for direct source
+  columns, plus strict literal and numeric-source truncation diagnostics
 - `AUTO_INCREMENT` generation and first insert id
 - persistent self-insert materialization
 - temporary self-insert error 1137 without mutation

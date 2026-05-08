@@ -190,6 +190,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `INSERT ... VALUES` `NULL` warning 1048 coercion, single-row insert `NULL`
       error preservation, update `NULL`/`DEFAULT` coercion, changed-row affected
       counts, and numeric/text/date/datetime/time implicit defaults.
+- [x] Align table-backed `INSERT ... SELECT` string and binary target
+      truncation diagnostics for the covered source forms. Direct source
+      string/binary columns now report strict error 1265, while literal,
+      computed, and numeric source projections keep strict error 1406; non-strict
+      direct source-column truncation stores the prefix with warning 1265.
 - [x] Align integer and decimal DML coercion in strict and non-strict modes for
       currently supported `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`,
       ODKU update assignments, single-table `UPDATE`, and joined `UPDATE`

@@ -387,7 +387,7 @@ static int evaluate_insert_set_assignment_value(
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value);
+    status = mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, false, out_value);
     if (status != MYLITE_OK) {
         return status;
     }

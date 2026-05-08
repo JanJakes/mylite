@@ -58195,6 +58195,159 @@ static int test_insert_select_execution(void) {
         3,
         "INSERT SELECT positional rows"
     );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_strict_source_text (id INT PRIMARY KEY, note VARCHAR(3))",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_strict_source_text "
+        "SELECT id, note FROM source_rows WHERE id = 3",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data truncated for column 'note' at row 1",
+        "INSERT SELECT direct string column strict truncation"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "INSERT SELECT direct string column strict truncation code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS inserted FROM target_strict_source_text",
+        (const char *const[]){"inserted"},
+        1,
+        (const char *const[]){"0"},
+        1,
+        "INSERT SELECT direct string column strict rollback"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE source_binary_text (payload VARBINARY(6))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO source_binary_text VALUES (X'616263646566')",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_strict_source_binary (payload VARBINARY(3))",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_strict_source_binary SELECT payload FROM source_binary_text",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data truncated for column 'payload' at row 1",
+        "INSERT SELECT direct binary column strict truncation"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "INSERT SELECT direct binary column strict truncation code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_strict_literal_text (note VARCHAR(3))",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_strict_literal_text SELECT 'abcdef' FROM source_rows WHERE id = 1",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 'note' at row 1",
+        "INSERT SELECT literal string strict truncation"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "INSERT SELECT literal string strict truncation code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "CREATE TABLE source_numeric_text (n INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO source_numeric_text VALUES (12345)", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_strict_numeric_text (n VARCHAR(3))",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_strict_numeric_text SELECT n FROM source_numeric_text",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 'n' at row 1",
+        "INSERT SELECT numeric column strict string truncation"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "INSERT SELECT numeric column strict string truncation code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_nonstrict_source_text (id INT PRIMARY KEY, note VARCHAR(3))",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO target_nonstrict_source_text "
+        "SELECT id, note FROM source_rows WHERE id = 3",
+        1,
+        "INSERT SELECT direct string column non-strict affected rows"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "INSERT SELECT direct string column non-strict warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM target_nonstrict_source_text",
+        (const char *const[]){"id", "note"},
+        2,
+        (const char *const[]){"3", "thr"},
+        1,
+        "INSERT SELECT direct string column non-strict row"
+    );
+    failures += execute_sql(database, "SET SESSION sql_mode = DEFAULT", MYLITE_DONE);
+
     failures += prepare_sql(
         database,
         "INSERT INTO target_all (id, note) SELECT id FROM source_rows",

@@ -544,6 +544,7 @@ int mylite_dml_coerce_insert_string_value(
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
     bool ignore,
+    bool strict_truncation_is_data_truncated,
     struct mylite_insert_bound_value *value
 );
 int mylite_dml_coerce_update_temporal_value(

@@ -457,6 +457,7 @@ static int resolve_insert_explicit_value(
                 column,
                 statement_row_count,
                 (plan != NULL && plan->ignore) != 0,
+                false,
                 out_value
             );
         }
@@ -479,6 +480,7 @@ static int resolve_insert_explicit_value(
             statement_row_count,
             state,
             (plan != NULL && plan->ignore) != 0,
+            value->strict_string_truncation_is_data_truncated,
             out_value
         );
     case MYLITE_INSERT_VALUE_HEX_LITERAL:

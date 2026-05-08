@@ -7,6 +7,8 @@ This slice aligns write-time length coercion for currently supported `CHAR`,
 
 - `INSERT ... VALUES`
 - `INSERT ... SET`
+- direct table-backed `INSERT ... SELECT` source columns for `CHAR`,
+  `VARCHAR`, `BINARY`, and `VARBINARY` target truncation diagnostics
 - `REPLACE`
 - insert and update branches of `ON DUPLICATE KEY UPDATE`
 - single-table `UPDATE`

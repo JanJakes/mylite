@@ -89,6 +89,7 @@ static int coerce_insert_string_value(
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
     bool ignore,
+    bool strict_truncation_is_data_truncated,
     struct mylite_insert_bound_value *value
 );
 
@@ -131,6 +132,7 @@ static int coerce_string_text(
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
     bool ignore,
+    bool strict_truncation_is_data_truncated,
     const struct mylite_dml_string_text *text,
     struct mylite_dml_string_output *out_output
 );
@@ -244,7 +246,14 @@ static int handle_string_truncation(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
-    bool ignore
+    bool ignore,
+    bool strict_truncation_is_data_truncated
+);
+
+static int set_string_truncated_error(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    uint64_t row_number
 );
 
 static int set_string_too_long_error(
@@ -286,6 +295,7 @@ int mylite_dml_coerce_insert_string_value(
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
     bool ignore,
+    bool strict_truncation_is_data_truncated,
     struct mylite_insert_bound_value *value
 ) {
     enum mylite_dml_string_kind kind = string_kind_for_column(column);
@@ -296,7 +306,15 @@ int mylite_dml_coerce_insert_string_value(
     if (kind == MYLITE_DML_STRING_NONE || value->kind == MYLITE_INSERT_BOUND_NULL) {
         return MYLITE_OK;
     }
-    return coerce_insert_string_value(database, column, kind, row_number, ignore, value);
+    return coerce_insert_string_value(
+        database,
+        column,
+        kind,
+        row_number,
+        ignore,
+        strict_truncation_is_data_truncated,
+        value
+    );
 }
 
 int mylite_dml_coerce_update_string_value(
@@ -323,6 +341,7 @@ static int coerce_insert_string_value(
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
     bool ignore,
+    bool strict_truncation_is_data_truncated,
     struct mylite_insert_bound_value *value
 ) {
     struct mylite_dml_string_text text = {0};
@@ -330,7 +349,16 @@ static int coerce_insert_string_value(
     int status = insert_value_to_string_text(value, &text);
 
     if (status == MYLITE_OK) {
-        status = coerce_string_text(database, column, kind, row_number, ignore, &text, &output);
+        status = coerce_string_text(
+            database,
+            column,
+            kind,
+            row_number,
+            ignore,
+            strict_truncation_is_data_truncated,
+            &text,
+            &output
+        );
     }
     if (status == MYLITE_OK && (output.replace || value->kind != MYLITE_INSERT_BOUND_TEXT)) {
         status = replace_insert_string_value(
@@ -357,7 +385,8 @@ static int coerce_update_string_value(
     int status = expression_value_to_string_text(value, &text);
 
     if (status == MYLITE_OK) {
-        status = coerce_string_text(database, column, kind, row_number, ignore, &text, &output);
+        status =
+            coerce_string_text(database, column, kind, row_number, ignore, false, &text, &output);
     }
     if (status == MYLITE_OK && (output.replace || value->kind != MYLITE_EXPRESSION_VALUE_TEXT)) {
         status = replace_update_string_value(
@@ -500,6 +529,7 @@ static int coerce_string_text(
     enum mylite_dml_string_kind kind,
     uint64_t row_number,
     bool ignore,
+    bool strict_truncation_is_data_truncated,
     const struct mylite_dml_string_text *text,
     struct mylite_dml_string_output *out_output
 ) {
@@ -540,7 +570,13 @@ static int coerce_string_text(
         }
         return MYLITE_OK;
     }
-    status = handle_string_truncation(database, column, row_number, ignore);
+    status = handle_string_truncation(
+        database,
+        column,
+        row_number,
+        ignore,
+        strict_truncation_is_data_truncated
+    );
     if (status != MYLITE_OK) {
         string_output_deinit(&utf8_output);
         return status;
@@ -998,12 +1034,41 @@ static int handle_string_truncation(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     uint64_t row_number,
-    bool ignore
+    bool ignore,
+    bool strict_truncation_is_data_truncated
 ) {
     if (!ignore && mylite_connection_sql_mode_is_strict(database)) {
+        if (strict_truncation_is_data_truncated) {
+            return set_string_truncated_error(database, column, row_number);
+        }
         return set_string_too_long_error(database, column, row_number);
     }
     return append_string_truncation_warning(database, column, row_number);
+}
+
+static int set_string_truncated_error(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    uint64_t row_number
+) {
+    char *message = make_string_condition_message(
+        column,
+        row_number,
+        "Data truncated for column '%q' at row %llu"
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status =
+            mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WARN_DATA_TRUNCATED, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_string_too_long_error(

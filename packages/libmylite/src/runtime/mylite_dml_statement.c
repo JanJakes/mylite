@@ -118,6 +118,11 @@ static int copy_insert_select_column_value(
     struct mylite_insert_value *out_value
 );
 
+static bool insert_select_source_column_uses_strict_data_truncated(
+    const mylite_stmt *select_stmt,
+    size_t column_index
+);
+
 static int materialize_multi_delete_rowsets(
     mylite_db *database,
     const struct mylite_table_select_result *result,
@@ -916,10 +921,30 @@ static int copy_insert_select_column_value(
 
     *out_value = (struct mylite_insert_value){
         .kind = MYLITE_INSERT_VALUE_TEXT,
+        .strict_string_truncation_is_data_truncated =
+            insert_select_source_column_uses_strict_data_truncated(select_stmt, column_index),
         .text = copy,
         .text_length = (size_t)bytes,
     };
     return MYLITE_OK;
+}
+
+static bool insert_select_source_column_uses_strict_data_truncated(
+    const mylite_stmt *select_stmt,
+    size_t column_index
+) {
+    int field_type = MYLITE_FIELD_TYPE_INVALID;
+
+    if (mylite_column_origin_name(select_stmt, (int)column_index) == NULL) {
+        return false;
+    }
+    field_type = mylite_column_field_type(select_stmt, (int)column_index);
+    return field_type == MYLITE_FIELD_TYPE_VARCHAR || field_type == MYLITE_FIELD_TYPE_VAR_STRING ||
+           field_type == MYLITE_FIELD_TYPE_STRING || field_type == MYLITE_FIELD_TYPE_TINY_BLOB ||
+           field_type == MYLITE_FIELD_TYPE_MEDIUM_BLOB ||
+           field_type == MYLITE_FIELD_TYPE_LONG_BLOB || field_type == MYLITE_FIELD_TYPE_BLOB ||
+           field_type == MYLITE_FIELD_TYPE_ENUM || field_type == MYLITE_FIELD_TYPE_SET ||
+           field_type == MYLITE_FIELD_TYPE_JSON;
 }
 
 static int execute_single_delete_statement(

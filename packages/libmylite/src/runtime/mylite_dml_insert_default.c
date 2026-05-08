@@ -517,9 +517,15 @@ int mylite_dml_resolve_insert_text_value(
             status =
                 mylite_dml_coerce_insert_temporal_value(database, column, 1U, ignore, out_value);
         }
-        return status == MYLITE_OK
-                   ? mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value)
-                   : status;
+        return status == MYLITE_OK ? mylite_dml_coerce_insert_string_value(
+                                         database,
+                                         column,
+                                         1U,
+                                         ignore,
+                                         false,
+                                         out_value
+                                     )
+                                   : status;
     }
     if (mylite_dml_parse_insert_integer_text_with_length(text, text_length, &integer_value)) {
         int status = MYLITE_OK;
@@ -539,7 +545,14 @@ int mylite_dml_resolve_insert_text_value(
         };
         status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
         if (status == MYLITE_OK) {
-            status = mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value);
+            status = mylite_dml_coerce_insert_string_value(
+                database,
+                column,
+                1U,
+                ignore,
+                false,
+                out_value
+            );
         }
         return status;
     }
@@ -565,7 +578,14 @@ int mylite_dml_resolve_insert_text_value(
         };
         status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
         if (status == MYLITE_OK) {
-            status = mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value);
+            status = mylite_dml_coerce_insert_string_value(
+                database,
+                column,
+                1U,
+                ignore,
+                false,
+                out_value
+            );
         }
         return status;
     }
@@ -575,9 +595,15 @@ int mylite_dml_resolve_insert_text_value(
     if (status == MYLITE_OK) {
         status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
     }
-    return status == MYLITE_OK
-               ? mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value)
-               : status;
+    return status == MYLITE_OK ? mylite_dml_coerce_insert_string_value(
+                                     database,
+                                     column,
+                                     1U,
+                                     ignore,
+                                     false,
+                                     out_value
+                                 )
+                               : status;
 }
 
 int mylite_dml_resolve_insert_quoted_text_value(
@@ -588,6 +614,7 @@ int mylite_dml_resolve_insert_quoted_text_value(
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
     bool ignore,
+    bool strict_string_truncation_is_data_truncated,
     struct mylite_insert_bound_value *out_value
 ) {
     if (text == NULL || !insert_column_uses_text_storage(column)) {
@@ -604,9 +631,15 @@ int mylite_dml_resolve_insert_quoted_text_value(
     }
     int status = set_insert_bound_text_value(database, text, text_length, out_value);
 
-    return status == MYLITE_OK
-               ? mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value)
-               : status;
+    return status == MYLITE_OK ? mylite_dml_coerce_insert_string_value(
+                                     database,
+                                     column,
+                                     1U,
+                                     ignore,
+                                     strict_string_truncation_is_data_truncated,
+                                     out_value
+                                 )
+                               : status;
 }
 
 int mylite_dml_resolve_insert_binary_literal_value(
@@ -859,9 +892,15 @@ static int resolve_insert_binary_literal_numeric_value(
             .integer_value = integer_value,
         };
         status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
-        return status == MYLITE_OK
-                   ? mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value)
-                   : status;
+        return status == MYLITE_OK ? mylite_dml_coerce_insert_string_value(
+                                         database,
+                                         column,
+                                         1U,
+                                         ignore,
+                                         false,
+                                         out_value
+                                     )
+                                   : status;
     }
 
     char *decimal_text = NULL;
@@ -965,6 +1004,7 @@ static int resolve_insert_binary_literal_text_value(
             statement_row_count,
             state,
             ignore,
+            false,
             out_value
         );
     }
@@ -991,7 +1031,8 @@ static int resolve_insert_large_integer_text_value(
         status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
     }
     if (status == MYLITE_OK) {
-        status = mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, out_value);
+        status =
+            mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, false, out_value);
     }
     return status;
 }

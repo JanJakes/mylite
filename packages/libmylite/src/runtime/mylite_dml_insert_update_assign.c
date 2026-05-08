@@ -209,7 +209,8 @@ static int validate_insert_update_assignment_result(
     if (status != MYLITE_OK) {
         return status;
     }
-    status = mylite_dml_coerce_insert_string_value(database, column, row_number, ignore, value);
+    status =
+        mylite_dml_coerce_insert_string_value(database, column, row_number, ignore, false, value);
     if (status != MYLITE_OK) {
         return status;
     }

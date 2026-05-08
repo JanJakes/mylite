@@ -59,6 +59,7 @@ int mylite_dml_resolve_insert_quoted_text_value(
     uint64_t statement_row_count,
     struct mylite_insert_execution_state *state,
     bool ignore,
+    bool strict_string_truncation_is_data_truncated,
     struct mylite_insert_bound_value *out_value
 );
 int mylite_dml_resolve_insert_binary_literal_value(

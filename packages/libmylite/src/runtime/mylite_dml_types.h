@@ -52,6 +52,7 @@ struct mylite_insert_value {
     enum mylite_insert_value_kind kind;
     enum mylite_sql_ast_operator operator_kind;
     size_t values_function_count;
+    bool strict_string_truncation_is_data_truncated;
     char *text;
     size_t text_length;
     const struct mylite_sql_ast_node *expression;

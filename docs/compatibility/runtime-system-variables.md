@@ -879,7 +879,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `sql_log_bin` | ❌ | Value, scope, SET, diagnostics |
 | `sql_log_off` | ❌ | Value, scope, SET, diagnostics |
 | `sql_mode` | ❌ | Value, scope, SET, diagnostics |
-| `sql_notes` | ❌ | Value, scope, SET, diagnostics |
+| `sql_notes` | 🟡 | Limited read-only scalar `SELECT @@sql_notes` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; no `SET`, mutable global/session state, note-level diagnostics, note suppression, `max_error_count`, changed `SHOW WARNINGS` / `@@warning_count` behavior, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `sql_quote_show_create` | 🟡 | Limited read-only scalar `SELECT @@sql_quote_show_create` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled SHOW CREATE quote-control value `1`; no `SET`, mutable global/session state, disabled SHOW CREATE rendering, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `sql_replica_skip_counter` | ❌ | Value, scope, SET, diagnostics |
 | `sql_require_primary_key` | ❌ | Value, scope, SET, diagnostics |

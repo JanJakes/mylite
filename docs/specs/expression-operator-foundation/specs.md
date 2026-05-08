@@ -283,11 +283,16 @@ Representative runtime results:
 | `SELECT ~0` | `18446744073709551615` |
 | `SELECT 1 << 63` | `9223372036854775808` |
 | `SELECT 1 >> 1` | `0` |
+| `SELECT '1x' | 0` | `1`, warning 1292 `Truncated incorrect INTEGER value: '1x'` |
+| `SELECT '1.9' | 0, 1.9 | 0` | `1`, `2` |
 
 Unsigned integer arithmetic uses MySQL's unsigned `BIGINT` range for exact
 integer operands. Addition, subtraction, multiplication, and integer division
 that overflow or underflow that range fail with error/warning 1690. `/` keeps
 the MySQL four-decimal exact-division display for covered unsigned values.
+Bitwise operators coerce operands to unsigned integers: string operands parse
+an integer prefix and warn 1292 on trailing garbage, while approximate numeric
+operands round half away from zero before applying the unsigned 64-bit operator.
 
 Division by zero returns `NULL` and records warning 1365 for `/`, `DIV`, and
 `MOD`/`%` under the verified SQL mode:
@@ -552,7 +557,9 @@ mislabeling basic result columns:
   simple cases
 - `DIV`, modulo, integer arithmetic, and numeric bitwise operators return
   integer metadata, with bitwise numeric results treated as unsigned where
-  MySQL does so
+  MySQL does so. Verified scalar bitwise results use unsigned `LONGLONG`
+  metadata with length `21`, binary collation id `63`, decimals `0`, and
+  `NOT_NULL UNSIGNED BINARY NUM` flags for non-null operands.
 - expression origins are empty for computed expressions
 
 Full expression metadata remains Task 23. Task 16 may expose conservative

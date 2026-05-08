@@ -160,6 +160,7 @@ int mylite_expression_descriptor_infer_unary_expression(
         *out_descriptor = mylite_expression_descriptor_unsigned_longlong(
             mylite_expression_descriptor_is_nullable(&operand)
         );
+        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
         status = callbacks->infer_expression_descriptor(
@@ -452,6 +453,7 @@ int mylite_expression_descriptor_infer_binary_expression(
     case MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT:
     case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
         *out_descriptor = mylite_expression_descriptor_unsigned_longlong(nullable);
+        out_descriptor->length = mylite_mysql_signed_longlong_display_length;
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
         *out_descriptor = (struct mylite_field_descriptor){

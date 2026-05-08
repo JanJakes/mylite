@@ -308,6 +308,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `CAST` / `CONVERT` plus covered arithmetic, comparison, and bitwise
       numeric contexts now use the literal's numeric value instead of the
       decoded binary string bytes.
+      Bitwise operators now coerce scalar operands through unsigned integer
+      conversion, including MySQL-shaped `INTEGER` truncation warnings for
+      ordinary string operands and half-away rounding for approximate numeric
+      operands, and expose MySQL's 21-character unsigned `LONGLONG` metadata.
       Scalar numeric conversion for embedded-NUL text values now keeps the
       numeric prefix for signed, unsigned, decimal, and approximate targets
       while still treating the NUL plus following bytes as trailing garbage for

@@ -6658,6 +6658,145 @@ static int test_expression_operator_foundation(void) {
          0U,
          0},
     };
+    static const char *const bitwise_operator_values[] = {
+        "1",
+        "1",
+        "2",
+        "2",
+        "0",
+        "18446744073709551614",
+        "1",
+        "2",
+        "18446744073709551614",
+    };
+    static const struct expected_result_metadata bitwise_operator_metadata[] = {
+        {"bit_or",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"bit_and",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"bit_xor",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"shl",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"shr",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"bit_not",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"text_decimal",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"real_decimal",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"real_negative",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+    };
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
@@ -6754,6 +6893,48 @@ static int test_expression_operator_foundation(void) {
     failures += expect_string(mylite_column_text(stmt, 5), "9223372036854775808", "shift left");
     failures += expect_string(mylite_column_text(stmt, 6), "0", "shift right");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "arithmetic done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT '1x' | 0 AS bit_or, '1x' & 3 AS bit_and, "
+        "'1x' ^ 3 AS bit_xor, '1x' << 1 AS shl, '1x' >> 1 AS shr, "
+        "~'1x' AS bit_not, '1.9' | 0 AS text_decimal, "
+        "1.9 | 0 AS real_decimal, -1.5 | 0 AS real_negative",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        bitwise_operator_metadata,
+        (int)(sizeof(bitwise_operator_metadata) / sizeof(bitwise_operator_metadata[0])),
+        "bitwise operator metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "bitwise coercion row");
+    for (int index = 0;
+         index < (int)(sizeof(bitwise_operator_values) / sizeof(bitwise_operator_values[0]));
+         ++index) {
+        failures += expect_string(
+            mylite_column_text(stmt, index),
+            bitwise_operator_values[index],
+            "bitwise coercion value"
+        );
+    }
+    failures += expect_int(mylite_warning_count(database), 7, "bitwise coercion warning count");
+    for (int index = 0; index < 7; ++index) {
+        failures += expect_int(
+            (int)mylite_warning_code(database, index),
+            mysql_warning_truncated_wrong_value,
+            "bitwise coercion warning code"
+        );
+        failures += expect_contains(
+            mylite_warning_message(database, index),
+            "Truncated incorrect INTEGER value",
+            "bitwise coercion warning message"
+        );
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "bitwise coercion done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -77549,7 +77730,7 @@ static int test_result_metadata_expression_labels_execution(void) {
          NULL,
          NULL,
          NULL,
-         20U,
+         21U,
          MYLITE_FIELD_TYPE_LONGLONG,
          0U,
          63U,

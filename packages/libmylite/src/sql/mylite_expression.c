@@ -23779,17 +23779,23 @@ static int eval_numeric_unary(
         }
     }
 
-    status = value_to_numeric(operand, warnings, &number);
-    if (status != 0) {
-        return status;
-    }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_BITWISE_NOT) {
-        uint64_t value = number.is_unsigned ? number.uint64_value : (uint64_t)number.int64_value;
+        uint64_t value = 0U;
+
+        status = cast_value_to_unsigned_integer(operand, warnings, &value);
+        if (status != 0) {
+            return status;
+        }
         *out_value = (struct mylite_expression_value){
             .kind = MYLITE_EXPRESSION_VALUE_UINT64,
             .uint64_value = ~value
         };
         return 0;
+    }
+
+    status = value_to_numeric(operand, warnings, &number);
+    if (status != 0) {
+        return status;
     }
     if (number.is_integer && !number.is_unsigned) {
         *out_value = (struct mylite_expression_value){
@@ -24300,8 +24306,6 @@ static int eval_bitwise(
     struct mylite_expression_warnings *warnings,
     struct mylite_expression_value *out_value
 ) {
-    struct numeric_value left_number = {0};
-    struct numeric_value right_number = {0};
     uint64_t left_int = 0U;
     uint64_t right_int = 0U;
     int status = 0;
@@ -24310,17 +24314,13 @@ static int eval_bitwise(
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
         return 0;
     }
-    status = value_to_numeric(left, warnings, &left_number);
+    status = cast_value_to_unsigned_integer(left, warnings, &left_int);
     if (status == 0) {
-        status = value_to_numeric(right, warnings, &right_number);
+        status = cast_value_to_unsigned_integer(right, warnings, &right_int);
     }
     if (status != 0) {
         return status;
     }
-    left_int =
-        left_number.is_unsigned ? left_number.uint64_value : (uint64_t)left_number.int64_value;
-    right_int =
-        right_number.is_unsigned ? right_number.uint64_value : (uint64_t)right_number.int64_value;
     out_value->kind = MYLITE_EXPRESSION_VALUE_UINT64;
     switch (operator_kind) {
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:

@@ -12,7 +12,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW COLUMNS` / `SHOW FIELDS` | 🟡 | Limited descriptor-driven column listing for persistent base tables; supports `FROM`/`IN`, schema-qualified targets, explicit schema forms, and `LIKE 'pattern'` filters with `Field`, `Type`, `Null`, `Key`, `Default`, and `Extra`; no NUL-producing pattern escapes, `FULL`, `EXTENDED`, `WHERE`, views, privileges, indexes, defaults, hidden columns, or `INFORMATION_SCHEMA` |
 | `SHOW COUNT(*) ERRORS` | ❌ | Result shape, filters, privileges |
 | `SHOW COUNT(*) WARNINGS` | ❌ | Result shape, filters, privileges |
-| `SHOW CREATE DATABASE` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE DATABASE` / `SHOW CREATE SCHEMA` | 🟡 | Limited descriptor-driven schema DDL rendering with MySQL 8.4.9 columns and fixed default charset/collation/encryption text for current optionless schema descriptors; no `IF NOT EXISTS`, schema options, privileges, system schemas, or `sql_quote_show_create` |
 | `SHOW CREATE EVENT` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE FUNCTION` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE PROCEDURE` | ❌ | Result shape, filters, privileges |

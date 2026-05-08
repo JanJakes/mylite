@@ -48,7 +48,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW STATUS` | ❌ | Result shape, filters, privileges |
 | `SHOW TABLE STATUS` | 🟡 | Limited descriptor-driven persistent base-table status rows with MySQL 8.4.9 column labels, `FROM`/`IN` schema forms, `LIKE 'pattern'` filters, exact physical row counts, and deterministic placeholder statistics; no views, temporary tables, `WHERE`, privileges, timestamps, auto-increment metadata, full storage statistics, or `INFORMATION_SCHEMA` |
 | `SHOW TABLES` | 🟡 | Limited descriptor-driven `SHOW TABLES` with optional `FROM`/`IN` schema and `LIKE 'pattern'` filters; no NUL-producing pattern escapes, `FULL`, `EXTENDED`, `WHERE`, views, privileges, or temporary tables |
-| `SHOW TRIGGERS` | ❌ | Result shape, filters, privileges |
+| `SHOW TRIGGERS` | 🟡 | Limited schema-resolved empty trigger introspection with MySQL 8.4.9 column labels, optional `FULL`, and `LIKE 'pattern'` filters; no NUL-producing pattern escapes, trigger descriptors, trigger rows, trigger DDL, `SHOW CREATE TRIGGER`, `WHERE`, privileges, or `INFORMATION_SCHEMA.TRIGGERS` |
 | `SHOW VARIABLES` | ❌ | Result shape, filters, privileges |
 | `SHOW WARNINGS` | ❌ | Result shape, filters, privileges |
 

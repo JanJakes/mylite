@@ -86,6 +86,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT = 77,
     MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT = 78,
     MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT = 79,
+    MYLITE_SQL_AST_SYSTEM_VARIABLE = 80,
 };
 
 enum mylite_sql_ast_literal_kind {

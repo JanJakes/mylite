@@ -12,6 +12,7 @@ static int test_current_user_identity_functions(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
+static int test_diagnostics_count_system_variables(void);
 static int test_count_star_aggregate(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
@@ -101,6 +102,7 @@ int main(void) {
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
+    failures += test_diagnostics_count_system_variables();
     failures += test_count_star_aggregate();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
@@ -813,6 +815,83 @@ static int test_row_count_function(void) {
     failures += parse_sql("SELECT ROW_COUNT(1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT ROW_COUNT() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_diagnostics_count_system_variables(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT @@warning_count, @@session.error_count, @@local.Warning_Count FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_SYSTEM_VARIABLE, "warning count variable");
+    failures += expect_span_text(first_expression, "@@warning_count", "warning count span");
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_SYSTEM_VARIABLE, "error count variable");
+    failures += expect_span_text(second_expression, "@@session.error_count", "error count span");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_SYSTEM_VARIABLE,
+        "local warning count variable"
+    );
+    failures +=
+        expect_span_text(third_expression, "@@local.Warning_Count", "local warning count span");
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "system variable from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT (@@warning_count), @@session.`warning_count`, @@`error_count`;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized warning count variable"
+    );
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_SYSTEM_VARIABLE,
+        "wrapped warning count variable"
+    );
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_SYSTEM_VARIABLE,
+        "quoted warning count variable"
+    );
+    failures += expect_span_text(
+        second_expression,
+        "@@session.`warning_count`",
+        "quoted warning count span"
+    );
+    failures += expect_node(third_expression, MYLITE_SQL_AST_SYSTEM_VARIABLE, "quoted error count");
+    failures += expect_span_text(third_expression, "@@`error_count`", "quoted error count span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT @warning_count;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

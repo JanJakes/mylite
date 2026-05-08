@@ -38,6 +38,8 @@ enum {
     mysql_error_column_count_mismatch = 1136,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_column_name = 1166,
+    mysql_error_unknown_system_variable = 1193,
+    mysql_error_session_variable_only = 1238,
     mysql_error_data_out_of_range = 1264,
     mysql_error_unknown_collation = 1273,
     mysql_warning_information_schema_processlist_deprecated = 1287,
@@ -48,6 +50,7 @@ enum {
     decimal_base = 10,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
+    system_variable_body_offset = 2,
     show_columns_result_column_count = 6,
     show_index_result_column_count = 15,
     show_create_table_result_column_count = 2,
@@ -284,6 +287,17 @@ struct collect_drop_schema_tables_context {
 struct session_scalar_cell {
     const char *value;
     char integer_text[integer_text_capacity];
+};
+
+enum session_system_variable_kind {
+    SESSION_SYSTEM_VARIABLE_NONE = 0,
+    SESSION_SYSTEM_VARIABLE_WARNING_COUNT = 1,
+    SESSION_SYSTEM_VARIABLE_ERROR_COUNT = 2,
+};
+
+struct system_variable_component {
+    char text[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool quoted;
 };
 
 static int execute_parsed_statement(
@@ -684,6 +698,57 @@ static int session_scalar_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
+);
+static int system_variable_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int resolve_diagnostics_count_system_variable(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum session_system_variable_kind *out_kind
+);
+static int parse_system_variable_component(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    size_t *offset,
+    struct system_variable_component *out_component
+);
+static int append_quoted_system_variable_byte(
+    struct mylite_db *database,
+    struct system_variable_component *component,
+    size_t *component_length,
+    char value
+);
+static bool system_variable_component_equals(
+    const struct system_variable_component *component,
+    const char *expected
+);
+static bool system_variable_component_is_empty(const struct system_variable_component *component);
+static void set_session_variable_only_error(struct mylite_db *database, const char *variable_name);
+static void set_unknown_system_variable_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static int copy_system_variable_name_for_error(
+    const struct mylite_sql_source_span *span,
+    char **out_name
+);
+static int copy_system_variable_component_name_for_error(
+    const struct mylite_sql_source_span *span,
+    size_t *offset,
+    char **out_name
+);
+static int copy_system_variable_raw_body_for_error(
+    const struct mylite_sql_source_span *span,
+    char **out_name
+);
+static int append_system_variable_error_name_byte(
+    char value,
+    char **name,
+    size_t *length,
+    size_t capacity
 );
 static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(
     const struct mylite_sql_ast_node *expression
@@ -1630,6 +1695,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         break;
     }
 
@@ -3887,6 +3953,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         break;
     }
 
@@ -5931,9 +5998,216 @@ static int session_scalar_value(
         out_cell->value = out_cell->integer_text;
         return MYLITE_OK;
     }
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+        return system_variable_value(database, expression, out_cell);
     default:
         return MYLITE_OK;
     }
+}
+
+static int system_variable_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    enum session_system_variable_kind variable = SESSION_SYSTEM_VARIABLE_NONE;
+    uint64_t count = 0U;
+    uint64_t error_count = 0U;
+    int rc = resolve_diagnostics_count_system_variable(database, expression, &variable);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = previous_diagnostics_condition_count(&database->previous_diagnostics, &error_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (variable == SESSION_SYSTEM_VARIABLE_ERROR_COUNT) {
+        count = error_count;
+    } else {
+        count = error_count +
+                (uint64_t)mylite_diagnostics_warning_count(&database->previous_diagnostics);
+    }
+
+    rc = format_uint64(database, count, out_cell->integer_text, sizeof(out_cell->integer_text));
+    if (rc == MYLITE_OK) {
+        out_cell->value = out_cell->integer_text;
+    }
+    return rc;
+}
+
+static int resolve_diagnostics_count_system_variable(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum session_system_variable_kind *out_kind
+) {
+    const struct mylite_sql_source_span *span = expression == NULL ? NULL : &expression->span;
+    struct system_variable_component first = {0};
+    struct system_variable_component second = {0};
+    const struct system_variable_component *name = &first;
+    size_t offset = 2U;
+    bool has_scope = false;
+    int rc = MYLITE_OK;
+
+    *out_kind = SESSION_SYSTEM_VARIABLE_NONE;
+    if (span == NULL || span->text == NULL || span->length < 3U || span->text[0] != '@' ||
+        span->text[1] != '@') {
+        set_unknown_system_variable_error(database, expression);
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_system_variable_component(database, span, &offset, &first);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (offset < span->length && span->text[offset] == '.') {
+        has_scope = true;
+        ++offset;
+        if (first.quoted) {
+            set_unsupported_error(database, "unsupported quoted system variable scope");
+            return MYLITE_ERROR;
+        }
+        rc = parse_system_variable_component(database, span, &offset, &second);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        name = &second;
+    }
+    if (offset != span->length || system_variable_component_is_empty(name)) {
+        set_unknown_system_variable_error(database, expression);
+        return MYLITE_ERROR;
+    }
+
+    if (has_scope) {
+        if (system_variable_component_equals(&first, "global") &&
+            system_variable_component_equals(name, "warning_count")) {
+            set_session_variable_only_error(database, "warning_count");
+            return MYLITE_ERROR;
+        }
+        if (system_variable_component_equals(&first, "global") &&
+            system_variable_component_equals(name, "error_count")) {
+            set_session_variable_only_error(database, "error_count");
+            return MYLITE_ERROR;
+        }
+        if (!system_variable_component_equals(&first, "session") &&
+            !system_variable_component_equals(&first, "local")) {
+            set_unknown_system_variable_error(database, expression);
+            return MYLITE_ERROR;
+        }
+    }
+
+    if (system_variable_component_equals(name, "warning_count")) {
+        *out_kind = SESSION_SYSTEM_VARIABLE_WARNING_COUNT;
+        return MYLITE_OK;
+    }
+    if (system_variable_component_equals(name, "error_count")) {
+        *out_kind = SESSION_SYSTEM_VARIABLE_ERROR_COUNT;
+        return MYLITE_OK;
+    }
+
+    set_unknown_system_variable_error(database, expression);
+    return MYLITE_ERROR;
+}
+
+static int parse_system_variable_component(
+    struct mylite_db *database,
+    const struct mylite_sql_source_span *span,
+    size_t *offset,
+    struct system_variable_component *out_component
+) {
+    size_t component_length = 0U;
+
+    *out_component = (struct system_variable_component){0};
+    if (*offset >= span->length) {
+        return MYLITE_OK;
+    }
+
+    if (span->text[*offset] == '`') {
+        out_component->quoted = true;
+        ++*offset;
+        while (*offset < span->length) {
+            char value = span->text[*offset];
+
+            if (value == '`') {
+                ++*offset;
+                if (*offset < span->length && span->text[*offset] == '`') {
+                    int rc = append_quoted_system_variable_byte(
+                        database,
+                        out_component,
+                        &component_length,
+                        '`'
+                    );
+                    if (rc != MYLITE_OK) {
+                        return rc;
+                    }
+                    ++*offset;
+                    continue;
+                }
+                return MYLITE_OK;
+            }
+
+            {
+                int rc = append_quoted_system_variable_byte(
+                    database,
+                    out_component,
+                    &component_length,
+                    value
+                );
+                if (rc != MYLITE_OK) {
+                    return rc;
+                }
+            }
+            ++*offset;
+        }
+
+        set_unsupported_error(database, "unterminated system variable identifier");
+        return MYLITE_ERROR;
+    }
+
+    while (*offset < span->length && span->text[*offset] != '.') {
+        if (component_length + 1U >= sizeof(out_component->text)) {
+            set_unknown_system_variable_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        out_component->text[component_length] = span->text[*offset];
+        ++component_length;
+        ++*offset;
+    }
+    out_component->text[component_length] = '\0';
+
+    return MYLITE_OK;
+}
+
+static int append_quoted_system_variable_byte(
+    struct mylite_db *database,
+    struct system_variable_component *component,
+    size_t *component_length,
+    char value
+) {
+    if (*component_length + 1U >= sizeof(component->text)) {
+        set_unknown_system_variable_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    component->text[*component_length] = value;
+    ++*component_length;
+    component->text[*component_length] = '\0';
+    return MYLITE_OK;
+}
+
+static bool system_variable_component_equals(
+    const struct system_variable_component *component,
+    const char *expected
+) {
+    return text_equals_ascii_case_insensitive(component == NULL ? NULL : component->text, expected);
+}
+
+static bool system_variable_component_is_empty(const struct system_variable_component *component) {
+    if (component == NULL) {
+        return true;
+    }
+    return component->text[0] == '\0';
 }
 
 static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expression) {
@@ -5967,6 +6241,9 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
         return true;
     }
 
@@ -9751,6 +10028,194 @@ static void set_unsupported_error(struct mylite_db *database, const char *messag
         "42000",
         message
     );
+}
+
+static void set_session_variable_only_error(struct mylite_db *database, const char *variable_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Variable '%s' is a SESSION variable", variable_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_session_variable_only,
+        "HY000",
+        message
+    );
+}
+
+static void set_unknown_system_variable_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    char *variable_name = NULL;
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *display_name = "unknown";
+    int written = 0;
+
+    if (expression != NULL) {
+        (void)copy_system_variable_name_for_error(&expression->span, &variable_name);
+    }
+    if (variable_name != NULL) {
+        display_name = variable_name;
+    }
+
+    written = snprintf(message, sizeof(message), "Unknown system variable '%s'", display_name);
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    free(variable_name);
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_system_variable,
+        "HY000",
+        message
+    );
+}
+
+static int copy_system_variable_name_for_error(
+    const struct mylite_sql_source_span *span,
+    char **out_name
+) {
+    char *first = NULL;
+    char *second = NULL;
+    size_t offset = system_variable_body_offset;
+    int rc = MYLITE_OK;
+
+    if (out_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_name = NULL;
+    if (span == NULL || span->text == NULL || span->length <= system_variable_body_offset) {
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_system_variable_component_name_for_error(span, &offset, &first);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (offset < span->length && span->text[offset] == '.') {
+        ++offset;
+        rc = copy_system_variable_component_name_for_error(span, &offset, &second);
+        if (rc != MYLITE_OK) {
+            free(first);
+            return rc;
+        }
+        if (text_equals_ascii_case_insensitive(first, "session") ||
+            text_equals_ascii_case_insensitive(first, "local") ||
+            text_equals_ascii_case_insensitive(first, "global")) {
+            free(first);
+            *out_name = second;
+            return MYLITE_OK;
+        }
+        free(second);
+        free(first);
+        return copy_system_variable_raw_body_for_error(span, out_name);
+    }
+
+    *out_name = first;
+    return MYLITE_OK;
+}
+
+static int copy_system_variable_component_name_for_error(
+    const struct mylite_sql_source_span *span,
+    size_t *offset,
+    char **out_name
+) {
+    const size_t capacity = span->length + 1U;
+    size_t length = 0U;
+    char *name = (char *)malloc(capacity);
+
+    if (name == NULL) {
+        return MYLITE_NOMEM;
+    }
+    name[0] = '\0';
+
+    if (*offset < span->length && span->text[*offset] == '`') {
+        ++*offset;
+        while (*offset < span->length) {
+            char value = span->text[*offset];
+
+            if (value == '`') {
+                ++*offset;
+                if (*offset < span->length && span->text[*offset] == '`') {
+                    int byte_rc =
+                        append_system_variable_error_name_byte('`', &name, &length, capacity);
+                    if (byte_rc != MYLITE_OK) {
+                        return byte_rc;
+                    }
+                    ++*offset;
+                    continue;
+                }
+                *out_name = name;
+                return MYLITE_OK;
+            }
+
+            {
+                int byte_rc =
+                    append_system_variable_error_name_byte(value, &name, &length, capacity);
+                if (byte_rc != MYLITE_OK) {
+                    return byte_rc;
+                }
+            }
+            ++*offset;
+        }
+
+        free(name);
+        return MYLITE_ERROR;
+    }
+
+    while (*offset < span->length && span->text[*offset] != '.') {
+        int byte_rc =
+            append_system_variable_error_name_byte(span->text[*offset], &name, &length, capacity);
+        if (byte_rc != MYLITE_OK) {
+            return byte_rc;
+        }
+        ++*offset;
+    }
+
+    *out_name = name;
+    return MYLITE_OK;
+}
+
+static int copy_system_variable_raw_body_for_error(
+    const struct mylite_sql_source_span *span,
+    char **out_name
+) {
+    const size_t length = span->length - system_variable_body_offset;
+    char *name = (char *)malloc(length + 1U);
+
+    if (name == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    memcpy(name, span->text + system_variable_body_offset, length);
+    name[length] = '\0';
+    *out_name = name;
+    return MYLITE_OK;
+}
+
+static int append_system_variable_error_name_byte(
+    char value,
+    char **name,
+    size_t *length,
+    size_t capacity
+) {
+    if (*length + 1U >= capacity) {
+        free(*name);
+        *name = NULL;
+        return MYLITE_NOMEM;
+    }
+
+    (*name)[*length] = value;
+    ++*length;
+    (*name)[*length] = '\0';
+    return MYLITE_OK;
 }
 
 static void set_native_function_parameter_count_error(

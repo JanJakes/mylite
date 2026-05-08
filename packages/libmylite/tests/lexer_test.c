@@ -688,6 +688,34 @@ static int test_variables(void) {
         ),
         make_expected_token(
             MYLITE_SQL_TOKEN_SYSTEM_VARIABLE,
+            "@@warning_count",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_PUNCTUATION,
+            ",",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_SYSTEM_VARIABLE,
+            "@@local.error_count",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_PUNCTUATION,
+            ",",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_SYSTEM_VARIABLE,
             "@@`default`.key_buffer_size",
             MYLITE_SQL_OPERATOR_NONE,
             MYLITE_SQL_LEXER_ERROR_NONE,
@@ -801,7 +829,8 @@ static int test_variables(void) {
     };
 
     return expect_sequence(
-        "SELECT @@session.sql_mode, @@`default`.key_buffer_size, "
+        "SELECT @@session.sql_mode, @@warning_count, @@local.error_count, "
+        "@@`default`.key_buffer_size, "
         "@@`default`.key_cache_block_size, @@`default`.key_cache_division_limit, "
         "@@`default`.key_cache_age_threshold, @plain, @'dash-name', @\"double-name\", "
         "@`tick-name`",

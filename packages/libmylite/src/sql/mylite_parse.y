@@ -732,6 +732,9 @@ select_item(A) ::= expression(B). {
 expression(A) ::= literal(B). {
     A = B;
 }
+expression(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
 expression(A) ::= qualified_identifier(B). {
     A = B;
 }

@@ -1536,6 +1536,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_literal(
     return literal;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_system_variable(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
+    return make_node(state, MYLITE_SQL_AST_SYSTEM_VARIABLE, span_from_token(&token));
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_unary_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token operator_token,
@@ -1988,9 +1995,11 @@ static bool map_lexer_token(
     case MYLITE_SQL_TOKEN_VERSION_COMMENT:
     case MYLITE_SQL_TOKEN_HINT_COMMENT:
     case MYLITE_SQL_TOKEN_USER_VARIABLE:
-    case MYLITE_SQL_TOKEN_SYSTEM_VARIABLE:
     case MYLITE_SQL_TOKEN_PARAMETER:
         return false;
+    case MYLITE_SQL_TOKEN_SYSTEM_VARIABLE:
+        parser_token = MYLITE_SQL_PARSE_SYSTEM_VARIABLE;
+        break;
     }
 
     *out_map = (struct mylite_sql_parser_token_map){

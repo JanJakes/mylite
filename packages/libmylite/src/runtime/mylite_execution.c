@@ -63,6 +63,8 @@ enum {
     show_processlist_result_column_count = 8,
     show_warnings_result_column_count = 3,
     show_count_warnings_result_column_count = 1,
+    show_errors_result_column_count = 3,
+    show_count_errors_result_column_count = 1,
     show_processlist_info_truncation_length = 100,
     show_processlist_db_column = 3,
     show_processlist_info_column = 7,
@@ -163,7 +165,7 @@ struct planned_select_limit {
     int64_t offset;
 };
 
-struct planned_show_warnings_limit {
+struct planned_diagnostics_show_limit {
     bool has_limit;
     uint64_t row_count;
     bool has_offset;
@@ -408,6 +410,15 @@ static int execute_show_warnings_statement(
     mylite_result **out_result
 );
 static int execute_show_count_warnings_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+);
+static int execute_show_errors_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_count_errors_statement(
     struct mylite_db *database,
     mylite_result **out_result
 );
@@ -704,28 +715,34 @@ static int copy_show_processlist_info(
 );
 static size_t statement_info_length_without_terminator(const char *sql, size_t sql_size);
 static int append_show_processlist_warning(struct mylite_db *database);
-static int plan_show_warnings_limit(
+static int plan_diagnostics_show_limit(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *limit_clause,
-    struct planned_show_warnings_limit *out_limit
+    struct planned_diagnostics_show_limit *out_limit
 );
-static int convert_show_warnings_limit_integer_literal(
+static int convert_diagnostics_show_limit_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     uint64_t *out_value
 );
-static int append_show_warnings_rows(
+static int append_show_diagnostics_rows(
     struct mylite_db *database,
     mylite_result *result,
-    const struct planned_show_warnings_limit *limit
+    const struct planned_diagnostics_show_limit *limit
 );
-static int append_show_warnings_row(
+static int append_show_diagnostics_row(
     struct mylite_db *database,
     mylite_result *result,
     const char *level,
     const struct mylite_diagnostic_record *record
 );
 static int append_show_count_warnings_row(struct mylite_db *database, mylite_result *result);
+static int append_show_errors_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_diagnostics_show_limit *limit
+);
+static int append_show_count_errors_row(struct mylite_db *database, mylite_result *result);
 static int previous_diagnostics_condition_count(
     const struct mylite_diagnostics *diagnostics,
     uint64_t *out_count
@@ -1551,6 +1568,10 @@ static int execute_parsed_statement(
         return execute_show_warnings_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
         return execute_show_count_warnings_statement(database, out_result);
+    case MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT:
+        return execute_show_errors_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT:
+        return execute_show_count_errors_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -2813,11 +2834,11 @@ static int execute_show_warnings_statement(
         "Code",
         "Message",
     };
-    struct planned_show_warnings_limit limit;
+    struct planned_diagnostics_show_limit limit;
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
-    rc = plan_show_warnings_limit(database, child_at(statement, 0U), &limit);
+    rc = plan_diagnostics_show_limit(database, child_at(statement, 0U), &limit);
     if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
         if (rc != MYLITE_OK) {
@@ -2833,7 +2854,7 @@ static int execute_show_warnings_statement(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = append_show_warnings_rows(database, result, &limit);
+        rc = append_show_diagnostics_rows(database, result, &limit);
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -2875,15 +2896,87 @@ static int execute_show_count_warnings_statement(
     return finish_successful_result(database, result, out_result);
 }
 
-static int plan_show_warnings_limit(
+static int execute_show_errors_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_errors_result_column_count] = {
+        "Level",
+        "Code",
+        "Message",
+    };
+    struct planned_diagnostics_show_limit limit;
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    rc = plan_diagnostics_show_limit(database, child_at(statement, 0U), &limit);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_errors_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_errors_rows(database, result, &limit);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_show_count_errors_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_count_errors_result_column_count] = {
+        "@@session.error_count",
+    };
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_count_errors_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_count_errors_row(database, result);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int plan_diagnostics_show_limit(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *limit_clause,
-    struct planned_show_warnings_limit *out_limit
+    struct planned_diagnostics_show_limit *out_limit
 ) {
     int rc = MYLITE_OK;
 
     if (out_limit == NULL) {
-        set_runtime_error(database, "invalid SHOW WARNINGS LIMIT plan");
+        set_runtime_error(database, "invalid diagnostics SHOW LIMIT plan");
         return MYLITE_ERROR;
     }
 
@@ -2895,11 +2988,11 @@ static int plan_show_warnings_limit(
         return MYLITE_OK;
     }
     if (limit_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE) {
-        set_unsupported_error(database, "SHOW WARNINGS supports only literal LIMIT clauses");
+        set_unsupported_error(database, "diagnostics SHOW supports only literal LIMIT clauses");
         return MYLITE_ERROR;
     }
 
-    rc = convert_show_warnings_limit_integer_literal(
+    rc = convert_diagnostics_show_limit_integer_literal(
         database,
         child_at(limit_clause, 0U),
         &out_limit->row_count
@@ -2910,7 +3003,7 @@ static int plan_show_warnings_limit(
     out_limit->has_limit = true;
 
     if (child_at(limit_clause, 1U) != NULL) {
-        rc = convert_show_warnings_limit_integer_literal(
+        rc = convert_diagnostics_show_limit_integer_literal(
             database,
             child_at(limit_clause, 1U),
             &out_limit->offset
@@ -2924,7 +3017,7 @@ static int plan_show_warnings_limit(
     return MYLITE_OK;
 }
 
-static int convert_show_warnings_limit_integer_literal(
+static int convert_diagnostics_show_limit_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     uint64_t *out_value
@@ -2936,7 +3029,7 @@ static int convert_show_warnings_limit_integer_literal(
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_INTEGER) {
         set_unsupported_error(
             database,
-            "SHOW WARNINGS supports only unsigned decimal integer LIMIT literals"
+            "diagnostics SHOW supports only unsigned decimal integer LIMIT literals"
         );
         return MYLITE_ERROR;
     }
@@ -2951,10 +3044,10 @@ static int convert_show_warnings_limit_integer_literal(
     return MYLITE_OK;
 }
 
-static int append_show_warnings_rows(
+static int append_show_diagnostics_rows(
     struct mylite_db *database,
     mylite_result *result,
-    const struct planned_show_warnings_limit *limit
+    const struct planned_diagnostics_show_limit *limit
 ) {
     const struct mylite_diagnostics *diagnostics = &database->previous_diagnostics;
     uint64_t total_count = 0U;
@@ -2978,7 +3071,7 @@ static int append_show_warnings_rows(
          rc == MYLITE_OK && index < total_count && emitted_count < row_count;
          ++index, ++emitted_count) {
         if (condition_count != 0U && index == 0U) {
-            rc = append_show_warnings_row(database, result, "Error", &diagnostics->condition);
+            rc = append_show_diagnostics_row(database, result, "Error", &diagnostics->condition);
         } else {
             const uint64_t warning_index = index - condition_count;
             const struct mylite_diagnostic_record *warning =
@@ -2987,7 +3080,7 @@ static int append_show_warnings_rows(
                 set_runtime_error(database, "invalid previous diagnostics warning index");
                 rc = MYLITE_ERROR;
             } else {
-                rc = append_show_warnings_row(database, result, "Warning", warning);
+                rc = append_show_diagnostics_row(database, result, "Warning", warning);
             }
         }
     }
@@ -2995,7 +3088,7 @@ static int append_show_warnings_rows(
     return rc;
 }
 
-static int append_show_warnings_row(
+static int append_show_diagnostics_row(
     struct mylite_db *database,
     mylite_result *result,
     const char *level,
@@ -3041,6 +3134,54 @@ static int append_show_count_warnings_row(struct mylite_db *database, mylite_res
     }
 
     count = condition_count + (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+    rc = format_uint64(database, count, count_text, sizeof(count_text));
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    return rc;
+}
+
+static int append_show_errors_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_diagnostics_show_limit *limit
+) {
+    const struct mylite_diagnostics *diagnostics = &database->previous_diagnostics;
+    uint64_t start_index = 0U;
+    uint64_t row_count = UINT64_MAX;
+
+    if (!diagnostics_has_error_condition(diagnostics)) {
+        return MYLITE_OK;
+    }
+
+    if (limit->has_offset) {
+        start_index = limit->offset;
+    }
+    if (limit->has_limit) {
+        row_count = limit->row_count;
+    }
+    if (start_index != 0U || row_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    return append_show_diagnostics_row(database, result, "Error", &diagnostics->condition);
+}
+
+static int append_show_count_errors_row(struct mylite_db *database, mylite_result *result) {
+    const struct mylite_diagnostics *diagnostics = &database->previous_diagnostics;
+    char count_text[integer_text_capacity];
+    const char *values[show_count_errors_result_column_count] = {count_text};
+    uint64_t count = 0U;
+    int rc = MYLITE_OK;
+
+    if (diagnostics_has_error_condition(diagnostics)) {
+        count = 1U;
+    }
+
     rc = format_uint64(database, count, count_text, sizeof(count_text));
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_text_row(result, values);
@@ -3691,6 +3832,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_FULL_PROCESSLIST_STATEMENT:
     case MYLITE_SQL_AST_SHOW_WARNINGS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
@@ -3758,6 +3901,12 @@ static bool statement_preserves_diagnostics_snapshot(const struct mylite_sql_ast
         return true;
     }
     if (statement->kind == MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT) {
+        return true;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT) {
+        return true;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT) {
         return true;
     }
     return false;

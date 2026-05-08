@@ -101,6 +101,9 @@ statement(A) ::= show_processlist_statement(B). {
 statement(A) ::= show_warnings_statement(B). {
     A = B;
 }
+statement(A) ::= show_errors_statement(B). {
+    A = B;
+}
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
@@ -318,6 +321,20 @@ show_warnings_statement(A) ::= SHOW(S) COUNT(C) LPAREN(L) STAR RPAREN WARNINGS(W
             .count = C,
             .left_paren = L,
             .warnings = W,
+        });
+}
+
+show_errors_statement(A) ::= SHOW(S) ERRORS(E) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_show_errors_statement(state, S, E, L);
+}
+show_errors_statement(A) ::= SHOW(S) COUNT(C) LPAREN(L) STAR RPAREN ERRORS(E). {
+    A = mylite_sql_parser_make_show_count_errors_statement(
+        state,
+        (struct mylite_sql_show_count_errors_tokens){
+            .show = S,
+            .count = C,
+            .left_paren = L,
+            .errors = E,
         });
 }
 
@@ -901,6 +918,9 @@ identifier(A) ::= PROCESSLIST(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= WARNINGS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ERRORS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ENGINE(T). {

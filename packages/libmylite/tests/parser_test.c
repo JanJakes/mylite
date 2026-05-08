@@ -25,6 +25,7 @@ static int test_show_open_tables_empty_introspection_statements(void);
 static int test_show_routine_status_empty_introspection_statements(void);
 static int test_show_processlist_introspection_statements(void);
 static int test_show_warnings_diagnostics_statements(void);
+static int test_show_errors_diagnostics_statements(void);
 static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
@@ -113,6 +114,7 @@ int main(void) {
     failures += test_show_routine_status_empty_introspection_statements();
     failures += test_show_processlist_introspection_statements();
     failures += test_show_warnings_diagnostics_statements();
+    failures += test_show_errors_diagnostics_statements();
     failures += test_show_index_empty_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
@@ -2312,6 +2314,81 @@ static int test_show_warnings_diagnostics_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW WARNINGS ORDER BY Code;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_errors_diagnostics_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *limit = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW ERRORS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT, "show errors");
+    failures += expect_child_count(statement, 0U, "show errors child count");
+    failures += expect_span_text(statement, "SHOW ERRORS", "show errors span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ERRORS LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    limit = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT, "show errors limit");
+    failures += expect_child_count(statement, 1U, "show errors limit child count");
+    failures += expect_node(limit, MYLITE_SQL_AST_LIMIT_CLAUSE, "show errors limit clause");
+    failures += expect_span_text(child_at(limit, 0U), "1", "show errors limit row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ERRORS LIMIT 2, 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    limit = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT, "show errors comma");
+    failures += expect_child_count(limit, 2U, "show errors comma child count");
+    failures += expect_span_text(child_at(limit, 0U), "1", "show errors comma row count");
+    failures += expect_span_text(child_at(limit, 1U), "2", "show errors comma offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ERRORS LIMIT 1 OFFSET 2;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    limit = child_at(statement, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT, "show errors offset");
+    failures += expect_child_count(limit, 2U, "show errors offset child count");
+    failures += expect_span_text(child_at(limit, 0U), "1", "show errors offset row count");
+    failures += expect_span_text(child_at(limit, 1U), "2", "show errors offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COUNT(*) ERRORS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT, "show count errors");
+    failures += expect_child_count(statement, 0U, "show count errors child count");
+    failures += expect_span_text(statement, "SHOW COUNT(*) ERRORS", "show count errors span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE errors (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "errors table");
+    failures += expect_span_text(child_at(statement, 0U), "errors", "errors identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COUNT (*) ERRORS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ERRORS LIMIT +1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ERRORS LIMIT -1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ERRORS LIKE 'x';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ERRORS WHERE Code = 1064;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW ERRORS ORDER BY Code;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

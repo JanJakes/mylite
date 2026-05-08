@@ -365,6 +365,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_warnings_statement";
     case MYLITE_SQL_AST_SHOW_COUNT_WARNINGS_STATEMENT:
         return "show_count_warnings_statement";
+    case MYLITE_SQL_AST_SHOW_ERRORS_STATEMENT:
+        return "show_errors_statement";
+    case MYLITE_SQL_AST_SHOW_COUNT_ERRORS_STATEMENT:
+        return "show_count_errors_statement";
     }
 
     return "unknown";

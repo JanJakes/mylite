@@ -19,6 +19,13 @@ struct mylite_sql_show_count_warnings_tokens {
     struct mylite_sql_token warnings;
 };
 
+struct mylite_sql_show_count_errors_tokens {
+    struct mylite_sql_token show;
+    struct mylite_sql_token count;
+    struct mylite_sql_token left_paren;
+    struct mylite_sql_token errors;
+};
+
 void mylite_sql_parser_state_set_root(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *root
@@ -183,6 +190,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_warnings_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_count_warnings_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_show_count_warnings_tokens tokens
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_errors_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token errors_token,
+    struct mylite_sql_ast_node *limit_clause
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_count_errors_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_show_count_errors_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
     struct mylite_sql_parser_state *state,

@@ -594,6 +594,83 @@ int mylite_catalog_delete_table_in_mutation(
     return finalize_statement(statement, rc);
 }
 
+int mylite_catalog_delete_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t column_id,
+    int64_t ordinal_position
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = validate_catalog_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_active_mutation(mutation);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_id(column_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = validate_positive_ordinal(ordinal_position);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = prepare_statement(
+        database->sqlite,
+        "DELETE FROM _mylite_catalog_columns WHERE table_id = ?1 AND column_id = ?2",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 2, column_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = require_changed_row(database->sqlite);
+    }
+    rc = finalize_statement(statement, rc);
+    statement = NULL;
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_statement(
+            database->sqlite,
+            "UPDATE _mylite_catalog_columns "
+            "SET ordinal_position = ordinal_position - 1, "
+            "descriptor_version = descriptor_version + 1, "
+            "updated_catalog_generation = ?1 "
+            "WHERE table_id = ?2 AND ordinal_position > ?3",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_u64(statement, 1, mutation->next_generation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 2, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, 3, ordinal_position);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_done(statement);
+    }
+
+    return finalize_statement(statement, rc);
+}
+
 int mylite_catalog_delete_schema_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

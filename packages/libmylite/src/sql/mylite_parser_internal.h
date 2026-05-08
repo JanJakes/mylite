@@ -247,6 +247,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_add_column_statem
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *column
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_drop_column_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *column_name
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token insert_token,

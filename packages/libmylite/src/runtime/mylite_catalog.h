@@ -133,6 +133,13 @@ int mylite_catalog_delete_table_in_mutation(
     const struct mylite_catalog_mutation *mutation,
     int64_t table_id
 );
+int mylite_catalog_delete_column_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t column_id,
+    int64_t ordinal_position
+);
 int mylite_catalog_delete_schema_in_mutation(
     struct mylite_db *database,
     const struct mylite_catalog_mutation *mutation,

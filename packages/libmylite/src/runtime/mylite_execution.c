@@ -30,6 +30,8 @@ enum {
     mysql_error_unknown_table = 1051,
     mysql_error_identifier_too_long = 1059,
     mysql_error_duplicate_column = 1060,
+    mysql_error_cant_remove_all_fields = 1090,
+    mysql_error_cant_drop_field_or_key = 1091,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
@@ -103,6 +105,13 @@ struct planned_alter_table_add_column {
     struct mylite_catalog_table_descriptor table;
     struct planned_column column;
     int64_t ordinal_position;
+};
+
+struct planned_alter_table_drop_column {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor column;
+    size_t column_count;
 };
 
 struct planned_truncate_table {
@@ -392,6 +401,11 @@ static int execute_alter_table_add_column_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_drop_column_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_insert_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -598,6 +612,10 @@ static int execute_physical_alter_table_add_column(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
 );
+static int execute_physical_alter_table_drop_column(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan
+);
 
 static int create_schema_from_statement(
     struct mylite_db *database,
@@ -660,6 +678,15 @@ static int plan_alter_table_add_column(
 static int alter_table_add_column_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_add_column *plan
+);
+static int plan_alter_table_drop_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_drop_column *out_plan
+);
+static int alter_table_drop_column_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan
 );
 static int rename_table_from_plan_with_policy(
     struct mylite_db *database,
@@ -1297,6 +1324,10 @@ static int build_alter_table_add_column_sql(
     const struct planned_alter_table_add_column *plan,
     char **out_sql
 );
+static int build_alter_table_drop_column_sql(
+    const struct planned_alter_table_drop_column *plan,
+    char **out_sql
+);
 static int build_truncate_table_sql(const struct planned_truncate_table *plan, char **out_sql);
 static int build_insert_sql(const struct planned_insert *plan, char **out_sql);
 static int append_insert_column_names(
@@ -1486,6 +1517,8 @@ static void set_table_does_not_exist_error(
     const char *table_name
 );
 static void set_duplicate_column_error(struct mylite_db *database, const char *column_name);
+static void set_cant_drop_field_or_key_error(struct mylite_db *database, const char *column_name);
+static void set_cant_remove_all_fields_error(struct mylite_db *database);
 static void set_column_specified_twice_error(struct mylite_db *database, const char *column_name);
 static void set_column_count_mismatch_error(struct mylite_db *database, size_t row_number);
 static void set_bad_null_error(struct mylite_db *database, const char *column_name);
@@ -1683,6 +1716,8 @@ static int execute_parsed_statement(
         return execute_alter_table_rename_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
         return execute_alter_table_add_column_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
+        return execute_alter_table_drop_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_STATEMENT:
         return execute_insert_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
@@ -2078,6 +2113,32 @@ static int execute_alter_table_add_column_statement(
     rc = plan_alter_table_add_column(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = alter_table_add_column_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_drop_column_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_drop_column plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_drop_column(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_drop_column_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -3997,6 +4058,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
         return 0;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -5067,6 +5129,143 @@ static int execute_physical_alter_table_add_column(
 ) {
     char *sql = NULL;
     int rc = build_alter_table_add_column_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = execute_sqlite_schema_sql(database, sql);
+    }
+    free(sql);
+
+    return rc;
+}
+
+static int plan_alter_table_drop_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_drop_column *out_plan
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_drop_column){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(
+            child_at(statement, 1U),
+            column_name,
+            sizeof(column_name),
+            database
+        );
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(column_name)) {
+        set_reserved_name_error(database, "column", column_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE DROP COLUMN supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &columns,
+            &out_plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(columns, out_plan->column_count, column_name, &column_index);
+        if (rc != MYLITE_OK) {
+            set_cant_drop_field_or_key_error(database, column_name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->column_count <= 1U) {
+        set_cant_remove_all_fields_error(database);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->column = columns[column_index];
+    }
+
+    free(columns);
+
+    return rc;
+}
+
+static int alter_table_drop_column_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = mylite_catalog_begin_mutation(database, &mutation);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_delete_column_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->column.column_id,
+            plan->column.ordinal_position
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_alter_table_drop_column(database, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to drop table column");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
+
+    return MYLITE_OK;
+}
+
+static int execute_physical_alter_table_drop_column(
+    struct mylite_db *database,
+    const struct planned_alter_table_drop_column *plan
+) {
+    char *sql = NULL;
+    int rc = build_alter_table_drop_column_sql(plan, &sql);
 
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_schema_sql(database, sql);
@@ -9507,6 +9706,38 @@ static int build_alter_table_add_column_sql(
     return rc;
 }
 
+static int build_alter_table_drop_column_sql(
+    const struct planned_alter_table_drop_column *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "ALTER TABLE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " DROP COLUMN ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->column.name);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
 static int build_truncate_table_sql(const struct planned_truncate_table *plan, char **out_sql) {
     struct dynamic_string string;
     int rc = MYLITE_OK;
@@ -10981,6 +11212,35 @@ static void set_duplicate_column_error(struct mylite_db *database, const char *c
         mysql_error_duplicate_column,
         "42S21",
         message
+    );
+}
+
+static void set_cant_drop_field_or_key_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Can't DROP '%s'; check that column/key exists",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_cant_drop_field_or_key,
+        "42000",
+        message
+    );
+}
+
+static void set_cant_remove_all_fields_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_cant_remove_all_fields,
+        "42000",
+        "You can't delete all columns with ALTER TABLE; use DROP TABLE instead"
     );
 }
 

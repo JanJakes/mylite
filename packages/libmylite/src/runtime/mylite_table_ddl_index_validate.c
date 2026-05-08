@@ -8,6 +8,7 @@
 #include "mylite_table_ddl_alter.h"
 #include "mylite_table_ddl_alter_index_model.h"
 #include "mylite_table_ddl_alter_model.h"
+#include "mylite_text_compare.h"
 #include "sqlite3.h"
 
 #include <stdlib.h>
@@ -57,6 +58,16 @@ static char *build_create_unique_index_duplicate_sql(
     mylite_db *database,
     const struct mylite_alter_table_model *model,
     const struct mylite_create_table_index *index
+);
+
+static void append_create_unique_index_part_expression(
+    sqlite3_str *sql,
+    const struct mylite_alter_table_column *column,
+    const struct mylite_create_table_key_part *key_part
+);
+
+static bool alter_column_uses_case_insensitive_text_compare(
+    const struct mylite_alter_table_column *column
 );
 
 static const char *alter_table_column_physical_name(const struct mylite_alter_table_column *column);
@@ -594,21 +605,11 @@ static char *build_create_unique_index_duplicate_sql(
         const struct mylite_create_table_key_part *key_part = &index->parts[part];
         size_t column_index =
             mylite_table_ddl_alter_table_column_index(model, key_part->column_name);
-        const char *column_name = alter_table_column_physical_name(&model->columns[column_index]);
 
         if (part != 0U) {
             sqlite3_str_append(sql, ",", 1);
         }
-        if (key_part->has_prefix_length) {
-            sqlite3_str_appendf(
-                sql,
-                "substr(\"%w\",1,%llu)",
-                column_name,
-                (unsigned long long)key_part->prefix_length
-            );
-        } else {
-            sqlite3_str_appendf(sql, "\"%w\"", column_name);
-        }
+        append_create_unique_index_part_expression(sql, &model->columns[column_index], key_part);
     }
     sqlite3_str_appendf(sql, " FROM \"%w\" WHERE ", model->physical_name);
     for (size_t part = 0U; part < index->part_count; ++part) {
@@ -634,6 +635,42 @@ static char *build_create_unique_index_duplicate_sql(
         (int)strlen(" HAVING COUNT(*) > 1) LIMIT 1")
     );
     return sqlite3_str_finish(sql);
+}
+
+static void append_create_unique_index_part_expression(
+    sqlite3_str *sql,
+    const struct mylite_alter_table_column *column,
+    const struct mylite_create_table_key_part *key_part
+) {
+    const char *column_name = alter_table_column_physical_name(column);
+    bool case_insensitive = alter_column_uses_case_insensitive_text_compare(column);
+
+    if (case_insensitive) {
+        sqlite3_str_append(sql, "lower(", (int)strlen("lower("));
+    }
+    if (key_part->has_prefix_length) {
+        sqlite3_str_appendf(
+            sql,
+            "substr(\"%w\",1,%llu)",
+            column_name,
+            (unsigned long long)key_part->prefix_length
+        );
+    } else {
+        sqlite3_str_appendf(sql, "\"%w\"", column_name);
+    }
+    if (case_insensitive) {
+        sqlite3_str_append(sql, ")", 1);
+    }
+}
+
+static bool alter_column_uses_case_insensitive_text_compare(
+    const struct mylite_alter_table_column *column
+) {
+    return column != NULL && mylite_column_definition_uses_case_insensitive_text_compare(
+                                 column->data_type,
+                                 column->character_set_name,
+                                 column->collation_name
+                             );
 }
 
 static const char *alter_table_column_physical_name(

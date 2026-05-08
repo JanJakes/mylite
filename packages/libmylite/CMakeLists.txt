@@ -295,6 +295,7 @@ add_library(mylite STATIC
   src/runtime/mylite_table_ddl_statement.c
   src/runtime/mylite_table_ddl_truncate.c
   src/runtime/mylite_temporal_functions.c
+  src/runtime/mylite_text_compare.c
   src/runtime/mylite_transaction_auto_increment.c
   src/runtime/mylite_transaction_savepoint.c
   src/runtime/mylite_transactions.c

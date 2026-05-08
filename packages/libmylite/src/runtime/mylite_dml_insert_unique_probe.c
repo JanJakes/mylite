@@ -2,6 +2,7 @@
 
 #include "mylite_diagnostics.h"
 #include "mylite_dml_insert_sqlite_bind.h"
+#include "mylite_text_compare.h"
 #include "sqlite3.h"
 
 #include <string.h>
@@ -20,6 +21,29 @@ static int bind_insert_unique_conflict_values(
     const struct mylite_insert_bound_value *values,
     sqlite3_int64 excluded_rowid,
     bool has_excluded_rowid
+);
+
+static void append_insert_unique_part_comparison(
+    sqlite3_str *sql,
+    const struct mylite_insert_table_column *column,
+    uint64_t prefix_length
+);
+
+static void append_insert_unique_stored_part(
+    sqlite3_str *sql,
+    const struct mylite_insert_table_column *column,
+    uint64_t prefix_length,
+    bool case_insensitive
+);
+
+static void append_insert_unique_bound_part(
+    sqlite3_str *sql,
+    uint64_t prefix_length,
+    bool case_insensitive
+);
+
+static bool insert_unique_column_uses_case_insensitive_text_compare(
+    const struct mylite_insert_table_column *column
 );
 
 static char *build_insert_unique_check_sql(
@@ -154,23 +178,81 @@ static char *build_insert_unique_conflict_sql(
         if (part != 0U) {
             sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
         }
-        if (index->prefix_lengths[part] != 0U) {
-            sqlite3_str_appendf(
-                sql,
-                "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
-                table->columns[column_index].name,
-                (unsigned long long)index->prefix_lengths[part],
-                (unsigned long long)index->prefix_lengths[part]
-            );
-        } else {
-            sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
-        }
+        append_insert_unique_part_comparison(
+            sql,
+            &table->columns[column_index],
+            index->prefix_lengths[part]
+        );
     }
     if (has_excluded_rowid) {
         sqlite3_str_append(sql, " AND rowid <> ?", (int)strlen(" AND rowid <> ?"));
     }
     sqlite3_str_append(sql, " LIMIT 1", (int)strlen(" LIMIT 1"));
     return sqlite3_str_finish(sql);
+}
+
+static void append_insert_unique_part_comparison(
+    sqlite3_str *sql,
+    const struct mylite_insert_table_column *column,
+    uint64_t prefix_length
+) {
+    bool case_insensitive = insert_unique_column_uses_case_insensitive_text_compare(column);
+
+    append_insert_unique_stored_part(sql, column, prefix_length, case_insensitive);
+    sqlite3_str_append(sql, " = ", (int)strlen(" = "));
+    append_insert_unique_bound_part(sql, prefix_length, case_insensitive);
+}
+
+static void append_insert_unique_stored_part(
+    sqlite3_str *sql,
+    const struct mylite_insert_table_column *column,
+    uint64_t prefix_length,
+    bool case_insensitive
+) {
+    if (case_insensitive) {
+        sqlite3_str_append(sql, "lower(", (int)strlen("lower("));
+    }
+    if (prefix_length != 0U) {
+        sqlite3_str_appendf(
+            sql,
+            "substr(\"%w\",1,%llu)",
+            column->name,
+            (unsigned long long)prefix_length
+        );
+    } else {
+        sqlite3_str_appendf(sql, "\"%w\"", column->name);
+    }
+    if (case_insensitive) {
+        sqlite3_str_append(sql, ")", 1);
+    }
+}
+
+static void append_insert_unique_bound_part(
+    sqlite3_str *sql,
+    uint64_t prefix_length,
+    bool case_insensitive
+) {
+    if (case_insensitive) {
+        sqlite3_str_append(sql, "lower(", (int)strlen("lower("));
+    }
+    if (prefix_length != 0U) {
+        sqlite3_str_appendf(sql, "substr(?,1,%llu)", (unsigned long long)prefix_length);
+    } else {
+        sqlite3_str_append(sql, "?", 1);
+    }
+    if (case_insensitive) {
+        sqlite3_str_append(sql, ")", 1);
+    }
+}
+
+static bool insert_unique_column_uses_case_insensitive_text_compare(
+    const struct mylite_insert_table_column *column
+) {
+    return column != NULL && mylite_column_definition_uses_case_insensitive_text_compare(
+                                 column->data_type,
+                                 column->character_set_name,
+                                 column->collation_name
+                             );
 }
 
 static int bind_insert_unique_conflict_values(
@@ -220,17 +302,11 @@ static char *build_insert_unique_check_sql(
         if (part != 0U) {
             sqlite3_str_append(sql, " AND ", (int)strlen(" AND "));
         }
-        if (index->prefix_lengths[part] != 0U) {
-            sqlite3_str_appendf(
-                sql,
-                "substr(\"%w\",1,%llu) = substr(?,1,%llu)",
-                table->columns[column_index].name,
-                (unsigned long long)index->prefix_lengths[part],
-                (unsigned long long)index->prefix_lengths[part]
-            );
-        } else {
-            sqlite3_str_appendf(sql, "\"%w\" = ?", table->columns[column_index].name);
-        }
+        append_insert_unique_part_comparison(
+            sql,
+            &table->columns[column_index],
+            index->prefix_lengths[part]
+        );
     }
     sqlite3_str_append(sql, " LIMIT 1", (int)strlen(" LIMIT 1"));
     return sqlite3_str_finish(sql);

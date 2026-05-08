@@ -1,5 +1,7 @@
 #include "mylite_field_descriptor.h"
 
+#include "mylite_metadata_constants.h"
+
 #include <mylite/mylite.h>
 
 #include <stdio.h>
@@ -9,6 +11,12 @@
 static int field_descriptor_preserve_decimal_text(
     const struct mylite_field_descriptor *descriptor,
     struct mylite_expression_value *value
+);
+static enum mylite_expression_text_charset field_descriptor_expression_text_charset(
+    const struct mylite_field_descriptor *descriptor
+);
+static bool field_descriptor_uses_binary_text_compare(
+    const struct mylite_field_descriptor *descriptor
 );
 static bool field_descriptor_decimal_value_to_double(
     const struct mylite_expression_value *value,
@@ -53,6 +61,9 @@ int mylite_field_descriptor_apply_expression_value_metadata(
     value->preserve_temporal_fraction_digits =
         mylite_field_descriptor_preserves_temporal_fraction_digits(descriptor);
     value->temporal_type = mylite_field_descriptor_expression_temporal_type(descriptor);
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        value->text_charset = field_descriptor_expression_text_charset(descriptor);
+    }
     return field_descriptor_preserve_decimal_text(descriptor, value);
 }
 
@@ -141,6 +152,40 @@ static int field_descriptor_preserve_decimal_text(
     value->preserve_real_text = true;
     value->compact_real_text = false;
     return 0;
+}
+
+static enum mylite_expression_text_charset field_descriptor_expression_text_charset(
+    const struct mylite_field_descriptor *descriptor
+) {
+    if (descriptor == NULL) {
+        return MYLITE_EXPRESSION_TEXT_CHARSET_UNKNOWN;
+    }
+    switch (descriptor->type) {
+    case MYLITE_FIELD_TYPE_STRING:
+    case MYLITE_FIELD_TYPE_VAR_STRING:
+    case MYLITE_FIELD_TYPE_BLOB:
+    case MYLITE_FIELD_TYPE_JSON:
+        if (field_descriptor_uses_binary_text_compare(descriptor)) {
+            return MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
+        }
+        if (descriptor->charset_id == mylite_mysql_latin1_swedish_ci_charset_id) {
+            return MYLITE_EXPRESSION_TEXT_CHARSET_LATIN1;
+        }
+        if (descriptor->charset_id == mylite_mysql_utf8mb4_0900_ai_ci_charset_id) {
+            return MYLITE_EXPRESSION_TEXT_CHARSET_UTF8MB4;
+        }
+        return MYLITE_EXPRESSION_TEXT_CHARSET_UNKNOWN;
+    default:
+        return MYLITE_EXPRESSION_TEXT_CHARSET_UNKNOWN;
+    }
+}
+
+static bool field_descriptor_uses_binary_text_compare(
+    const struct mylite_field_descriptor *descriptor
+) {
+    return descriptor != NULL && (descriptor->charset_id == mylite_mysql_binary_charset_id ||
+                                  descriptor->charset_id == mylite_mysql_utf8mb4_bin_charset_id ||
+                                  (descriptor->flags & MYLITE_FIELD_FLAG_BINARY) != 0U);
 }
 
 static bool field_descriptor_decimal_value_to_double(

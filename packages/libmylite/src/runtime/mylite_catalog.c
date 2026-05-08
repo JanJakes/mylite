@@ -919,7 +919,7 @@ int mylite_catalog_load_table_columns(
     }
     sql = sqlite3_mprintf(
         "SELECT column_name, column_default, is_nullable, data_type, column_type, "
-        "character_set_name, extra, character_maximum_length, numeric_precision, "
+        "character_set_name, collation_name, extra, character_maximum_length, numeric_precision, "
         "numeric_scale, has_default "
         "FROM %s WHERE table_schema = ? AND table_name = ? "
         "ORDER BY ordinal_position",
@@ -945,14 +945,15 @@ int mylite_catalog_load_table_columns(
             .data_type = (const char *)sqlite3_column_text(stmt, 3),
             .column_type = (const char *)sqlite3_column_text(stmt, 4),
             .character_set_name = (const char *)sqlite3_column_text(stmt, 5),
-            .extra = (const char *)sqlite3_column_text(stmt, 6),
-            .character_maximum_length = (uint64_t)sqlite3_column_int64(stmt, 7),
-            .numeric_precision = (uint64_t)sqlite3_column_int64(stmt, 8),
-            .numeric_scale = (uint64_t)sqlite3_column_int64(stmt, 9),
-            .has_character_maximum_length = sqlite3_column_type(stmt, 7) != SQLITE_NULL,
-            .has_numeric_precision = sqlite3_column_type(stmt, 8) != SQLITE_NULL,
-            .has_numeric_scale = sqlite3_column_type(stmt, 9) != SQLITE_NULL,
-            .has_default = sqlite3_column_int(stmt, 10) != 0,
+            .collation_name = (const char *)sqlite3_column_text(stmt, 6),
+            .extra = (const char *)sqlite3_column_text(stmt, 7),
+            .character_maximum_length = (uint64_t)sqlite3_column_int64(stmt, 8),
+            .numeric_precision = (uint64_t)sqlite3_column_int64(stmt, 9),
+            .numeric_scale = (uint64_t)sqlite3_column_int64(stmt, 10),
+            .has_character_maximum_length = sqlite3_column_type(stmt, 8) != SQLITE_NULL,
+            .has_numeric_precision = sqlite3_column_type(stmt, 9) != SQLITE_NULL,
+            .has_numeric_scale = sqlite3_column_type(stmt, 10) != SQLITE_NULL,
+            .has_default = sqlite3_column_int(stmt, 11) != 0,
         };
         int callback_status = callback(context, &row);
 

@@ -166,6 +166,10 @@ static int load_insert_column_from_catalog_row(
         column.character_set_name =
             mylite_copy_span_text(row->character_set_name, strlen(row->character_set_name));
     }
+    if (row->collation_name != NULL) {
+        column.collation_name =
+            mylite_copy_span_text(row->collation_name, strlen(row->collation_name));
+    }
     column.extra = mylite_copy_span_text(
         row->extra == NULL ? "" : row->extra,
         row->extra == NULL ? 0U : strlen(row->extra)
@@ -173,7 +177,7 @@ static int load_insert_column_from_catalog_row(
     if (column.name == NULL || (row->default_text != NULL && column.default_text == NULL) ||
         column.data_type == NULL || column.column_type == NULL ||
         (row->character_set_name != NULL && column.character_set_name == NULL) ||
-        column.extra == NULL) {
+        (row->collation_name != NULL && column.collation_name == NULL) || column.extra == NULL) {
         mylite_dml_insert_table_column_deinit(&column);
         (void)mylite_diagnostics_set_error_message(load_context->database, "out of memory");
         return MYLITE_NOMEM;

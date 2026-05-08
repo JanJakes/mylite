@@ -455,6 +455,8 @@ static int test_schema_lifecycle(void);
 
 static int test_character_set_collation_foundation(void);
 
+static int test_text_comparison_collation_execution(void);
+
 static int test_core_metadata_catalog(void);
 
 static int test_information_schema_selected_schema_execution(void);
@@ -1030,6 +1032,7 @@ int main(void) {
     failures += test_aggregate_grouping_execution();
     failures += test_schema_lifecycle();
     failures += test_character_set_collation_foundation();
+    failures += test_text_comparison_collation_execution();
     failures += test_core_metadata_catalog();
     failures += test_information_schema_selected_schema_execution();
     failures += test_information_schema_tables_engine_filter_execution();
@@ -1764,6 +1767,199 @@ static int test_character_set_collation_foundation(void) {
     mylite_finalize(stmt);
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_text_comparison_collation_execution(void) {
+    // NOLINTBEGIN(readability-magic-numbers)
+    static const char *const comparison_columns[] = {
+        "ci_eq",
+        "ci_order",
+        "binary_eq",
+        "mixed_binary_eq",
+        "no_pad_eq",
+        "no_pad_order",
+        "strcmp_ci",
+        "strcmp_no_pad",
+    };
+    static const char *const comparison_values[] = {"1", "1", "0", "0", "0", "1", "0", "-1"};
+    static const char *const id_column[] = {"id"};
+    static const char *const first_id_value[] = {"1"};
+    static const char *const second_id_value[] = {"2"};
+    static const char *const binary_collation_values[] = {"1", "a", "2", "A"};
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open collation database");
+    failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT 'a' = 'A' AS ci_eq, 'a' < 'B' AS ci_order, "
+        "_binary'a' = _binary'A' AS binary_eq, 'a' = _binary'A' AS mixed_binary_eq, "
+        "'a' = 'a ' AS no_pad_eq, 'a' < 'a ' AS no_pad_order, "
+        "STRCMP('a','A') AS strcmp_ci, STRCMP('a','a ') AS strcmp_no_pad",
+        comparison_columns,
+        8,
+        comparison_values,
+        1,
+        "text comparison collation operators"
+    );
+
+    failures += execute_sql(database, "CREATE DATABASE mylite_text_compare", MYLITE_DONE);
+    failures += execute_sql(database, "USE mylite_text_compare", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE text_case ("
+        "id INT PRIMARY KEY, v VARCHAR(10), b VARBINARY(10), "
+        "UNIQUE KEY uq_v (v), UNIQUE KEY uq_b (b))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO text_case VALUES (1,'a',X'61'),(2,'a ',X'41')",
+        MYLITE_DONE
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM text_case WHERE v = 'A' ORDER BY id",
+        id_column,
+        1,
+        first_id_value,
+        1,
+        "case-insensitive varchar predicate"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM text_case WHERE b = X'41' ORDER BY id",
+        id_column,
+        1,
+        second_id_value,
+        1,
+        "binary predicate remains bytewise"
+    );
+
+    failures +=
+        prepare_sql(database, "INSERT INTO text_case VALUES (3,'A',X'62')", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate entry",
+        "case-insensitive varchar unique insert"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "UPDATE text_case SET v = 'A' WHERE id = 2", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate entry",
+        "case-insensitive varchar unique update"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM text_case WHERE v = 'a '",
+        id_column,
+        1,
+        second_id_value,
+        1,
+        "failed case-insensitive update leaves no-pad row"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE text_bin_collation ("
+        "id INT PRIMARY KEY, "
+        "v VARCHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin UNIQUE)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO text_bin_collation VALUES (1,'a'),(2,'A')", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM text_bin_collation ORDER BY id",
+        (const char *[]){"id", "v"},
+        2,
+        binary_collation_values,
+        2,
+        "binary collation unique allows case-distinct text"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id FROM text_bin_collation WHERE v = 'A'",
+        id_column,
+        1,
+        second_id_value,
+        1,
+        "binary collation predicate remains case-sensitive"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TABLE text_existing_unique (v VARCHAR(10))", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO text_existing_unique VALUES ('a'),('A')", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "CREATE UNIQUE INDEX uq_existing_v ON text_existing_unique (v)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate entry",
+        "case-insensitive create unique validates existing rows"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        execute_sql(database, "CREATE TABLE text_alter_unique (v VARCHAR(10))", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO text_alter_unique VALUES ('a'),('A')", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE text_alter_unique ADD UNIQUE KEY uq_v (v)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate entry",
+        "case-insensitive alter unique validates existing rows"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE text_prefix_unique (id INT, v VARCHAR(10))",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO text_prefix_unique VALUES (1,'Ab1')", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE UNIQUE INDEX uq_prefix_v ON text_prefix_unique (v(2))",
+        MYLITE_DONE
+    );
+    failures +=
+        prepare_sql(database, "INSERT INTO text_prefix_unique VALUES (2,'aB2')", MYLITE_OK, &stmt);
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Duplicate entry",
+        "case-insensitive prefix unique insert"
+    );
+    mylite_finalize(stmt);
+
+    mylite_close(database);
+    // NOLINTEND(readability-magic-numbers)
     return failures;
 }
 

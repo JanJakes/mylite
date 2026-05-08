@@ -13,6 +13,8 @@ static int compare_select_text_values(
     size_t right_length
 );
 
+static bool expression_value_uses_binary_text_compare(const struct mylite_expression_value *value);
+
 static size_t expression_value_text_length(const struct mylite_expression_value *value);
 
 static size_t nullable_text_length(const char *text);
@@ -34,6 +36,15 @@ int mylite_select_compare_values(
         return 1;
     }
     if (left->kind == MYLITE_EXPRESSION_VALUE_TEXT && right->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        if (expression_value_uses_binary_text_compare(left) ||
+            expression_value_uses_binary_text_compare(right)) {
+            return mylite_select_compare_binary_text_values(
+                left->text_value,
+                expression_value_text_length(left),
+                right->text_value,
+                expression_value_text_length(right)
+            );
+        }
         return compare_select_text_values(
             left->text_value,
             expression_value_text_length(left),
@@ -138,6 +149,11 @@ static int compare_select_text_values(
         ++index;
     }
     return (left_length > right_length) - (left_length < right_length);
+}
+
+static bool expression_value_uses_binary_text_compare(const struct mylite_expression_value *value) {
+    return value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+           value->text_charset == MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
 }
 
 static size_t expression_value_text_length(const struct mylite_expression_value *value) {

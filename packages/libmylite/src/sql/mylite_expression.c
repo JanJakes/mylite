@@ -3983,6 +3983,17 @@ static int compare_temporal_date_components(
 
 static int compare_temporal_component(int left, int right);
 
+static int compare_text_values(
+    const struct mylite_expression_value *left,
+    const char *left_text,
+    size_t left_length,
+    const struct mylite_expression_value *right,
+    const char *right_text,
+    size_t right_length
+);
+
+static bool expression_value_uses_binary_text_compare(const struct mylite_expression_value *value);
+
 static int value_to_numeric(
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
@@ -24659,13 +24670,8 @@ static int compare_values(
         status = value_to_string_with_length(right, &right_text, &right_length);
     }
     if (status == 0) {
-        size_t compare_length = left_length < right_length ? left_length : right_length;
-        int comparison = compare_length == 0U ? 0 : memcmp(left_text, right_text, compare_length);
-
-        if (comparison == 0) {
-            comparison = (left_length > right_length) - (left_length < right_length);
-        }
-        *out_compare = (comparison > 0) - (comparison < 0);
+        *out_compare =
+            compare_text_values(left, left_text, left_length, right, right_text, right_length);
     }
     free(left_text);
     free(right_text);
@@ -24761,6 +24767,49 @@ static int compare_temporal_date_components(
 
 static int compare_temporal_component(int left, int right) {
     return (left > right) - (left < right);
+}
+
+static int compare_text_values(
+    const struct mylite_expression_value *left,
+    const char *left_text,
+    size_t left_length,
+    const struct mylite_expression_value *right,
+    const char *right_text,
+    size_t right_length
+) {
+    bool binary_compare = expression_value_uses_binary_text_compare(left) ||
+                          expression_value_uses_binary_text_compare(right);
+    size_t compare_length = left_length < right_length ? left_length : right_length;
+
+    if (left_text == NULL) {
+        left_text = "";
+        left_length = 0U;
+        compare_length = 0U;
+    }
+    if (right_text == NULL) {
+        right_text = "";
+        right_length = 0U;
+        compare_length = 0U;
+    }
+
+    for (size_t index = 0U; index < compare_length; ++index) {
+        unsigned char left_byte = (unsigned char)left_text[index];
+        unsigned char right_byte = (unsigned char)right_text[index];
+
+        if (!binary_compare) {
+            left_byte = (unsigned char)ascii_case_fold(left_byte);
+            right_byte = (unsigned char)ascii_case_fold(right_byte);
+        }
+        if (left_byte != right_byte) {
+            return (left_byte > right_byte) - (left_byte < right_byte);
+        }
+    }
+    return (left_length > right_length) - (left_length < right_length);
+}
+
+static bool expression_value_uses_binary_text_compare(const struct mylite_expression_value *value) {
+    return value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT &&
+           value->text_charset == MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
 }
 
 static int value_to_numeric(

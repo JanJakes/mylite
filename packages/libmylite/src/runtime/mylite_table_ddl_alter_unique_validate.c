@@ -5,6 +5,7 @@
 #include "mylite_runtime.h"
 #include "mylite_table_ddl_alter.h"
 #include "mylite_table_ddl_alter_column_value.h"
+#include "mylite_text_compare.h"
 #include "sqlite3.h"
 
 #include <string.h>
@@ -39,6 +40,10 @@ static int append_alter_table_unique_part_not_null_expression(
 static int append_alter_table_added_column_value_literal(
     mylite_db *database,
     sqlite3_str *sql,
+    const struct mylite_alter_table_column *column
+);
+
+static bool alter_table_unique_column_uses_case_insensitive_text_compare(
     const struct mylite_alter_table_column *column
 );
 
@@ -173,6 +178,9 @@ static int append_alter_table_unique_part_expression(
     if (column == NULL) {
         return MYLITE_MISUSE;
     }
+    if (alter_table_unique_column_uses_case_insensitive_text_compare(column)) {
+        sqlite3_str_append(sql, "lower(", (int)strlen("lower("));
+    }
     if (part->has_sub_part) {
         sqlite3_str_append(sql, "substr(", (int)strlen("substr("));
     }
@@ -187,6 +195,9 @@ static int append_alter_table_unique_part_expression(
     }
     if (part->has_sub_part) {
         sqlite3_str_appendf(sql, ",1,%lld)", (long long)part->sub_part);
+    }
+    if (alter_table_unique_column_uses_case_insensitive_text_compare(column)) {
+        sqlite3_str_append(sql, ")", 1);
     }
     return MYLITE_OK;
 }
@@ -244,4 +255,14 @@ static int append_alter_table_added_column_value_literal(
     }
     mylite_dml_insert_bound_value_deinit(&value);
     return MYLITE_OK;
+}
+
+static bool alter_table_unique_column_uses_case_insensitive_text_compare(
+    const struct mylite_alter_table_column *column
+) {
+    return column != NULL && mylite_column_definition_uses_case_insensitive_text_compare(
+                                 column->data_type,
+                                 column->character_set_name,
+                                 column->collation_name
+                             );
 }

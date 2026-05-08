@@ -255,7 +255,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
       binary-string expression producers, including `_binary` literals, hex
       literals, `CAST(... AS BINARY)`, `UNHEX()`, `FROM_BASE64()`, embedded NUL
       bytes, and binary strings longer than eight bytes, while ordinary text
-      keeps MySQL numeric string parsing. Signed and unsigned `TINYINT`,
+      keeps MySQL numeric string parsing. Scalar `CAST`/`CONVERT` decimal
+      overflow now preserves MySQL's warning split for exponent strings,
+      including the `DECIMAL(65,0)` case where MySQL clips to the 65-digit
+      endpoint without an additional 1264 range warning. Signed and unsigned
+      `TINYINT`,
       `SMALLINT`,
       `MEDIUMINT`, `INT`, and covered `BIGINT` range clipping, first-slice
       `DECIMAL(M,D)` endpoint clipping, plus first-slice `FLOAT`/`DOUBLE`

@@ -37065,6 +37065,11 @@ static int test_cast_expression_execution(void) {
         "-99999999.99",
         "99999999.99",
     };
+    static const char *const decimal_max_overflow_columns[] = {"p", "n"};
+    static const char *const decimal_max_overflow_values[] = {
+        "99999999999999999999999999999999999999999999999999999999999999999",
+        "-99999999999999999999999999999999999999999999999999999999999999999",
+    };
     static const char *const decimal_nonfinite_columns[] = {"nan_value", "inf_value"};
     static const char *const decimal_nonfinite_values[] = {"0.00", "0.00"};
     static const char *const cast_charset_columns[] = {"bad_utf8mb4", "good_utf8mb4"};
@@ -37972,6 +37977,73 @@ static int test_cast_expression_execution(void) {
         "CAST decimal overflow fraction prefix warning message"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST decimal overflow done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('1e309' AS DECIMAL(65,0)) AS p, "
+        "CAST('-1e309' AS DECIMAL(65,0)) AS n",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(
+        stmt,
+        decimal_max_overflow_columns,
+        2,
+        "CAST decimal max overflow columns"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST decimal max overflow row");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_string(
+            mylite_column_text(stmt, index),
+            decimal_max_overflow_values[index],
+            "CAST decimal max overflow value"
+        );
+    }
+    failures +=
+        expect_int(mylite_warning_count(database), 4, "CAST decimal max overflow warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CAST decimal max overflow prefix warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "'1'",
+        "CAST decimal max overflow prefix warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "CAST decimal max overflow full warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 1),
+        "'1e309'",
+        "CAST decimal max overflow full warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_truncated_wrong_value,
+        "CAST decimal max overflow negative prefix warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 2),
+        "'-1'",
+        "CAST decimal max overflow negative prefix warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_truncated_wrong_value,
+        "CAST decimal max overflow negative full warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 3),
+        "'-1e309'",
+        "CAST decimal max overflow negative full warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST decimal max overflow done");
     mylite_finalize(stmt);
     stmt = NULL;
 
@@ -38889,6 +38961,10 @@ static int test_convert_expression_execution(void) {
     static const char *const decimal_range_values[] = {"999.99", "999.99", "999.99", "-0.99"};
     static const char *const decimal_overflow_columns[] = {"p", "n"};
     static const char *const decimal_overflow_values[] = {"99999999.99", "-99999999.99"};
+    static const char *const decimal_max_overflow_values[] = {
+        "99999999999999999999999999999999999999999999999999999999999999999",
+        "-99999999999999999999999999999999999999999999999999999999999999999",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -39348,6 +39424,73 @@ static int test_convert_expression_execution(void) {
         "CONVERT decimal overflow negative prefix warning message"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT decimal overflow done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT CONVERT('1e309', DECIMAL(65,0)) AS p, "
+        "CONVERT('-1e309', DECIMAL(65,0)) AS n",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_column_names(
+        stmt,
+        decimal_overflow_columns,
+        2,
+        "CONVERT decimal max overflow columns"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CONVERT decimal max overflow row");
+    for (int index = 0; index < 2; ++index) {
+        failures += expect_string(
+            mylite_column_text(stmt, index),
+            decimal_max_overflow_values[index],
+            "CONVERT decimal max overflow value"
+        );
+    }
+    failures +=
+        expect_int(mylite_warning_count(database), 4, "CONVERT decimal max overflow warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT decimal max overflow prefix warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "'1'",
+        "CONVERT decimal max overflow prefix warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT decimal max overflow full warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 1),
+        "'1e309'",
+        "CONVERT decimal max overflow full warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 2),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT decimal max overflow negative prefix warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 2),
+        "'-1'",
+        "CONVERT decimal max overflow negative prefix warning message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 3),
+        mysql_warning_truncated_wrong_value,
+        "CONVERT decimal max overflow negative full warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 3),
+        "'-1e309'",
+        "CONVERT decimal max overflow negative full warning message"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CONVERT decimal max overflow done");
     mylite_finalize(stmt);
     stmt = NULL;
 

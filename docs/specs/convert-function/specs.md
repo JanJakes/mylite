@@ -107,6 +107,7 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT(999999, DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CONVERT('999999x', DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |
 | `CONVERT('1e309', DECIMAL(10,2))` | `99999999.99` | 1292 truncated decimal prefix, 1292 truncated decimal, 1264 out of range |
+| `CONVERT('1e309', DECIMAL(65,0))` | 65 nines | 1292 truncated decimal prefix, 1292 truncated decimal |
 | `CONVERT('abcdef', CHAR(3))` | `abc` | 1292 truncated char |
 | `CONVERT('abc', BINARY)` | `abc` | none |
 | `HEX(CONVERT('a', BINARY(3)))` | `610000` | none |

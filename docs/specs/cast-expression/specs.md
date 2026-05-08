@@ -152,6 +152,7 @@ keep their parsed numeric prefix before range validation.
 | `CAST(999.995 AS DECIMAL(5,2))` | `999.99` | 1264 out of range |
 | `CAST('999999x' AS DECIMAL(5,2))` | `999.99` | 1292 truncated decimal, 1264 out of range |
 | `CAST('1e309' AS DECIMAL(10,2))` | `99999999.99` | 1292 truncated decimal prefix, 1292 truncated decimal, 1264 out of range |
+| `CAST('1e309' AS DECIMAL(65,0))` | 65 nines | 1292 truncated decimal prefix, 1292 truncated decimal |
 | `CAST('nan' AS DECIMAL(5,2))` | `0.00` | 1292 truncated decimal |
 
 Character casts produce variable-length character-string metadata. `CHAR(N)`

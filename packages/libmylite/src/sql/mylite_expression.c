@@ -4053,14 +4053,16 @@ static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *tar
 static int cast_value_to_decimal_double(
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
-    double *out_number
+    double *out_number,
+    bool *out_overflow_to_infinity
 );
 
 static int cast_string_to_decimal_double(
     const char *text,
     size_t text_length,
     struct mylite_expression_warnings *warnings,
-    double *out_number
+    double *out_number,
+    bool *out_overflow_to_infinity
 );
 
 static int append_decimal_overflow_prefix_warning(
@@ -4072,6 +4074,12 @@ static char *decimal_overflow_prefix_end(char *text);
 
 static bool decimal_cast_result_exceeds_precision(
     const char *text,
+    unsigned int precision,
+    unsigned int scale
+);
+
+static bool decimal_cast_omits_range_warning_for_overflow(
+    bool overflow_to_infinity,
     unsigned int precision,
     unsigned int scale
 );
@@ -5728,9 +5736,10 @@ static int eval_decimal_cast(
     unsigned int precision = cast_decimal_precision(target);
     unsigned int scale = cast_decimal_scale(target);
     double number = 0.0;
+    bool overflow_to_infinity = false;
     bool range_warning = false;
     int length = 0;
-    int status = cast_value_to_decimal_double(value, warnings, &number);
+    int status = cast_value_to_decimal_double(value, warnings, &number, &overflow_to_infinity);
 
     if (status != 0) {
         return status;
@@ -5741,9 +5750,15 @@ static int eval_decimal_cast(
         return -1;
     }
     if (range_warning || decimal_cast_result_exceeds_precision(buffer, precision, scale)) {
-        status = append_decimal_cast_out_of_range_warning(warnings, expression);
-        if (status != 0) {
-            return status;
+        if (!decimal_cast_omits_range_warning_for_overflow(
+                overflow_to_infinity,
+                precision,
+                scale
+            )) {
+            status = append_decimal_cast_out_of_range_warning(warnings, expression);
+            if (status != 0) {
+                return status;
+            }
         }
         length = set_decimal_cast_limit_text(
             buffer,
@@ -9260,7 +9275,7 @@ static int from_unixtime_value_from_expression(
     *out_timestamp = (struct from_unixtime_value){0};
     *out_valid = false;
 
-    status = cast_value_to_decimal_double(value, warnings, &fallback);
+    status = cast_value_to_decimal_double(value, warnings, &fallback, NULL);
     if (status != 0) {
         return status;
     }
@@ -11198,7 +11213,7 @@ static int sec_to_time_value_from_expression(
     int64_t microseconds = 0;
     uint64_t magnitude = 0U;
     double fallback = 0.0;
-    int status = cast_value_to_decimal_double(value, warnings, &fallback);
+    int status = cast_value_to_decimal_double(value, warnings, &fallback, NULL);
 
     if (status != 0) {
         return status;
@@ -25015,10 +25030,14 @@ static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *tar
 static int cast_value_to_decimal_double(
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
-    double *out_number
+    double *out_number,
+    bool *out_overflow_to_infinity
 ) {
     if (out_number == NULL) {
         return -1;
+    }
+    if (out_overflow_to_infinity != NULL) {
+        *out_overflow_to_infinity = false;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_INT64) {
         *out_number = (double)value->int64_value;
@@ -25037,7 +25056,8 @@ static int cast_value_to_decimal_double(
             value->text_value == NULL ? "" : value->text_value,
             value->text_value == NULL ? 0U : value->text_length,
             warnings,
-            out_number
+            out_number,
+            out_overflow_to_infinity
         );
     }
     return -1;
@@ -25047,7 +25067,8 @@ static int cast_string_to_decimal_double(
     const char *text,
     size_t text_length,
     struct mylite_expression_warnings *warnings,
-    double *out_number
+    double *out_number,
+    bool *out_overflow_to_infinity
 ) {
     char *copy = copy_span_text(text == NULL ? "" : text, text == NULL ? 0U : text_length);
     char *start = NULL;
@@ -25065,6 +25086,9 @@ static int cast_string_to_decimal_double(
     errno = 0;
     *out_number = strtod(start, &end);
     overflow_to_infinity = errno == ERANGE && isinf(*out_number);
+    if (out_overflow_to_infinity != NULL) {
+        *out_overflow_to_infinity = overflow_to_infinity;
+    }
     while (end != NULL && end < copy_end && isspace((unsigned char)*end)) {
         ++end;
     }
@@ -25135,6 +25159,14 @@ static char *decimal_overflow_prefix_end(char *text) {
         }
     }
     return saw_digit ? cursor : text;
+}
+
+static bool decimal_cast_omits_range_warning_for_overflow(
+    bool overflow_to_infinity,
+    unsigned int precision,
+    unsigned int scale
+) {
+    return overflow_to_infinity && precision == 65U && scale == 0U;
 }
 
 static bool decimal_cast_result_exceeds_precision(

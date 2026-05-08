@@ -76501,6 +76501,22 @@ static int test_subquery_execution(void) {
     static const char *const in_metadata_columns[] =
         {"in_result", "not_in_result", "no_table_in", "numeric_text_in"};
     static const struct expected_result_metadata metadata[] = {
+        {"sub_id",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         11U,
+         MYLITE_FIELD_TYPE_LONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_UNIQUE_KEY |
+             MYLITE_FIELD_FLAG_MULTIPLE_KEY | MYLITE_FIELD_FLAG_AUTO_INCREMENT |
+             MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE | MYLITE_FIELD_FLAG_ON_UPDATE_NOW |
+             MYLITE_FIELD_FLAG_PART_KEY,
+         1},
         {"sub_val",
          NULL,
          NULL,
@@ -76511,7 +76527,7 @@ static int test_subquery_execution(void) {
          MYLITE_FIELD_TYPE_LONG,
          0U,
          63U,
-         MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          MYLITE_FIELD_FLAG_NOT_NULL,
          1},
         {"has_one",
@@ -77427,13 +77443,14 @@ static int test_subquery_execution(void) {
 
     failures += prepare_sql(
         database,
-        "SELECT (SELECT val FROM outer_t WHERE id=1) AS sub_val, "
+        "SELECT (SELECT id FROM outer_t WHERE id=1) AS sub_id, "
+        "(SELECT val FROM outer_t WHERE id=1) AS sub_val, "
         "EXISTS (SELECT 1 FROM outer_t WHERE id=1) AS has_one "
         "FROM outer_t LIMIT 0",
         MYLITE_OK,
         &stmt
     );
-    failures += expect_result_metadata(stmt, metadata, 2, "subquery metadata");
+    failures += expect_result_metadata(stmt, metadata, 3, "subquery metadata");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "subquery metadata done");
     mylite_finalize(stmt);
     stmt = NULL;

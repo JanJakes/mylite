@@ -374,6 +374,9 @@ Scalar subqueries are expression values:
   subquery output is not exposed as a base-table column
 - type, length, decimals, charset, and collation derive from the selected
   expression inside the subquery
+- scalar subqueries are still expression outputs, so base-table-only flags such
+  as key, `AUTO_INCREMENT`, `NO_DEFAULT_VALUE`, and `ON UPDATE` do not propagate
+  from selected columns; numeric selected expressions keep `BINARY` and `NUM`
 - scalar subquery results are nullable even when the selected column is
   declared `NOT NULL`, because an empty subquery returns `NULL`
 
@@ -381,6 +384,7 @@ Observed metadata examples from `mysql --column-type-info -vvv`:
 
 | SQL | Metadata |
 | --- | --- |
+| `SELECT (SELECT id FROM inner_t WHERE id=101) AS scalar_id LIMIT 0` | label `scalar_id`, no origin table, `LONG`, length `11`, binary numeric flags, nullable, no key/default flags |
 | `SELECT (SELECT txt FROM inner_t WHERE id=101) AS scalar_txt LIMIT 0` | label `scalar_txt`, no origin table, `VAR_STRING`, length `10` |
 | `SELECT (SELECT val FROM inner_t WHERE id=101) + 1 AS scalar_plus LIMIT 0` | label `scalar_plus`, `LONGLONG`, binary numeric, length `12`, decimals `0` |
 
@@ -817,6 +821,7 @@ Verify with the public result descriptor API:
 
 | SQL | Expected metadata |
 | --- | --- |
+| `SELECT (SELECT id FROM inner_t WHERE id=101) AS scalar_id LIMIT 0` | label `scalar_id`; no origin schema/table/column; numeric type and length inherited from subquery expression; `BINARY` and `NUM` set; nullable; base-column key/default flags clear |
 | `SELECT (SELECT txt FROM inner_t WHERE id=101) AS scalar_txt LIMIT 0` | label `scalar_txt`; no origin schema/table/column; string type and length inherited from subquery expression; nullable |
 | `SELECT (SELECT val FROM inner_t WHERE id=101) + 1 AS scalar_plus LIMIT 0` | numeric expression metadata; no origin |
 | `SELECT EXISTS (SELECT NULL FROM inner_t WHERE val IS NULL) AS exists_result LIMIT 0` | integer boolean metadata; length `1`; no origin |

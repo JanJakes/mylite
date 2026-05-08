@@ -13,6 +13,10 @@ static int infer_scalar_subquery_expression_descriptor(
     const struct mylite_expression_descriptor_subquery_callbacks *callbacks
 );
 
+static void sanitize_scalar_subquery_expression_descriptor(
+    struct mylite_field_descriptor *descriptor
+);
+
 static int infer_in_subquery_expression_descriptor(
     mylite_db *database,
     const struct mylite_select_plan *plan,
@@ -170,9 +174,24 @@ static int infer_scalar_subquery_expression_descriptor(
     }
     mylite_finalize(subquery_stmt);
     if (status == MYLITE_OK) {
+        sanitize_scalar_subquery_expression_descriptor(out_descriptor);
         mylite_expression_descriptor_set_scalar_subquery_nullable(out_descriptor);
     }
     return status;
+}
+
+static void sanitize_scalar_subquery_expression_descriptor(
+    struct mylite_field_descriptor *descriptor
+) {
+    const unsigned int field_only_flags =
+        MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_UNIQUE_KEY | MYLITE_FIELD_FLAG_MULTIPLE_KEY |
+        MYLITE_FIELD_FLAG_AUTO_INCREMENT | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
+        MYLITE_FIELD_FLAG_ON_UPDATE_NOW | MYLITE_FIELD_FLAG_PART_KEY;
+
+    descriptor->flags &= ~field_only_flags;
+    if ((descriptor->flags & MYLITE_FIELD_FLAG_NUM) != 0U) {
+        descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
+    }
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)

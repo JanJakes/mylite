@@ -43047,6 +43047,80 @@ static int test_create_table_base_execution(void) {
         1,
         "DEFAULT NOW() insert values"
     );
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE invalid_default_current_timestamp ("
+        "a INT DEFAULT CURRENT_TIMESTAMP)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Invalid default value for 'a'",
+        "create table rejects current timestamp default on non-temporal column"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_table_name_row(database, "invalid_default_current_timestamp");
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE invalid_on_update_current_timestamp ("
+        "a INT ON UPDATE CURRENT_TIMESTAMP)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Invalid default value for 'a'",
+        "create table rejects current timestamp on update on non-temporal column"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(
+        database,
+        "invalid_on_update_current_timestamp"
+    );
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE invalid_current_timestamp_default_fsp ("
+        "a TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Invalid default value for 'a'",
+        "create table rejects mismatched current timestamp default fsp"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(
+        database,
+        "invalid_current_timestamp_default_fsp"
+    );
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE invalid_current_timestamp_on_update_fsp ("
+        "a TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Invalid default value for 'a'",
+        "create table rejects mismatched current timestamp on update fsp"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(
+        database,
+        "invalid_current_timestamp_on_update_fsp"
+    );
 
     failures +=
         execute_sql(database, "CREATE TABLE serial_alias_type (id SERIAL, note INT)", MYLITE_DONE);

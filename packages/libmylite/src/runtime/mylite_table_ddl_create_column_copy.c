@@ -259,6 +259,13 @@ static int copy_create_table_column_attributes(
             break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_ON_UPDATE:
             column->has_on_update_current_timestamp = true;
+            if (mylite_ast_child_at(attribute, 0U) != NULL &&
+                mylite_ast_child_at(attribute, 0U)->has_column_precision) {
+                column->on_update_current_timestamp_fsp =
+                    (unsigned int)mylite_ast_child_at(attribute, 0U)->column_precision;
+            } else {
+                column->on_update_current_timestamp_fsp = 0U;
+            }
             break;
         case MYLITE_SQL_AST_COLUMN_ATTRIBUTE_COMMENT:
             copy = mylite_copy_string_literal_span(mylite_ast_child_at(attribute, 0U));

@@ -110,9 +110,11 @@ Some conflicts are semantic DDL errors rather than syntax errors:
   declaration.
 - `INT DEFAULT CURRENT_TIMESTAMP` parses but errors semantically because the
   automatic timestamp default is not valid for the type.
+- `INT ON UPDATE CURRENT_TIMESTAMP` parses but errors semantically because
+  automatic timestamp updates are not valid for the type.
 
-MyLite records the syntax now and defers these semantic table-DDL validations
-until executable `CREATE TABLE` exists.
+MyLite validates these semantic table-DDL rules during executable
+`CREATE TABLE` planning.
 
 ### Syntax errors and unsupported expression grammar
 
@@ -197,11 +199,12 @@ task:
 - `CURRENT_TIMESTAMP(fsp)` accepts integer precision `0..6` only and rejects
   overflow without wrapping
 
-Semantic DDL checks wait for executable table DDL. Examples include last
-attribute wins, invalid default for a specific type, all-invisible table
-validation, matching `TIMESTAMP`/`DATETIME` precision across type/default/update
-clauses, generated default metadata, warning records, `SHOW CREATE TABLE`
-formatting, and `INFORMATION_SCHEMA.COLUMNS` rows.
+Semantic DDL checks are performed by executable table DDL. Covered examples
+include invalid default values for a specific type, matching
+`TIMESTAMP`/`DATETIME` precision across type/default/update clauses, generated
+default metadata, `SHOW CREATE TABLE` formatting, and
+`INFORMATION_SCHEMA.COLUMNS` rows. Remaining broad expression-default
+validation and warning-record fidelity are owned by later executable DDL slices.
 
 ### Runtime boundary
 

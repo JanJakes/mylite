@@ -27,6 +27,11 @@ static int validate_create_table_column_srid(
     const struct mylite_create_table_plan *plan
 );
 
+static int validate_create_table_column_temporal_current_timestamp(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+);
+
 static bool validate_create_table_indexes(
     mylite_db *database,
     const struct mylite_create_table_plan *plan
@@ -150,6 +155,16 @@ static int set_create_table_non_spatial_srid_error(mylite_db *database);
 
 static int set_create_table_srs_not_found_error(mylite_db *database, uint64_t srs_id);
 
+static bool create_table_column_is_current_timestamp_temporal(
+    const struct mylite_create_table_column *column
+);
+
+static unsigned int create_table_column_temporal_fsp(
+    const struct mylite_create_table_column *column
+);
+
+static int set_create_table_invalid_default_error(mylite_db *database, const char *column_name);
+
 int mylite_table_ddl_validate_create_table_plan(
     mylite_db *database,
     const char *schema_name,
@@ -223,6 +238,10 @@ int mylite_table_ddl_validate_create_table_plan(
         return MYLITE_EXEC_ERROR;
     }
     status = validate_create_table_column_srid(database, plan);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    status = validate_create_table_column_temporal_current_timestamp(database, plan);
     if (status != MYLITE_OK) {
         return status;
     }
@@ -324,6 +343,72 @@ static int set_create_table_srs_not_found_error(mylite_db *database, uint64_t sr
         status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_SRS_NOT_FOUND, message);
     }
     sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int validate_create_table_column_temporal_current_timestamp(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+) {
+    for (size_t index = 0U; index < plan->column_count; ++index) {
+        const struct mylite_create_table_column *column = &plan->columns[index];
+        unsigned int column_fsp = create_table_column_temporal_fsp(column);
+        unsigned int default_fsp = 0U;
+        bool default_current_timestamp =
+            mylite_column_default_current_timestamp_fsp(column->default_text, &default_fsp);
+
+        if (!default_current_timestamp && !column->has_on_update_current_timestamp) {
+            continue;
+        }
+        if (!create_table_column_is_current_timestamp_temporal(column)) {
+            return set_create_table_invalid_default_error(database, column->name);
+        }
+        if (default_current_timestamp && default_fsp != column_fsp) {
+            return set_create_table_invalid_default_error(database, column->name);
+        }
+        if (column->has_on_update_current_timestamp &&
+            column->on_update_current_timestamp_fsp != column_fsp) {
+            return set_create_table_invalid_default_error(database, column->name);
+        }
+    }
+    return MYLITE_OK;
+}
+
+static bool create_table_column_is_current_timestamp_temporal(
+    const struct mylite_create_table_column *column
+) {
+    if (column == NULL) {
+        return false;
+    }
+    if (column->type.ast_type == MYLITE_SQL_AST_COLUMN_TYPE_DATETIME) {
+        return true;
+    }
+    return column->type.ast_type == MYLITE_SQL_AST_COLUMN_TYPE_TIMESTAMP;
+}
+
+static unsigned int create_table_column_temporal_fsp(
+    const struct mylite_create_table_column *column
+) {
+    if (column == NULL || !column->type.attributes.has_precision) {
+        return 0U;
+    }
+    return (unsigned int)column->type.attributes.precision;
+}
+
+static int set_create_table_invalid_default_error(mylite_db *database, const char *column_name) {
+    int status = mylite_diagnostics_set_error_message_parts(
+        database,
+        "Invalid default value for '",
+        column_name,
+        "'"
+    );
+
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_current_error_condition(
+            database,
+            MYLITE_MYSQL_ER_INVALID_DEFAULT
+        );
+    }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 

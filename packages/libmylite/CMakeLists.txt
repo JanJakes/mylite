@@ -521,6 +521,10 @@ if(BUILD_TESTING)
     COMMAND mylite_runtime_table_rename_lifecycle_test
   )
   add_test(
+    NAME libmylite.runtime.alter_table_rename_to
+    COMMAND mylite_runtime_table_rename_lifecycle_test
+  )
+  add_test(
     NAME libmylite.runtime.row_values_lifecycle
     COMMAND mylite_runtime_row_values_lifecycle_test
   )

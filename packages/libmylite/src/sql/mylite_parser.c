@@ -678,6 +678,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *source_name,
+    struct mylite_sql_ast_node *target_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (target_name != NULL) {
+        span = span_join(span, target_name->span);
+    } else if (source_name != NULL) {
+        span = span_join(span, source_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, source_name);
+    mylite_sql_ast_node_append_child(statement, target_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token insert_token,
@@ -1694,6 +1719,8 @@ static bool map_keyword_token(
         int parser_token;
     } keyword_mappings[] = {
         {"SELECT", MYLITE_SQL_PARSE_SELECT},
+        {"ALTER", MYLITE_SQL_PARSE_ALTER},
+        {"AS", MYLITE_SQL_PARSE_AS},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},

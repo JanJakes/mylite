@@ -36,9 +36,13 @@ struct expected_sql_error {
 };
 
 static int test_rename_preserves_catalog_and_physical_state(void);
+static int test_alter_table_rename_preserves_catalog_and_physical_state(void);
 static int test_cross_schema_and_independent_name_resolution(void);
+static int test_alter_table_rename_schema_resolution_and_noop(void);
 static int test_failure_diagnostics_and_unwinding(void);
+static int test_alter_table_rename_failure_diagnostics_and_unwinding(void);
 static int test_catalog_failure_rolls_back_rename(void);
+static int test_alter_table_rename_catalog_failure_rolls_back(void);
 static int test_independent_file_backed_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -74,9 +78,13 @@ int main(void) {
     int failures = 0;
 
     failures += test_rename_preserves_catalog_and_physical_state();
+    failures += test_alter_table_rename_preserves_catalog_and_physical_state();
     failures += test_cross_schema_and_independent_name_resolution();
+    failures += test_alter_table_rename_schema_resolution_and_noop();
     failures += test_failure_diagnostics_and_unwinding();
+    failures += test_alter_table_rename_failure_diagnostics_and_unwinding();
     failures += test_catalog_failure_rolls_back_rename();
+    failures += test_alter_table_rename_catalog_failure_rolls_back();
     failures += test_independent_file_backed_handles();
 
     return failures == 0 ? 0 : 1;
@@ -291,6 +299,203 @@ static int test_rename_preserves_catalog_and_physical_state(void) {
     return failures;
 }
 
+static int test_alter_table_rename_preserves_catalog_and_physical_state(void) {
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor before = {0};
+    struct mylite_catalog_table_descriptor after = {0};
+    struct mylite_catalog_column_descriptor before_column = {0};
+    struct mylite_catalog_column_descriptor after_column = {0};
+    const struct mylite_catalog *catalog = NULL;
+    const struct mylite_session_state *session = NULL;
+    uint64_t generation_before_rename = 0U;
+    uint64_t sqlite_generation_before_rename = 0U;
+    int physical_rows = 0;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "alter_preserve") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open alter rename file");
+    failures += seed_schema(database, "app");
+    failures += execute_ok(database, "USE app", &result);
+    failures += expect_empty_result(result, "USE app before alter rename");
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "CREATE TABLE alter_source (id INT, amount BIGINT NOT NULL)", &result);
+    failures += expect_empty_result(result, "create alter source");
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO alter_source VALUES (1, 10), (2, 20)", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 2, "insert alter source rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read alter rename schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "alter_source", &before),
+        MYLITE_OK,
+        "read alter source before rename"
+    );
+    failures += expect_int(
+        mylite_catalog_read_column_by_name(database, before.table_id, "id", &before_column),
+        MYLITE_OK,
+        "read alter source column before rename"
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        generation_before_rename = catalog->generation;
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        sqlite_generation_before_rename = session->sqlite_schema_generation;
+    }
+
+    failures += execute_ok(database, "ALTER TABLE alter_source RENAME TO alter_target", &result);
+    failures += expect_empty_result(result, "ALTER TABLE RENAME TO result");
+    mylite_result_free(result);
+    result = NULL;
+
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            generation_before_rename + 1U,
+            "alter rename advances generation"
+        );
+        failures += expect_bool(
+            catalog->descriptor_cache_is_valid,
+            false,
+            "alter rename invalidates descriptor cache"
+        );
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_generation_before_rename,
+            "alter rename leaves SQLite schema generation unchanged"
+        );
+    }
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "alter_source", &after),
+        MYLITE_ERROR,
+        "alter source descriptor is gone"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "alter_target", &after),
+        MYLITE_OK,
+        "alter target descriptor exists"
+    );
+    failures += expect_int64(after.table_id, before.table_id, "alter rename keeps table id");
+    failures += expect_text(after.name, "alter_target", "alter renamed logical table name");
+    failures +=
+        expect_text(after.physical_name, before.physical_name, "alter rename keeps physical name");
+    failures += expect_uint64(
+        after.descriptor_version,
+        before.descriptor_version + 1U,
+        "alter rename table version"
+    );
+    failures += expect_int(
+        mylite_catalog_read_column_by_name(database, after.table_id, "id", &after_column),
+        MYLITE_OK,
+        "read alter source column after rename"
+    );
+    failures += expect_int64(
+        after_column.column_id,
+        before_column.column_id,
+        "alter rename keeps column id"
+    );
+    failures += expect_uint64(
+        after_column.descriptor_version,
+        before_column.descriptor_version,
+        "alter rename leaves column version unchanged"
+    );
+
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += query_physical_row_count(sqlite, after.physical_name, &physical_rows);
+    }
+    failures += expect_int(physical_rows, 2, "alter rename preserves physical rows");
+    failures += expect_show_table(database, "SHOW TABLES", "alter_target");
+
+    failures += execute_ok(database, "SHOW CREATE TABLE alter_target", &result);
+    failures += expect_size(mylite_result_column_count(result), 2U, "show create column count");
+    failures += expect_size(mylite_result_row_count(result), 1U, "show create row count");
+    failures +=
+        expect_text(mylite_result_value_text(result, 0U, 0U), "alter_target", "show create table");
+    failures += expect_contains(
+        mylite_result_value_text(result, 0U, 1U),
+        "CREATE TABLE `alter_target`",
+        "show create uses renamed table"
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "UPDATE alter_target SET amount = 30 WHERE id = 2", &result);
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "update renamed table affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT id, amount FROM alter_target ORDER BY id", &result);
+    failures += expect_size(mylite_result_row_count(result), 2U, "renamed select row count");
+    failures += expect_text(mylite_result_value_text(result, 0U, 0U), "1", "renamed row 1 id");
+    failures += expect_text(mylite_result_value_text(result, 0U, 1U), "10", "renamed row 1 amount");
+    failures += expect_text(mylite_result_value_text(result, 1U, 0U), "2", "renamed row 2 id");
+    failures += expect_text(mylite_result_value_text(result, 1U, 1U), "30", "renamed row 2 amount");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "ALTER TABLE alter_target RENAME AS alter_final", &result);
+    failures += expect_empty_result(result, "ALTER TABLE RENAME AS result");
+    mylite_result_free(result);
+    result = NULL;
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "alter rename preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen alter renamed file");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT id, amount FROM alter_final ORDER BY id", &result);
+    failures += expect_size(mylite_result_row_count(result), 2U, "reopened renamed row count");
+    failures +=
+        expect_text(mylite_result_value_text(result, 1U, 1U), "30", "reopened update value");
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "TRUNCATE TABLE alter_final", &result);
+    failures += expect_empty_result(result, "truncate after alter rename");
+    mylite_result_free(result);
+    result = NULL;
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_cross_schema_and_independent_name_resolution(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -393,6 +598,171 @@ static int test_cross_schema_and_independent_name_resolution(void) {
         MYLITE_OK,
         "qualified target uses named schema"
     );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_alter_table_rename_schema_resolution_and_noop(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    struct mylite_catalog_schema_descriptor app = {0};
+    struct mylite_catalog_schema_descriptor archive = {0};
+    struct mylite_catalog_table_descriptor before_noop = {0};
+    struct mylite_catalog_table_descriptor after_noop = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    const struct mylite_catalog *catalog = NULL;
+    const struct mylite_session_state *session = NULL;
+    uint64_t generation_before_noop = 0U;
+    uint64_t sqlite_generation_before_noop = 0U;
+    bool descriptor_cache_before_noop = false;
+    int physical_rows = 0;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "alter_schema_noop") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open alter schema file");
+    failures += seed_schema(database, "app");
+    failures += seed_schema(database, "archive");
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &app),
+        MYLITE_OK,
+        "read app schema for alter rename"
+    );
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "archive", &archive),
+        MYLITE_OK,
+        "read archive schema for alter rename"
+    );
+
+    failures += execute_ok(database, "CREATE TABLE app.cross_source (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "ALTER TABLE app.cross_source RENAME archive.cross_target", &result);
+    failures += expect_empty_result(result, "alter cross-schema rename result");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, archive.schema_id, "cross_target", &table),
+        MYLITE_OK,
+        "alter cross-schema target exists"
+    );
+    failures +=
+        expect_int64(table.schema_id, archive.schema_id, "alter cross-schema target schema");
+
+    failures += execute_ok(database, "CREATE TABLE app.default_target_source (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "USE archive", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "ALTER TABLE app.default_target_source RENAME default_target",
+        &result
+    );
+    failures += expect_empty_result(result, "alter qualified source to default target result");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, archive.schema_id, "default_target", &table),
+        MYLITE_OK,
+        "alter unqualified target uses selected schema"
+    );
+
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE TABLE source_unqualified (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "ALTER TABLE source_unqualified RENAME archive.target_qualified",
+        &result
+    );
+    failures += expect_empty_result(result, "alter unqualified source to qualified target result");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, archive.schema_id, "target_qualified", &table),
+        MYLITE_OK,
+        "alter qualified target uses named schema"
+    );
+
+    failures += execute_ok(database, "CREATE TABLE same_name (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO same_name VALUES (7)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, app.schema_id, "same_name", &before_noop),
+        MYLITE_OK,
+        "read same-name table before alter noop"
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        generation_before_noop = catalog->generation;
+        descriptor_cache_before_noop = catalog->descriptor_cache_is_valid;
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        sqlite_generation_before_noop = session->sqlite_schema_generation;
+    }
+
+    failures += execute_ok(database, "ALTER TABLE same_name RENAME same_name", &result);
+    failures += expect_empty_result(result, "alter same-name noop result");
+    mylite_result_free(result);
+    result = NULL;
+
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            generation_before_noop,
+            "alter same-name noop leaves generation"
+        );
+        failures += expect_bool(
+            catalog->descriptor_cache_is_valid,
+            descriptor_cache_before_noop,
+            "alter same-name noop leaves descriptor cache state"
+        );
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_generation_before_noop,
+            "alter same-name noop leaves SQLite schema generation"
+        );
+    }
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, app.schema_id, "same_name", &after_noop),
+        MYLITE_OK,
+        "read same-name table after alter noop"
+    );
+    failures +=
+        expect_int64(after_noop.table_id, before_noop.table_id, "alter noop keeps table id");
+    failures += expect_uint64(
+        after_noop.descriptor_version,
+        before_noop.descriptor_version,
+        "alter noop keeps descriptor version"
+    );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += query_physical_row_count(sqlite, after_noop.physical_name, &physical_rows);
+    }
+    failures += expect_int(physical_rows, 1, "alter noop preserves physical row");
+    failures += expect_show_table(database, "SHOW TABLES LIKE 'same_name'", "same_name");
 
     mylite_close(database);
     remove_related_files(path);
@@ -527,7 +897,7 @@ static int test_failure_diagnostics_and_unwinding(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE duplicate_target RENAME renamed_duplicate",
+        "ALTER TABLE duplicate_target RENAME TABLE renamed_duplicate",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -557,6 +927,198 @@ static int test_failure_diagnostics_and_unwinding(void) {
         mylite_catalog_read_table_by_name(database, schema.schema_id, "renamed_source", &table),
         MYLITE_ERROR,
         "failed multi rename target absent"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_alter_table_rename_failure_diagnostics_and_unwinding(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    const struct mylite_catalog *catalog = NULL;
+    uint64_t generation_before_failures = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "alter_failures") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open alter failures file");
+    failures += seed_schema(database, "app");
+    failures += seed_schema(database, "archive");
+    failures += execute_ok(database, "CREATE TABLE app.qualified_source (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_error(
+        database,
+        "ALTER TABLE no_default_source RENAME no_default_target",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_schema.missing_source RENAME no_default_target",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_schema.missing_source RENAME app.missing_target",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database",
+        }
+    );
+
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE TABLE duplicate_target (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        generation_before_failures = catalog->generation;
+    }
+
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_source RENAME missing_target",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE qualified_source RENAME duplicate_target",
+        (struct expected_sql_error){
+            .code = mysql_error_table_exists,
+            .sqlstate = "42S01",
+            .message_part = "already exists",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE qualified_source RENAME missing_schema.new_name",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE _mylite_reserved RENAME valid_target",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_table_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect table name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE duplicate_target RENAME _mylite_reserved",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_table_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect table name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE _mylite_schema.duplicate_target RENAME valid_target",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE duplicate_target RENAME _mylite_schema.valid_target",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE duplicate_target RENAME renamed_duplicate, ADD COLUMN added INT",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE duplicate_target RENAME renamed_duplicate, RENAME final_name",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE duplicate_target RENAME TABLE renamed_duplicate",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE duplicate_target RENAME COLUMN id TO renamed_id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            generation_before_failures,
+            "failed alter rename statements do not advance generation"
+        );
+    }
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read schema after alter failures"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "qualified_source", &table),
+        MYLITE_OK,
+        "source survives failed alter renames"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "renamed_duplicate", &table),
+        MYLITE_ERROR,
+        "failed alter rename target absent"
     );
 
     mylite_close(database);
@@ -643,6 +1205,85 @@ static int test_catalog_failure_rolls_back_rename(void) {
     return failures;
 }
 
+static int test_alter_table_rename_catalog_failure_rolls_back(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    const struct mylite_catalog *catalog = NULL;
+    uint64_t generation_before_failure = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "alter_catalog_failure") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open alter catalog-failure file");
+    failures += seed_schema(database, "app");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE TABLE blocked_source (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        generation_before_failure = catalog->generation;
+    }
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += execute_sql(
+            sqlite,
+            "CREATE TRIGGER block_alter_table_rename "
+            "BEFORE UPDATE OF name ON _mylite_catalog_tables "
+            "BEGIN SELECT RAISE(ABORT, 'blocked alter catalog rename'); END"
+        );
+    }
+
+    failures += execute_error(
+        database,
+        "ALTER TABLE blocked_source RENAME blocked_target",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown,
+            .sqlstate = "HY000",
+            .message_part = "failed to rename table descriptor",
+        }
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            generation_before_failure,
+            "alter catalog failure leaves generation unchanged"
+        );
+    }
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read schema after alter catalog failure"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "blocked_source", &table),
+        MYLITE_OK,
+        "alter catalog failure keeps old source name"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "blocked_target", &table),
+        MYLITE_ERROR,
+        "alter catalog failure leaves target absent"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_independent_file_backed_handles(void) {
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
@@ -680,6 +1321,13 @@ static int test_independent_file_backed_handles(void) {
     mylite_result_free(result);
     result = NULL;
     failures += expect_show_tables_empty(second, "SHOW TABLES");
+    failures += execute_ok(second, "CREATE TABLE second_source (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(second, "ALTER TABLE second_source RENAME second_target", &result);
+    failures += expect_empty_result(result, "second handle alter rename result");
+    mylite_result_free(result);
+    result = NULL;
     failures += expect_int(
         mylite_catalog_read_schema_by_name(first, "app", &schema),
         MYLITE_OK,
@@ -699,6 +1347,21 @@ static int test_independent_file_backed_handles(void) {
         mylite_catalog_read_table_by_name(second, schema.schema_id, "first_target", &table),
         MYLITE_ERROR,
         "second handle lacks renamed table"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(second, schema.schema_id, "second_target", &table),
+        MYLITE_OK,
+        "second handle has alter-renamed table"
+    );
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(first, "app", &schema),
+        MYLITE_OK,
+        "read first schema after second alter rename"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(first, schema.schema_id, "second_target", &table),
+        MYLITE_ERROR,
+        "first handle lacks second alter-renamed table"
     );
 
     mylite_close(second);

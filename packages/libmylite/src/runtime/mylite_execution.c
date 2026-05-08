@@ -295,6 +295,11 @@ static int execute_rename_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_rename_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_insert_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -458,6 +463,21 @@ static int plan_rename_table(
 static int rename_table_from_plan(
     struct mylite_db *database,
     const struct planned_rename_table *plan
+);
+static int plan_alter_table_rename(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_rename_table *out_plan
+);
+static int alter_table_rename_from_plan(
+    struct mylite_db *database,
+    const struct planned_rename_table *plan
+);
+static int rename_table_from_plan_with_policy(
+    struct mylite_db *database,
+    const struct planned_rename_table *plan,
+    bool allow_same_object_noop,
+    const char *unsupported_object_message
 );
 
 static int plan_insert(
@@ -636,6 +656,10 @@ static int resolve_truncate_table_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *node,
     struct table_name_resolution *out_resolution
+);
+static int require_selected_schema_for_unqualified_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node
 );
 static int resolve_schema_name(
     struct mylite_db *database,
@@ -1259,6 +1283,8 @@ static int execute_parsed_statement(
         return execute_truncate_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return execute_rename_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
+        return execute_alter_table_rename_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_STATEMENT:
         return execute_insert_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
@@ -1569,6 +1595,32 @@ static int execute_rename_table_statement(
     rc = plan_rename_table(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = rename_table_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_rename_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_rename_table plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_rename(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_rename_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -2234,6 +2286,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT:
         return 0;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -3088,6 +3141,59 @@ static int rename_table_from_plan(
     struct mylite_db *database,
     const struct planned_rename_table *plan
 ) {
+    return rename_table_from_plan_with_policy(
+        database,
+        plan,
+        false,
+        "RENAME TABLE supports only persistent base tables"
+    );
+}
+
+static int plan_alter_table_rename(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_rename_table *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_rename_table){0};
+    rc = require_selected_schema_for_unqualified_table_name(database, child_at(statement, 1U));
+    if (rc == MYLITE_OK) {
+        rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->source);
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->source.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_table_name(database, child_at(statement, 1U), &out_plan->target);
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int alter_table_rename_from_plan(
+    struct mylite_db *database,
+    const struct planned_rename_table *plan
+) {
+    return rename_table_from_plan_with_policy(
+        database,
+        plan,
+        true,
+        "ALTER TABLE RENAME supports only persistent base tables"
+    );
+}
+
+static int rename_table_from_plan_with_policy(
+    struct mylite_db *database,
+    const struct planned_rename_table *plan,
+    bool allow_same_object_noop,
+    const char *unsupported_object_message
+) {
     struct mylite_catalog_table_descriptor source = {0};
     struct mylite_catalog_table_descriptor target = {0};
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
@@ -3103,8 +3209,12 @@ static int rename_table_from_plan(
         return MYLITE_ERROR;
     }
     if (source.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
-        set_unsupported_error(database, "RENAME TABLE supports only persistent base tables");
+        set_unsupported_error(database, unsupported_object_message);
         return MYLITE_ERROR;
+    }
+    if (allow_same_object_noop && source.schema_id == plan->target.schema.schema_id &&
+        text_equals_ascii_case_insensitive(source.name, plan->target.table_name)) {
+        return MYLITE_OK;
     }
 
     rc = mylite_catalog_read_table_by_name(
@@ -4635,6 +4745,31 @@ static int resolve_truncate_table_name(
     set_parse_error(database, NULL);
 
     return MYLITE_ERROR;
+}
+
+static int require_selected_schema_for_unqualified_table_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t part_count = 0U;
+    int rc = collect_identifier_parts(
+        database == NULL ? NULL : node,
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 1U && (database == NULL || !database->session.has_selected_schema)) {
+        set_no_database_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int resolve_schema_name(

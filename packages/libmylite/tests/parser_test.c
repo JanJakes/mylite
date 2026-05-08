@@ -1313,6 +1313,56 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle RENAME TO archive.renamed_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT,
+        "alter table rename to statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter table rename statement");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app.simple_lifecycle", "alter rename source");
+    failures += expect_span_text(
+        child_at(statement, 1U),
+        "archive.renamed_lifecycle",
+        "alter rename target"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle RENAME renamed_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT,
+        "alter table bare rename statement"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 1U), "renamed_lifecycle", "bare rename target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle RENAME AS renamed_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT,
+        "alter table rename as statement"
+    );
+    failures += expect_span_text(child_at(statement, 1U), "renamed_lifecycle", "rename as target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "INSERT INTO app.simple_lifecycle (amount, id) VALUES (+1, -2), (NULL, 3);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2241,8 +2291,39 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("ALTER TABLE old_name RENAME new_name;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "ALTER TABLE old_name RENAME TABLE new_name;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name RENAME new_name, ADD COLUMN added INT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name RENAME new_name, RENAME final_name;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name RENAME COLUMN old_column TO new_column;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ADD COLUMN added INT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("INSERT INTO t VALUES ('text');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

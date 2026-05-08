@@ -95,6 +95,9 @@ statement(A) ::= explain_table_statement(B). {
 statement(A) ::= rename_table_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_rename_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -268,6 +271,21 @@ show_like_clause_opt(A) ::= LIKE STRING(P). {
 
 rename_table_statement(A) ::= RENAME(R) TABLE table_name(S) TO table_name(T). {
     A = mylite_sql_parser_make_rename_table_statement(state, R, S, T);
+}
+
+alter_table_rename_statement(A) ::=
+    ALTER(A1) TABLE table_name(S) RENAME table_rename_connector_opt table_name(T). {
+    A = mylite_sql_parser_make_alter_table_rename_statement(state, A1, S, T);
+}
+
+table_rename_connector_opt(A) ::= . {
+    A = NULL;
+}
+table_rename_connector_opt(A) ::= TO. {
+    A = NULL;
+}
+table_rename_connector_opt(A) ::= AS. {
+    A = NULL;
 }
 
 insert_values_statement(A) ::=

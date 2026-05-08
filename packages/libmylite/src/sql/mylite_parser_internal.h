@@ -137,6 +137,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_ast_node *source_name,
     struct mylite_sql_ast_node *target_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *source_name,
+    struct mylite_sql_ast_node *target_name
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token insert_token,

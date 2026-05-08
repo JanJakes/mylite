@@ -7,7 +7,8 @@ This slice adds expression reads for the system-variable form `@@name`,
 that MyLite already exposes through the first `SHOW VARIABLES` and focused
 `SET` slices: connection character-set and collation state, diagnostics counters,
 `sql_mode`, `group_concat_max_len`, autocommit, transaction defaults, and version
-variables.
+variables, plus the focused `rand_seed1` and `rand_seed2` compatibility
+variables used by unseeded `RAND()` seeding.
 
 User-defined variables (`@name`), variable assignment, persisted variables,
 complete variable catalog coverage, Performance Schema variable tables, global
@@ -66,6 +67,8 @@ Invalid explicit scopes are errors:
   variables are global-only.
 - `@@GLOBAL.sql_log_bin` reports error 1238 because `sql_log_bin` is
   session-only.
+- `@@GLOBAL.rand_seed1` and `@@GLOBAL.rand_seed2` report error 1238 because
+  the RAND seed variables are session-only.
 
 Unknown variables report error 1193 with
 `Unknown system variable '<name>'`.
@@ -89,6 +92,9 @@ Session values reflect handle-owned MyLite state:
 - `default_collation_for_utf8mb4` reads the current session value, defaulting
   to `utf8mb4_0900_ai_ci`.
 - `group_concat_max_len` reads the current session limit.
+- `rand_seed1` and `rand_seed2` read as unsigned integer `0`. In MySQL 8.4.9,
+  assignment affects the next unseeded `RAND()` sequence, but expression reads
+  and `SHOW VARIABLES` continue to expose `0`.
 - `character_set_client`, `character_set_connection`, `character_set_results`,
   and `collation_connection` read the current connection state.
 - `character_set_database` and `collation_database` read the selected schema
@@ -133,9 +139,9 @@ metadata rather than `SHOW VARIABLES` metadata:
   results they use the current utf8mb4 collation, such as
   `utf8mb4_0900_ai_ci` (id 255), and declared length `87380`. Decimals are
   `31`, and the `NOT_NULL` flag is not set.
-- `group_concat_max_len`, `warning_count`, `error_count`, and `max_error_count`
-  are unsigned `LONGLONG`, binary collation (id 63), declared length `21`,
-  decimals `0`, and no `NOT_NULL` flag.
+- `group_concat_max_len`, `warning_count`, `error_count`, `max_error_count`,
+  `rand_seed1`, and `rand_seed2` are unsigned `LONGLONG`, binary collation
+  (id 63), declared length `21`, decimals `0`, and no `NOT_NULL` flag.
 - Boolean variables such as `autocommit`, `sql_notes`, `sql_log_bin`, and
   `transaction_read_only` are signed numeric `LONGLONG`, binary collation
   (id 63), declared length `1`, decimals `0`, and no `NOT_NULL` flag.

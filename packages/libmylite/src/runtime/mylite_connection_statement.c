@@ -65,6 +65,11 @@ static int execute_set_wait_timeout_statement(
     const struct mylite_connection_system_variable_plan *plan
 );
 
+static int execute_set_rand_seed_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
 static int execute_set_character_set_client_statement(
     mylite_stmt *stmt,
     const struct mylite_connection_system_variable_plan *plan
@@ -99,6 +104,13 @@ static int copy_connection_boolean_system_variable_value(
 );
 
 static int copy_connection_unsigned_system_variable_value(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    const char *variable_name,
+    struct mylite_connection_system_variable_plan *plan
+);
+
+static int copy_connection_rand_seed_value(
     mylite_db *database,
     const struct mylite_sql_ast_node *value,
     const char *variable_name,
@@ -158,7 +170,15 @@ static int set_system_variable_wrong_null_value_error(
     const char *variable_name
 );
 
+static int set_system_variable_no_default_error(mylite_db *database, const char *variable_name);
+
 static int set_group_concat_max_len_type_error(mylite_db *database);
+
+static int append_rand_seed_truncation_warning(
+    mylite_db *database,
+    const char *variable_name,
+    const char *value
+);
 
 static int append_group_concat_max_len_truncation_warning(mylite_db *database, const char *value);
 
@@ -194,6 +214,13 @@ static int resolve_boolean_user_variable_value(
 );
 
 static int resolve_unsigned_user_variable_value(
+    mylite_db *database,
+    const struct mylite_connection_system_variable_plan *plan,
+    const struct mylite_expression_value *value,
+    struct mylite_connection_system_variable_plan *out_plan
+);
+
+static int resolve_rand_seed_user_variable_value(
     mylite_db *database,
     const struct mylite_connection_system_variable_plan *plan,
     const struct mylite_expression_value *value,
@@ -369,6 +396,10 @@ int mylite_connection_execute_system_variable_plan(
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         status = execute_set_wait_timeout_statement(stmt, plan);
         break;
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED1:
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED2:
+        status = execute_set_rand_seed_statement(stmt, plan);
+        break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
         status = execute_set_character_set_client_statement(stmt, plan);
         break;
@@ -504,6 +535,38 @@ static int execute_set_wait_timeout_statement(
         return mylite_connection_set_default_wait_timeout(stmt->database);
     }
     return mylite_connection_set_wait_timeout(stmt->database, plan->unsigned_value);
+}
+
+static int execute_set_rand_seed_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
+    int status = MYLITE_OK;
+
+    if (plan->use_default) {
+        return set_system_variable_no_default_error(
+            stmt->database,
+            set_system_variable_name(plan->variable)
+        );
+    }
+    if (stmt->database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED1) {
+        stmt->database->rand_seed1 = (uint32_t)plan->unsigned_value;
+    } else {
+        stmt->database->rand_seed2 = (uint32_t)plan->unsigned_value;
+    }
+    stmt->database->rand_seeded = true;
+    if (plan->emit_truncation_warning) {
+        status = append_rand_seed_truncation_warning(
+            stmt->database,
+            set_system_variable_name(plan->variable),
+            plan->value
+        );
+    }
+    return status;
 }
 
 static int execute_set_character_set_client_statement(
@@ -714,6 +777,16 @@ int mylite_connection_copy_system_variable_statement(
         );
     }
 
+    if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED1 ||
+        plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED2) {
+        return copy_connection_rand_seed_value(
+            database,
+            value,
+            set_system_variable_name(plan->variable),
+            plan
+        );
+    }
+
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT ||
         plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS ||
         plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION) {
@@ -816,6 +889,37 @@ static int copy_connection_unsigned_system_variable_value(
     }
 
     plan->unsigned_value = magnitude;
+    return MYLITE_OK;
+}
+
+static int copy_connection_rand_seed_value(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *value,
+    const char *variable_name,
+    struct mylite_connection_system_variable_plan *plan
+) {
+    static const uint64_t rand_max_value = 0x3fffffffU;
+    bool negative = false;
+    uint64_t magnitude = 0U;
+
+    if (value != NULL && value->kind == MYLITE_SQL_AST_DEFAULT) {
+        plan->use_default = true;
+        return MYLITE_OK;
+    }
+    if (!copy_signed_integer_value(value, &negative, &magnitude)) {
+        return set_system_variable_type_error(database, variable_name);
+    }
+    if (negative) {
+        plan->value = mylite_copy_span_text(value->span.text, value->span.length);
+        if (plan->value == NULL) {
+            return MYLITE_NOMEM;
+        }
+        plan->emit_truncation_warning = true;
+        plan->unsigned_value = 0U;
+        return MYLITE_OK;
+    }
+
+    plan->unsigned_value = magnitude % rand_max_value;
     return MYLITE_OK;
 }
 
@@ -1011,6 +1115,10 @@ static int resolve_user_variable_system_value(
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         status = resolve_unsigned_user_variable_value(database, plan, &value, out_plan);
         break;
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED1:
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED2:
+        status = resolve_rand_seed_user_variable_value(database, plan, &value, out_plan);
+        break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING:
         status =
             set_system_variable_read_only_error(database, set_system_variable_name(plan->variable));
@@ -1059,6 +1167,31 @@ static int resolve_unsigned_user_variable_value(
         out_plan->unsigned_value < 4U) {
         out_plan->unsigned_value = 4U;
     }
+    return MYLITE_OK;
+}
+
+static int resolve_rand_seed_user_variable_value(
+    mylite_db *database,
+    const struct mylite_connection_system_variable_plan *plan,
+    const struct mylite_expression_value *value,
+    struct mylite_connection_system_variable_plan *out_plan
+) {
+    static const uint64_t rand_max_value = 0x3fffffffU;
+    int64_t signed_value = mylite_expression_value_to_int64(value);
+
+    if (value->kind == MYLITE_EXPRESSION_VALUE_NULL) {
+        return set_system_variable_type_error(database, set_system_variable_name(plan->variable));
+    }
+    if (signed_value < 0) {
+        out_plan->value = mylite_expression_value_to_text(value);
+        if (out_plan->value == NULL) {
+            return MYLITE_NOMEM;
+        }
+        out_plan->emit_truncation_warning = true;
+        out_plan->unsigned_value = 0U;
+        return MYLITE_OK;
+    }
+    out_plan->unsigned_value = ((uint64_t)signed_value) % rand_max_value;
     return MYLITE_OK;
 }
 
@@ -1150,6 +1283,12 @@ static enum mylite_connection_system_variable set_system_variable_kind(
     if (mylite_ascii_case_equal(name, "skip_external_locking")) {
         return MYLITE_CONNECTION_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING;
     }
+    if (mylite_ascii_case_equal(name, "rand_seed1")) {
+        return MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED1;
+    }
+    if (mylite_ascii_case_equal(name, "rand_seed2")) {
+        return MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED2;
+    }
     return MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE;
 }
 
@@ -1216,6 +1355,10 @@ static const char *set_system_variable_name(enum mylite_connection_system_variab
         return "default_collation_for_utf8mb4";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING:
         return "skip_external_locking";
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED1:
+        return "rand_seed1";
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED2:
+        return "rand_seed2";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE:
         break;
     }
@@ -1230,7 +1373,9 @@ static int set_system_variable_global_error(
     unsigned int code = MYLITE_MYSQL_ER_UNKNOWN_ERROR;
     int status = MYLITE_OK;
 
-    if (variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN) {
+    if (variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN ||
+        variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED1 ||
+        variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED2) {
         message = sqlite3_mprintf(
             "Variable '%q' is a SESSION variable and can't be used with SET GLOBAL",
             set_system_variable_name(variable)
@@ -1246,15 +1391,16 @@ static int set_system_variable_global_error(
         return MYLITE_NOMEM;
     }
     status = mylite_diagnostics_set_error_message(database, message);
-    if (status == MYLITE_OK && variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN) {
+    if (status == MYLITE_OK && (variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN ||
+                                variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED1 ||
+                                variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_RAND_SEED2)) {
         status = mylite_diagnostics_append_error(database, code, message);
     }
     sqlite3_free(message);
     if (status == MYLITE_NOMEM) {
         return MYLITE_NOMEM;
     }
-    return variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN ? MYLITE_EXEC_ERROR
-                                                                     : MYLITE_UNSUPPORTED;
+    return code == MYLITE_MYSQL_ER_LOCAL_VARIABLE ? MYLITE_EXEC_ERROR : MYLITE_UNSUPPORTED;
 }
 
 static int set_system_variable_read_only_error(mylite_db *database, const char *variable_name) {
@@ -1353,6 +1499,23 @@ static int set_system_variable_wrong_null_value_error(
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
+static int set_system_variable_no_default_error(mylite_db *database, const char *variable_name) {
+    char *message = sqlite3_mprintf("Variable '%q' doesn't have a default value", variable_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_NO_DEFAULT, message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
 static int set_group_concat_max_len_type_error(mylite_db *database) {
     static const char message[] = "Incorrect argument type to variable 'group_concat_max_len'";
     int status = mylite_diagnostics_set_error_message(database, message);
@@ -1362,6 +1525,25 @@ static int set_group_concat_max_len_type_error(mylite_db *database) {
             mylite_diagnostics_append_error(database, MYLITE_MYSQL_ER_WRONG_TYPE_FOR_VAR, message);
     }
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int append_rand_seed_truncation_warning(
+    mylite_db *database,
+    const char *variable_name,
+    const char *value
+) {
+    char *message = sqlite3_mprintf("Truncated incorrect %s value: '%q'", variable_name, value);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+
+    status =
+        mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE, message);
+    sqlite3_free(message);
+    return status;
 }
 
 static int append_group_concat_max_len_truncation_warning(mylite_db *database, const char *value) {

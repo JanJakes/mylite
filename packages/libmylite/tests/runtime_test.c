@@ -136,6 +136,7 @@ enum {
     mysql_warning_wrong_usage = 1221,
     mysql_warning_wrong_number_of_columns = 1222,
     mysql_warning_local_variable = 1228,
+    mysql_warning_no_default_system_variable = 1230,
     mysql_warning_wrong_value_for_var = 1231,
     mysql_warning_wrong_type_for_var = 1232,
     mysql_warning_wrong_sql_calc_found_rows_placement = 1234,
@@ -53168,6 +53169,12 @@ static int test_show_variables_execution(void) {
     static const char *const lower_case_table_names_values[] = {"lower_case_table_names", "0"};
     static const char *const max_allowed_packet_values[] = {"max_allowed_packet", "67108864"};
     static const char *const max_connections_values[] = {"max_connections", "151"};
+    static const char *const rand_seed_values[] = {
+        "rand_seed1",
+        "0",
+        "rand_seed2",
+        "0",
+    };
     static const char *const skip_external_locking_values[] = {"skip_external_locking", "ON"};
     static const char *const sql_log_bin_values[] = {"sql_log_bin", "ON"};
     static const char *const sql_log_bin_off_values[] = {"sql_log_bin", "OFF"};
@@ -53199,6 +53206,13 @@ static int test_show_variables_execution(void) {
     static const char *const group_concat_scope_columns[] = {"session_value", "global_value"};
     static const char *const group_concat_global_scope_values[] = {"1024", "8"};
     static const char *const group_concat_default_to_global_values[] = {"8", "8"};
+    static const char *const rand_seed_columns[] = {"rs1", "rs2"};
+    static const char *const rand_seed_values_after_set[] = {"0", "0"};
+    static const char *const rand_seed_rand_columns[] = {"r1", "r2"};
+    static const char *const rand_seed_rand_values[] = {
+        "4.656612877414201e-9",
+        "5.1222741651556214e-8",
+    };
     static const char *const default_collation_scope_columns[] = {"session_value", "global_value"};
     static const char *const default_collation_global_scope_values[] = {
         "utf8mb4_0900_ai_ci",
@@ -53793,6 +53807,33 @@ static int test_show_variables_execution(void) {
         max_connections_values,
         1,
         "show variables max connections"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'rand\\_seed%'",
+        columns,
+        2,
+        rand_seed_values,
+        2,
+        "show variables rand seeds"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'rand\\_seed%'",
+        columns,
+        2,
+        NULL,
+        0,
+        "show global variables omits rand seeds"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT @@rand_seed1 AS rs1, @@SESSION.rand_seed2 AS rs2",
+        rand_seed_columns,
+        2,
+        rand_seed_values_after_set,
+        1,
+        "system variable rand seed reads"
     );
     failures += expect_select_rows(
         database,
@@ -54407,6 +54448,8 @@ static int test_show_variables_execution(void) {
     failures += execute_sql(database, "SET SQL_LOG_BIN = 0", MYLITE_DONE);
     failures += execute_sql(database, "SET unique_checks = 0", MYLITE_DONE);
     failures += execute_sql(database, "SET wait_timeout = 123", MYLITE_DONE);
+    failures += execute_sql(database, "SET rand_seed1 = 1", MYLITE_DONE);
+    failures += execute_sql(database, "SET rand_seed2 = 2", MYLITE_DONE);
     failures += expect_select_rows(
         database,
         "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
@@ -54472,6 +54515,86 @@ static int test_show_variables_execution(void) {
         short_wait_timeout_values,
         1,
         "show variables wait timeout session set"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT @@rand_seed1 AS rs1, @@rand_seed2 AS rs2",
+        rand_seed_columns,
+        2,
+        rand_seed_values_after_set,
+        1,
+        "system variable rand seeds remain zero after set"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT RAND() AS r1, RAND() AS r2",
+        rand_seed_rand_columns,
+        2,
+        rand_seed_rand_values,
+        1,
+        "set rand seeds controls unseeded rand"
+    );
+    failures += execute_sql(database, "SET @@SESSION.rand_seed1 = -1", MYLITE_DONE);
+    failures += expect_int(mylite_warning_count(database), 1, "set rand seed warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "set rand seed warning code"
+    );
+    failures += expect_string(
+        mylite_warning_message(database, 0),
+        "Truncated incorrect rand_seed1 value: '-1'",
+        "set rand seed warning message"
+    );
+    failures += prepare_sql(database, "SET rand_seed1 = DEFAULT", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "set rand seed default error");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Variable 'rand_seed1' doesn't have a default value",
+        "set rand seed default error message"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_no_default_system_variable,
+        "set rand seed default error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_prepare_error(
+        database,
+        "SET rand_seed1 = '7'",
+        MYLITE_EXEC_ERROR,
+        "Incorrect argument type to variable 'rand_seed1'",
+        "set rand seed string type error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_wrong_type_for_var,
+        "set rand seed type error code"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SET GLOBAL rand_seed1 = 4",
+        MYLITE_EXEC_ERROR,
+        "Variable 'rand_seed1' is a SESSION variable and can't be used with SET GLOBAL",
+        "set global rand seed session-only error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_local_variable,
+        "set global rand seed session-only error code"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT @@GLOBAL.rand_seed1",
+        MYLITE_EXEC_ERROR,
+        "Variable 'rand_seed1' is a SESSION variable",
+        "select global rand seed session-only error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_incorrect_global_local_var,
+        "select global rand seed session-only error code"
     );
     failures += execute_sql(database, "SET wait_timeout = 0", MYLITE_DONE);
     failures += expect_select_rows(

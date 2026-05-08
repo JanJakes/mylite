@@ -76,6 +76,9 @@ struct mylite_db {
     char *time_zone;
     uint64_t group_concat_max_len;
     uint64_t wait_timeout;
+    uint32_t rand_seed1;
+    uint32_t rand_seed2;
+    bool rand_seeded;
     bool foreign_key_checks;
     bool unique_checks;
     bool sql_notes;

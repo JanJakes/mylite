@@ -164,7 +164,15 @@ static uint64_t unseeded_rand_seed(
     const struct mylite_sql_ast_node *function_call
 );
 
+static void initialize_connection_rand_seed(mylite_stmt *stmt, struct mylite_rand_state *state);
+
 static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed);
+
+static void initialize_rand_seed_pair(
+    struct mylite_rand_state *state,
+    uint32_t seed1,
+    uint32_t seed2
+);
 
 static double next_rand_value(struct mylite_rand_state *state);
 
@@ -545,6 +553,11 @@ static int evaluate_rand_function(
     }
 
     set_rand_output_value(state, out_value);
+    if (argument == NULL && stmt != NULL && stmt->database != NULL) {
+        stmt->database->rand_seed1 = state->seed1;
+        stmt->database->rand_seed2 = state->seed2;
+        stmt->database->rand_seeded = true;
+    }
     return MYLITE_OK;
 }
 
@@ -784,7 +797,11 @@ static int initialize_rand_state(
     int status = 0;
 
     if (argument == NULL) {
-        initialize_rand_seed(state, unseeded_rand_seed(stmt, function_call));
+        if (stmt != NULL && stmt->database != NULL && stmt->database->rand_seeded) {
+            initialize_connection_rand_seed(stmt, state);
+        } else {
+            initialize_rand_seed(state, unseeded_rand_seed(stmt, function_call));
+        }
         return MYLITE_OK;
     }
 
@@ -820,11 +837,23 @@ static uint64_t unseeded_rand_seed(
     return seed;
 }
 
+static void initialize_connection_rand_seed(mylite_stmt *stmt, struct mylite_rand_state *state) {
+    initialize_rand_seed_pair(state, stmt->database->rand_seed1, stmt->database->rand_seed2);
+}
+
 static void initialize_rand_seed(struct mylite_rand_state *state, uint64_t seed) {
     uint32_t normalized_seed = (uint32_t)seed;
     uint32_t seed1 = (normalized_seed * UINT32_C(0x10001)) + (uint32_t)UINT32_C(55555555);
     uint32_t seed2 = normalized_seed * UINT32_C(0x10000001);
 
+    initialize_rand_seed_pair(state, seed1, seed2);
+}
+
+static void initialize_rand_seed_pair(
+    struct mylite_rand_state *state,
+    uint32_t seed1,
+    uint32_t seed2
+) {
     state->seed1 = seed1 % mylite_rand_max_value;
     state->seed2 = seed2 % mylite_rand_max_value;
     state->initialized = true;

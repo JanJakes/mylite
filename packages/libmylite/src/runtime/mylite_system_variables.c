@@ -55,6 +55,8 @@ enum mylite_system_variable_id {
     MYLITE_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS = 37,
     MYLITE_SYSTEM_VARIABLE_SQL_LOG_BIN = 38,
     MYLITE_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING = 39,
+    MYLITE_SYSTEM_VARIABLE_RAND_SEED1 = 40,
+    MYLITE_SYSTEM_VARIABLE_RAND_SEED2 = 41,
 };
 
 enum mylite_system_variable_requested_scope {
@@ -433,6 +435,14 @@ static const struct mylite_system_variable_entry *find_system_variable_entry(
          MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_BOTH,
          MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"rand_seed1",
+         MYLITE_SYSTEM_VARIABLE_RAND_SEED1,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
+        {"rand_seed2",
+         MYLITE_SYSTEM_VARIABLE_RAND_SEED2,
+         MYLITE_SYSTEM_VARIABLE_SUPPORT_SESSION,
+         MYLITE_SYSTEM_VARIABLE_VALUE_UNSIGNED},
         {"skip_external_locking",
          MYLITE_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING,
          MYLITE_SYSTEM_VARIABLE_SUPPORT_GLOBAL,
@@ -630,6 +640,9 @@ static uint64_t system_variable_unsigned_value(
         return mylite_connection_default_max_connections();
     case MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
         return mylite_system_variable_default_max_error_count;
+    case MYLITE_SYSTEM_VARIABLE_RAND_SEED1:
+    case MYLITE_SYSTEM_VARIABLE_RAND_SEED2:
+        return 0U;
     case MYLITE_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         return scope == MYLITE_SYSTEM_VARIABLE_SCOPE_GLOBAL
                    ? mylite_connection_default_wait_timeout()
@@ -747,6 +760,8 @@ static int64_t system_variable_boolean_value(
     case MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
     case MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS:
     case MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
+    case MYLITE_SYSTEM_VARIABLE_RAND_SEED1:
+    case MYLITE_SYSTEM_VARIABLE_RAND_SEED2:
     case MYLITE_SYSTEM_VARIABLE_SQL_MODE:
     case MYLITE_SYSTEM_VARIABLE_TIME_ZONE:
     case MYLITE_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
@@ -842,6 +857,8 @@ static const char *system_variable_string_value(
     case MYLITE_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
     case MYLITE_SYSTEM_VARIABLE_MAX_CONNECTIONS:
     case MYLITE_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
+    case MYLITE_SYSTEM_VARIABLE_RAND_SEED1:
+    case MYLITE_SYSTEM_VARIABLE_RAND_SEED2:
     case MYLITE_SYSTEM_VARIABLE_SQL_LOG_BIN:
     case MYLITE_SYSTEM_VARIABLE_SQL_NOTES:
     case MYLITE_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING:

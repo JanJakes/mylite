@@ -12,8 +12,11 @@ expression contexts.
   numeric collation, and `NOT_NULL` only when no seed is present or the seed
   expression is statically non-null. `RAND(NULL)` and nullable seed expressions
   report nullable metadata even though the runtime value is non-NULL.
-- `RAND()` uses statement-local pseudo-random state initialized from current
-  time and connection-specific data.
+- `RAND()` uses session pseudo-random state initialized from current time and
+  connection-specific data when no explicit RAND seed variables have been set.
+- `SET rand_seed1 = n` and `SET rand_seed2 = n` seed the current session's next
+  unseeded `RAND()` sequence. MySQL exposes both variables as session-only
+  unsigned system variables that read and show as `0` even after assignment.
 - `RAND(seed)` uses deterministic per-expression state. The seed initializes
   that expression's generator the first time the expression is evaluated, then
   the generator advances on later rows.
@@ -49,6 +52,17 @@ Verified against MySQL 8.4.9:
 | `RAND(-1.5)` | same first value as `RAND(-2)` |
 | `RAND('7.9')` | same first value as `RAND(7)`, warning 1292 |
 | `RAND('bad')` | same first value as `RAND(0)`, warning 1292 |
+| `SHOW VARIABLES LIKE 'rand\_seed%'` | returns `rand_seed1 = 0` and `rand_seed2 = 0` |
+| `SHOW GLOBAL VARIABLES LIKE 'rand\_seed%'` | returns no rows |
+| `SELECT @@rand_seed1, @@rand_seed2` | returns unsigned `0`, `0` |
+| `SELECT @@GLOBAL.rand_seed1` | error 1238: `Variable 'rand_seed1' is a SESSION variable` |
+| `SET rand_seed1 = 1; SET rand_seed2 = 2; SELECT RAND(), RAND()` | `0.000000004656612877414201`, then `0.000000051222741651556214` |
+| `SET @@SESSION.rand_seed1 = 3; SET @@SESSION.rand_seed2 = 4; SELECT RAND(), RAND()` | `0.000000012107193481276923`, then `0.00000008288770921797278` |
+| `SET rand_seed1 = DEFAULT` | error 1230: `Variable 'rand_seed1' doesn't have a default value` |
+| `SET rand_seed1 = '7'` | error 1232: `Incorrect argument type to variable 'rand_seed1'` |
+| `SET GLOBAL rand_seed1 = 4` | error 1228: `Variable 'rand_seed1' is a SESSION variable and can't be used with SET GLOBAL` |
+| `SET rand_seed1 = -1` | succeeds, stores seed `0`, and emits warning 1292: `Truncated incorrect rand_seed1 value: '-1'` |
+| `SET rand_seed1 = 4294967296; SET rand_seed2 = 1; SELECT RAND()` | same as using `rand_seed1 = 4`, because assigned seeds are reduced modulo `0x3fffffff` |
 
 For a three-row table, `SELECT id, RAND(7) FROM t ORDER BY id` returns the first
 three values from the seeded sequence:

@@ -1203,6 +1203,34 @@ static int test_schema_lifecycle(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "show databases like metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += execute_sql(database, "CREATE DATABASE mylite_schema_lifecycle_Camel", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW DATABASES LIKE 'mylite_schema_lifecycle_camel%'",
+        (const char *const[]){"Database (mylite_schema_lifecycle_camel%)"},
+        1,
+        NULL,
+        0,
+        "show databases like is case-sensitive"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW DATABASES LIKE 'mylite_schema_lifecycle_Camel%'",
+        (const char *const[]){"Database (mylite_schema_lifecycle_Camel%)"},
+        1,
+        (const char *const[]){"mylite_schema_lifecycle_Camel"},
+        1,
+        "show databases like matches exact case"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW DATABASES LIKE 'mylite\\_schema\\_lifecycle\\_Camel%'",
+        (const char *const[]){"Database (mylite\\_schema\\_lifecycle\\_Camel%)"},
+        1,
+        (const char *const[]){"mylite_schema_lifecycle_Camel"},
+        1,
+        "show databases like honors escaped wildcards"
+    );
     failures += expect_select_rows(
         database,
         "SHOW SCHEMAS WHERE `Database` = 'mylite_schema_lifecycle_a'",

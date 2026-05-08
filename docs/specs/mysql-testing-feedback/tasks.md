@@ -59,7 +59,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Normalize information-schema write-protection diagnostics to
       MySQL-style access-denied errors.
 - [x] Align dynamic database-name queries against
-      `information_schema.SCHEMATA`, including casing and row counts.
+      `information_schema.SCHEMATA`, including casing and row counts. `SHOW
+      DATABASES LIKE` now uses bytewise wildcard matching so mixed-case schema
+      names match MySQL's case-sensitive behavior.
 
 ## DDL grammar and metadata
 

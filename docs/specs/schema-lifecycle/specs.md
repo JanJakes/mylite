@@ -237,7 +237,7 @@ Behavior:
 
 - Returns one text column named `Database`.
 - `LIKE` returns one text column named `Database (pattern)` and filters using
-  MySQL wildcard semantics with backslash escapes.
+  bytewise, case-sensitive MySQL wildcard semantics with backslash escapes.
 - `WHERE` filters over the displayed `Database` column.
 - Returns seeded system schemas and user-created schemas.
 - Sorts by schema name using bytewise order.
@@ -350,6 +350,7 @@ The following observations were verified against `mylite-mysql-849`:
 | `SHOW DATABASES;` | Returns one column named `Database` and lists visible schemas. |
 | `SHOW SCHEMAS;` | Same result shape as `SHOW DATABASES`. |
 | `SHOW DATABASES LIKE 'mylite_schema_lifecycle%'` | Returns matching schemas with column name `Database (mylite_schema_lifecycle%)`. |
+| `SHOW DATABASES LIKE 'mylite_schema_lifecycle_camel%'` after creating `mylite_schema_lifecycle_Camel` | Returns no rows because schema-name wildcard matching is bytewise and case-sensitive. |
 | `SHOW SCHEMAS WHERE Database = 'mylite_schema_lifecycle_a'` | Filters over the displayed `Database` column. |
 | `DROP SCHEMA mylite_schema_lifecycle_a; SELECT DATABASE();` after selecting it | Drops the schema and clears the current default schema. |
 | `DROP DATABASE mylite_schema_lifecycle_missing;` | Fails with missing database error `1008`. |
@@ -368,7 +369,8 @@ The following observations were verified against `mylite-mysql-849`:
 - Runtime tests:
   - initial `SHOW DATABASES` includes seeded system schemas and has column name
     `Database`
-  - `SHOW DATABASES LIKE` and `SHOW SCHEMAS WHERE` filter catalog rows and
+  - `SHOW DATABASES LIKE` filters catalog rows with case-sensitive wildcard
+    matching and `SHOW SCHEMAS WHERE` filters over the displayed column; both
     expose MySQL-compatible column labels
   - `SHOW DATABASES` and `SHOW DATABASES LIKE` expose MySQL-compatible
     result-column metadata

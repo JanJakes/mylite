@@ -376,10 +376,8 @@ static int show_schemas_filtered_sql(
 ) {
     static const char *const columns[] = {"Database"};
     sqlite3_str *sql = sqlite3_str_new(database->sqlite);
-    char *like_pattern = NULL;
+    char *glob_pattern = NULL;
     const struct mylite_sql_ast_node *where_expression = show_schemas_where_expression(filter);
-    bool like_escape_backslash =
-        filter != NULL && filter->kind == MYLITE_SQL_AST_LITERAL && !filter->no_backslash_escapes;
     int status = MYLITE_OK;
 
     *out_sql = NULL;
@@ -388,10 +386,7 @@ static int show_schemas_filtered_sql(
     }
 
     if (filter != NULL && filter->kind == MYLITE_SQL_AST_LITERAL) {
-        like_pattern = mylite_show_copy_like_pattern_span(filter);
-        if (like_pattern == NULL) {
-            status = MYLITE_NOMEM;
-        }
+        status = show_where_like_glob_pattern(database, filter, NULL, &glob_pattern);
     }
 
     if (status == MYLITE_OK) {
@@ -400,11 +395,8 @@ static int show_schemas_filtered_sql(
             "SELECT name AS \"%w\" FROM __mylite_schema_catalog",
             display_column
         );
-        if (like_pattern != NULL) {
-            sqlite3_str_appendf(sql, " WHERE name LIKE %Q", like_pattern);
-            if (like_escape_backslash) {
-                sqlite3_str_appendall(sql, " ESCAPE '\\'");
-            }
+        if (glob_pattern != NULL) {
+            sqlite3_str_appendf(sql, " WHERE name GLOB %Q", glob_pattern);
         }
         if (where_expression != NULL) {
             sqlite3_str_appendall(sql, " WHERE ");
@@ -420,7 +412,7 @@ static int show_schemas_filtered_sql(
     }
 
     *out_sql = sqlite3_str_finish(sql);
-    free(like_pattern);
+    sqlite3_free(glob_pattern);
 
     if (status != MYLITE_OK) {
         sqlite3_free(*out_sql);

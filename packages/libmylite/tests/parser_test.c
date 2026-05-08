@@ -7439,6 +7439,13 @@ static int test_insert_values_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("INSERT INTO t SELECT 1 FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select = child_at(statement, 1U);
+    failures += expect_child_count(statement, 2U, "insert select dual without column list");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "insert select dual");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("INSERT t SELECT 1 FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     select = child_at(statement, 1U);

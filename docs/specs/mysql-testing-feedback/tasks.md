@@ -133,7 +133,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       aliases of the same physical target row now merge assignments before the
       final write, including same-row updates, change-and-revert affected
       counts, and self-chain updates.
-- [x] Support `INSERT ... SELECT FROM DUAL`.
+- [x] Support `INSERT ... SELECT FROM DUAL`, including the exact
+      `INSERT INTO t SELECT ... FROM DUAL` no-column-list form.
 - [x] Verify and complete `INSERT ... SET ...` defaults and generated values.
 - [x] Verify and complete `INSERT` without `INTO`.
 - [x] Complete complex insert value expressions.

@@ -61359,7 +61359,7 @@ static int test_show_index_execution(void) {
 
 static int test_insert_values_execution(void) {
     enum {
-        insert_forms_row_count = 13,
+        insert_forms_row_count = 14,
         ai_first_insert_id = 10,
         ai_default_value_insert_id = 12,
         ai_empty_column_insert_id = 13,
@@ -61485,6 +61485,12 @@ static int test_insert_values_execution(void) {
         "INSERT INTO insert_forms SELECT 9, 'nine' FROM DUAL WHERE TRUE",
         1,
         "insert select from dual where true affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms SELECT 19, 'nineteen' FROM DUAL",
+        1,
+        "insert select from dual without column list affected rows"
     );
     failures += execute_sql_expect_done_affected(
         database,
@@ -61615,6 +61621,14 @@ static int test_insert_values_execution(void) {
             "WHERE a = 9",
             "nine",
             "INSERT SELECT DUAL WHERE TRUE"
+        );
+        failures += expect_sqlite_physical_text(
+            path,
+            forms_physical,
+            "b",
+            "WHERE a = 19",
+            "nineteen",
+            "INSERT SELECT DUAL without column list"
         );
         failures += expect_sqlite_physical_text(
             path,

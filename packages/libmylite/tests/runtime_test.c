@@ -46095,6 +46095,23 @@ static int test_create_table_select_execution(void) {
         "varchar",
         "varchar(1)",
     };
+    static const char *const explicit_values[] = {"7", "2", "b"};
+    static const char *const explicit_column_values[] = {
+        "extra", "7", "YES", "int",     "int",         "", "", "",
+        "id",    "0", "NO",  "int",     "int",         "", "", "",
+        "note",  "x", "YES", "varchar", "varchar(20)", "", "", "v col",
+    };
+    static const char *const explicit_match_values[] = {"2", "b"};
+    static const char *const explicit_match_column_values[] = {
+        "id",
+        "0",
+        "int",
+        "int",
+        "v",
+        "z",
+        "varchar",
+        "varchar(30)",
+    };
     static const char *const temp_column_values[] = {"id", "int", "NO", "", "0", ""};
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -46285,25 +46302,82 @@ static int test_create_table_select_execution(void) {
     stmt = NULL;
     failures += expect_no_information_schema_table_name_row(database, "duplicate_ctas");
 
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE TABLE explicit_ctas (extra INT DEFAULT 7) AS "
+        "SELECT id, v AS note FROM src WHERE id = 2",
+        1,
+        "create table select explicit definitions affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT extra, id, note FROM explicit_ctas",
+        (const char *const[]){"extra", "id", "note"},
+        3,
+        explicit_values,
+        1,
+        "create table select explicit definitions rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, COLUMN_TYPE, "
+        "COLUMN_KEY, EXTRA, COLUMN_COMMENT FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_create_select' AND TABLE_NAME = 'explicit_ctas' "
+        "ORDER BY ORDINAL_POSITION",
+        column_columns,
+        8,
+        explicit_column_values,
+        3,
+        "create table select explicit definitions metadata"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "CREATE TABLE explicit_match_ctas (v VARCHAR(30) DEFAULT 'z') AS "
+        "SELECT id, v FROM src WHERE id = 2",
+        1,
+        "create table select matched explicit definition affected rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM explicit_match_ctas",
+        (const char *const[]){"id", "v"},
+        2,
+        explicit_match_values,
+        1,
+        "create table select matched explicit definition rows"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT COLUMN_NAME, COLUMN_DEFAULT, DATA_TYPE, COLUMN_TYPE "
+        "FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'mylite_create_select' AND TABLE_NAME = 'explicit_match_ctas' "
+        "ORDER BY ORDINAL_POSITION",
+        (const char *const[]){"COLUMN_NAME", "COLUMN_DEFAULT", "DATA_TYPE", "COLUMN_TYPE"},
+        4,
+        explicit_match_column_values,
+        2,
+        "create table select matched explicit definition metadata"
+    );
+
     failures += prepare_sql(
         database,
-        "CREATE TABLE explicit_ctas (id INT) AS SELECT id FROM src",
+        "CREATE TABLE explicit_no_default_ctas (extra INT NOT NULL) AS SELECT id FROM src",
         MYLITE_OK,
         &stmt
     );
     failures += expect_status(
         mylite_step(stmt),
         MYLITE_EXEC_ERROR,
-        "create table select explicit definitions unsupported"
+        "create table select explicit no default"
     );
     failures += expect_contains(
         mylite_error_message(database),
-        "explicit definitions",
-        "create table select explicit definitions error"
+        "Field 'extra' doesn't have a default value",
+        "create table select explicit no default error"
     );
     mylite_finalize(stmt);
     stmt = NULL;
-    failures += expect_no_information_schema_table_name_row(database, "explicit_ctas");
+    failures += expect_no_information_schema_table_name_row(database, "explicit_no_default_ctas");
 
     failures += execute_sql(database, "START TRANSACTION", MYLITE_DONE);
     failures += execute_sql(

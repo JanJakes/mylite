@@ -108,6 +108,8 @@ struct mylite_create_table_plan {
     struct mylite_create_table_options options;
     struct mylite_create_table_column *columns;
     size_t column_count;
+    int *select_insert_column_sources;
+    size_t select_insert_column_source_count;
     struct mylite_create_table_index *indexes;
     size_t index_count;
     struct mylite_create_table_check *checks;

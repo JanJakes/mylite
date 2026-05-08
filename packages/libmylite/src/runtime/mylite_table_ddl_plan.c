@@ -20,6 +20,7 @@ void mylite_table_ddl_create_table_plan_deinit(struct mylite_create_table_plan *
         mylite_table_ddl_create_table_column_deinit(&plan->columns[index]);
     }
     free(plan->columns);
+    free(plan->select_insert_column_sources);
     for (size_t index = 0U; index < plan->index_count; ++index) {
         mylite_table_ddl_create_table_index_deinit(&plan->indexes[index]);
     }

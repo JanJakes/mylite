@@ -2,6 +2,7 @@
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
+#include "mylite_dml_insert_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_metadata.h"
 #include "mylite_runtime.h"
@@ -44,11 +45,10 @@ static int prepare_create_select_source(
     mylite_stmt **out_stmt
 );
 
-static int reject_create_select_predefinitions(mylite_db *database);
-
 static int infer_create_select_columns(
     mylite_db *database,
     const mylite_stmt *select_stmt,
+    size_t predefined_column_count,
     struct mylite_create_table_plan *plan
 );
 
@@ -57,6 +57,54 @@ static int append_create_select_column(
     const mylite_stmt *select_stmt,
     int column_index,
     struct mylite_create_table_plan *plan
+);
+
+static int copy_create_select_column(
+    mylite_db *database,
+    const mylite_stmt *select_stmt,
+    int column_index,
+    const struct mylite_create_table_plan *plan,
+    struct mylite_create_table_column *column
+);
+
+static int merge_predefined_create_select_columns(
+    mylite_db *database,
+    const mylite_stmt *select_stmt,
+    int select_column_count,
+    size_t predefined_column_count,
+    struct mylite_create_table_plan *plan
+);
+
+static int infer_unmatched_create_select_columns(
+    mylite_db *database,
+    const mylite_stmt *select_stmt,
+    int select_column_count,
+    size_t predefined_column_count,
+    bool *matched_predefined_columns,
+    int *selected_predefined_columns,
+    struct mylite_create_table_column *selected_columns,
+    struct mylite_create_table_plan *plan
+);
+
+static int find_predefined_create_select_column(
+    const struct mylite_create_table_plan *plan,
+    size_t predefined_column_count,
+    const bool *matched_predefined_columns,
+    const char *column_name
+);
+
+static int replace_create_select_columns(
+    struct mylite_create_table_plan *plan,
+    size_t predefined_column_count,
+    const bool *matched_predefined_columns,
+    const int *selected_predefined_columns,
+    struct mylite_create_table_column *selected_columns,
+    int select_column_count
+);
+
+static void deinit_create_select_column_slice(
+    struct mylite_create_table_column *columns,
+    size_t column_count
 );
 
 static int load_origin_create_select_column(
@@ -185,7 +233,28 @@ static char *build_create_select_insert_sql(
     const struct mylite_create_table_plan *plan
 );
 
-static int bind_create_select_row(sqlite3_stmt *insert, const mylite_stmt *select_stmt);
+static int bind_create_select_row(
+    sqlite3_stmt *insert,
+    const struct mylite_create_table_plan *plan,
+    const mylite_stmt *select_stmt
+);
+
+static int bind_create_select_column(
+    sqlite3_stmt *insert,
+    const struct mylite_create_table_plan *plan,
+    const mylite_stmt *select_stmt,
+    size_t column_index
+);
+
+static int append_create_select_insert_source(
+    struct mylite_create_table_plan *plan,
+    int source_column_index
+);
+
+static int validate_create_select_unmatched_defaults(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+);
 
 static int append_create_select_column_to_plan(
     struct mylite_create_table_plan *plan,
@@ -207,23 +276,14 @@ int mylite_table_ddl_execute_create_table_select_statement(
     const char *schema_name = plan->schema_name == NULL ? selected_schema : plan->schema_name;
     struct mylite_schema_default schema_default;
     mylite_stmt *select_stmt = NULL;
-    bool has_predefinitions = false;
+    size_t predefined_column_count = plan->column_count;
     bool skip_create = false;
     int status = MYLITE_OK;
-
-    if (plan->column_count != 0U || plan->index_count != 0U || plan->check_count != 0U ||
-        plan->foreign_key_count != 0U) {
-        has_predefinitions = true;
-    }
 
     plan->selected_row_count = 0;
     status = prepare_create_select_source(database, plan, &select_stmt);
     if (status != MYLITE_OK) {
         return status;
-    }
-    if (has_predefinitions) {
-        mylite_finalize(select_stmt);
-        return reject_create_select_predefinitions(database);
     }
     if (schema_name == NULL) {
         mylite_finalize(select_stmt);
@@ -231,7 +291,7 @@ int mylite_table_ddl_execute_create_table_select_statement(
         return MYLITE_EXEC_ERROR;
     }
 
-    status = infer_create_select_columns(database, select_stmt, plan);
+    status = infer_create_select_columns(database, select_stmt, predefined_column_count, plan);
     if (status == MYLITE_OK) {
         status = validate_create_select_column_names(database, plan);
     }
@@ -244,6 +304,9 @@ int mylite_table_ddl_execute_create_table_select_statement(
             &schema_default,
             &skip_create
         );
+    }
+    if (status == MYLITE_OK && !skip_create) {
+        status = validate_create_select_unmatched_defaults(database, plan);
     }
     if (status == MYLITE_OK && !skip_create) {
         status =
@@ -285,25 +348,10 @@ static int prepare_create_select_source(
     return status;
 }
 
-static int reject_create_select_predefinitions(mylite_db *database) {
-    int status = mylite_diagnostics_set_error_message(
-        database,
-        "CREATE TABLE ... SELECT with explicit definitions is not supported"
-    );
-
-    if (status == MYLITE_OK) {
-        status = mylite_diagnostics_append_error(
-            database,
-            MYLITE_MYSQL_ER_NOT_SUPPORTED_YET,
-            mylite_error_message(database)
-        );
-    }
-    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
-}
-
 static int infer_create_select_columns(
     mylite_db *database,
     const mylite_stmt *select_stmt,
+    size_t predefined_column_count,
     struct mylite_create_table_plan *plan
 ) {
     int column_count = mylite_column_count(select_stmt);
@@ -315,11 +363,27 @@ static int infer_create_select_columns(
         );
         return MYLITE_EXEC_ERROR;
     }
+    if (predefined_column_count != 0U) {
+        return merge_predefined_create_select_columns(
+            database,
+            select_stmt,
+            column_count,
+            predefined_column_count,
+            plan
+        );
+    }
     for (int index = 0; index < column_count; ++index) {
+        size_t target_index = plan->column_count;
         int status = append_create_select_column(database, select_stmt, index, plan);
 
+        if (status == MYLITE_OK) {
+            status = append_create_select_insert_source(plan, index);
+        }
         if (status != MYLITE_OK) {
             return status;
+        }
+        if (target_index + 1U != plan->column_count) {
+            return MYLITE_MISUSE;
         }
     }
     return MYLITE_OK;
@@ -331,16 +395,36 @@ static int append_create_select_column(
     int column_index,
     struct mylite_create_table_plan *plan
 ) {
+    struct mylite_create_table_column column = {0};
+    int status = MYLITE_OK;
+
+    status = copy_create_select_column(database, select_stmt, column_index, plan, &column);
+    if (status == MYLITE_OK) {
+        status = append_create_select_column_to_plan(plan, column);
+    }
+    if (status != MYLITE_OK) {
+        mylite_table_ddl_create_table_column_deinit(&column);
+    }
+    return status;
+}
+
+static int copy_create_select_column(
+    mylite_db *database,
+    const mylite_stmt *select_stmt,
+    int column_index,
+    const struct mylite_create_table_plan *plan,
+    struct mylite_create_table_column *column
+) {
     const char *column_name = mylite_column_name(select_stmt, column_index);
-    struct mylite_create_table_column column = {
-        .nullable = mylite_column_is_nullable(select_stmt, column_index) != 0,
-        .visible = true,
-    };
     bool loaded_origin = false;
     int status = MYLITE_OK;
 
-    column.name = copy_nullable_text(column_name == NULL ? "" : column_name);
-    if (column.name == NULL) {
+    *column = (struct mylite_create_table_column){
+        .nullable = mylite_column_is_nullable(select_stmt, column_index) != 0,
+        .visible = true,
+    };
+    column->name = copy_nullable_text(column_name == NULL ? "" : column_name);
+    if (column->name == NULL) {
         return MYLITE_NOMEM;
     }
 
@@ -348,7 +432,7 @@ static int append_create_select_column(
         database,
         select_stmt,
         column_index,
-        &column,
+        column,
         &loaded_origin
     );
     if (status == MYLITE_OK && !loaded_origin) {
@@ -357,19 +441,176 @@ static int append_create_select_column(
             select_stmt,
             column_index,
             plan,
-            &column
+            column
         );
     }
-    if (status == MYLITE_OK && !column.has_default && column.nullable) {
-        column.has_default = true;
-    }
-    if (status == MYLITE_OK) {
-        status = append_create_select_column_to_plan(plan, column);
-    }
-    if (status != MYLITE_OK) {
-        mylite_table_ddl_create_table_column_deinit(&column);
+    if (status == MYLITE_OK && !column->has_default && column->nullable) {
+        column->has_default = true;
     }
     return status;
+}
+
+static int merge_predefined_create_select_columns(
+    mylite_db *database,
+    const mylite_stmt *select_stmt,
+    int select_column_count,
+    size_t predefined_column_count,
+    struct mylite_create_table_plan *plan
+) {
+    bool *matched_predefined_columns =
+        calloc(predefined_column_count, sizeof(*matched_predefined_columns));
+    int *selected_predefined_columns =
+        malloc((size_t)select_column_count * sizeof(*selected_predefined_columns));
+    struct mylite_create_table_column *selected_columns =
+        calloc((size_t)select_column_count, sizeof(*selected_columns));
+    int status = MYLITE_OK;
+
+    if (matched_predefined_columns == NULL || selected_predefined_columns == NULL ||
+        selected_columns == NULL) {
+        free(matched_predefined_columns);
+        free(selected_predefined_columns);
+        free(selected_columns);
+        return MYLITE_NOMEM;
+    }
+    for (int index = 0; index < select_column_count; ++index) {
+        selected_predefined_columns[index] = -1;
+    }
+
+    status = infer_unmatched_create_select_columns(
+        database,
+        select_stmt,
+        select_column_count,
+        predefined_column_count,
+        matched_predefined_columns,
+        selected_predefined_columns,
+        selected_columns,
+        plan
+    );
+    if (status == MYLITE_OK) {
+        status = replace_create_select_columns(
+            plan,
+            predefined_column_count,
+            matched_predefined_columns,
+            selected_predefined_columns,
+            selected_columns,
+            select_column_count
+        );
+    }
+    if (status != MYLITE_OK) {
+        deinit_create_select_column_slice(selected_columns, (size_t)select_column_count);
+    }
+    free(selected_columns);
+    free(selected_predefined_columns);
+    free(matched_predefined_columns);
+    return status;
+}
+
+static int infer_unmatched_create_select_columns(
+    mylite_db *database,
+    const mylite_stmt *select_stmt,
+    int select_column_count,
+    size_t predefined_column_count,
+    bool *matched_predefined_columns,
+    int *selected_predefined_columns,
+    struct mylite_create_table_column *selected_columns,
+    struct mylite_create_table_plan *plan
+) {
+    for (int index = 0; index < select_column_count; ++index) {
+        const char *column_name = mylite_column_name(select_stmt, index);
+        int predefined_index = find_predefined_create_select_column(
+            plan,
+            predefined_column_count,
+            matched_predefined_columns,
+            column_name == NULL ? "" : column_name
+        );
+
+        selected_predefined_columns[index] = predefined_index;
+        if (predefined_index >= 0) {
+            matched_predefined_columns[predefined_index] = true;
+            continue;
+        }
+
+        int status =
+            copy_create_select_column(database, select_stmt, index, plan, &selected_columns[index]);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int find_predefined_create_select_column(
+    const struct mylite_create_table_plan *plan,
+    size_t predefined_column_count,
+    const bool *matched_predefined_columns,
+    const char *column_name
+) {
+    for (size_t index = 0U; index < predefined_column_count; ++index) {
+        if (!matched_predefined_columns[index] &&
+            mylite_ascii_case_equal(plan->columns[index].name, column_name)) {
+            return (int)index;
+        }
+    }
+    return -1;
+}
+
+static int replace_create_select_columns(
+    struct mylite_create_table_plan *plan,
+    size_t predefined_column_count,
+    const bool *matched_predefined_columns,
+    const int *selected_predefined_columns,
+    struct mylite_create_table_column *selected_columns,
+    int select_column_count
+) {
+    size_t capacity = predefined_column_count + (size_t)select_column_count;
+    struct mylite_create_table_column *merged_columns = calloc(capacity, sizeof(*merged_columns));
+    int *insert_sources = malloc(capacity * sizeof(*insert_sources));
+    size_t merged_count = 0U;
+
+    if (merged_columns == NULL || insert_sources == NULL) {
+        free(merged_columns);
+        free(insert_sources);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t index = 0U; index < predefined_column_count; ++index) {
+        if (matched_predefined_columns[index]) {
+            continue;
+        }
+        merged_columns[merged_count] = plan->columns[index];
+        plan->columns[index] = (struct mylite_create_table_column){0};
+        insert_sources[merged_count++] = -1;
+    }
+    for (int index = 0; index < select_column_count; ++index) {
+        int predefined_index = selected_predefined_columns[index];
+
+        if (predefined_index >= 0) {
+            merged_columns[merged_count] = plan->columns[predefined_index];
+            plan->columns[predefined_index] = (struct mylite_create_table_column){0};
+        } else {
+            merged_columns[merged_count] = selected_columns[index];
+            selected_columns[index] = (struct mylite_create_table_column){0};
+        }
+        insert_sources[merged_count++] = index;
+    }
+
+    free(plan->columns);
+    free(plan->select_insert_column_sources);
+    plan->columns = merged_columns;
+    plan->column_count = merged_count;
+    plan->select_insert_column_sources = insert_sources;
+    plan->select_insert_column_source_count = merged_count;
+    return MYLITE_OK;
+}
+
+static void deinit_create_select_column_slice(
+    struct mylite_create_table_column *columns,
+    size_t column_count
+) {
+    for (size_t index = 0U; index < column_count; ++index) {
+        mylite_table_ddl_create_table_column_deinit(&columns[index]);
+    }
 }
 
 static int load_origin_create_select_column(
@@ -1056,7 +1297,7 @@ static int insert_create_select_rows(
     while ((status = mylite_step(select_stmt)) == MYLITE_ROW) {
         sqlite3_reset(insert);
         sqlite3_clear_bindings(insert);
-        status = bind_create_select_row(insert, select_stmt);
+        status = bind_create_select_row(insert, plan, select_stmt);
         if (status != MYLITE_OK) {
             sqlite3_finalize(insert);
             return status;
@@ -1108,24 +1349,94 @@ static char *build_create_select_insert_sql(
     return sqlite3_str_finish(sql);
 }
 
-static int bind_create_select_row(sqlite3_stmt *insert, const mylite_stmt *select_stmt) {
-    int column_count = mylite_column_count(select_stmt);
+static int bind_create_select_row(
+    sqlite3_stmt *insert,
+    const struct mylite_create_table_plan *plan,
+    const mylite_stmt *select_stmt
+) {
+    for (size_t index = 0U; index < plan->column_count; ++index) {
+        int status = bind_create_select_column(insert, plan, select_stmt, index);
 
-    for (int index = 0; index < column_count; ++index) {
-        const char *text = mylite_column_text(select_stmt, index);
-        uint64_t bytes = mylite_column_bytes(select_stmt, index);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int bind_create_select_column(
+    sqlite3_stmt *insert,
+    const struct mylite_create_table_plan *plan,
+    const mylite_stmt *select_stmt,
+    size_t column_index
+) {
+    int source_index = column_index < plan->select_insert_column_source_count
+                           ? plan->select_insert_column_sources[column_index]
+                           : (int)column_index;
+    const struct mylite_create_table_column *column = &plan->columns[column_index];
+    int bind_index = (int)column_index + 1;
+
+    if (source_index >= 0) {
+        const char *text = mylite_column_text(select_stmt, source_index);
+        uint64_t bytes = mylite_column_bytes(select_stmt, source_index);
 
         if (text == NULL) {
-            sqlite3_bind_null(insert, index + 1);
+            sqlite3_bind_null(insert, bind_index);
         } else {
             sqlite3_bind_text64(
                 insert,
-                index + 1,
+                bind_index,
                 text,
                 bytes,
                 sqlite_transient_destructor(),
                 SQLITE_UTF8
             );
+        }
+        return MYLITE_OK;
+    }
+
+    if (column->has_default && column->default_text != NULL) {
+        sqlite3_bind_text(
+            insert,
+            bind_index,
+            column->default_text,
+            -1,
+            sqlite_transient_destructor()
+        );
+    } else {
+        sqlite3_bind_null(insert, bind_index);
+    }
+    return MYLITE_OK;
+}
+
+static int append_create_select_insert_source(
+    struct mylite_create_table_plan *plan,
+    int source_column_index
+) {
+    int *sources = realloc(
+        plan->select_insert_column_sources,
+        (plan->select_insert_column_source_count + 1U) * sizeof(*sources)
+    );
+
+    if (sources == NULL) {
+        return MYLITE_NOMEM;
+    }
+    plan->select_insert_column_sources = sources;
+    plan->select_insert_column_sources[plan->select_insert_column_source_count++] =
+        source_column_index;
+    return MYLITE_OK;
+}
+
+static int validate_create_select_unmatched_defaults(
+    mylite_db *database,
+    const struct mylite_create_table_plan *plan
+) {
+    for (size_t index = 0U; index < plan->select_insert_column_source_count; ++index) {
+        const struct mylite_create_table_column *column = &plan->columns[index];
+
+        if (plan->select_insert_column_sources[index] < 0 && !column->nullable &&
+            !column->has_default && !column->auto_increment) {
+            return mylite_dml_insert_set_no_default_error(database, column->name);
         }
     }
     return MYLITE_OK;

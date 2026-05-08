@@ -2,8 +2,8 @@
 
 ## Scope
 
-This slice adds executable support for `CREATE TABLE ... SELECT` without
-predeclared column or index definitions:
+This slice adds executable support for `CREATE TABLE ... SELECT`, including
+explicit column definitions before the selected output:
 
 ```sql
 CREATE [TEMPORARY] TABLE [IF NOT EXISTS] tbl_name [table_options]
@@ -17,13 +17,15 @@ In scope:
 - optional `AS`
 - `TEMPORARY` destinations
 - `IF NOT EXISTS` target no-op after SELECT validation
+- explicit column definitions before `SELECT`
 - inferred target columns from SELECT result metadata
+- explicit defaults for columns not populated by SELECT output
 - row materialization into the new table
 - MySQL-compatible implicit commit before non-temporary CTAS
 
 Out of scope for this slice:
 
-- predeclared columns, indexes, checks, and foreign keys before the `SELECT`
+- full explicit index, CHECK, and foreign-key behavior before the `SELECT`
 - `CREATE TABLE ... TABLE` and `CREATE TABLE ... VALUES`
 - view sources
 - generated-column assignment rules
@@ -61,6 +63,14 @@ The destination table uses the target schema's default table collation unless
 an explicit table option overrides it. A temporary destination is created only
 when the statement uses `CREATE TEMPORARY TABLE`.
 
+When explicit column definitions precede the `SELECT`, MySQL merges them with
+the selected columns. Explicit columns whose names do not appear in the SELECT
+output are placed before the selected output and receive their explicit default
+or `NULL` for every inserted row. If such a column is `NOT NULL` and has no
+default, execution fails with error 1364 before the target table persists. An
+explicit column whose name matches a SELECT output is used at that SELECT
+position and receives the selected value.
+
 Observed diagnostics and ordering:
 
 - unqualified target names require a selected schema
@@ -76,16 +86,15 @@ Observed diagnostics and ordering:
 ### Parser And AST
 
 MyLite extends the existing `CREATE TABLE` statement node with a
-`create_table_select` flag. In the supported no-predefinition form, the node
-children are:
+`create_table_select` flag. In the `AS SELECT` form, the node children are:
 
 1. target table name
 2. select statement
 3. table options
 4. optional `IF NOT EXISTS`
 
-The parser also accepts the predefinition form for future implementation, but
-runtime rejects it deterministically before mutation in this slice.
+When a definition list is present before the SELECT, MyLite copies the explicit
+definitions into the create-table plan before preparing SELECT metadata.
 
 Supported Lemon-style grammar:
 
@@ -106,8 +115,11 @@ Execution order:
 2. The SELECT statement is prepared first so missing source tables, duplicate
    aliases, unsupported predicates, and unsupported projections fail before
    target no-op handling.
-3. The SELECT result metadata is converted to target column definitions.
-4. Duplicate output column names fail with error 1060.
+3. The SELECT result metadata is merged with explicit column definitions:
+   unmatched explicit columns remain before the selected output, matched
+   explicit columns are used at the corresponding SELECT output position, and
+   unmatched SELECT outputs are inferred from result metadata.
+4. Duplicate final column names fail with error 1060.
 5. The target schema and table name are validated with the same rules as
    ordinary `CREATE TABLE`.
 6. `IF NOT EXISTS` skips an existing target with note 1050 after SELECT
@@ -115,9 +127,9 @@ Execution order:
 7. Physical table creation, SELECT row insertion, and catalog insertion happen
    inside one storage transaction.
 
-The first implementation does not pre-create indexes or constraints from a
-definition list. That broader path must merge explicit definitions with SELECT
-outputs using MySQL's column matching rules before it is marked supported.
+Explicit indexes and constraints continue through the shared `CREATE TABLE`
+validation/catalog path, but full parity for every definition-list interaction
+remains a broader follow-up.
 
 ## MySQL-Runtime-Verified Expectations
 
@@ -128,6 +140,9 @@ Implementation tests should cover:
 | `CREATE TABLE c AS SELECT id, n, v FROM src ORDER BY n` | Creates `c`, inserts selected rows, and reports affected rows equal to inserted rows. |
 | direct selected source columns | Preserve type, nullability, defaults, character set, collation, and comments, but omit keys and `AUTO_INCREMENT`. |
 | scalar expressions | Create expression-named columns with inferred metadata and insert one row. |
+| `CREATE TABLE explicit_ctas (extra INT DEFAULT 7) AS SELECT id, note FROM src` | Creates `extra`, `id`, and `note`; inserted rows use `7` for `extra` and SELECT values for `id`/`note`. |
+| explicit column name matching a SELECT output | Uses the explicit definition at the SELECT output position and inserts the selected value. |
+| unmatched explicit `NOT NULL` column without a default | Fails with error 1364 and does not persist the target table. |
 | duplicate SELECT output names | Fail with error 1060 before target creation. |
 | missing SELECT source with `IF NOT EXISTS existing` | Fail with missing-source error before target no-op handling. |
 | existing target with valid SELECT and `IF NOT EXISTS` | Return note 1050 and leave the existing table unchanged. |
@@ -137,8 +152,9 @@ Implementation tests should cover:
 ## Test Plan
 
 - Parser tests for `AS`, omitted `AS`, `TEMPORARY`, `IF NOT EXISTS`, table
-  options, and the accepted-but-deferred predefinition form.
+  options, and explicit definitions before the SELECT.
 - Runtime tests for source-column metadata, scalar expression metadata, row
-  counts, warnings, duplicate names, missing source ordering, temporary
-  destination visibility, and implicit commit behavior.
+  counts, warnings, explicit definition merging/defaults, duplicate names,
+  missing source ordering, temporary destination visibility, and implicit
+  commit behavior.
 - Compatibility docs update in `COMPATIBILITY.md` and roadmap tasks.

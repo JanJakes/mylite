@@ -8,6 +8,9 @@
 - [x] Clone SELECT AST/text into the prepared CTAS statement.
 - [x] Infer CTAS target columns from SELECT metadata and preserve source-column
       metadata for direct selected columns.
+- [x] Merge explicit CTAS column definitions with SELECT output columns,
+      including default insertion for unmatched explicit columns and error 1364
+      for unmatched `NOT NULL` columns without defaults.
 - [x] Execute CTAS atomically by creating the physical table, inserting SELECT
       rows, and inserting catalog rows.
 - [x] Add MySQL-derived parser/runtime tests for supported CTAS behavior and

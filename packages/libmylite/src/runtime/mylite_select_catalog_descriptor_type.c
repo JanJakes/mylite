@@ -57,6 +57,11 @@ static int field_descriptor_collation_id(
 
 static uint64_t catalog_int64_or_zero(sqlite3_stmt *stmt, int column);
 
+static uint64_t catalog_character_text_type_length(
+    const struct mylite_catalog_column_descriptor_source *source,
+    const char *data_type
+);
+
 static uint64_t catalog_text_type_length(const char *data_type);
 
 static uint64_t catalog_integer_type_length(
@@ -189,7 +194,7 @@ static int apply_catalog_character_column_descriptor(
     ) {
         descriptor->type = MYLITE_FIELD_TYPE_BLOB;
         descriptor->flags |= MYLITE_FIELD_FLAG_BLOB;
-        descriptor->length = catalog_text_type_length(data_type);
+        descriptor->length = catalog_character_text_type_length(source, data_type);
         if (field_descriptor_collation_id(
                 database,
                 source->collation_name,
@@ -392,6 +397,18 @@ static uint64_t catalog_int64_or_zero(sqlite3_stmt *stmt, int column) {
         return 0U;
     }
     return (uint64_t)sqlite3_column_int64(stmt, column);
+}
+
+static uint64_t catalog_character_text_type_length(
+    const struct mylite_catalog_column_descriptor_source *source,
+    const char *data_type
+) {
+    uint64_t length = catalog_int64_or_zero(source->select, source->character_octet_length_index);
+
+    if (length == 0U) {
+        length = catalog_text_type_length(data_type);
+    }
+    return length > mylite_mysql_long_text_length ? mylite_mysql_long_text_length : length;
 }
 
 static uint64_t catalog_text_type_length(const char *data_type) {

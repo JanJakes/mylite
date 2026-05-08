@@ -455,6 +455,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `TIME_FORMAT()` now infer nullable connection-character-set string
       descriptors for scalar and table-backed expressions, including
       literal-format token expansion and dynamic-format width estimates.
+      Direct TEXT-family column result metadata now reports charset byte-scaled
+      lengths from the catalog, capped at MySQL's long-text protocol limit.
       `FORMAT()` now infers MySQL-shaped decimal-literal widths for fractional
       fixed-point inputs and unary signed literals, and table-backed
       `TO_BASE64()` now reports latin1 byte descriptors instead of

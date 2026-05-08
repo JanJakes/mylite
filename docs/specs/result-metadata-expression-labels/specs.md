@@ -231,7 +231,7 @@ explicitly when asserting byte lengths.
 | `INT NOT NULL AUTO_INCREMENT PRIMARY KEY` | `LONG` | length `11`, decimals `0` | `NOT_NULL PRI_KEY AUTO_INCREMENT NUM` |
 | `VARCHAR(12)` with utf8mb4 results | `VAR_STRING` | length `48`, decimals `0` | usually no flags unless binary/key/nullable attributes apply |
 | `CHAR(3) NOT NULL` | `STRING` | charset-dependent byte length, decimals `0` | `NOT_NULL`; `NO_DEFAULT_VALUE` when no explicit/default nullable rule supplies a default |
-| `TEXT` | `BLOB` | length `65535`, decimals `0` | `BLOB` |
+| `TEXT` under `utf8mb4` | `BLOB` | byte-scaled length `262140`, decimals `0` | `BLOB` |
 | `VARBINARY(8)` | `VAR_STRING` | length `8`, decimals `0` | `BINARY` |
 | `DECIMAL(6,2)` | `NEWDECIMAL` | length `8`, decimals `2` | `NUM` |
 | `DOUBLE` | `DOUBLE` | length `22`, decimals `31` | `NUM` |

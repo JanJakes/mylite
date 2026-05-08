@@ -54,8 +54,8 @@ temporary table is dropped.
 `CREATE TEMPORARY TABLE IF NOT EXISTS` checks the temporary namespace, not the
 persistent namespace. It creates a temporary table when only a persistent table
 of the same name exists. If the temporary table already exists, the statement
-succeeds with a 1050 note and no error condition after schema-level table
-options are validated.
+succeeds with zero affected rows, a 1050 note, and no error condition after
+schema-level table options are validated.
 
 `DROP TABLE tbl_name` drops the temporary table when one shadows the persistent
 table. `DROP TEMPORARY TABLE tbl_name` only drops a temporary table and reports
@@ -115,6 +115,7 @@ MyLite.
 - requires an existing non-system schema or selected default schema
 - checks duplicate names only in the temporary catalog
 - allows shadowing an existing persistent table
+- treats `IF NOT EXISTS` as a no-op only when the temporary table already exists
 - inserts only temporary catalog rows
 - creates a SQLite TEMP physical table
 - supports `CREATE TEMPORARY TABLE ... LIKE` through the catalog-backed clone

@@ -3,6 +3,7 @@
 
 #include <mylite/mylite.h>
 
+int mylite_table_ddl_execute_create_table_prepared_statement(mylite_stmt *stmt);
 int mylite_table_ddl_execute_rename_table_prepared_statement(mylite_stmt *stmt);
 int mylite_table_ddl_execute_truncate_table_prepared_statement(mylite_stmt *stmt);
 int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt);

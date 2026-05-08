@@ -128,17 +128,7 @@ int mylite_statement_execute_custom_with_callbacks(
         status = mylite_prepared_statement_execute_deallocate(stmt);
         break;
     case MYLITE_STMT_CREATE_TABLE:
-        status = mylite_table_ddl_execute_create_table_statement(
-            stmt->database,
-            stmt->database->selected_schema,
-            &stmt->create_table,
-            stmt->if_not_exists
-        );
-        if (status != MYLITE_OK) {
-            stmt->affected_rows = -1;
-        } else if (stmt->create_table.select) {
-            stmt->affected_rows = stmt->create_table.selected_row_count;
-        }
+        status = mylite_table_ddl_execute_create_table_prepared_statement(stmt);
         break;
     case MYLITE_STMT_DROP_TABLE:
         status = mylite_table_ddl_execute_drop_table_statement(

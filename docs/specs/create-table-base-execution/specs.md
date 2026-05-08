@@ -41,7 +41,8 @@ Out of scope:
 - full engine-specific validation, prefix-length suitability, functional key
   parts, generated-column runtime evaluation, executable references,
   executable checks, partitions, and unsupported table options
-- warning records for `IF NOT EXISTS` and storage-engine normalization
+- storage-engine normalization beyond the supported `InnoDB` compatibility
+  facade
 - `SHOW CREATE TABLE`, `SHOW COLUMNS`, `SHOW INDEX`, and result-set protocol
   metadata beyond the current public API
 
@@ -219,8 +220,10 @@ Existence:
 
 - Existing target table plus no `IF NOT EXISTS` fails.
 - Existing target table plus `IF NOT EXISTS` returns success with note 1050 and
-  no metadata or storage mutation after schema-level table options are
-  validated.
+  zero affected rows, with no metadata or storage mutation after schema-level
+  table options are validated.
+- Non-temporary creation checks only the persistent namespace. A temporary table
+  with the same name does not block creating a persistent table.
 
 Storage:
 
@@ -316,10 +319,11 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `CREATE TABLE information_schema.should_fail (a INT)` | Execution error; system schema remains unmodified. |
 | representative `simple_create` statement above | Succeeds; `TABLES`, `COLUMNS`, and `STATISTICS` reflect table, columns, and indexes. |
 | duplicate `CREATE TABLE simple_create (a INT)` | Execution error; original metadata unchanged. |
-| `CREATE TABLE IF NOT EXISTS simple_create (a INT)` | Success no-op; original metadata unchanged. |
-| `CREATE TABLE IF NOT EXISTS simple_create (a INT) DEFAULT CHARSET=utf8` | Warning 3719 followed by note 1050; original metadata unchanged. |
+| `CREATE TABLE IF NOT EXISTS simple_create (a INT)` | Success no-op with zero affected rows and note 1050; original metadata unchanged. |
+| `CREATE TABLE IF NOT EXISTS simple_create (a INT) DEFAULT CHARSET=utf8` | Zero affected rows; warning 3719 followed by note 1050; original metadata unchanged. |
 | `CREATE TABLE IF NOT EXISTS simple_create (a INT) DEFAULT CHARSET=nosuchcharset` | Unknown-character-set execution error before duplicate handling. |
 | `CREATE TABLE IF NOT EXISTS new_table (a INT)` | Creates normally. |
+| `CREATE TEMPORARY TABLE tmp (a INT); CREATE TABLE IF NOT EXISTS tmp (a INT, b INT)` | Creates a persistent `tmp` with zero affected rows and no duplicate-table note. |
 | valid table-option permutations with optional `=` | Parse and execute when charset/collation are supported and compatible. |
 | `DEFAULT CHARSET latin1 COLLATE utf8mb4_bin` | Execution error; no partial table/catalog rows. |
 | `DEFAULT CHARSET unknown_charset` | Execution error; no partial table/catalog rows. |

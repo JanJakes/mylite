@@ -3,6 +3,24 @@
 #include "mylite_runtime.h"
 #include "mylite_table_ddl.h"
 
+int mylite_table_ddl_execute_create_table_prepared_statement(mylite_stmt *stmt) {
+    int status = MYLITE_OK;
+
+    stmt->affected_rows = 0;
+    status = mylite_table_ddl_execute_create_table_statement(
+        stmt->database,
+        stmt->database->selected_schema,
+        &stmt->create_table,
+        stmt->if_not_exists
+    );
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    } else if (stmt->create_table.select) {
+        stmt->affected_rows = stmt->create_table.selected_row_count;
+    }
+    return status;
+}
+
 int mylite_table_ddl_execute_rename_table_prepared_statement(mylite_stmt *stmt) {
     int status = MYLITE_OK;
 

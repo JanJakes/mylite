@@ -45362,6 +45362,7 @@ static int test_create_table_base_execution(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "duplicate table create");
     failures +=
         expect_contains(mylite_error_message(database), "already exists", "duplicate table error");
+    failures += expect_int64(mylite_affected_rows(stmt), -1, "duplicate table affected rows");
     failures += expect_int(
         (int)mylite_warning_code(database, 0),
         mysql_warning_table_exists,
@@ -45380,6 +45381,8 @@ static int test_create_table_base_execution(void) {
         MYLITE_DONE,
         "persistent if not exists skips existing table"
     );
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 0, "persistent if not exists affected rows");
     failures += expect_string(
         mylite_error_message(database),
         "",
@@ -45407,6 +45410,8 @@ static int test_create_table_base_execution(void) {
         "persistent if not exists preserves table with utf8 alias warning"
     );
     failures +=
+        expect_int64(mylite_affected_rows(stmt), 0, "persistent if not exists utf8 affected rows");
+    failures +=
         expect_int(mylite_warning_count(database), 2, "persistent if not exists utf8 warnings");
     failures += expect_int(
         (int)mylite_warning_code(database, 0),
@@ -45430,6 +45435,11 @@ static int test_create_table_base_execution(void) {
         mylite_step(stmt),
         MYLITE_EXEC_ERROR,
         "persistent if not exists validates table options before duplicate"
+    );
+    failures += expect_int64(
+        mylite_affected_rows(stmt),
+        -1,
+        "persistent if not exists invalid charset affected rows"
     );
     failures += expect_contains(
         mylite_error_message(database),
@@ -47573,9 +47583,24 @@ static int test_temporary_table_execution(void) {
         "Table_type",
     };
     static const char *const column_name_columns[] = {"COLUMN_NAME"};
+    static const char *const persistent_temp_namespace_column_values[] = {
+        "id",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "persisted",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
     static const char *const shadowed_information_schema_column_values[] = {"id", "note"};
     static const char *const count_columns[] = {"COUNT(*)"};
     static const char *const zero_count[] = {"0"};
+    static const char *const one_count[] = {"1"};
     static const char *const temp_altered_columns[] = {"id", "temp_note", "altered"};
     static const char *const temp_altered_values[] = {"3", "after alter", "9"};
     static const char *const show_status_columns[] = {
@@ -47675,6 +47700,8 @@ static int test_temporary_table_execution(void) {
         MYLITE_DONE,
         "temporary if not exists skips existing temporary table"
     );
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 0, "temporary if not exists affected rows");
     failures += expect_string(
         mylite_error_message(database),
         "",
@@ -47705,6 +47732,8 @@ static int test_temporary_table_execution(void) {
         "temporary if not exists preserves table with utf8 alias warning"
     );
     failures +=
+        expect_int64(mylite_affected_rows(stmt), 0, "temporary if not exists utf8 affected rows");
+    failures +=
         expect_int(mylite_warning_count(database), 2, "temporary if not exists utf8 warnings");
     failures += expect_int(
         (int)mylite_warning_code(database, 0),
@@ -47729,6 +47758,11 @@ static int test_temporary_table_execution(void) {
         mylite_step(stmt),
         MYLITE_EXEC_ERROR,
         "temporary if not exists validates table options before duplicate"
+    );
+    failures += expect_int64(
+        mylite_affected_rows(stmt),
+        -1,
+        "temporary if not exists invalid charset affected rows"
     );
     failures += expect_contains(
         mylite_error_message(database),
@@ -47876,6 +47910,11 @@ static int test_temporary_table_execution(void) {
         MYLITE_DONE,
         "temporary if not exists skips existing table with options"
     );
+    failures += expect_int64(
+        mylite_affected_rows(stmt),
+        0,
+        "temporary if not exists with options affected rows"
+    );
     failures += expect_string(
         mylite_error_message(database),
         "",
@@ -47933,6 +47972,52 @@ static int test_temporary_table_execution(void) {
         persistent_ai_values,
         2,
         "persistent auto increment survives temporary shadow"
+    );
+
+    failures +=
+        execute_sql(database, "CREATE TEMPORARY TABLE temp_namespace (id INT)", MYLITE_DONE);
+    failures += prepare_sql(
+        database,
+        "CREATE TABLE IF NOT EXISTS temp_namespace (id INT, persisted INT)",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_DONE,
+        "persistent if not exists creates while temporary table exists"
+    );
+    failures += expect_int64(
+        mylite_affected_rows(stmt),
+        0,
+        "persistent if not exists over temporary affected rows"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        0,
+        "persistent if not exists over temporary warning count"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = 'mylite_temp_tables' AND TABLE_NAME = 'temp_namespace'",
+        count_columns,
+        1,
+        one_count,
+        1,
+        "persistent if not exists over temporary creates persistent metadata"
+    );
+    failures += execute_sql(database, "DROP TEMPORARY TABLE temp_namespace", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW COLUMNS FROM temp_namespace",
+        show_columns,
+        6,
+        persistent_temp_namespace_column_values,
+        2,
+        "persistent table created while temporary shadow existed"
     );
 
     failures += execute_sql(database, "CREATE TEMPORARY TABLE temp_only (id INT)", MYLITE_DONE);

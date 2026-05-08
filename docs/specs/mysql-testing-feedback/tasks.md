@@ -70,6 +70,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Make `CREATE TEMPORARY TABLE IF NOT EXISTS t ...` a MySQL-compatible
       no-op when the temporary `t` exists after schema-level table-option
       validation.
+- [x] Cover `CREATE TABLE IF NOT EXISTS` duplicate no-ops with zero affected
+      rows, warning/note ordering, and temporary/persistent namespace
+      isolation.
 - [x] Support or intentionally diagnose `CREATE FULLTEXT INDEX`.
 - [x] Support or intentionally diagnose `ALTER TABLE ... ADD FULLTEXT INDEX`.
 - [x] Support or intentionally diagnose `CREATE SPATIAL INDEX`.

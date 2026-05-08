@@ -208,7 +208,8 @@ patterns for current MyLite scope:
 | arithmetic using a nullable operand, such as `n + 1` | nullable; `NOT_NULL` clear |
 | arithmetic over non-null literals, such as `1 + 2` | `NOT_NULL` set |
 | comparisons that cannot return `NULL`, such as `1 = 1`, `n IS NULL`, `n <=> NULL` | `NOT_NULL` set |
-| comparisons that can return `NULL`, such as `n IN (1,2)` or `n BETWEEN 1 AND 20` | `NOT_NULL` clear when operands can be `NULL` |
+| comparisons that can return `NULL`, such as `1 IN (1,NULL)`, `n IN (1,2)`, or `n BETWEEN 1 AND 20` | `NOT_NULL` clear when operands can be `NULL` |
+| `IN` / `NOT IN` predicates with non-null left and list operands, such as `1 IN (1,2)` | `NOT_NULL` set |
 | `s LIKE 'a%'` with nullable `s` | `NOT_NULL` clear |
 
 Implementation should infer nullability from expression semantics, not from
@@ -456,7 +457,8 @@ Task 23 adds static metadata inference:
 
 - comparison and logical predicates return `LONGLONG`, length `1`, `BINARY`,
   `NUM`; set `NOT_NULL` only for operators whose semantics cannot return
-  `NULL`
+  `NULL`; infer `IN` / `NOT IN` nullability from the left operand and every
+  scalar list member
 - `IS NULL`, `IS NOT NULL`, `IS TRUE`, `IS FALSE`, `IS UNKNOWN`, and
   null-safe equality return non-null integer metadata
 - arithmetic integer operators return `LONGLONG`; exact arithmetic involving a

@@ -77706,6 +77706,60 @@ static int test_result_metadata_expression_labels_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
+    static const struct expected_result_metadata in_predicate_metadata[] = {
+        {"in_plain",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"in_null_list",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"in_null_left",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"not_in_plain",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+    };
     static const struct expected_result_metadata scalar_metadata[] = {
         {"1",
          NULL,
@@ -79351,6 +79405,25 @@ static int test_result_metadata_expression_labels_execution(void) {
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "empty table metadata done");
     failures += expect_int(mylite_warning_count(database), 0, "empty table metadata warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT 1 IN (1,2) AS in_plain, "
+        "1 IN (1,NULL) AS in_null_list, "
+        "NULL IN (1,2) AS in_null_left, "
+        "1 NOT IN (1,2) AS not_in_plain FROM DUAL WHERE FALSE",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        in_predicate_metadata,
+        (int)(sizeof(in_predicate_metadata) / sizeof(in_predicate_metadata[0])),
+        "IN predicate result metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "IN predicate metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
 

@@ -436,6 +436,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       and `COALESCE` now infer MySQL-shaped result descriptors for the covered
       scalar domains, and hex/bit plus `_binary` string literals now infer
       MySQL-shaped binary descriptors for zero-row table-backed results.
+      Scalar `IN` / `NOT IN` result metadata now infers `NOT_NULL` from the
+      left operand and every list member, so non-null literal membership tests
+      are non-null while nullable list members remain nullable.
       Table-backed numeric
       scalar functions `ABS`, `MOD`, `FLOOR`, `CEIL`, and `CEILING` now infer
       MySQL-shaped descriptors for covered integer, unsigned integer, decimal,

@@ -103,6 +103,15 @@ static unsigned int decimal_arithmetic_scale(
     const struct mylite_field_descriptor *right
 );
 
+static int infer_in_expression_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_field_descriptor *left,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_operator_callbacks *callbacks
+);
+
 // NOLINTNEXTLINE(misc-no-recursion)
 int mylite_expression_descriptor_infer_unary_expression(
     mylite_db *database,
@@ -378,6 +387,17 @@ int mylite_expression_descriptor_infer_binary_expression(
     }
     if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_COLLATE) {
         return infer_collate_expression_descriptor(database, expression, &left, out_descriptor);
+    }
+    if (expression->operator_kind == MYLITE_SQL_AST_OPERATOR_IN ||
+        expression->operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_IN) {
+        return infer_in_expression_descriptor(
+            database,
+            plan,
+            expression,
+            &left,
+            out_descriptor,
+            callbacks
+        );
     }
 
     status = callbacks->infer_expression_descriptor(
@@ -825,6 +845,39 @@ static bool descriptor_has_exact_numeric_result(const struct mylite_field_descri
     default:
         return false;
     }
+}
+
+static int infer_in_expression_descriptor(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_field_descriptor *left,
+    struct mylite_field_descriptor *out_descriptor,
+    const struct mylite_expression_descriptor_operator_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *list = mylite_ast_child_at(expression, 1U);
+    bool nullable = mylite_expression_descriptor_is_nullable(left);
+    int status = MYLITE_OK;
+
+    if (list == NULL || list->kind != MYLITE_SQL_AST_EXPRESSION_LIST) {
+        *out_descriptor = mylite_expression_descriptor_boolean(true);
+        return MYLITE_OK;
+    }
+    for (const struct mylite_sql_ast_node *item = list->first_child; item != NULL;
+         item = item->next_sibling) {
+        struct mylite_field_descriptor item_descriptor = mylite_expression_descriptor_defaults();
+
+        status =
+            callbacks->infer_expression_descriptor(database, plan, item, NULL, &item_descriptor);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (mylite_expression_descriptor_is_nullable(&item_descriptor)) {
+            nullable = true;
+        }
+    }
+    *out_descriptor = mylite_expression_descriptor_boolean(nullable);
+    return MYLITE_OK;
 }
 
 static unsigned int decimal_arithmetic_scale(

@@ -10812,7 +10812,9 @@ static int test_scalar_function_call_syntax(void) {
             "SECOND('2024-02-29 12:34:56'), "
             "MICROSECOND('2024-02-29 12:34:56.123456'), "
             "EXTRACT(YEAR FROM DATE_ADD(CURDATE(), INTERVAL 1 DAY)), "
-            "EXTRACT(SECOND FROM NOW());",
+            "EXTRACT(SECOND FROM NOW()), "
+            "EXTRACT(QUARTER FROM '2024-02-29'), "
+            "EXTRACT(MICROSECOND FROM '2024-02-29 12:34:56.123456');",
             MYLITE_SQL_PARSE_OK,
             &result
         ) == 0) {
@@ -10904,6 +10906,28 @@ static int test_scalar_function_call_syntax(void) {
             child_at(child_at(select_list, 12U), 0U)->interval_spec,
             true,
             "EXTRACT SECOND interval spec"
+        );
+        failures += expect_function_call(
+            child_at(child_at(select_list, 13U), 0U),
+            "EXTRACT",
+            1U,
+            "EXTRACT QUARTER function call"
+        );
+        failures += expect_int(
+            (int)child_at(child_at(select_list, 13U), 0U)->interval_unit,
+            (int)MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER,
+            "EXTRACT QUARTER interval unit"
+        );
+        failures += expect_function_call(
+            child_at(child_at(select_list, 14U), 0U),
+            "EXTRACT",
+            1U,
+            "EXTRACT MICROSECOND function call"
+        );
+        failures += expect_int(
+            (int)child_at(child_at(select_list, 14U), 0U)->interval_unit,
+            (int)MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND,
+            "EXTRACT MICROSECOND interval unit"
         );
     } else {
         ++failures;

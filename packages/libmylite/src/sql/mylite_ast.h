@@ -637,6 +637,8 @@ enum mylite_sql_ast_interval_unit {
     MYLITE_SQL_AST_INTERVAL_UNIT_HOUR = 5,
     MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE = 6,
     MYLITE_SQL_AST_INTERVAL_UNIT_SECOND = 7,
+    MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER = 8,
+    MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND = 9,
 };
 
 struct mylite_sql_ast_select_duplicate_mode_spans {

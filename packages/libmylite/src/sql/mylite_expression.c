@@ -11623,6 +11623,8 @@ static bool timestampdiff_value(
     case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
         *out_value = timestampdiff_seconds(start, end);
         return true;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND:
     case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
         return false;
     }
@@ -11859,6 +11861,9 @@ static bool temporal_part_from_function(
         case MYLITE_SQL_AST_INTERVAL_UNIT_DAY:
             part = TEMPORAL_PART_DAY;
             break;
+        case MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER:
+            part = TEMPORAL_PART_QUARTER;
+            break;
         case MYLITE_SQL_AST_INTERVAL_UNIT_HOUR:
             part = TEMPORAL_PART_HOUR;
             break;
@@ -11867,6 +11872,9 @@ static bool temporal_part_from_function(
             break;
         case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
             part = TEMPORAL_PART_SECOND;
+            break;
+        case MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND:
+            part = TEMPORAL_PART_MICROSECOND;
             break;
         case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
         case MYLITE_SQL_AST_INTERVAL_UNIT_WEEK:
@@ -12176,6 +12184,8 @@ static bool apply_date_interval_arithmetic(
                add_temporal_seconds(date, scaled);
     case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
         return add_temporal_seconds(date, value);
+    case MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND:
     case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
         return false;
     }

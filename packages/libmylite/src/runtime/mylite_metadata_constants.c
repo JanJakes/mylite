@@ -76,6 +76,7 @@ const uint64_t mylite_mysql_temporal_part_short_display_length = 3U;
 const uint64_t mylite_mysql_temporal_part_hour_display_length = 4U;
 const uint64_t mylite_mysql_temporal_part_dayofyear_display_length = 4U;
 const uint64_t mylite_mysql_extract_year_display_length = 5U;
+const uint64_t mylite_mysql_extract_microsecond_display_length = 7U;
 const uint64_t mylite_mysql_time_to_sec_function_display_length = 10U;
 const uint64_t mylite_mysql_date_arithmetic_string_result_chars = 29U;
 const uint64_t mylite_mysql_time_display_length = 10U;

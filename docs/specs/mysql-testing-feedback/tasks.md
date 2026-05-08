@@ -420,6 +420,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `GROUP_CONCAT()` over `VARBINARY` and mixed binary/text argument lists now
       reports MySQL-shaped binary metadata with byte-counted lengths, while
       numeric arguments remain connection-text results.
+      `EXTRACT(QUARTER FROM ...)` and `EXTRACT(MICROSECOND FROM ...)` now parse
+      and execute with MySQL-shaped signed `LONGLONG` descriptors, including the
+      MySQL-observed `EXTRACT(MICROSECOND...)` display width.
       Table-backed `DECIMAL` arithmetic with exact operands now reports
       MySQL-shaped `NEWDECIMAL` descriptors for the covered `+`, `-`, and `*`
       result columns.

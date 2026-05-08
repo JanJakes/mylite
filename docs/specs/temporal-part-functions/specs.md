@@ -15,8 +15,8 @@ the expression contexts MyLite already executes:
 - `MINUTE(expr)`
 - `SECOND(expr)`
 - `MICROSECOND(expr)`
-- `EXTRACT(unit FROM expr)` for `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, and
-  `SECOND`
+- `EXTRACT(unit FROM expr)` for `YEAR`, `MONTH`, `DAY`, `QUARTER`, `HOUR`,
+  `MINUTE`, `SECOND`, and `MICROSECOND`
 
 The functions are supported in no-table `SELECT`, one-table `SELECT`
 projection, `WHERE`, and `ORDER BY`, and supported single-table `UPDATE` and
@@ -26,9 +26,8 @@ Out of scope:
 
 - `WEEKOFYEAR`, `YEARWEEK`, `WEEKDAY`, `MONTHNAME`, `DAYNAME`, and combined
   `EXTRACT()` units such as `YEAR_MONTH`
-- `EXTRACT(MICROSECOND FROM ...)`, `EXTRACT(QUARTER FROM ...)`, and combined
-  microsecond units such as `DAY_MICROSECOND`; direct `MICROSECOND()` and
-  `QUARTER()` calls are supported in this slice
+- `EXTRACT(WEEK FROM ...)`, combined `EXTRACT()` units such as `YEAR_MONTH`,
+  and combined microsecond units such as `DAY_MICROSECOND`
 - standalone time-only parsing for date/time part functions other than
   `MICROSECOND()`; for example `HOUR('10:05:03')` is intentionally deferred
   even though MySQL supports it
@@ -92,6 +91,8 @@ Verified no-table results:
 | `EXTRACT(HOUR FROM '2024-02-29 12:34:56')` | `12` | none |
 | `EXTRACT(MINUTE FROM '2024-02-29 12:34:56')` | `34` | none |
 | `EXTRACT(SECOND FROM '2024-02-29 12:34:56')` | `56` | none |
+| `EXTRACT(QUARTER FROM '2024-02-29 12:34:56')` | `1` | none |
+| `EXTRACT(MICROSECOND FROM '2024-02-29 12:34:56.123456')` | `123456` | none |
 
 Temporal string and numeric conversion follows the same relaxed input surface
 used by MyLite's current `DATE()`, `DATEDIFF()`, and date-arithmetic slices:
@@ -144,11 +145,13 @@ Observed metadata:
 | `MINUTE(...)`, `SECOND(...)` | `LONGLONG` | 3 | 0 | binary | `BINARY NUM` | yes |
 | `MICROSECOND(...)` | `LONGLONG` | 21 | 0 | binary | `BINARY NUM` | yes |
 | `EXTRACT(YEAR FROM ...)` | `LONGLONG` | 5 | 0 | binary | `BINARY NUM` | yes |
-| `EXTRACT(MONTH|DAY|HOUR|MINUTE|SECOND FROM ...)` | `LONGLONG` | `3` or `4` | 0 | binary | `BINARY NUM` | yes |
+| `EXTRACT(MONTH|DAY|MINUTE|SECOND FROM ...)` | `LONGLONG` | `3` | 0 | binary | `BINARY NUM` | yes |
+| `EXTRACT(QUARTER FROM ...)` | `LONGLONG` | `2` | 0 | binary | `BINARY NUM` | yes |
+| `EXTRACT(HOUR FROM ...)` | `LONGLONG` | `4` | 0 | binary | `BINARY NUM` | yes |
+| `EXTRACT(MICROSECOND FROM ...)` | `LONGLONG` | `7` | 0 | binary | `BINARY NUM` | yes |
 
-`EXTRACT(WEEK FROM ...)`, `EXTRACT(QUARTER FROM ...)`,
-`EXTRACT(MICROSECOND FROM ...)`, and `EXTRACT(YEAR_MONTH FROM ...)` are valid
-MySQL forms, but they are deliberately deferred in MyLite until those units are
+`EXTRACT(WEEK FROM ...)` and `EXTRACT(YEAR_MONTH FROM ...)` are valid MySQL
+forms, but they are deliberately deferred in MyLite until those units are
 specified and tested.
 
 `EXTRACT(unit)` without `FROM expr` is malformed syntax in MySQL 8.4.9, so
@@ -244,7 +247,8 @@ For `MICROSECOND()`:
 
 `EXTRACT(WEEK FROM ...)` should parse because `WEEK` is already part of the
 shared interval-unit grammar, but it must remain unsupported by the scalar
-function registry for this slice.
+function registry for this slice. MySQL's `EXTRACT(WEEK FROM zero-date)` result
+does not match `WEEK()` and needs separate specification before support.
 
 ## Tests
 
@@ -253,10 +257,11 @@ Parser tests should cover:
 - keyword or identifier-style function-name parsing for `YEAR`, `MONTH`, `DAY`,
   `DAYOFMONTH`, `DAYOFWEEK`, `DAYOFYEAR`, `QUARTER`, `HOUR`, `MINUTE`,
   `SECOND`, and `MICROSECOND`
-- `EXTRACT(YEAR|MONTH|DAY|HOUR|MINUTE|SECOND FROM expr)` with only one
-  evaluatable child in the argument list
+- `EXTRACT(YEAR|MONTH|DAY|QUARTER|HOUR|MINUTE|SECOND|MICROSECOND FROM expr)`
+  with only one evaluatable child in the argument list
 - nested current temporal and date-arithmetic inputs
-- rejected arities, deferred `EXTRACT` units, and malformed `EXTRACT` syntax
+- rejected arities, deferred `EXTRACT(WEEK...)` / combined units, and malformed
+  `EXTRACT` syntax
 
 Runtime tests should cover:
 
@@ -280,8 +285,8 @@ Runtime tests should cover:
 
 After implementation, the listed temporal part functions have partial
 compatibility for the supported scalar expression paths and date/datetime input
-surface. `MICROSECOND()` also covers the time-conversion cases listed above.
-Time-only parsing for the other time-part functions, combined `EXTRACT` units,
-`EXTRACT(MICROSECOND FROM ...)`, remaining week and calendar-name functions,
-exact native diagnostics, and broader SQL-mode temporal variants remain
-deferred.
+surface. `MICROSECOND()` and `EXTRACT(MICROSECOND FROM ...)` also cover the
+time-conversion cases listed above. Time-only parsing for the other time-part
+functions, `EXTRACT(WEEK FROM ...)`, combined `EXTRACT` units, remaining week
+and calendar-name functions, exact native diagnostics, and broader SQL-mode
+temporal variants remain deferred.

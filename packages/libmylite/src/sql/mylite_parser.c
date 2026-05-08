@@ -164,6 +164,11 @@ static bool extract_interval_unit_from_expression(
     enum mylite_sql_ast_interval_unit *out_unit
 );
 
+static bool extract_function_interval_unit_from_expression(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_interval_unit *out_unit
+);
+
 static bool function_name_is_date_interval_arithmetic(const struct mylite_sql_ast_node *name);
 
 static bool function_name_has_parser_checked_arity(
@@ -7060,7 +7065,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_from_function_call(
         struct mylite_sql_ast_node *list = NULL;
         struct mylite_sql_ast_node *call = NULL;
 
-        if (!extract_interval_unit_from_expression(first, &unit)) {
+        if (!extract_function_interval_unit_from_expression(first, &unit)) {
             mylite_sql_parser_state_parse_failed(state);
             return NULL;
         }
@@ -8794,6 +8799,31 @@ static bool extract_interval_unit_from_expression(
         unit = MYLITE_SQL_AST_INTERVAL_UNIT_SECOND;
     } else if (span_text_equals(expression->span, "WEEK")) {
         unit = MYLITE_SQL_AST_INTERVAL_UNIT_WEEK;
+    } else {
+        return false;
+    }
+
+    *out_unit = unit;
+    return true;
+}
+
+static bool extract_function_interval_unit_from_expression(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_interval_unit *out_unit
+) {
+    enum mylite_sql_ast_interval_unit unit = MYLITE_SQL_AST_INTERVAL_UNIT_NONE;
+
+    if (extract_interval_unit_from_expression(expression, out_unit)) {
+        return true;
+    }
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_IDENTIFIER || out_unit == NULL) {
+        return false;
+    }
+
+    if (span_text_equals(expression->span, "QUARTER")) {
+        unit = MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER;
+    } else if (span_text_equals(expression->span, "MICROSECOND")) {
+        unit = MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND;
     } else {
         return false;
     }

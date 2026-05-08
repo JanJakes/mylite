@@ -121,6 +121,8 @@ static struct mylite_field_descriptor date_interval_datetime_descriptor(unsigned
 
 static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit unit);
 
+static uint64_t extract_interval_unit_display_length(enum mylite_sql_ast_interval_unit unit);
+
 struct mylite_field_descriptor mylite_expression_descriptor_current_datetime_function(
     unsigned int fsp
 ) {
@@ -399,12 +401,7 @@ bool mylite_expression_descriptor_infer_temporal_part_function(
             return false;
         }
         *out_descriptor = mylite_expression_descriptor_signed_longlong(true);
-        out_descriptor->length = expression->interval_unit == MYLITE_SQL_AST_INTERVAL_UNIT_YEAR
-                                     ? mylite_mysql_extract_year_display_length
-                                     : mylite_mysql_temporal_part_short_display_length;
-        if (expression->interval_unit == MYLITE_SQL_AST_INTERVAL_UNIT_HOUR) {
-            out_descriptor->length = mylite_mysql_temporal_part_hour_display_length;
-        }
+        out_descriptor->length = extract_interval_unit_display_length(expression->interval_unit);
         return true;
     }
     return false;
@@ -1006,13 +1003,36 @@ static bool extract_interval_unit_supported(enum mylite_sql_ast_interval_unit un
     case MYLITE_SQL_AST_INTERVAL_UNIT_YEAR:
     case MYLITE_SQL_AST_INTERVAL_UNIT_MONTH:
     case MYLITE_SQL_AST_INTERVAL_UNIT_DAY:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER:
     case MYLITE_SQL_AST_INTERVAL_UNIT_HOUR:
     case MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE:
     case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND:
         return true;
     case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
     case MYLITE_SQL_AST_INTERVAL_UNIT_WEEK:
         return false;
     }
     return false;
+}
+
+static uint64_t extract_interval_unit_display_length(enum mylite_sql_ast_interval_unit unit) {
+    switch (unit) {
+    case MYLITE_SQL_AST_INTERVAL_UNIT_YEAR:
+        return mylite_mysql_extract_year_display_length;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_QUARTER:
+        return mylite_mysql_temporal_part_tiny_display_length;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_HOUR:
+        return mylite_mysql_temporal_part_hour_display_length;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND:
+        return mylite_mysql_extract_microsecond_display_length;
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MONTH:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_DAY:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_MINUTE:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_SECOND:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_NONE:
+    case MYLITE_SQL_AST_INTERVAL_UNIT_WEEK:
+        return mylite_mysql_temporal_part_short_display_length;
+    }
+    return mylite_mysql_temporal_part_short_display_length;
 }

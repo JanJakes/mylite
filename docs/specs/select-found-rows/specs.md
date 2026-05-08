@@ -17,8 +17,9 @@ scalar selects, single-table selects, joins, grouping, `DISTINCT`, `ORDER BY`,
 Out of scope:
 
 - `SELECT SQL_CALC_FOUND_ROWS ... INTO`
-- parser support for no-table `SELECT ... LIMIT`, which remains outside the
-  existing scalar-select grammar
+- broader `SELECT SQL_CALC_FOUND_ROWS` row-count behavior outside the currently
+  executable scalar, table-backed, joined, grouped, distinct, and query
+  expression surfaces
 - replication notes and statement-based binary logging behavior
 - optimizer behavior beyond externally visible rows, warnings, metadata, and
   `FOUND_ROWS()` values

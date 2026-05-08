@@ -436,6 +436,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `CONSTRAINT_NAME`, and `CHECK_CLAUSE`;
       `INFORMATION_SCHEMA.COLUMNS` and `INFORMATION_SCHEMA.STATISTICS` now
       report MySQL-shaped descriptors for their direct wildcard result sets;
+      no-table scalar `SELECT ... LIMIT 0` and
+      `SELECT ... ORDER BY ... LIMIT` now parse and preserve projected
+      expression metadata without evaluating excluded rows;
       `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY` now reports
       MySQL-shaped descriptors for `COLLATION_NAME` and `CHARACTER_SET_NAME`;
       `INFORMATION_SCHEMA.ENGINES` now reports MySQL-shaped zero-decimal

@@ -4063,9 +4063,9 @@ opt_equal ::= .
 opt_equal ::= EQ.
 
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) opt_window_clause(W)
-        opt_locking_clause. {
+        opt_order_by_clause(I) opt_limit_clause(J) opt_locking_clause. {
     A = mylite_sql_parser_make_select_statement(
-        state, T, M, B, NULL, NULL, NULL, NULL, W, NULL, NULL);
+        state, T, M, B, NULL, NULL, NULL, NULL, W, I, J);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D)
         opt_where_clause(E) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J)
@@ -4082,10 +4082,10 @@ select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F
         J);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) opt_window_clause(W)
-        opt_locking_clause. {
+        opt_order_by_clause(I) opt_limit_clause(J) opt_locking_clause. {
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL,
-        W, NULL, NULL);
+        W, I, J);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F) DUAL(D)
         opt_where_clause(E) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J)

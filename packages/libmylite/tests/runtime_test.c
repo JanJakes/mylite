@@ -340,6 +340,8 @@ static const char any_datetime_text[] = "<any datetime>";
 
 static int test_select_integer_literal(void);
 
+static int test_no_table_select_order_limit(void);
+
 static int test_select_integer_literal_with_semicolon(void);
 
 static int test_expression_operator_foundation(void);
@@ -990,6 +992,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_select_integer_literal();
+    failures += test_no_table_select_order_limit();
     failures += test_select_integer_literal_with_semicolon();
     failures += test_expression_operator_foundation();
     failures += test_regexp_predicates_execution();
@@ -6891,6 +6894,55 @@ static int test_select_integer_literal(void) {
     failures += expect_status(mylite_step(stmt), MYLITE_ROW, "first step");
     failures += expect_int64(mylite_column_int64(stmt, 0), expected_value, "integer value");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "second step");
+
+    mylite_finalize(stmt);
+    mylite_close(database);
+    return failures;
+}
+
+static int test_no_table_select_order_limit(void) {
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+    static const struct expected_result_metadata metadata[] = {
+        {
+            .name = "v",
+            .declared_length = 2U,
+            .field_type = MYLITE_FIELD_TYPE_LONGLONG,
+            .charset_id = 63U,
+            .flags_set =
+                MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+            .nullable = 0,
+        },
+    };
+
+    failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
+
+    failures += prepare_sql(database, "SELECT 1 AS v LIMIT 0", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 1, "no-table limit zero metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "no-table limit zero done");
+    failures += expect_int(mylite_warning_count(database), 0, "no-table limit zero warnings");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT 1 AS v ORDER BY 1 LIMIT 1", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 1, "no-table order limit metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "no-table order limit row");
+    failures += expect_int64(mylite_column_int64(stmt, 0), 1, "no-table order limit value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "no-table order limit done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures +=
+        prepare_sql(database, "SELECT 1 AS v ORDER BY 1 LIMIT 1 OFFSET 1", MYLITE_OK, &stmt);
+    failures += expect_result_metadata(stmt, metadata, 1, "no-table offset metadata");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "no-table offset done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(database, "SELECT 1 / 0 AS skipped LIMIT 0", MYLITE_OK, &stmt);
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "no-table limit skips projection");
+    failures += expect_int(mylite_warning_count(database), 0, "no-table limit skips warnings");
 
     mylite_finalize(stmt);
     mylite_close(database);

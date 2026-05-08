@@ -316,6 +316,8 @@ Metadata generation has no independent SQL side effects:
 - no affected-row change beyond existing `SELECT` semantics
 
 Metadata must still be available for empty result sets, including `LIMIT 0`.
+This includes scalar no-table `SELECT ... LIMIT 0` forms and
+`SELECT ... ORDER BY ... LIMIT` forms over the single implicit row.
 
 Metadata inference should normally occur during statement preparation or
 binding. If expression metadata binding detects an unsupported projected

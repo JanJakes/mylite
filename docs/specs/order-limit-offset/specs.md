@@ -21,6 +21,7 @@ In scope:
 - ordering by projection aliases and positive select-list ordinals
 - ordering by expressions over the Task 16 scalar operator subset, including
   hidden sort expressions that are not projected
+- scalar no-table `SELECT` ordering and limiting over the single implicit row
 - multiple sort keys, default ascending order, `ASC`, and `DESC`
 - MySQL `NULL` placement for ascending and descending sorts
 - string ordering through the current character-set/collation foundation for
@@ -43,10 +44,10 @@ Out of scope:
   subqueries
 - `GROUP BY`, `HAVING`, `WITH ROLLUP`, window clauses, aggregate functions,
   `DISTINCT`, locking clauses, and `SELECT ... INTO`
-- no-table scalar `SELECT` ordering/limiting. A later
-  `INSERT ... SELECT FROM DUAL` slice added the covered scalar
-  `FROM DUAL ORDER BY ... LIMIT` subset for standalone DUAL selects and
-  insert-from-DUAL sources.
+- arbitrary no-table row sources beyond the single implicit row, and unsupported
+  no-table projection expressions outside the scalar expression surface. A later
+  `INSERT ... SELECT FROM DUAL` slice added the covered scalar `FROM DUAL ORDER
+  BY ... LIMIT` subset for standalone DUAL selects and insert-from-DUAL sources.
 - arbitrary table-backed projection expressions and their result metadata,
   except where an expression is used only as a hidden sort key
 - functions, casts, `CASE`, variables, user-defined variables, subqueries,
@@ -583,6 +584,10 @@ field metadata:
   column list.
 - `LIMIT 0` still exposes the same result metadata that the query would expose
   without the limit.
+- For scalar no-table selects, `LIMIT 0` and offsets beyond the implicit row
+  return no rows while preserving projected expression metadata. Projection
+  expressions excluded by the limit are not evaluated and do not emit row-time
+  warnings.
 - Computed projection expression metadata remains deferred to Task 23.
 
 The statement is read-only:
@@ -736,6 +741,8 @@ make the order deterministic.
 | `SELECT id FROM t ORDER BY id LIMIT 1,2` | ids `2`, `3` |
 | `SELECT id FROM t ORDER BY id LIMIT 2 OFFSET 1` | ids `2`, `3` |
 | `SELECT id FROM t ORDER BY id LIMIT 0` | empty result with unchanged output metadata |
+| `SELECT 1 AS v LIMIT 0` | empty result with `v` metadata as a `LONGLONG` expression |
+| `SELECT 1 AS v ORDER BY 1 LIMIT 1 OFFSET 1` | empty result with unchanged `v` metadata |
 | `SELECT id FROM t ORDER BY id LIMIT 2,18446744073709551615` | ids `3`, `4`, `5` |
 | `SELECT id FROM t ORDER BY id LIMIT -1` | syntax error 1064 / `42000` |
 | `SELECT id FROM t ORDER BY id LIMIT 1.5` | syntax error 1064 / `42000` |
@@ -776,6 +783,7 @@ Task 18 should keep the AST/runtime design compatible with them.
 | `SELECT n AS x, s FROM t WHERE category IN (1,2) ORDER BY nullable DESC, id LIMIT 2` | output columns are only `x` and `s`; hidden sort keys are not exposed |
 | same query with column metadata inspection | projected columns retain their Task 15 schema/table/origin/type metadata |
 | `SELECT id FROM t ORDER BY id LIMIT 0` | no rows, but result metadata is available |
+| `SELECT 1 / 0 AS skipped LIMIT 0` | no rows, projected division is not evaluated, no division warning |
 | successful `SELECT ... ORDER BY ... LIMIT ...` | read-only; no catalog or physical table mutation |
 | auto-increment insert followed by `SELECT ... ORDER BY ... LIMIT ...` | `LAST_INSERT_ID()` remains the inserted id |
 | `ROW_COUNT()` after result-producing `SELECT ... ORDER BY ... LIMIT ...` | returns `-1` |

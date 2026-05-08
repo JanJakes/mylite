@@ -14011,10 +14011,37 @@ static int test_select_order_limit_offset_syntax(void) {
     failures += parse_sql("SELECT a FROM t LIMIT ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT 1 ORDER BY 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT 1 ORDER BY 1;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    order_by = child_at(select, 1U);
+    failures += expect_child_count(select, 2U, "no-table order select child count");
+    failures += expect_node(order_by, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "no-table order clause");
+    failures += expect_span_text(
+        child_at(child_at(child_at(order_by, 0U), 0U), 0U),
+        "1",
+        "no-table order expression"
+    );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SELECT 1 LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SELECT 1 LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    limit = child_at(select, 1U);
+    failures += expect_child_count(select, 2U, "no-table limit select child count");
+    failures += expect_node(limit, MYLITE_SQL_AST_LIMIT_CLAUSE, "no-table limit clause");
+    failures += expect_limit_bound(child_at(limit, 0U), 0U, "no-table limit normalized offset");
+    failures += expect_limit_bound(child_at(limit, 1U), 1U, "no-table limit normalized row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1 ORDER BY 1 LIMIT 0;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    order_by = child_at(select, 1U);
+    limit = child_at(select, 2U);
+    failures += expect_child_count(select, 3U, "no-table order limit select child count");
+    failures +=
+        expect_node(order_by, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "no-table order before limit");
+    failures += expect_node(limit, MYLITE_SQL_AST_LIMIT_CLAUSE, "no-table order limit clause");
+    failures += expect_limit_bound(child_at(limit, 0U), 0U, "no-table order limit offset");
+    failures += expect_limit_bound(child_at(limit, 1U), 0U, "no-table order limit row count");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

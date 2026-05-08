@@ -23,7 +23,7 @@ miscellaneous system helpers.
 | `NAME_CONST()` | ❌ | Cause the column to have the given name |
 | `RELEASE_ALL_LOCKS()` | ❌ | Release all current named locks |
 | `RELEASE_LOCK()` | ❌ | Release the named lock |
-| `ROW_COUNT()` | 🟡 | Limited one-row scalar `SELECT ROW_COUNT()` with optional `FROM DUAL`; returns connection-local row-count state for supported baseline statements; no protocol OK-packet parity, `CLIENT_FOUND_ROWS`, aliases, table-backed evaluation, or general diagnostics area support |
+| `ROW_COUNT()` | 🟡 | Limited one-row scalar `SELECT ROW_COUNT()` with optional `FROM DUAL`; returns connection-local row-count state for supported baseline statements; no protocol OK-packet parity, `CLIENT_FOUND_ROWS`, aliases, table-backed evaluation, or full diagnostics-area support |
 | `SCHEMA()` | 🟡 | Limited synonym for `DATABASE()` in the same scalar-select slice |
 | `SESSION_USER()` | 🟡 | Limited no-whitespace one-row scalar select returns MyLite's embedded client identity `root@%` as a `USER()` synonym; no `IGNORE_SPACE`, stored-function resolution, authentication, host matching, privileges, or table-backed evaluation |
 | `SLEEP()` | ❌ | Sleep for a number of seconds |

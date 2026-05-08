@@ -438,6 +438,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `LONGLONG` display lengths for zero-row table-backed result metadata.
       Arithmetic with approximate and text operands now reports MySQL-shaped
       `DOUBLE` descriptors for zero-row table-backed result metadata.
+      Approximate `SUM()` / `AVG()` result descriptors now report MySQL's
+      23-character `DOUBLE` display length for covered approximate and
+      string-converted argument domains.
       String system-variable expression descriptors now follow the current
       result character set and collation, including MySQL-shaped `utf8mb4`
       metadata after `SET NAMES utf8mb4` and latin1 metadata after

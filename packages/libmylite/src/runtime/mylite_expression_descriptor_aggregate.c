@@ -80,7 +80,7 @@ int mylite_expression_descriptor_infer_aggregate_expression(
             descriptor = (struct mylite_field_descriptor){
                 .type = MYLITE_FIELD_TYPE_DOUBLE,
                 .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-                .length = mylite_mysql_double_display_length,
+                .length = mylite_mysql_double_display_length + 1U,
                 .decimals = mylite_mysql_not_fixed_decimals,
                 .charset_id = mylite_mysql_binary_charset_id,
                 .nullable = true,
@@ -96,7 +96,7 @@ int mylite_expression_descriptor_infer_aggregate_expression(
             descriptor = (struct mylite_field_descriptor){
                 .type = MYLITE_FIELD_TYPE_DOUBLE,
                 .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
-                .length = mylite_mysql_double_display_length,
+                .length = mylite_mysql_double_display_length + 1U,
                 .decimals = mylite_mysql_not_fixed_decimals,
                 .charset_id = mylite_mysql_binary_charset_id,
                 .nullable = true,

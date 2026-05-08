@@ -347,6 +347,10 @@ Observed `mysql --column-type-info -vvv` metadata:
 | `AVG(n) AS a_int` | `NEWDECIMAL` | `16` | `4` | `BINARY NUM` | none |
 | `SUM(decv) AS s_dec` | `NEWDECIMAL` | `34` | `2` | `BINARY NUM` | none |
 | `AVG(decv) AS a_dec` | `NEWDECIMAL` | `16` | `6` | `BINARY NUM` | none |
+| `SUM(r)` where `r DOUBLE` | `DOUBLE` | `23` | `31` | `BINARY NUM` | none |
+| `AVG(r)` where `r DOUBLE` | `DOUBLE` | `23` | `31` | `BINARY NUM` | none |
+| `SUM(s)` where `s VARCHAR(10)` | `DOUBLE` | `23` | `31` | `BINARY NUM` | none |
+| `AVG(s)` where `s VARCHAR(10)` | `DOUBLE` | `23` | `31` | `BINARY NUM` | none |
 | `MIN(n) AS min_n` | `LONG` | `11` | `0` | `BINARY NUM` | none |
 | `MAX(txt) AS max_txt` | `VAR_STRING` | `20` | `31` | none | none |
 | grouped `grp` | `VAR_STRING` | `10` | `0` | observed `NUM` flag | `mylite_aggregate_grouping.t.grp` |

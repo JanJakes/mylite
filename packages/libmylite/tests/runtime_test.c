@@ -40135,6 +40135,86 @@ static int test_aggregate_grouping_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
+    static const struct expected_result_metadata approximate_aggregate_metadata[] = {
+        {"sr",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"ar",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"sf",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"af",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"ss",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"asv",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         23U,
+         MYLITE_FIELD_TYPE_DOUBLE,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
     static const struct expected_result_metadata count_distinct_metadata[] = {
         {"ca",
          NULL,
@@ -40300,6 +40380,11 @@ static int test_aggregate_grouping_execution(void) {
         database,
         "CREATE TABLE empty_t ("
         "id INT, n INT, decv DECIMAL(10,2), txt VARCHAR(20))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE approximate_t (r DOUBLE, f FLOAT, s VARCHAR(10))",
         MYLITE_DONE
     );
 
@@ -40567,6 +40652,22 @@ static int test_aggregate_grouping_execution(void) {
         metadata,
         (int)(sizeof(metadata) / sizeof(metadata[0])),
         "aggregate metadata"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT SUM(r) AS sr, AVG(r) AS ar, SUM(f) AS sf, AVG(f) AS af, "
+        "SUM(s) AS ss, AVG(s) AS asv FROM approximate_t",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        approximate_aggregate_metadata,
+        (int)(sizeof(approximate_aggregate_metadata) / sizeof(approximate_aggregate_metadata[0])),
+        "approximate aggregate metadata"
     );
     mylite_finalize(stmt);
     stmt = NULL;

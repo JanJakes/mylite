@@ -392,6 +392,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_unique_checks_system_variable_test)
 
+  add_executable(mylite_runtime_updatable_views_with_limit_system_variable_test
+    tests/runtime_updatable_views_with_limit_system_variable_test.c
+  )
+  target_link_libraries(mylite_runtime_updatable_views_with_limit_system_variable_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_updatable_views_with_limit_system_variable_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_updatable_views_with_limit_system_variable_test)
+
   add_executable(mylite_runtime_character_set_system_variables_test
     tests/runtime_character_set_system_variables_test.c
   )
@@ -734,6 +745,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.unique_checks_system_variable
     COMMAND mylite_runtime_unique_checks_system_variable_test
+  )
+  add_test(
+    NAME libmylite.runtime.updatable_views_with_limit_system_variable
+    COMMAND mylite_runtime_updatable_views_with_limit_system_variable_test
   )
   add_test(
     NAME libmylite.runtime.character_set_system_variables

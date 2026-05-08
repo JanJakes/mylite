@@ -310,6 +310,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE = 17,
     SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS = 18,
     SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS = 19,
+    SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT = 20,
 };
 
 struct system_variable_component {
@@ -6081,6 +6082,9 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
         out_cell->value = "InnoDB";
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
+        out_cell->value = "YES";
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
         out_cell->value = "utf8mb3";
         return MYLITE_OK;
@@ -6220,6 +6224,7 @@ static bool resolve_system_variable_kind(
         {"sql_quote_show_create", SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE},
         {"foreign_key_checks", SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS},
         {"unique_checks", SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS},
+        {"updatable_views_with_limit", SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT},
         {"version", SESSION_SYSTEM_VARIABLE_VERSION},
         {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT},
     };
@@ -6251,6 +6256,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
+    case SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
         return true;

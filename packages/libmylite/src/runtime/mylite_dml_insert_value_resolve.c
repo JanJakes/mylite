@@ -19,6 +19,7 @@ static int resolve_insert_column_list_row_values(
     const struct mylite_insert_row *row,
     const size_t *column_indexes,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *values,
     const struct mylite_dml_expression_callbacks *callbacks
@@ -74,6 +75,7 @@ static int resolve_insert_explicit_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_insert_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     size_t column_index,
     struct mylite_insert_bound_value *out_value,
@@ -139,6 +141,7 @@ int mylite_dml_resolve_insert_row_values(
             row,
             column_indexes,
             statement_row_count,
+            row_index + 1U,
             state,
             out_values,
             callbacks
@@ -165,6 +168,7 @@ static int resolve_insert_column_list_row_values(
     const struct mylite_insert_row *row,
     const size_t *column_indexes,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *values,
     const struct mylite_dml_expression_callbacks *callbacks
@@ -209,6 +213,7 @@ static int resolve_insert_column_list_row_values(
                                               &table->columns[column],
                                               explicit_value,
                                               statement_row_count,
+                                              row_number,
                                               state,
                                               column,
                                               &values[column],
@@ -288,6 +293,7 @@ static int resolve_insert_positional_row_values(
             &table->columns[column],
             &plan->rows[row_index].values[column],
             statement_row_count,
+            row_index + 1U,
             state,
             column,
             &values[column],
@@ -356,6 +362,7 @@ static int resolve_insert_explicit_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_insert_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     size_t column_index,
     struct mylite_insert_bound_value *out_value,
@@ -371,6 +378,7 @@ static int resolve_insert_explicit_value(
             column,
             value->expression,
             statement_row_count,
+            row_number,
             state,
             callbacks,
             out_value
@@ -425,6 +433,7 @@ static int resolve_insert_explicit_value(
             value->text,
             value->text_length,
             statement_row_count,
+            row_number,
             state,
             (plan != NULL && plan->ignore) != 0,
             out_value
@@ -443,6 +452,7 @@ static int resolve_insert_explicit_value(
                     value->text,
                     value->text_length,
                     statement_row_count,
+                    row_number,
                     state,
                     (plan != NULL && plan->ignore) != 0,
                     out_value
@@ -455,7 +465,7 @@ static int resolve_insert_explicit_value(
             return mylite_dml_coerce_insert_string_value(
                 database,
                 column,
-                statement_row_count,
+                row_number,
                 (plan != NULL && plan->ignore) != 0,
                 false,
                 out_value
@@ -467,6 +477,7 @@ static int resolve_insert_explicit_value(
             value->text,
             value->text_length,
             statement_row_count,
+            row_number,
             state,
             (plan != NULL && plan->ignore) != 0,
             out_value
@@ -478,6 +489,7 @@ static int resolve_insert_explicit_value(
             value->text,
             value->text_length,
             statement_row_count,
+            row_number,
             state,
             (plan != NULL && plan->ignore) != 0,
             value->strict_string_truncation_is_data_truncated,
@@ -490,6 +502,7 @@ static int resolve_insert_explicit_value(
             column,
             value,
             statement_row_count,
+            row_number,
             state,
             (plan != NULL && plan->ignore) != 0,
             out_value

@@ -88,6 +88,10 @@ or binary target, MySQL reports strict truncation as error 1265,
 `Data truncated for column ...`; literal and computed string expressions still
 use error 1406, `Data too long ...`. MyLite preserves that distinction from
 source result metadata during materialization.
+Conversion diagnostics use the selected output row's 1-based position. For
+example, if the second selected row contains an invalid integer, date, or
+overlength direct source string, strict errors and non-strict warnings report
+`row 2`, not `row 1`.
 
 ## Diagnostics And Side Effects
 
@@ -102,6 +106,8 @@ Observed MySQL 8.4.9 behavior for covered cases:
 | `INSERT IGNORE ... SELECT` duplicate row | warning 1062, duplicate skipped, affected rows count accepted rows |
 | strict direct source string/binary column truncation | error 1265, statement rollback |
 | strict literal/computed string truncation | error 1406, statement rollback |
+| strict selected-row integer/date conversion failure | error 1366/1292 with the selected row number, statement rollback |
+| non-strict selected-row integer/string conversion | warning 1366/1265 with the selected row number, coerced value inserted |
 | `AUTO_INCREMENT` target with omitted id | generated ids allocated in source order, `LAST_INSERT_ID()` is first generated id |
 | persistent self-insert | source rows are materialized before insertion |
 | temporary self-insert | error 1137, message `Can't reopen table: '<name>'` |
@@ -139,6 +145,8 @@ Runtime tests must cover:
 - `INSERT IGNORE ... SELECT` duplicate skipping and warnings
 - strict and non-strict string/binary target truncation for direct source
   columns, plus strict literal and numeric-source truncation diagnostics
+- strict and non-strict selected-row diagnostic numbering for numeric,
+  temporal, and string coercion
 - `AUTO_INCREMENT` generation and first insert id
 - persistent self-insert materialization
 - temporary self-insert error 1137 without mutation

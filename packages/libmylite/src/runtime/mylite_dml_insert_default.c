@@ -52,6 +52,7 @@ static int resolve_insert_binary_literal_numeric_value(
     const char *text,
     size_t text_length,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -74,6 +75,7 @@ static int resolve_insert_binary_literal_text_value(
     const char *text,
     size_t text_length,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -84,6 +86,7 @@ static int resolve_insert_large_integer_text_value(
     const struct mylite_insert_table_column *column,
     const char *text,
     size_t text_length,
+    uint64_t row_number,
     bool ignore,
     struct mylite_insert_bound_value *out_value
 );
@@ -239,6 +242,7 @@ int mylite_dml_resolve_insert_default_bound_value(
         column->default_text,
         column->default_text == NULL ? 0U : strlen(column->default_text),
         statement_row_count,
+        1U,
         state,
         false,
         out_value
@@ -302,6 +306,7 @@ static int resolve_insert_generated_default_bound_value(
         column,
         expression,
         statement_row_count,
+        1U,
         state,
         NULL,
         out_value
@@ -496,6 +501,7 @@ int mylite_dml_resolve_insert_text_value(
     const char *text,
     size_t text_length,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -514,13 +520,18 @@ int mylite_dml_resolve_insert_text_value(
         int status = set_insert_bound_text_value(database, text, text_length, out_value);
 
         if (status == MYLITE_OK) {
-            status =
-                mylite_dml_coerce_insert_temporal_value(database, column, 1U, ignore, out_value);
+            status = mylite_dml_coerce_insert_temporal_value(
+                database,
+                column,
+                row_number,
+                ignore,
+                out_value
+            );
         }
         return status == MYLITE_OK ? mylite_dml_coerce_insert_string_value(
                                          database,
                                          column,
-                                         1U,
+                                         row_number,
                                          ignore,
                                          false,
                                          out_value
@@ -543,12 +554,13 @@ int mylite_dml_resolve_insert_text_value(
             .kind = MYLITE_INSERT_BOUND_INTEGER,
             .integer_value = integer_value,
         };
-        status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
+        status =
+            mylite_dml_coerce_insert_numeric_value(database, column, row_number, ignore, out_value);
         if (status == MYLITE_OK) {
             status = mylite_dml_coerce_insert_string_value(
                 database,
                 column,
-                1U,
+                row_number,
                 ignore,
                 false,
                 out_value
@@ -562,6 +574,7 @@ int mylite_dml_resolve_insert_text_value(
             column,
             text,
             text_length,
+            row_number,
             ignore,
             out_value
         );
@@ -576,12 +589,13 @@ int mylite_dml_resolve_insert_text_value(
             .kind = MYLITE_INSERT_BOUND_REAL,
             .real_value = real_value,
         };
-        status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
+        status =
+            mylite_dml_coerce_insert_numeric_value(database, column, row_number, ignore, out_value);
         if (status == MYLITE_OK) {
             status = mylite_dml_coerce_insert_string_value(
                 database,
                 column,
-                1U,
+                row_number,
                 ignore,
                 false,
                 out_value
@@ -593,12 +607,13 @@ int mylite_dml_resolve_insert_text_value(
     int status = set_insert_bound_text_value(database, text, text_length, out_value);
 
     if (status == MYLITE_OK) {
-        status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
+        status =
+            mylite_dml_coerce_insert_numeric_value(database, column, row_number, ignore, out_value);
     }
     return status == MYLITE_OK ? mylite_dml_coerce_insert_string_value(
                                      database,
                                      column,
-                                     1U,
+                                     row_number,
                                      ignore,
                                      false,
                                      out_value
@@ -612,6 +627,7 @@ int mylite_dml_resolve_insert_quoted_text_value(
     const char *text,
     size_t text_length,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     bool strict_string_truncation_is_data_truncated,
@@ -624,6 +640,7 @@ int mylite_dml_resolve_insert_quoted_text_value(
             text,
             text_length,
             statement_row_count,
+            row_number,
             state,
             ignore,
             out_value
@@ -634,7 +651,7 @@ int mylite_dml_resolve_insert_quoted_text_value(
     return status == MYLITE_OK ? mylite_dml_coerce_insert_string_value(
                                      database,
                                      column,
-                                     1U,
+                                     row_number,
                                      ignore,
                                      strict_string_truncation_is_data_truncated,
                                      out_value
@@ -647,6 +664,7 @@ int mylite_dml_resolve_insert_binary_literal_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_insert_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -680,6 +698,7 @@ int mylite_dml_resolve_insert_binary_literal_value(
             value->text,
             value->text_length,
             statement_row_count,
+            row_number,
             state,
             ignore,
             out_value
@@ -692,6 +711,7 @@ int mylite_dml_resolve_insert_binary_literal_value(
         value->text,
         value->text_length,
         statement_row_count,
+        row_number,
         state,
         ignore,
         out_value
@@ -865,6 +885,7 @@ static int resolve_insert_binary_literal_numeric_value(
     const char *text,
     size_t text_length,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -891,11 +912,12 @@ static int resolve_insert_binary_literal_numeric_value(
             .kind = MYLITE_INSERT_BOUND_INTEGER,
             .integer_value = integer_value,
         };
-        status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
+        status =
+            mylite_dml_coerce_insert_numeric_value(database, column, row_number, ignore, out_value);
         return status == MYLITE_OK ? mylite_dml_coerce_insert_string_value(
                                          database,
                                          column,
-                                         1U,
+                                         row_number,
                                          ignore,
                                          false,
                                          out_value
@@ -914,6 +936,7 @@ static int resolve_insert_binary_literal_numeric_value(
             decimal_text,
             decimal_length,
             statement_row_count,
+            row_number,
             state,
             ignore,
             out_value
@@ -981,6 +1004,7 @@ static int resolve_insert_binary_literal_text_value(
     const char *text,
     size_t text_length,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -1002,6 +1026,7 @@ static int resolve_insert_binary_literal_text_value(
             decoded_text,
             decoded_length,
             statement_row_count,
+            row_number,
             state,
             ignore,
             false,
@@ -1022,17 +1047,25 @@ static int resolve_insert_large_integer_text_value(
     const struct mylite_insert_table_column *column,
     const char *text,
     size_t text_length,
+    uint64_t row_number,
     bool ignore,
     struct mylite_insert_bound_value *out_value
 ) {
     int status = set_insert_bound_text_value(database, text, text_length, out_value);
 
     if (status == MYLITE_OK) {
-        status = mylite_dml_coerce_insert_numeric_value(database, column, 1U, ignore, out_value);
+        status =
+            mylite_dml_coerce_insert_numeric_value(database, column, row_number, ignore, out_value);
     }
     if (status == MYLITE_OK) {
-        status =
-            mylite_dml_coerce_insert_string_value(database, column, 1U, ignore, false, out_value);
+        status = mylite_dml_coerce_insert_string_value(
+            database,
+            column,
+            row_number,
+            ignore,
+            false,
+            out_value
+        );
     }
     return status;
 }

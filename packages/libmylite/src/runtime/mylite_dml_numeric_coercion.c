@@ -267,6 +267,16 @@ static int handle_numeric_problem(
     bool ignore
 );
 
+static int handle_numeric_text_problem(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_problem problem,
+    const char *text,
+    size_t text_length,
+    uint64_t row_number,
+    bool ignore
+);
+
 static int set_numeric_problem_error(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -274,10 +284,28 @@ static int set_numeric_problem_error(
     uint64_t row_number
 );
 
+static int set_numeric_text_problem_error(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_problem problem,
+    const char *text,
+    size_t text_length,
+    uint64_t row_number
+);
+
 static int append_numeric_problem_warning(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
     enum mylite_dml_numeric_problem problem,
+    uint64_t row_number
+);
+
+static int append_numeric_text_problem_warning(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_problem problem,
+    const char *text,
+    size_t text_length,
     uint64_t row_number
 );
 
@@ -290,6 +318,15 @@ static int append_decimal_scale_note(
 static int make_numeric_problem_message(
     const struct mylite_insert_table_column *column,
     enum mylite_dml_numeric_problem problem,
+    uint64_t row_number,
+    char **out_message
+);
+
+static int make_numeric_text_problem_message(
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_problem problem,
+    const char *text,
+    size_t text_length,
     uint64_t row_number,
     char **out_message
 );
@@ -676,6 +713,24 @@ static int coerce_numeric_text(
     );
     if (status != MYLITE_OK || handled_negative_integer) {
         return status;
+    }
+    if (problem == MYLITE_DML_NUMERIC_PROBLEM_INCORRECT_INTEGER ||
+        problem == MYLITE_DML_NUMERIC_PROBLEM_INCORRECT_DECIMAL ||
+        (problem == MYLITE_DML_NUMERIC_PROBLEM_DECIMAL_TRUNCATED && !ignore &&
+         mylite_connection_sql_mode_is_strict(database))) {
+        status = handle_numeric_text_problem(
+            database,
+            column,
+            problem,
+            text,
+            text_length,
+            row_number,
+            ignore
+        );
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        problem = MYLITE_DML_NUMERIC_PROBLEM_NONE;
     }
     if (kind != MYLITE_DML_NUMERIC_DECIMAL && unsigned_integer.saw_digits) {
         bool value_exceeds_int64 = unsigned_integer.value > (uint64_t)INT64_MAX;
@@ -1281,6 +1336,38 @@ static int handle_numeric_problem(
     return append_numeric_problem_warning(database, column, problem, row_number);
 }
 
+static int handle_numeric_text_problem(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_problem problem,
+    const char *text,
+    size_t text_length,
+    uint64_t row_number,
+    bool ignore
+) {
+    if (problem == MYLITE_DML_NUMERIC_PROBLEM_NONE) {
+        return MYLITE_OK;
+    }
+    if (!ignore && mylite_connection_sql_mode_is_strict(database)) {
+        return set_numeric_text_problem_error(
+            database,
+            column,
+            problem,
+            text,
+            text_length,
+            row_number
+        );
+    }
+    return append_numeric_text_problem_warning(
+        database,
+        column,
+        problem,
+        text,
+        text_length,
+        row_number
+    );
+}
+
 static int set_numeric_problem_error(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -1289,6 +1376,30 @@ static int set_numeric_problem_error(
 ) {
     char *message = NULL;
     int status = make_numeric_problem_message(column, problem, row_number, &message);
+
+    if (status != MYLITE_OK) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return status;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(database, numeric_problem_code(problem), message);
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_numeric_text_problem_error(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_problem problem,
+    const char *text,
+    size_t text_length,
+    uint64_t row_number
+) {
+    char *message = NULL;
+    int status =
+        make_numeric_text_problem_message(column, problem, text, text_length, row_number, &message);
 
     if (status != MYLITE_OK) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -1313,6 +1424,27 @@ static int append_numeric_problem_warning(
     }
     char *message = NULL;
     int status = make_numeric_problem_message(column, problem, row_number, &message);
+
+    if (status != MYLITE_OK) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return status;
+    }
+    status = mylite_diagnostics_append_warning(database, numeric_problem_code(problem), message);
+    sqlite3_free(message);
+    return status;
+}
+
+static int append_numeric_text_problem_warning(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_problem problem,
+    const char *text,
+    size_t text_length,
+    uint64_t row_number
+) {
+    char *message = NULL;
+    int status =
+        make_numeric_text_problem_message(column, problem, text, text_length, row_number, &message);
 
     if (status != MYLITE_OK) {
         (void)mylite_diagnostics_set_error_message(database, "out of memory");
@@ -1376,6 +1508,45 @@ static int make_numeric_problem_message(
     }
     *out_message = sqlite3_mprintf(
         format,
+        column->name,
+        (unsigned long long)(row_number == 0U ? 1U : row_number)
+    );
+    return *out_message == NULL ? MYLITE_NOMEM : MYLITE_OK;
+}
+
+static int make_numeric_text_problem_message(
+    const struct mylite_insert_table_column *column,
+    enum mylite_dml_numeric_problem problem,
+    const char *text,
+    size_t text_length,
+    uint64_t row_number,
+    char **out_message
+) {
+    const char *format = NULL;
+
+    if (out_message == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (text_length > (size_t)INT_MAX) {
+        return MYLITE_NOMEM;
+    }
+    switch (problem) {
+    case MYLITE_DML_NUMERIC_PROBLEM_DECIMAL_TRUNCATED:
+    case MYLITE_DML_NUMERIC_PROBLEM_INCORRECT_DECIMAL:
+        format = "Incorrect decimal value: '%.*q' for column '%q' at row %llu";
+        break;
+    case MYLITE_DML_NUMERIC_PROBLEM_INCORRECT_INTEGER:
+        format = "Incorrect integer value: '%.*q' for column '%q' at row %llu";
+        break;
+    case MYLITE_DML_NUMERIC_PROBLEM_TRUNCATED:
+    case MYLITE_DML_NUMERIC_PROBLEM_OUT_OF_RANGE:
+    case MYLITE_DML_NUMERIC_PROBLEM_NONE:
+        return MYLITE_MISUSE;
+    }
+    *out_message = sqlite3_mprintf(
+        format,
+        (int)text_length,
+        text == NULL ? "" : text,
         column->name,
         (unsigned long long)(row_number == 0U ? 1U : row_number)
     );

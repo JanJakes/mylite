@@ -58463,7 +58463,146 @@ static int test_insert_select_execution(void) {
     mylite_finalize(stmt);
     stmt = NULL;
 
+    failures += execute_sql(
+        database,
+        "CREATE TABLE source_coercion_rows ("
+        "id INT PRIMARY KEY, n VARCHAR(10), note VARCHAR(10), dt VARCHAR(20))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO source_coercion_rows VALUES "
+        "(1,'123','abc','2024-01-01'),"
+        "(2,'bad','abcdef','bad-date'),"
+        "(3,'456','xy','2024-02-01')",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_strict_select_int_rows (id INT PRIMARY KEY, n INT NOT NULL)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_strict_select_int_rows "
+        "SELECT id, n FROM source_coercion_rows ORDER BY id",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect integer value: 'bad' for column 'n' at row 2",
+        "INSERT SELECT strict integer coercion row number"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "INSERT SELECT strict integer coercion row number code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS inserted FROM target_strict_select_int_rows",
+        (const char *const[]){"inserted"},
+        1,
+        (const char *const[]){"0"},
+        1,
+        "INSERT SELECT strict integer coercion rollback"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_strict_select_date_rows (id INT PRIMARY KEY, d DATE NOT NULL)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_strict_select_date_rows "
+        "SELECT id, dt FROM source_coercion_rows ORDER BY id",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: 'bad-date' for column 'd' at row 2",
+        "INSERT SELECT strict date coercion row number"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value,
+        "INSERT SELECT strict date coercion row number code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_nonstrict_select_int_rows (id INT PRIMARY KEY, n INT NOT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO target_nonstrict_select_int_rows "
+        "SELECT id, n FROM source_coercion_rows ORDER BY id",
+        3,
+        "INSERT SELECT non-strict integer coercion affected rows"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_truncated_wrong_value_for_field,
+        "INSERT SELECT non-strict integer coercion warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "column 'n' at row 2",
+        "INSERT SELECT non-strict integer coercion warning row number"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, n FROM target_nonstrict_select_int_rows ORDER BY id",
+        (const char *const[]){"id", "n"},
+        2,
+        (const char *const[]){"1", "123", "2", "0", "3", "456"},
+        3,
+        "INSERT SELECT non-strict integer coercion rows"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_nonstrict_select_text_rows (id INT PRIMARY KEY, note VARCHAR(3))",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO target_nonstrict_select_text_rows "
+        "SELECT id, note FROM source_coercion_rows ORDER BY id",
+        3,
+        "INSERT SELECT non-strict string truncation affected rows"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "INSERT SELECT non-strict string truncation warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "column 'note' at row 2",
+        "INSERT SELECT non-strict string truncation warning row number"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, note FROM target_nonstrict_select_text_rows ORDER BY id",
+        (const char *const[]){"id", "note"},
+        2,
+        (const char *const[]){"1", "abc", "2", "abc", "3", "xy"},
+        3,
+        "INSERT SELECT non-strict string truncation rows"
+    );
+
     failures += execute_sql(
         database,
         "CREATE TABLE target_nonstrict_source_text (id INT PRIMARY KEY, note VARCHAR(3))",
@@ -62176,7 +62315,7 @@ static int test_numeric_dml_coercion_execution(void) {
     failures += expect_exec_error(
         stmt,
         database,
-        "Incorrect decimal value for column 'd' at row 1",
+        "Incorrect decimal value: '4.567x' for column 'd' at row 1",
         "strict decimal truncation error"
     );
     failures += expect_int(

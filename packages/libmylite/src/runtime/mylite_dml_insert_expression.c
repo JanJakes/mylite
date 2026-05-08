@@ -40,6 +40,7 @@ static int resolve_insert_expression_bound_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
 );
@@ -59,6 +60,7 @@ static int resolve_insert_expression_uint64_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -69,6 +71,7 @@ static int resolve_insert_expression_text_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -128,6 +131,7 @@ int mylite_dml_resolve_insert_expression_bound_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_sql_ast_node *expression,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     const struct mylite_dml_expression_callbacks *callbacks,
     struct mylite_insert_bound_value *out_value
@@ -165,6 +169,7 @@ int mylite_dml_resolve_insert_expression_bound_value(
             column,
             &value,
             statement_row_count,
+            row_number,
             state,
             out_value
         );
@@ -208,6 +213,7 @@ static int resolve_insert_expression_bound_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     struct mylite_insert_bound_value *out_value
 ) {
@@ -245,6 +251,7 @@ static int resolve_insert_expression_bound_value(
             column,
             value,
             statement_row_count,
+            row_number,
             state,
             ignore,
             out_value
@@ -273,6 +280,7 @@ static int resolve_insert_expression_bound_value(
             column,
             value,
             statement_row_count,
+            row_number,
             state,
             ignore,
             out_value
@@ -323,6 +331,7 @@ static int resolve_insert_expression_uint64_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -350,6 +359,7 @@ static int resolve_insert_expression_uint64_value(
         column,
         value,
         statement_row_count,
+        row_number,
         state,
         ignore,
         out_value
@@ -361,6 +371,7 @@ static int resolve_insert_expression_text_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_expression_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -385,6 +396,7 @@ static int resolve_insert_expression_text_value(
                        text,
                        text_length,
                        statement_row_count,
+                       row_number,
                        state,
                        ignore,
                        false,
@@ -396,6 +408,7 @@ static int resolve_insert_expression_text_value(
                        text,
                        text_length,
                        statement_row_count,
+                       row_number,
                        state,
                        ignore,
                        out_value

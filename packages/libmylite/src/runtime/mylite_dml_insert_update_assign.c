@@ -116,6 +116,7 @@ static int evaluate_insert_update_assignment_value(
             column,
             value,
             row_number,
+            row_number,
             state,
             values_plan->ignore,
             out_value
@@ -132,6 +133,7 @@ static int evaluate_insert_update_assignment_value(
             target_values,
             column,
             value->expression,
+            1U,
             row_number,
             state,
             callbacks,

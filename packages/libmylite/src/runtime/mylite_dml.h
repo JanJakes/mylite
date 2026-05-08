@@ -380,6 +380,7 @@ int mylite_dml_resolve_insert_expression_bound_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_sql_ast_node *expression,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     const struct mylite_dml_expression_callbacks *callbacks,
     struct mylite_insert_bound_value *out_value

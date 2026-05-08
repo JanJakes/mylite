@@ -298,6 +298,7 @@ int mylite_dml_resolve_update_binary_literal_value(
         column,
         &value,
         1U,
+        1U,
         NULL,
         ignore,
         &bound
@@ -348,6 +349,7 @@ int mylite_dml_resolve_default_function_value(
         column->default_text,
         column->default_text == NULL ? 0U : strlen(column->default_text),
         0U,
+        1U,
         NULL,
         false,
         &value

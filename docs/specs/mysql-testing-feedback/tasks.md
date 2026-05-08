@@ -296,6 +296,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       DML numeric coercion now applies the same embedded-NUL handling for
       covered integer and approximate assignments, rejecting in strict mode and
       warning/storing the prefix in non-strict mode.
+      DML incorrect integer and decimal diagnostics now include the offending
+      source text for covered 1366 errors and warnings. Direct table-backed
+      `INSERT ... SELECT` now reports selected source row numbers for covered
+      strict and non-strict numeric, temporal, and string coercion diagnostics.
       `INSERT IGNORE ... ON DUPLICATE KEY UPDATE` update assignments now demote
       covered numeric, string-length, temporal, and `NOT NULL` coercion
       failures through MySQL-compatible warnings and coerced values, including

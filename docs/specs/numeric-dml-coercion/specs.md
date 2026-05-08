@@ -77,11 +77,13 @@ signed endpoint, MySQL reports the range warning 1264 instead.
 
 For `DECIMAL(5,2)`, numeric or string `4.567` stores as `4.57` and records note
 1265 in both strict and non-strict modes. String `'4.567x'` rejects with error
-1366 in strict mode. In non-strict mode it stores as `4.57` and records two
+1366 in strict mode, with the offending string included in the diagnostic text.
+In non-strict mode it stores as `4.57` and records two
 1265 notes: one for the trailing characters and one for scale rounding. String
 `'4.5x'` stores as `4.50` with one 1265 note in non-strict mode. String `'abc'`
 stores as `0.00` with warning 1366 in non-strict mode and rejects with error
-1366 in strict mode.
+1366 in strict mode; incorrect integer and decimal diagnostics include the
+offending source text, matching MySQL's 1366 message shape.
 
 For approximate numeric columns, strict mode rejects values outside the target
 column range with error 1264. Non-strict mode and `INSERT IGNORE` clip to the

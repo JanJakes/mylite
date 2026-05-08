@@ -47,6 +47,7 @@ int mylite_dml_resolve_insert_text_value(
     const char *text,
     size_t text_length,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value
@@ -57,6 +58,7 @@ int mylite_dml_resolve_insert_quoted_text_value(
     const char *text,
     size_t text_length,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     bool strict_string_truncation_is_data_truncated,
@@ -67,6 +69,7 @@ int mylite_dml_resolve_insert_binary_literal_value(
     const struct mylite_insert_table_column *column,
     const struct mylite_insert_value *value,
     uint64_t statement_row_count,
+    uint64_t row_number,
     struct mylite_insert_execution_state *state,
     bool ignore,
     struct mylite_insert_bound_value *out_value

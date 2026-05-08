@@ -346,6 +346,7 @@ static int evaluate_insert_set_assignment_value(
             column,
             value->expression,
             1U,
+            1U,
             NULL,
             callbacks,
             out_value
@@ -358,6 +359,7 @@ static int evaluate_insert_set_assignment_value(
             database,
             column,
             value,
+            1U,
             1U,
             NULL,
             ignore,

@@ -50481,6 +50481,8 @@ static int test_show_variables_execution(void) {
         "ON",
         "foreign_key_checks",
         "ON",
+        "skip_external_locking",
+        "ON",
         "sql_log_bin",
         "ON",
         "sql_notes",
@@ -50647,6 +50649,7 @@ static int test_show_variables_execution(void) {
     static const char *const lower_case_table_names_values[] = {"lower_case_table_names", "0"};
     static const char *const max_allowed_packet_values[] = {"max_allowed_packet", "67108864"};
     static const char *const max_connections_values[] = {"max_connections", "151"};
+    static const char *const skip_external_locking_values[] = {"skip_external_locking", "ON"};
     static const char *const sql_log_bin_values[] = {"sql_log_bin", "ON"};
     static const char *const sql_log_bin_off_values[] = {"sql_log_bin", "OFF"};
     static const char *const sql_notes_values[] = {"sql_notes", "ON"};
@@ -50986,6 +50989,15 @@ static int test_show_variables_execution(void) {
         1,
         "wp priority system variable expression defaults"
     );
+    failures += expect_select_rows(
+        database,
+        "SELECT @@skip_external_locking AS sel, @@GLOBAL.skip_external_locking AS gsel",
+        (const char *const[]){"sel", "gsel"},
+        2,
+        (const char *const[]){"1", "1"},
+        1,
+        "skip external locking system variable expression"
+    );
     failures += prepare_sql(
         database,
         "SELECT @@sql_mode AS sm, @@group_concat_max_len AS gcm, "
@@ -51083,6 +51095,24 @@ static int test_show_variables_execution(void) {
         log_bin_trust_values,
         1,
         "show variables log bin trust function creators"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'skip_external_locking'",
+        columns,
+        2,
+        skip_external_locking_values,
+        1,
+        "show variables skip external locking"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'skip_external_locking'",
+        columns,
+        2,
+        skip_external_locking_values,
+        1,
+        "show global variables skip external locking"
     );
     failures += expect_select_rows(
         database,
@@ -51918,6 +51948,30 @@ static int test_show_variables_execution(void) {
     );
     failures += expect_prepare_error(
         database,
+        "SET skip_external_locking = OFF",
+        MYLITE_EXEC_ERROR,
+        "Variable 'skip_external_locking' is a read only variable",
+        "set skip external locking read-only error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_incorrect_global_local_var,
+        "set skip external locking read-only error code"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SET @@GLOBAL.skip_external_locking = DEFAULT",
+        MYLITE_EXEC_ERROR,
+        "Variable 'skip_external_locking' is a read only variable",
+        "set global skip external locking read-only error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_incorrect_global_local_var,
+        "set global skip external locking read-only error code"
+    );
+    failures += expect_prepare_error(
+        database,
         "SELECT @@no_such_variable",
         MYLITE_EXEC_ERROR,
         "Unknown system variable 'no_such_variable'",
@@ -51963,6 +52017,18 @@ static int test_show_variables_execution(void) {
         (int)mylite_warning_code(database, 0),
         mysql_warning_incorrect_global_local_var,
         "session log bin scope error code"
+    );
+    failures += expect_prepare_error(
+        database,
+        "SELECT @@SESSION.skip_external_locking",
+        MYLITE_EXEC_ERROR,
+        "Variable 'skip_external_locking' is a GLOBAL variable",
+        "session skip external locking scope error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_incorrect_global_local_var,
+        "session skip external locking scope error code"
     );
     failures += expect_prepare_error(
         database,
@@ -52036,7 +52102,7 @@ static int test_show_variables_execution(void) {
         columns,
         2,
         on_variable_values,
-        5,
+        6,
         "show variables where value column"
     );
     failures += expect_prepare_error(

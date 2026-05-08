@@ -105,6 +105,7 @@ mutable variables for this embedded runtime:
 - `version` reads the MySQL compatibility target, currently `8.4.9`.
 - `gtid_purged` reads an empty string, and `log_bin` /
   `log_bin_trust_function_creators` read `0` for MyLite's embedded runtime.
+- `skip_external_locking` reads `1` as a global read-only compatibility value.
 - Other version variables read embedded-runtime compile placeholders already
   exposed through `SHOW VARIABLES`.
 

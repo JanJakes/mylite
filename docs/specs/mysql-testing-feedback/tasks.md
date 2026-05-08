@@ -145,6 +145,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
 
 - [x] Support `SELECT @@gtid_purged`, `@@log_bin`, and
       `@@log_bin_trust_function_creators` with embedded-compatible values.
+      `@@skip_external_locking` and `SHOW VARIABLES LIKE
+      'skip_external_locking'` now expose MySQL's global read-only compatibility
+      value and `SET skip_external_locking` reports the MySQL-shaped read-only
+      error.
 - [x] Complete additional `SET` syntaxes for session variables, booleans,
       keywords, and dump-style backup/restore scripts. Boolean keyword values,
       unquoted string keyword values, and mutable `sql_notes` are covered; mixed

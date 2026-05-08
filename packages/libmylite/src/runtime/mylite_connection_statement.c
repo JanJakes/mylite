@@ -143,6 +143,8 @@ static int set_system_variable_global_error(
     enum mylite_connection_system_variable variable
 );
 
+static int set_system_variable_read_only_error(mylite_db *database, const char *variable_name);
+
 static int set_system_variable_type_error(mylite_db *database, const char *variable_name);
 
 static int set_system_variable_wrong_value_error(
@@ -378,6 +380,12 @@ int mylite_connection_execute_system_variable_plan(
         break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
         status = execute_set_default_collation_for_utf8mb4_statement(stmt, plan);
+        break;
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING:
+        status = set_system_variable_read_only_error(
+            stmt->database,
+            set_system_variable_name(plan->variable)
+        );
         break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE:
         (void)mylite_diagnostics_set_error_message(stmt->database, "unsupported SET variable");
@@ -637,6 +645,12 @@ int mylite_connection_copy_system_variable_statement(
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE) {
         (void)mylite_diagnostics_set_error_message(database, "unsupported SET variable");
         return MYLITE_UNSUPPORTED;
+    }
+    if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING) {
+        return set_system_variable_read_only_error(
+            database,
+            set_system_variable_name(plan->variable)
+        );
     }
     plan->global_scope = global_scope;
     if (global_scope && plan->variable != MYLITE_CONNECTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN &&
@@ -997,6 +1011,10 @@ static int resolve_user_variable_system_value(
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         status = resolve_unsigned_user_variable_value(database, plan, &value, out_plan);
         break;
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING:
+        status =
+            set_system_variable_read_only_error(database, set_system_variable_name(plan->variable));
+        break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE:
         status = MYLITE_UNSUPPORTED;
         break;
@@ -1129,6 +1147,9 @@ static enum mylite_connection_system_variable set_system_variable_kind(
     if (mylite_ascii_case_equal(name, "default_collation_for_utf8mb4")) {
         return MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4;
     }
+    if (mylite_ascii_case_equal(name, "skip_external_locking")) {
+        return MYLITE_CONNECTION_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING;
+    }
     return MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE;
 }
 
@@ -1193,6 +1214,8 @@ static const char *set_system_variable_name(enum mylite_connection_system_variab
         return "collation_connection";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
         return "default_collation_for_utf8mb4";
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING:
+        return "skip_external_locking";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE:
         break;
     }
@@ -1232,6 +1255,26 @@ static int set_system_variable_global_error(
     }
     return variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_LOG_BIN ? MYLITE_EXEC_ERROR
                                                                      : MYLITE_UNSUPPORTED;
+}
+
+static int set_system_variable_read_only_error(mylite_db *database, const char *variable_name) {
+    char *message = sqlite3_mprintf("Variable '%q' is a read only variable", variable_name);
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_INCORRECT_GLOBAL_LOCAL_VAR,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
 static int set_system_variable_type_error(mylite_db *database, const char *variable_name) {

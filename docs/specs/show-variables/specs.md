@@ -64,6 +64,7 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW GLOBAL VARIABLES LIKE 'warning_count'` | Returns no row because `warning_count` has no global value. |
 | `SHOW GLOBAL VARIABLES LIKE 'error_count'` | Returns no row because `error_count` has no global value. |
 | `SHOW VARIABLES LIKE 'max_error_count'` | Returns `max_error_count`, `1024`. |
+| `SHOW VARIABLES LIKE 'skip_external_locking'` | Returns `skip_external_locking`, `ON`. MyLite exposes MySQL's global read-only compatibility value for dump and framework probes. |
 | `SHOW VARIABLES LIKE 'sql_notes'` | Returns `sql_notes`, `ON`. |
 | `SET sql_notes = OFF; SHOW VARIABLES LIKE 'sql_notes'` | Returns `sql_notes`, `OFF`. `TRUE`, `FALSE`, `ON`, `OFF`, and `DEFAULT` are accepted for supported boolean session variables. |
 | `SET default_storage_engine = MEMORY; SET time_zone = SYSTEM` | Unquoted identifier/keyword values are accepted for supported string session variables. |
@@ -167,6 +168,7 @@ Catalog for this slice:
 | `log_bin` | `OFF` | `OFF` | Embedded runtime placeholder; MyLite does not write a MySQL binary log. |
 | `log_bin_trust_function_creators` | `OFF` | `OFF` | Embedded runtime placeholder; stored program privilege behavior is deferred. |
 | `max_error_count` | `1024` | `1024` | Storage cap behavior remains deferred; diagnostics currently store all generated conditions in memory. |
+| `skip_external_locking` | `ON` | `ON` | Global read-only MySQL compatibility value; MyLite has no MySQL external-locking side effect. |
 | `sql_log_bin` | current handle state, default `ON` | omitted | Session-only binary-log toggle accepted for dump/restore compatibility; MyLite has no binary log side effect. |
 | `sql_mode` | current handle state, default from the current global value | current global value, startup value is the MySQL 8.4 mode string | Session/local/global assignment is implemented for recognized modes. Session `DEFAULT` reads the current global value. The focused `REPLACE(...)` removal idiom is implemented for session scope. Implemented expression/DDL/DML behavior may still be narrower than the full mode surface. |
 | `sql_notes` | current handle state, default `ON` | `ON` | Session/local assignment is implemented for numeric, boolean keyword, and `DEFAULT` values. |

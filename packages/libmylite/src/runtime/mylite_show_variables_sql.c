@@ -170,6 +170,7 @@ int mylite_show_variables_sql(
     append_show_variable_row(sql, &first, "max_allowed_packet", max_allowed_packet);
     append_show_variable_row(sql, &first, "max_connections", max_connections);
     append_show_variable_row(sql, &first, "max_error_count", "1024");
+    append_show_variable_row(sql, &first, "skip_external_locking", "ON");
     if (!global) {
         append_show_variable_row(sql, &first, "sql_log_bin", show_variable_bool(sql_log_bin));
     }

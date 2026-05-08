@@ -2355,7 +2355,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `show_create_table_skip_secondary_engine` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `show_create_table_verbosity` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `show_gipk_in_create_table_and_information_schema` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
-| `skip_external_locking` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
+| `skip_external_locking` | 🟡 | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. | Exposes MySQL 8.4.9's global read-only compatibility value through `SHOW VARIABLES`, `SHOW GLOBAL VARIABLES`, and `@@skip_external_locking` / `@@GLOBAL.skip_external_locking` as `ON` / `1`, while `SET skip_external_locking` and `SET @@GLOBAL.skip_external_locking` report MySQL-shaped read-only diagnostics. MyLite has no MySQL external-locking side effect. See [SHOW VARIABLES spec](docs/specs/show-variables/specs.md) and [system variable expression reads spec](docs/specs/system-variable-expression-reads/specs.md). |
 | `skip_name_resolve` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `skip_networking` | ❌ | medium | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |
 | `skip_replica_start` | ❌ | low | Expose MySQL-compatible value, scope, mutability metadata, SET behavior, and diagnostics. |  |

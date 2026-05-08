@@ -5,7 +5,7 @@
 | `armscii8` | ❌ | Metadata and conversions |
 | `ascii` | ❌ | Metadata and conversions |
 | `big5` | ❌ | Metadata and conversions |
-| `binary` | ❌ | Metadata and conversions |
+| `binary` | 🟡 | Limited scalar `@@character_set_filesystem` placeholder value only; no table/column/literal storage, metadata catalogs, conversions, collations, or file-name conversion semantics |
 | `cp1250` | ❌ | Metadata and conversions |
 | `cp1251` | ❌ | Metadata and conversions |
 | `cp1256` | ❌ | Metadata and conversions |

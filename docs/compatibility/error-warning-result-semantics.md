@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | Error code catalog | ❌ | Error numbers, SQLSTATE, text |
 | Warning code catalog | ❌ | Warning numbers, SQLSTATE, order |
-| Diagnostics area | ❌ | Diagnostics area semantics |
+| Diagnostics area | 🟡 | Limited previous-statement diagnostics snapshot for `SHOW WARNINGS`, `SHOW ERRORS`, `SHOW COUNT(*) WARNINGS`, `SHOW COUNT(*) ERRORS`, and scalar `@@warning_count` / `@@error_count`; no notes, diagnostics stacks, `GET DIAGNOSTICS`, `max_error_count`, or counted-but-not-stored conditions |
 | Strict-mode errors | ❌ | Escalation from warnings to errors under strict SQL modes |
 | IGNORE warning demotion | ❌ | DML IGNORE demotion rules |
 | Metadata flags | ❌ | Column flags and metadata |

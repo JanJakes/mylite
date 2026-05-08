@@ -179,7 +179,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `enterprise_encryption.maximum_rsa_key_size` | ❌ | Value, scope, SET, diagnostics |
 | `enterprise_encryption.rsa_support_legacy_padding` | ❌ | Value, scope, SET, diagnostics |
 | `eq_range_index_dive_limit` | ❌ | Value, scope, SET, diagnostics |
-| `error_count` | ❌ | Value, scope, SET, diagnostics |
+| `error_count` | 🟡 | Limited read-only scalar `SELECT @@error_count`, `@@session.error_count`, and `@@local.error_count` over the previous diagnostics snapshot; no global scope, `SET`, `SHOW VARIABLES`, `max_error_count`, diagnostics stacks, or counted-but-not-stored conditions |
 | `event_scheduler` | ❌ | Value, scope, SET, diagnostics |
 | `explain_format` | ❌ | Value, scope, SET, diagnostics |
 | `explain_json_format_version` | ❌ | Value, scope, SET, diagnostics |
@@ -1007,7 +1007,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `version_tokens_session` | ❌ | Value, scope, SET, diagnostics |
 | `version_tokens_session_number` | ❌ | Value, scope, SET, diagnostics |
 | `wait_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `warning_count` | ❌ | Value, scope, SET, diagnostics |
+| `warning_count` | 🟡 | Limited read-only scalar `SELECT @@warning_count`, `@@session.warning_count`, and `@@local.warning_count` over the previous diagnostics snapshot; no global scope, `SET`, `SHOW VARIABLES`, `max_error_count`, `sql_notes`, notes, or counted-but-not-stored conditions |
 | `windowing_use_high_precision` | ❌ | Value, scope, SET, diagnostics |
 | `xa_detach_on_prepare` | ❌ | Value, scope, SET, diagnostics |
 

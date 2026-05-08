@@ -392,6 +392,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `TIME_FORMAT()` now infer nullable connection-character-set string
       descriptors for scalar and table-backed expressions, including
       literal-format token expansion and dynamic-format width estimates.
+      `FORMAT()` now infers MySQL-shaped decimal-literal widths for fractional
+      fixed-point inputs and unary signed literals.
       `REGEXP_REPLACE()` now reports the MySQL 8.4.9-shaped default
       `utf8mb4` result descriptor (`LONG_BLOB`, length `67108864`, nullable,
       no `NOT_NULL` flag) instead of a medium text descriptor.

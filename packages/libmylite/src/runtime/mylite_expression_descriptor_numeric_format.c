@@ -14,10 +14,20 @@ static uint64_t format_function_result_character_length(
     const struct mylite_sql_ast_node *argument,
     const struct mylite_field_descriptor *argument_descriptor
 );
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static uint64_t format_decimal_literal_result_character_length(
+    const struct mylite_sql_ast_node *argument
+);
+
+static uint64_t format_decimal_literal_descriptor_length(
+    const struct mylite_sql_ast_node *argument
+);
+
+static uint64_t format_decimal_result_character_length(uint64_t decimal_length);
+
 // NOLINTNEXTLINE(misc-no-recursion)
 static uint64_t format_literal_result_character_length(const struct mylite_sql_ast_node *argument);
-
-static uint64_t format_literal_fraction_length(const struct mylite_sql_ast_node *argument);
 
 int mylite_expression_descriptor_infer_format_function(
     mylite_db *database,
@@ -61,8 +71,12 @@ static uint64_t format_function_result_character_length(
     const struct mylite_sql_ast_node *argument,
     const struct mylite_field_descriptor *argument_descriptor
 ) {
+    uint64_t decimal_literal_length = format_decimal_literal_result_character_length(argument);
     uint64_t literal_length = format_literal_result_character_length(argument);
 
+    if (decimal_literal_length != 0U) {
+        return decimal_literal_length;
+    }
     if (literal_length != 0U) {
         return literal_length;
     }
@@ -76,8 +90,9 @@ static uint64_t format_function_result_character_length(
     case MYLITE_FIELD_TYPE_LONGLONG:
     case MYLITE_FIELD_TYPE_INT24:
     case MYLITE_FIELD_TYPE_YEAR:
-    case MYLITE_FIELD_TYPE_NEWDECIMAL:
         return argument_descriptor->length + mylite_format_numeric_descriptor_extra_length;
+    case MYLITE_FIELD_TYPE_NEWDECIMAL:
+        return format_decimal_result_character_length(argument_descriptor->length);
     case MYLITE_FIELD_TYPE_FLOAT:
     case MYLITE_FIELD_TYPE_DOUBLE:
         return mylite_format_float_character_length;
@@ -107,16 +122,66 @@ static uint64_t format_function_result_character_length(
 }
 
 // NOLINTNEXTLINE(misc-no-recursion)
-static uint64_t format_literal_result_character_length(const struct mylite_sql_ast_node *argument) {
-    uint64_t fraction_length = 0U;
+static uint64_t format_decimal_literal_result_character_length(
+    const struct mylite_sql_ast_node *argument
+) {
+    uint64_t descriptor_length = format_decimal_literal_descriptor_length(argument);
+
+    return descriptor_length == 0U ? 0U : format_decimal_result_character_length(descriptor_length);
+}
+
+static uint64_t format_decimal_literal_descriptor_length(
+    const struct mylite_sql_ast_node *argument
+) {
+    const char *text = NULL;
+    const char *dot = NULL;
+    const char *end = NULL;
+    uint64_t length = 0U;
 
     argument = mylite_sql_ast_unwrap_parenthesized_expression(argument);
     if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
         (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
          argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
-        uint64_t length = format_literal_result_character_length(mylite_ast_child_at(argument, 0U));
+        return format_decimal_literal_descriptor_length(mylite_ast_child_at(argument, 0U));
+    }
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL ||
+        argument->literal_kind != MYLITE_SQL_AST_LITERAL_DECIMAL) {
+        return 0U;
+    }
+    text = argument->span.text;
+    end = text == NULL ? NULL : text + argument->span.length;
+    dot = text == NULL ? NULL : memchr(text, '.', argument->span.length);
+    if (dot == NULL) {
+        return 0U;
+    }
+    length = argument->span.length;
+    if (dot == text || (dot > text && dot + 1 < end)) {
+        ++length;
+    }
+    return length;
+}
 
-        return length == 0U ? 0U : length + 1U;
+static uint64_t format_decimal_result_character_length(uint64_t decimal_length) {
+    uint64_t grouping_slack = decimal_length > 3U ? (decimal_length - 3U) / 3U : 0U;
+    uint64_t total = 0U;
+
+    if (decimal_length > UINT64_MAX - mylite_format_decimal_literal_extra_length) {
+        return UINT64_MAX;
+    }
+    total = decimal_length + mylite_format_decimal_literal_extra_length;
+    if (grouping_slack > UINT64_MAX - total) {
+        return UINT64_MAX;
+    }
+    return total + grouping_slack;
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+static uint64_t format_literal_result_character_length(const struct mylite_sql_ast_node *argument) {
+    argument = mylite_sql_ast_unwrap_parenthesized_expression(argument);
+    if (argument != NULL && argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        (argument->operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+         argument->operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
+        return format_literal_result_character_length(mylite_ast_child_at(argument, 0U));
     }
     if (argument == NULL || argument->kind != MYLITE_SQL_AST_LITERAL) {
         return 0U;
@@ -127,8 +192,7 @@ static uint64_t format_literal_result_character_length(const struct mylite_sql_a
     case MYLITE_SQL_AST_LITERAL_INTEGER:
         return argument->span.length + mylite_format_literal_extra_length;
     case MYLITE_SQL_AST_LITERAL_DECIMAL:
-        fraction_length = format_literal_fraction_length(argument);
-        return argument->span.length + mylite_format_decimal_literal_extra_length + fraction_length;
+        return 0U;
     case MYLITE_SQL_AST_LITERAL_FLOAT:
         return mylite_format_float_character_length;
     case MYLITE_SQL_AST_LITERAL_STRING:
@@ -148,14 +212,4 @@ static uint64_t format_literal_result_character_length(const struct mylite_sql_a
         break;
     }
     return 0U;
-}
-
-static uint64_t format_literal_fraction_length(const struct mylite_sql_ast_node *argument) {
-    const char *text = argument == NULL ? NULL : argument->span.text;
-    const char *dot = text == NULL ? NULL : memchr(text, '.', argument->span.length);
-
-    if (dot == NULL) {
-        return 0U;
-    }
-    return (uint64_t)(argument->span.length - (size_t)(dot - text) - 1U);
 }

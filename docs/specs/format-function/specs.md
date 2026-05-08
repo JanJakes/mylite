@@ -211,6 +211,8 @@ by the tests:
 | Expression/source | latin1 length |
 | --- | ---: |
 | `FORMAT(1234,2)` | `38` |
+| `FORMAT(-1234,2)` | `38` |
+| `FORMAT(1234.5,2)` | `41` |
 | `FORMAT(1234.567,2)` | `44` |
 | `FORMAT(1234.567E0,2)` | `61` |
 | `FORMAT('1234.567',2)` | `42` |
@@ -221,8 +223,11 @@ by the tests:
 | `DOUBLE` column argument | `61` |
 | `VARCHAR(32)` column argument | `74` |
 
-With `SET NAMES utf8mb4`, the verified length for `FORMAT(1234.56,2)` is `168`
-bytes, reflecting 42 characters at four bytes per character.
+Signs on numeric literals do not widen the `FORMAT()` descriptor. Decimal
+literals use MySQL's fixed-point descriptor width plus grouping slack rather
+than the final formatted display text. With `SET NAMES utf8mb4`, the verified
+lengths are `164` bytes for `FORMAT(1234.5,2)` and `168` bytes for
+`FORMAT(1234.56,2)`.
 
 ## DML Behavior
 

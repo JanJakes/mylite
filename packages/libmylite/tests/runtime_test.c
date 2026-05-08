@@ -25359,6 +25359,32 @@ static int test_format_scalar_function_execution(mylite_db *database) {
          0U,
          format_string_result_clear_flags,
          1},
+        {"fmt_neg_int",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         38U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         0U,
+         format_string_result_clear_flags,
+         1},
+        {"fmt_one_decimal",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         41U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         8U,
+         0U,
+         format_string_result_clear_flags,
+         1},
         {"fmt_decimal",
          NULL,
          NULL,
@@ -25426,7 +25452,20 @@ static int test_format_scalar_function_execution(mylite_db *database) {
          1},
     };
     static const struct expected_result_metadata format_utf8_metadata[] = {
-        {"fmt_utf8",
+        {"fmt_utf8_one_decimal",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         164U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         format_string_result_clear_flags,
+         1},
+        {"fmt_utf8_two_decimal",
          NULL,
          NULL,
          NULL,
@@ -25858,6 +25897,8 @@ static int test_format_scalar_function_execution(mylite_db *database) {
     failures += prepare_sql(
         database,
         "SELECT FORMAT(1234,2) AS fmt_int, "
+        "FORMAT(-1234,2) AS fmt_neg_int, "
+        "FORMAT(1234.5,2) AS fmt_one_decimal, "
         "FORMAT(1234.567,2) AS fmt_decimal, "
         "FORMAT(1234.567E0,2) AS fmt_float, "
         "FORMAT('1234.567',2) AS fmt_text, "
@@ -25878,7 +25919,13 @@ static int test_format_scalar_function_execution(mylite_db *database) {
     stmt = NULL;
 
     failures += execute_sql(database, "SET NAMES utf8mb4", MYLITE_DONE);
-    failures += prepare_sql(database, "SELECT FORMAT(1234.56,2) AS fmt_utf8", MYLITE_OK, &stmt);
+    failures += prepare_sql(
+        database,
+        "SELECT FORMAT(1234.5,2) AS fmt_utf8_one_decimal, "
+        "FORMAT(1234.56,2) AS fmt_utf8_two_decimal",
+        MYLITE_OK,
+        &stmt
+    );
     failures += expect_result_metadata(
         stmt,
         format_utf8_metadata,

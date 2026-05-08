@@ -63714,6 +63714,12 @@ static int test_temporal_dml_coercion_execution(void) {
         "2022-02-31 12:34:56",
         "0000-00-00 00:00:00",
     };
+    static const char *const strict_temporal_existing_values[] = {
+        "1",
+        "2024-01-01",
+        "2024-01-01 01:02:03",
+        "2024-01-01 01:02:03",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -63807,6 +63813,155 @@ static int test_temporal_dml_coercion_execution(void) {
     );
     mylite_finalize(stmt);
     stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO temporal_values(id,d,dt,ts) VALUES "
+        "(13,0+0,'2024-01-01 00:00:00','2024-01-01 00:00:00')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '0' for column 'd' at row 1",
+        "default temporal expression zero-date insert error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO temporal_values(id,d,dt,ts) VALUES "
+        "(14,20220001+0,'2024-01-01 00:00:00','2024-01-01 00:00:00')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '20220001' for column 'd' at row 1",
+        "default temporal expression zero-in-date insert error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO temporal_values(id,d,dt,ts) VALUES "
+        "(15,'2024-01-01',20220001000000+0,'2024-01-01 00:00:00')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect datetime value: '20220001000000' for column 'dt' at row 1",
+        "default temporal expression zero-in-datetime insert error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO temporal_values SET "
+        "d = 0+0, dt = '2024-01-01 00:00:00', ts = '2024-01-01 00:00:00'",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '0' for column 'd' at row 1",
+        "default temporal expression insert set zero-date error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_select_rows(
+        database,
+        "SELECT COUNT(*) AS c FROM temporal_values",
+        (const char *[]){"c"},
+        1,
+        (const char *[]){"0"},
+        1,
+        "default temporal expression insert rollback"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE strict_temporal_replace ("
+        "id INT PRIMARY KEY, d DATE, dt DATETIME, ts TIMESTAMP NULL DEFAULT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO strict_temporal_replace VALUES "
+        "(1,'2024-01-01','2024-01-01 01:02:03','2024-01-01 01:02:03')",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "REPLACE INTO strict_temporal_replace VALUES "
+        "(1,0+0,'2025-01-01 00:00:00','2025-01-01 00:00:00')",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '0' for column 'd' at row 1",
+        "default temporal expression replace zero-date error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM strict_temporal_replace ORDER BY id",
+        temporal_columns,
+        4,
+        strict_temporal_existing_values,
+        1,
+        "default temporal expression replace unchanged"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE strict_temporal_odku ("
+        "id INT PRIMARY KEY, d DATE, dt DATETIME, ts TIMESTAMP NULL DEFAULT NULL)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO strict_temporal_odku VALUES "
+        "(1,'2024-01-01','2024-01-01 01:02:03','2024-01-01 01:02:03')",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO strict_temporal_odku VALUES "
+        "(1,'2025-01-01','2025-01-01 00:00:00','2025-01-01 00:00:00') "
+        "ON DUPLICATE KEY UPDATE d = 0+0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Incorrect date value: '0' for column 'd' at row 1",
+        "default temporal expression odku zero-date error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d,dt,ts FROM strict_temporal_odku ORDER BY id",
+        temporal_columns,
+        4,
+        strict_temporal_existing_values,
+        1,
+        "default temporal expression odku unchanged"
+    );
 
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);
     failures += execute_sql_expect_done_affected(

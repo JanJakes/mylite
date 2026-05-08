@@ -369,7 +369,7 @@ static int resolve_insert_explicit_value(
     const struct mylite_dml_expression_callbacks *callbacks
 ) {
     if (value->kind == MYLITE_INSERT_VALUE_EXPRESSION) {
-        return mylite_dml_resolve_insert_expression_bound_value(
+        int status = mylite_dml_resolve_insert_expression_bound_value(
             database,
             schema_name,
             plan,
@@ -381,6 +381,17 @@ static int resolve_insert_explicit_value(
             row_number,
             state,
             callbacks,
+            out_value
+        );
+        if (status != MYLITE_OK || out_value->kind == MYLITE_INSERT_BOUND_NULL ||
+            out_value->kind == MYLITE_INSERT_BOUND_TEXT) {
+            return status;
+        }
+        return mylite_dml_coerce_insert_temporal_value(
+            database,
+            column,
+            row_number,
+            (plan != NULL && plan->ignore) != 0,
             out_value
         );
     }

@@ -64,6 +64,10 @@ MyLite validates temporal DML values after scalar evaluation but before the
 SQLite write. This keeps all write forms on the same behavior:
 
 - quoted and unquoted temporal literals are validated before binding
+- non-null non-text insert candidate and assignment values are converted to
+  their scalar text form for classification, so expression writes such as
+  `VALUES (0+0)` and `SET d = 20220001+0` observe strict zero-date SQL modes
+  before the SQLite write
 - invalid or mode-rejected `DATE` values coerce to `0000-00-00` in non-strict
   mode
 - invalid or mode-rejected `DATETIME` and `TIMESTAMP` values coerce to
@@ -107,3 +111,5 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - `REPLACE` and `ON DUPLICATE KEY UPDATE` write-path coercion
 - update-path coercion and strict rejection without mutating existing rows
 - numeric update RHS strict rejection for zero and zero-in-date values
+- numeric and scalar-expression insert candidate strict rejection for zero and
+  zero-in-date values without mutating existing rows

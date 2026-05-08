@@ -26,6 +26,10 @@ enum mylite_dml_temporal_problem {
     MYLITE_DML_TEMPORAL_PROBLEM_ZERO_IN_DATE,
 };
 
+enum {
+    MYLITE_DML_TEMPORAL_TEXT_BUFFER_SIZE = 64,
+};
+
 struct mylite_dml_temporal_parts {
     int year;
     int month;
@@ -139,6 +143,20 @@ static int replace_insert_temporal_text(
     struct mylite_insert_bound_value *value
 );
 
+static int replace_insert_temporal_text_with_copy(
+    mylite_db *database,
+    const char *text,
+    size_t text_length,
+    struct mylite_insert_bound_value *value
+);
+
+static int copy_insert_temporal_value_text(
+    mylite_db *database,
+    const struct mylite_insert_bound_value *value,
+    char **out_text,
+    size_t *out_length
+);
+
 static int replace_update_temporal_text(
     mylite_db *database,
     const struct mylite_dml_temporal_output *output,
@@ -154,28 +172,53 @@ int mylite_dml_coerce_insert_temporal_value(
 ) {
     enum mylite_dml_temporal_kind kind = temporal_kind_for_column(column);
     struct mylite_dml_temporal_output output = {0};
+    char *converted_text = NULL;
+    const char *text = NULL;
+    size_t text_length = 0U;
     int status = MYLITE_OK;
 
     if (database == NULL || column == NULL || value == NULL) {
         return MYLITE_MISUSE;
     }
-    if (kind == MYLITE_DML_TEMPORAL_NONE || value->kind != MYLITE_INSERT_BOUND_TEXT) {
+    if (kind == MYLITE_DML_TEMPORAL_NONE || value->kind == MYLITE_INSERT_BOUND_NULL) {
         return MYLITE_OK;
     }
+
+    if (value->kind == MYLITE_INSERT_BOUND_TEXT) {
+        text = value->text_value;
+        text_length = value->text_length;
+    } else {
+        status = copy_insert_temporal_value_text(database, value, &converted_text, &text_length);
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        text = converted_text;
+    }
+
     status = coerce_temporal_text_value(
         database,
         column,
         kind,
-        value->text_value,
-        value->text_length,
+        text,
+        text_length,
         row_number,
         ignore,
         &output
     );
-    if (status != MYLITE_OK || !output.replace) {
+    if (status != MYLITE_OK) {
+        free(converted_text);
         return status;
     }
-    return replace_insert_temporal_text(database, &output, value);
+    if (output.replace) {
+        status = replace_insert_temporal_text(database, &output, value);
+        free(converted_text);
+        return status;
+    }
+    if (converted_text != NULL) {
+        status = replace_insert_temporal_text_with_copy(database, text, text_length, value);
+    }
+    free(converted_text);
+    return status;
 }
 
 int mylite_dml_coerce_update_temporal_value(
@@ -587,6 +630,75 @@ static int replace_insert_temporal_text(
         .text_value = copy,
         .text_length = output->length,
     };
+    return MYLITE_OK;
+}
+
+static int replace_insert_temporal_text_with_copy(
+    mylite_db *database,
+    const char *text,
+    size_t text_length,
+    struct mylite_insert_bound_value *value
+) {
+    char *copy = mylite_copy_span_text(text, text_length);
+
+    if (copy == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    mylite_dml_insert_bound_value_deinit(value);
+    *value = (struct mylite_insert_bound_value){
+        .kind = MYLITE_INSERT_BOUND_TEXT,
+        .text_value = copy,
+        .text_length = text_length,
+    };
+    return MYLITE_OK;
+}
+
+static int copy_insert_temporal_value_text(
+    mylite_db *database,
+    const struct mylite_insert_bound_value *value,
+    char **out_text,
+    size_t *out_length
+) {
+    char buffer[MYLITE_DML_TEMPORAL_TEXT_BUFFER_SIZE] = {0};
+    int length = 0;
+
+    if (database == NULL || value == NULL || out_text == NULL || out_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_text = NULL;
+    *out_length = 0U;
+    switch (value->kind) {
+    case MYLITE_INSERT_BOUND_INTEGER:
+        length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->integer_value);
+        break;
+    case MYLITE_INSERT_BOUND_REAL:
+        length = mylite_format_compact_real_text(value->real_value, buffer, sizeof(buffer));
+        break;
+    case MYLITE_INSERT_BOUND_BLOB:
+        *out_text = mylite_copy_span_text(value->text_value, value->text_length);
+        if (*out_text == NULL) {
+            (void)mylite_diagnostics_set_error_message(database, "out of memory");
+            return MYLITE_NOMEM;
+        }
+        *out_length = value->text_length;
+        return MYLITE_OK;
+    case MYLITE_INSERT_BOUND_TEXT:
+    case MYLITE_INSERT_BOUND_NULL:
+        return MYLITE_MISUSE;
+    }
+
+    if (length <= 0 || (size_t)length >= sizeof(buffer)) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    *out_text = mylite_copy_span_text(buffer, (size_t)length);
+    if (*out_text == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    *out_length = (size_t)length;
     return MYLITE_OK;
 }
 

@@ -865,6 +865,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_values_statement(
     struct mylite_sql_ast_node *columns,
     struct mylite_sql_ast_node *rows
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_select_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_replace_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *select_statement
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_replace_tokens tokens,

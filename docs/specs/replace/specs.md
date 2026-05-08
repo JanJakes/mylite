@@ -3,9 +3,9 @@
 ## Scope
 
 This feature specifies MySQL-compatible `REPLACE` behavior for MyLite. This
-feature now has a first executable slice for `VALUES`/`VALUE`/`VALUES ROW(...)`
-and `SET` sources over supported MyLite base tables. Query-source forms and
-advanced table features remain deferred.
+feature now has executable slices for `VALUES`/`VALUE`/`VALUES ROW(...)`, `SET`,
+and supported `SELECT` sources over supported MyLite base tables. `TABLE`
+sources and advanced table features remain deferred.
 
 In scope for the full feature:
 
@@ -47,8 +47,10 @@ First executable implementation slice:
   lowering directly to SQLite `INSERT OR REPLACE`
 - parse `LOW_PRIORITY` as a no-op modifier and `DELAYED` as a warning-producing
   normal replace
-- keep `REPLACE ... SELECT` and `REPLACE ... TABLE` runtime-deferred until
-  insert-from-query source execution is specified and implemented
+- implement `REPLACE ... SELECT` through the materialized insert-from-query
+  source executor for the same supported `SELECT` shapes as `INSERT ... SELECT`
+- keep `REPLACE ... TABLE` runtime-deferred until table-source DML execution is
+  specified and implemented
 
 Out of scope for the first executable slice:
 
@@ -447,9 +449,10 @@ handling from `INSERT ... SET`, because MySQL accepts qualified targets for
 `REPLACE ... SET` in runtime probes. The assignment list must preserve source
 order.
 
-`REPLACE ... SELECT` and `REPLACE ... TABLE` need AST representation even if
-runtime remains unsupported in the first implementation. Once query-source
-inserts exist, the runtime should consume rows from the query in result order.
+`REPLACE ... SELECT` has a dedicated AST representation and consumes rows from
+the query in result order through the materialized insert-from-query path.
+`REPLACE ... TABLE` needs AST representation once its deferred runtime support
+is added.
 
 The parser must not accept `IGNORE`, `HIGH_PRIORITY`, row aliases,
 `ON DUPLICATE KEY UPDATE`, or partition clauses for the first slice unless
@@ -591,10 +594,11 @@ stored row that may be deleted later. Candidate slots are initialized from
 defaults and implicit values. Assignments then run left to right, and earlier
 assignments are visible to later assignments.
 
-`REPLACE ... SELECT` and `REPLACE ... TABLE` should eventually use the
-insert-from-query candidate builder. The query result's row order determines
-replacement order. If the query has no deterministic order, MyLite should
-mirror MySQL by making no stronger guarantee.
+`REPLACE ... SELECT` uses the insert-from-query candidate builder. The query
+result's row order determines replacement order. If the query has no
+deterministic order, MyLite should mirror MySQL by making no stronger
+guarantee. `REPLACE ... TABLE` remains deferred until table-source DML support
+exists.
 
 ### Metadata and public API
 
@@ -652,11 +656,14 @@ future mode work can add:
 
 MyLite intentionally documents these first-slice boundaries:
 
-- `REPLACE ... SELECT` and `REPLACE ... TABLE` runtime wait for
-  insert-from-query support.
+- `REPLACE ... SELECT` supports the current materialized `INSERT ... SELECT`
+  source shapes: no-table scalar `SELECT`, `SELECT ... FROM DUAL`, and direct
+  single-table `SELECT` with the supported projection, filtering, ordering, and
+  limit clauses.
+- `REPLACE ... TABLE` runtime waits for table-source DML support.
 - Partition clauses wait for partition metadata and routing.
-- `DELAYED` warning 3005 is implemented for the executable `VALUES` and `SET`
-  sources.
+- `DELAYED` warning 3005 is implemented for the executable `VALUES`, `SET`, and
+  `SELECT` sources.
 - Trigger execution waits for trigger DDL and runtime support.
 - Foreign-key `ON DELETE CASCADE`, `ON DELETE SET NULL`, `RESTRICT`, and
   `NO ACTION` behavior is implemented for supported conflict deletes.
@@ -676,7 +683,7 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | `REPLACE INTO t VALUE (2,20)` | Accepted; `VALUE` is a synonym. |
 | `REPLACE INTO t VALUES ROW(3,30), ROW(4,40)` | Inserts both rows; affected rows `2`. |
 | `REPLACE INTO t SET id=5, v=50` | SET form accepted; affected rows `1` when no conflict. |
-| `REPLACE INTO t SELECT ... ORDER BY ...` | Processes query rows in result order once query-source runtime exists. |
+| `REPLACE INTO t SELECT ... ORDER BY ...` | Processes query rows in result order for supported `INSERT ... SELECT` source shapes. |
 | `REPLACE INTO t TABLE src` | Processes TABLE source rows once table-source runtime exists. |
 | `REPLACE LOW_PRIORITY INTO t VALUES (...)` | Accepted; no warning in verified InnoDB runtime. |
 | `REPLACE DELAYED INTO t VALUES (...)` | Executes as normal replace and records warning 3005. |
@@ -740,6 +747,9 @@ Runtime tests for first executable slice:
   insert id
 - `DELAYED` warning 3005
 - SET assignment-order behavior and lack of access to deleted-row values
+- `REPLACE ... SELECT` no-table and table-backed sources reusing
+  insert-from-query materialization, column-count validation, source-order
+  replacement, affected rows, and rollback behavior
 - strict and non-strict `TINYTEXT`/`TINYBLOB` and plain `TEXT`/`BLOB` write
   limits for `VALUES` and `SET`, including conflict-row preservation before
   strict candidate-row failures and UTF-8 boundary truncation for text columns
@@ -750,7 +760,7 @@ Runtime tests for first executable slice:
 
 Deferred runtime tests:
 
-- `REPLACE ... SELECT` and `REPLACE ... TABLE` source ordering and metadata
+- `REPLACE ... TABLE` source ordering and metadata
 - partition routing and partition mismatch diagnostics
 - trigger order and trigger side effects
 - generated-column default and conflict behavior

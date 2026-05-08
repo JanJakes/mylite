@@ -82,7 +82,8 @@ int mylite_statement_execute_custom_with_callbacks(
     if (stmt->executed) {
         return MYLITE_DONE;
     }
-    if (stmt->kind == MYLITE_STMT_REPLACE_VALUES || stmt->kind == MYLITE_STMT_REPLACE_SET) {
+    if (stmt->kind == MYLITE_STMT_REPLACE_VALUES || stmt->kind == MYLITE_STMT_REPLACE_SELECT ||
+        stmt->kind == MYLITE_STMT_REPLACE_SET) {
         status = mylite_dml_append_replace_delayed_warning(stmt);
         if (status != MYLITE_OK) {
             stmt->affected_rows = -1;
@@ -164,6 +165,9 @@ int mylite_statement_execute_custom_with_callbacks(
         break;
     case MYLITE_STMT_REPLACE_VALUES:
         status = mylite_dml_execute_replace_values_statement(stmt, &dml_expression_callbacks);
+        break;
+    case MYLITE_STMT_REPLACE_SELECT:
+        status = mylite_dml_execute_replace_select_statement(stmt, &dml_expression_callbacks);
         break;
     case MYLITE_STMT_REPLACE_SET:
         status = mylite_dml_execute_replace_set_statement(stmt, &dml_expression_callbacks);
@@ -409,6 +413,7 @@ static const char *parser_placeholder_warning_message(enum mylite_stmt_kind kind
     case MYLITE_STMT_INSERT_SET:
     case MYLITE_STMT_INSERT_SELECT:
     case MYLITE_STMT_REPLACE_VALUES:
+    case MYLITE_STMT_REPLACE_SELECT:
     case MYLITE_STMT_REPLACE_SET:
     case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_TABLE_SELECT:

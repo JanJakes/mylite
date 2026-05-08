@@ -23,6 +23,10 @@ int mylite_dml_copy_replace_values_statement(
     const struct mylite_sql_ast_node *statement,
     struct mylite_insert_values_plan *values_plan
 );
+int mylite_dml_copy_replace_select_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_insert_values_plan *values_plan
+);
 int mylite_dml_copy_replace_set_statement(
     const struct mylite_sql_ast_node *statement,
     struct mylite_insert_values_plan *values_plan,

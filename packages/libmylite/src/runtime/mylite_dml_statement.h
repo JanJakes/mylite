@@ -22,6 +22,10 @@ int mylite_dml_execute_replace_values_statement(
     mylite_stmt *stmt,
     const struct mylite_dml_expression_callbacks *expression_callbacks
 );
+int mylite_dml_execute_replace_select_statement(
+    mylite_stmt *stmt,
+    const struct mylite_dml_expression_callbacks *expression_callbacks
+);
 int mylite_dml_execute_replace_set_statement(
     mylite_stmt *stmt,
     const struct mylite_dml_expression_callbacks *expression_callbacks

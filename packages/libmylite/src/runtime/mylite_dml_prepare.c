@@ -255,6 +255,23 @@ int mylite_dml_prepare_replace_values_statement(
     );
 }
 
+int mylite_dml_prepare_replace_select_statement(
+    mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const char *sql,
+    size_t sql_length,
+    mylite_stmt **out_stmt
+) {
+    return prepare_insert_like_statement(
+        database,
+        MYLITE_STMT_REPLACE_SELECT,
+        statement,
+        sql,
+        sql_length,
+        out_stmt
+    );
+}
+
 int mylite_dml_prepare_replace_set_statement(
     mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -337,6 +354,8 @@ static int copy_insert_like_statement(
         );
     case MYLITE_STMT_REPLACE_VALUES:
         return mylite_dml_copy_replace_values_statement(statement, &stmt->insert_values);
+    case MYLITE_STMT_REPLACE_SELECT:
+        return mylite_dml_copy_replace_select_statement(statement, &stmt->insert_values);
     case MYLITE_STMT_REPLACE_SET:
         return mylite_dml_copy_replace_set_statement(
             statement,
@@ -429,7 +448,10 @@ static int clone_insert_plan_nodes(
         statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT) {
         assignments_node = second_child;
         status = clone_insert_set_nodes(stmt, assignments_node, sql, sql_length);
-    } else if (statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT) {
+    } else if (
+        statement->kind == MYLITE_SQL_AST_INSERT_SELECT_STATEMENT ||
+        statement->kind == MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT
+    ) {
         status = clone_insert_select_node(stmt, statement, sql, sql_length);
     } else {
         values_node = second_child;

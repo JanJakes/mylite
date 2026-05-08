@@ -7775,6 +7775,7 @@ static int test_replace_syntax(void) {
     const struct mylite_sql_ast_node *columns = NULL;
     const struct mylite_sql_ast_node *rows = NULL;
     const struct mylite_sql_ast_node *assignments = NULL;
+    const struct mylite_sql_ast_node *select = NULL;
     int failures = 0;
 
     failures +=
@@ -7866,6 +7867,43 @@ static int test_replace_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("REPLACE INTO t SELECT 1, 2;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select = child_at(statement, 1U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT, "replace select statement");
+    failures += expect_child_count(statement, 2U, "replace select without column list children");
+    failures += expect_node(select, MYLITE_SQL_AST_SELECT_STATEMENT, "replace select source");
+    failures += expect_child_count(child_at(select, 0U), 2U, "replace select projection count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE LOW_PRIORITY INTO t (id, v) SELECT id, v FROM src ORDER BY id LIMIT 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    select = child_at(statement, 2U);
+    failures += expect_bool(statement->replace_low_priority, true, "replace select low priority");
+    failures += expect_bool(statement->replace_delayed, false, "replace select no delayed");
+    failures += expect_node(columns, MYLITE_SQL_AST_INSERT_COLUMN_LIST, "replace select columns");
+    failures += expect_child_count(columns, 2U, "replace select column count");
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "replace select table source");
+    failures +=
+        expect_node(child_at(select, 2U), MYLITE_SQL_AST_ORDER_BY_CLAUSE, "replace select order");
+    failures +=
+        expect_node(child_at(select, 3U), MYLITE_SQL_AST_LIMIT_CLAUSE, "replace select limit");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE DELAYED t SELECT 1 FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select = child_at(statement, 1U);
+    failures += expect_bool(statement->replace_delayed, true, "replace select delayed flag");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "replace select dual");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("REPLACE IGNORE INTO t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -7915,7 +7953,11 @@ static int test_replace_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t SELECT 1", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql(
+        "REPLACE INTO t SELECT 1 ON DUPLICATE KEY UPDATE a = 1",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t TABLE src", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

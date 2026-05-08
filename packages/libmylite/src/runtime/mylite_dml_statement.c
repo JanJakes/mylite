@@ -532,6 +532,92 @@ int mylite_dml_execute_replace_values_statement(
     return status;
 }
 
+int mylite_dml_execute_replace_select_statement(
+    mylite_stmt *stmt,
+    const struct mylite_dml_expression_callbacks *expression_callbacks
+) {
+    const char *schema_name = NULL;
+    struct mylite_insert_table table = {0};
+    struct mylite_insert_transaction_result result = {0};
+    mylite_stmt *select_stmt = NULL;
+    size_t *column_indexes = NULL;
+    size_t source_column_count = 0U;
+    int select_column_count = 0;
+    int status = mylite_dml_validate_insert_target(
+        stmt->database,
+        stmt->database->selected_schema,
+        &stmt->insert_values,
+        &schema_name
+    );
+
+    stmt->affected_rows = 0;
+    if (status != MYLITE_OK) {
+        return status;
+    }
+
+    status = mylite_dml_load_write_table(
+        stmt->database,
+        schema_name,
+        stmt->insert_values.table_name,
+        &table
+    );
+    if (status == MYLITE_OK) {
+        status = mylite_dml_validate_insert_column_list(
+            stmt->database,
+            &stmt->insert_values,
+            &table,
+            &column_indexes
+        );
+    }
+    if (status == MYLITE_OK) {
+        source_column_count = stmt->insert_values.has_column_list ? stmt->insert_values.column_count
+                                                                  : table.column_count;
+        status = reject_temporary_insert_select_self_reference(
+            stmt->database,
+            stmt->database->selected_schema,
+            schema_name,
+            stmt->insert_values.table_name,
+            stmt->insert_select.select_statement
+        );
+    }
+    if (status == MYLITE_OK) {
+        status = prepare_insert_select_source(stmt, &select_stmt);
+    }
+    if (status == MYLITE_OK) {
+        select_column_count = mylite_column_count(select_stmt);
+        if (select_column_count < 0 || (size_t)select_column_count != source_column_count) {
+            status = mylite_dml_insert_set_wrong_value_count_error(stmt->database, 0U);
+        }
+    }
+    if (status == MYLITE_OK) {
+        status = materialize_insert_select_rows(stmt, select_stmt, source_column_count);
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_dml_execute_replace_values_transaction(
+            stmt->database,
+            schema_name,
+            &stmt->insert_values,
+            &table,
+            column_indexes,
+            expression_callbacks,
+            &result
+        );
+    }
+
+    mylite_finalize(select_stmt);
+    free(column_indexes);
+    mylite_dml_insert_table_deinit(&table);
+    if (status != MYLITE_OK) {
+        stmt->affected_rows = -1;
+    } else {
+        stmt->affected_rows = result.affected_rows;
+        if (result.generated_insert_id) {
+            stmt->database->last_insert_id = result.last_insert_id;
+        }
+    }
+    return status;
+}
+
 int mylite_dml_execute_replace_set_statement(
     mylite_stmt *stmt,
     const struct mylite_dml_expression_callbacks *expression_callbacks
@@ -720,10 +806,11 @@ static int prepare_insert_select_source(mylite_stmt *stmt, mylite_stmt **out_stm
         callbacks->select_callbacks
     );
     if (status == MYLITE_UNSUPPORTED && stmt->database->error_message == NULL) {
-        (void)mylite_diagnostics_set_error_message(
-            stmt->database,
-            "unsupported INSERT ... SELECT query"
-        );
+        const char *message = stmt->kind == MYLITE_STMT_REPLACE_SELECT
+                                  ? "unsupported REPLACE ... SELECT query"
+                                  : "unsupported INSERT ... SELECT query";
+
+        (void)mylite_diagnostics_set_error_message(stmt->database, message);
         return MYLITE_EXEC_ERROR;
     }
     return status;

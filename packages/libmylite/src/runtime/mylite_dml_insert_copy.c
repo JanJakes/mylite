@@ -166,6 +166,32 @@ int mylite_dml_copy_replace_values_statement(
     return status;
 }
 
+int mylite_dml_copy_replace_select_statement(
+    const struct mylite_sql_ast_node *statement,
+    struct mylite_insert_values_plan *values_plan
+) {
+    const struct mylite_sql_ast_node *table_name = mylite_ast_child_at(statement, 0U);
+    const struct mylite_sql_ast_node *second_child = mylite_ast_child_at(statement, 1U);
+    const struct mylite_sql_ast_node *columns = NULL;
+    int status = MYLITE_OK;
+
+    if (statement == NULL || values_plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    status = copy_insert_table_name(table_name, values_plan);
+    values_plan->replace_low_priority = statement->replace_low_priority;
+    values_plan->replace_delayed = statement->replace_delayed;
+    if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_INSERT_COLUMN_LIST) {
+        columns = second_child;
+    }
+
+    if (status == MYLITE_OK) {
+        status = copy_insert_column_list(columns, values_plan);
+    }
+    return status;
+}
+
 int mylite_dml_copy_replace_set_statement(
     const struct mylite_sql_ast_node *statement,
     struct mylite_insert_values_plan *values_plan,

@@ -284,6 +284,9 @@ statement(A) ::= insert_set_statement(B). {
 statement(A) ::= replace_values_statement(B). {
     A = B;
 }
+statement(A) ::= replace_select_statement(B). {
+    A = B;
+}
 statement(A) ::= replace_set_statement(B). {
     A = B;
 }
@@ -1018,6 +1021,15 @@ insert_set_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B
 replace_values_statement(A) ::= REPLACE(T) opt_replace_modifier(M) opt_into table_name(B)
         opt_insert_column_list(C) insert_values_keyword insert_row_list(D). {
     A = mylite_sql_parser_make_replace_values_statement(
+        state,
+        (struct mylite_sql_parser_replace_tokens){.replace = T, .modifier = M},
+        B,
+        C,
+        D);
+}
+replace_select_statement(A) ::= REPLACE(T) opt_replace_modifier(M) opt_into table_name(B)
+        opt_insert_column_list(C) insert_select_source_statement(D). {
+    A = mylite_sql_parser_make_replace_select_statement(
         state,
         (struct mylite_sql_parser_replace_tokens){.replace = T, .modifier = M},
         B,
@@ -1838,6 +1850,9 @@ explainable_statement(A) ::= insert_set_statement(B). {
 explainable_statement(A) ::= replace_values_statement(B). {
     A = B;
 }
+explainable_statement(A) ::= replace_select_statement(B). {
+    A = B;
+}
 explainable_statement(A) ::= replace_set_statement(B). {
     A = B;
 }
@@ -2255,6 +2270,9 @@ stored_program_statement(A) ::= insert_set_statement(B). {
     A = B;
 }
 stored_program_statement(A) ::= replace_values_statement(B). {
+    A = B;
+}
+stored_program_statement(A) ::= replace_select_statement(B). {
     A = B;
 }
 stored_program_statement(A) ::= replace_set_statement(B). {

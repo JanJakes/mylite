@@ -211,6 +211,7 @@ int mylite_transaction_execute_statement(mylite_stmt *stmt) {
     case MYLITE_STMT_INSERT_SET:
     case MYLITE_STMT_INSERT_SELECT:
     case MYLITE_STMT_REPLACE_VALUES:
+    case MYLITE_STMT_REPLACE_SELECT:
     case MYLITE_STMT_REPLACE_SET:
     case MYLITE_STMT_SCALAR_SELECT:
     case MYLITE_STMT_TABLE_SELECT:

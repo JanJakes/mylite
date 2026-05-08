@@ -2711,6 +2711,49 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_replace_values_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_select_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_replace_tokens tokens,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_ast_node *select_statement
+) {
+    struct mylite_sql_source_span span = span_from_token(&tokens.replace);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (tokens.modifier.low_priority.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.modifier.low_priority));
+    }
+    if (tokens.modifier.delayed.text != NULL) {
+        span = span_join(span, span_from_token(&tokens.modifier.delayed));
+    }
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+    if (columns != NULL && columns->span.text != NULL) {
+        span = span_join(span, columns->span);
+    }
+    if (select_statement != NULL) {
+        span = span_join(span, select_statement->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+    if (tokens.modifier.low_priority.text != NULL) {
+        mylite_sql_ast_node_set_replace_low_priority(statement);
+    }
+    if (tokens.modifier.delayed.text != NULL) {
+        mylite_sql_ast_node_set_replace_delayed(statement);
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, columns);
+    mylite_sql_ast_node_append_child(statement, select_statement);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_replace_tokens tokens,

@@ -167,6 +167,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_WINDOW_FRAME_BOUND = 156,
     MYLITE_SQL_AST_WINDOW_NULL_TREATMENT = 157,
     MYLITE_SQL_AST_INSERT_SELECT_STATEMENT = 158,
+    MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT = 159,
 };
 
 enum mylite_sql_ast_placeholder_statement_kind {

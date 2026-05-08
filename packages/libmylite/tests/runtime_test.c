@@ -64528,6 +64528,45 @@ static int test_replace_execution(void) {
 
     failures += execute_sql(
         database,
+        "CREATE TABLE replace_select (id INT PRIMARY KEY, v INT)",
+        MYLITE_DONE
+    );
+    failures +=
+        execute_sql(database, "INSERT INTO replace_select VALUES (1,10),(2,20)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO replace_select SELECT 1, 99",
+        2,
+        "replace select scalar affected"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO replace_select SELECT 3, 30 FROM DUAL",
+        1,
+        "replace select from dual affected"
+    );
+    failures +=
+        execute_sql(database, "CREATE TABLE replace_select_src (id INT, v INT)", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "INSERT INTO replace_select_src VALUES (2,200),(4,400)", MYLITE_DONE);
+    failures += execute_sql_expect_done_affected(
+        database,
+        "REPLACE INTO replace_select (id, v) SELECT id, v FROM replace_select_src ORDER BY id",
+        3,
+        "replace select table source affected"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v FROM replace_select ORDER BY id",
+        (const char *const[]){"id", "v"},
+        2,
+        (const char *const[]){"1", "99", "2", "200", "3", "30", "4", "400"},
+        4,
+        "replace select final rows"
+    );
+
+    failures += execute_sql(
+        database,
         "CREATE TABLE replace_set ("
         "id INT PRIMARY KEY, a INT DEFAULT 3, b INT DEFAULT 4, c INT, n INT)",
         MYLITE_DONE

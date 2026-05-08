@@ -256,6 +256,9 @@ tasks. Unsupported column families should stay deferred rather than guessed.
 | `+n AS n_pos` where `n INT NULL` | same descriptor and origin metadata as `n` |
 | `+u AS u_pos` where `u INT UNSIGNED NOT NULL` | same descriptor and origin metadata as `u` |
 | `-d AS d_neg` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `8`, decimals `2` | `BINARY NUM`; nullable |
+| `d + 1 AS d_plus` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `9`, decimals `2` | `BINARY NUM`; nullable |
+| `d - 1 AS d_sub` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `9`, decimals `2` | `BINARY NUM`; nullable |
+| `d * 2 AS d_mul` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `9`, decimals `2` | `BINARY NUM`; nullable |
 | `-r AS r_neg` where `r DOUBLE` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
 | `-s AS s_neg` where `s VARCHAR(12)` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
 | `5 / 2 AS slash_expr` | `NEWDECIMAL` | length `7`, decimals `4` | `BINARY NUM` |
@@ -442,8 +445,9 @@ Task 23 adds static metadata inference:
   `NULL`
 - `IS NULL`, `IS NOT NULL`, `IS TRUE`, `IS FALSE`, `IS UNKNOWN`, and
   null-safe equality return non-null integer metadata
-- arithmetic integer operators return `LONGLONG` unless decimal/real operands
-  require `NEWDECIMAL` or `DOUBLE`
+- arithmetic integer operators return `LONGLONG`; exact arithmetic involving a
+  table-backed `DECIMAL` operand keeps `NEWDECIMAL` metadata for the covered
+  `+`, `-`, and `*` cases
 - `/` over exact numeric operands returns `NEWDECIMAL` with MySQL-compatible
   scale rules; Task 23 covers only the verified `5 / 2` scale `4` expectation
   until broader decimal inference is implemented
@@ -520,7 +524,7 @@ byte lengths.
 | `SELECT d FROM meta_t LIMIT 0` | `NEWDECIMAL`, length `8`, decimals `2`, `NUM` |
 | `SELECT f FROM meta_t LIMIT 0` | `DOUBLE`, length `22`, decimals `31`, `NUM` |
 | `SELECT dt, ts FROM meta_t LIMIT 0` | temporal types with binary collation; `DATETIME(3)` decimals `3`, `TIMESTAMP` decimals `0` |
-| `SELECT 1 + 2, 5 / 2, 5 DIV 2 FROM meta_t LIMIT 0` | `LONGLONG`, `NEWDECIMAL`, `LONGLONG` respectively |
+| `SELECT 1 + 2, d + 1, d - 1, d * 2, 5 / 2, 5 DIV 2 FROM meta_t LIMIT 0` | `LONGLONG`, three `NEWDECIMAL(9,2)` table-decimal arithmetic fields, `NEWDECIMAL`, and `LONGLONG` respectively |
 | `SELECT n IS NULL, n <=> NULL, n IN (1,2), s LIKE 'a%' FROM meta_t LIMIT 0` | all `LONGLONG` length `1`; first two non-null, latter two nullable with nullable operands |
 
 ### Runtime and lifecycle tests

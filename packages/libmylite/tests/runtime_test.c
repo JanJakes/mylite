@@ -73542,6 +73542,45 @@ static int test_result_metadata_expression_labels_execution(void) {
          MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"d_plus",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         9U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         2U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"d_sub",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         9U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         2U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"d_mul",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         9U,
+         MYLITE_FIELD_TYPE_NEWDECIMAL,
+         2U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
         {"r_neg",
          NULL,
          NULL,
@@ -74465,7 +74504,8 @@ static int test_result_metadata_expression_labels_execution(void) {
         "n IS NULL AS n_is_null, n <=> NULL AS nullsafe, "
         "n IN (1,2) AS n_in, n BETWEEN 1 AND 20 AS n_between, "
         "s LIKE 'a%' AS s_like, -n AS n_neg, -u AS u_neg, +n AS n_pos, "
-        "+u AS u_pos, -d AS d_neg, -r AS r_neg, -s AS s_neg, "
+        "+u AS u_pos, -d AS d_neg, d + 1 AS d_plus, d - 1 AS d_sub, "
+        "d * 2 AS d_mul, -r AS r_neg, -s AS s_neg, "
         "BINARY c AS binary_c, BINARY b AS binary_b, "
         "DATE_FORMAT(dt, '%Y-%m-%d') AS date_format_dt, "
         "TIME_FORMAT(dt, '%H:%i') AS time_format_dt, "

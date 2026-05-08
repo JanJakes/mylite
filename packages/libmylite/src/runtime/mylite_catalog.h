@@ -198,6 +198,12 @@ int mylite_catalog_read_schema_by_name(
     const char *name,
     struct mylite_catalog_schema_descriptor *out_schema
 );
+int mylite_catalog_try_read_schema_by_name(
+    struct mylite_db *database,
+    const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema,
+    bool *out_found
+);
 int mylite_catalog_delete_schema(struct mylite_db *database, int64_t schema_id);
 
 int mylite_catalog_create_table(
@@ -213,6 +219,13 @@ int mylite_catalog_read_table_by_name(
     int64_t schema_id,
     const char *name,
     struct mylite_catalog_table_descriptor *out_table
+);
+int mylite_catalog_try_read_table_by_name(
+    struct mylite_db *database,
+    int64_t schema_id,
+    const char *name,
+    struct mylite_catalog_table_descriptor *out_table,
+    bool *out_found
 );
 int mylite_catalog_update_table_name(
     struct mylite_db *database,

@@ -116,6 +116,12 @@ static int read_schema_by_name(
     const char *name,
     struct mylite_catalog_schema_descriptor *out_schema
 );
+static int try_read_schema_by_name(
+    sqlite3 *sqlite,
+    const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema,
+    bool *out_found
+);
 static int read_schema_by_id(
     sqlite3 *sqlite,
     int64_t schema_id,
@@ -126,6 +132,13 @@ static int read_table_by_name(
     int64_t schema_id,
     const char *name,
     struct mylite_catalog_table_descriptor *out_table
+);
+static int try_read_table_by_name(
+    sqlite3 *sqlite,
+    int64_t schema_id,
+    const char *name,
+    struct mylite_catalog_table_descriptor *out_table,
+    bool *out_found
 );
 static int read_table_by_id(
     sqlite3 *sqlite,
@@ -1191,20 +1204,41 @@ int mylite_catalog_read_schema_by_name(
     const char *name,
     struct mylite_catalog_schema_descriptor *out_schema
 ) {
+    bool found = false;
+    int rc = mylite_catalog_try_read_schema_by_name(database, name, out_schema, &found);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (!found) {
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+int mylite_catalog_try_read_schema_by_name(
+    struct mylite_db *database,
+    const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema,
+    bool *out_found
+) {
     int rc = validate_catalog_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (out_schema == NULL) {
+    if (out_schema == NULL || out_found == NULL) {
         return MYLITE_MISUSE;
     }
+    *out_found = false;
     rc = validate_required_name(name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
     if (rc != MYLITE_OK) {
         return rc;
     }
 
-    return read_schema_by_name(database->sqlite, name, out_schema);
+    return try_read_schema_by_name(database->sqlite, name, out_schema, out_found);
 }
 
 int mylite_catalog_delete_schema(struct mylite_db *database, int64_t schema_id) {
@@ -1381,14 +1415,36 @@ int mylite_catalog_read_table_by_name(
     const char *name,
     struct mylite_catalog_table_descriptor *out_table
 ) {
+    bool found = false;
+    int rc = mylite_catalog_try_read_table_by_name(database, schema_id, name, out_table, &found);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (!found) {
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+int mylite_catalog_try_read_table_by_name(
+    struct mylite_db *database,
+    int64_t schema_id,
+    const char *name,
+    struct mylite_catalog_table_descriptor *out_table,
+    bool *out_found
+) {
     int rc = validate_catalog_ready_database(database);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (out_table == NULL) {
+    if (out_table == NULL || out_found == NULL) {
         return MYLITE_MISUSE;
     }
+    *out_found = false;
     rc = validate_positive_id(schema_id);
     if (rc != MYLITE_OK) {
         return rc;
@@ -1398,7 +1454,7 @@ int mylite_catalog_read_table_by_name(
         return rc;
     }
 
-    return read_table_by_name(database->sqlite, schema_id, name, out_table);
+    return try_read_table_by_name(database->sqlite, schema_id, name, out_table, out_found);
 }
 
 int mylite_catalog_update_table_name(
@@ -2148,6 +2204,26 @@ static int read_schema_by_name(
     const char *name,
     struct mylite_catalog_schema_descriptor *out_schema
 ) {
+    bool found = false;
+    int rc = try_read_schema_by_name(sqlite, name, out_schema, &found);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (!found) {
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int try_read_schema_by_name(
+    sqlite3 *sqlite,
+    const char *name,
+    struct mylite_catalog_schema_descriptor *out_schema,
+    bool *out_found
+) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
     int rc = prepare_statement(
@@ -2159,6 +2235,7 @@ static int read_schema_by_name(
     );
 
     *out_schema = (struct mylite_catalog_schema_descriptor){0};
+    *out_found = false;
     if (rc == MYLITE_OK) {
         rc = bind_text(statement, 1, name);
     }
@@ -2166,9 +2243,13 @@ static int read_schema_by_name(
         sqlite_rc = sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_schema(statement, out_schema);
+            if (rc == MYLITE_OK) {
+                *out_found = true;
+            }
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         } else {
-            rc =
-                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+            *out_schema = (struct mylite_catalog_schema_descriptor){0};
         }
     }
 
@@ -2213,6 +2294,27 @@ static int read_table_by_name(
     const char *name,
     struct mylite_catalog_table_descriptor *out_table
 ) {
+    bool found = false;
+    int rc = try_read_table_by_name(sqlite, schema_id, name, out_table, &found);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (!found) {
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int try_read_table_by_name(
+    sqlite3 *sqlite,
+    int64_t schema_id,
+    const char *name,
+    struct mylite_catalog_table_descriptor *out_table,
+    bool *out_found
+) {
     sqlite3_stmt *statement = NULL;
     int sqlite_rc = SQLITE_OK;
     int rc = prepare_statement(
@@ -2224,6 +2326,7 @@ static int read_table_by_name(
     );
 
     *out_table = (struct mylite_catalog_table_descriptor){0};
+    *out_found = false;
     if (rc == MYLITE_OK) {
         rc = bind_i64(statement, 1, schema_id);
     }
@@ -2234,9 +2337,13 @@ static int read_table_by_name(
         sqlite_rc = sqlite3_step(statement);
         if (sqlite_rc == SQLITE_ROW) {
             rc = materialize_table(statement, out_table);
+            if (rc == MYLITE_OK) {
+                *out_found = true;
+            }
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         } else {
-            rc =
-                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+            *out_table = (struct mylite_catalog_table_descriptor){0};
         }
     }
 

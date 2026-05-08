@@ -7,10 +7,12 @@
 
 enum {
     MYLITE_SQLSTATE_LENGTH = 5,
+    MYLITE_DIAGNOSTIC_LEVEL_CAPACITY = 8,
     MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY = 256,
 };
 
 struct mylite_diagnostic_record {
+    char level[MYLITE_DIAGNOSTIC_LEVEL_CAPACITY];
     int code;
     char sqlstate[MYLITE_SQLSTATE_LENGTH + 1U];
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
@@ -38,6 +40,12 @@ void mylite_diagnostics_set_error(
     const char *message
 );
 int mylite_diagnostics_append_warning(
+    struct mylite_diagnostics *diagnostics,
+    int code,
+    const char *sqlstate,
+    const char *message
+);
+int mylite_diagnostics_append_note(
     struct mylite_diagnostics *diagnostics,
     int code,
     const char *sqlstate,

@@ -8,8 +8,16 @@
 static const char *mylite_diagnostics_ok_sqlstate(void);
 static const char *mylite_diagnostics_ok_message(void);
 static int reserve_warnings(struct mylite_diagnostics *diagnostics, size_t required_capacity);
+static int append_warning_with_level(
+    struct mylite_diagnostics *diagnostics,
+    const char *level,
+    int code,
+    const char *sqlstate,
+    const char *message
+);
 
 struct diagnostic_values {
+    const char *level;
     int code;
     const char *sqlstate;
     const char *message;
@@ -54,6 +62,7 @@ void mylite_diagnostics_reset(struct mylite_diagnostics *diagnostics) {
     set_record(
         &diagnostics->condition,
         &(struct diagnostic_values){
+            .level = "Error",
             .code = MYLITE_OK,
             .sqlstate = mylite_diagnostics_ok_sqlstate(),
             .message = mylite_diagnostics_ok_message(),
@@ -80,8 +89,9 @@ int mylite_diagnostics_replace(
     copy.condition = source->condition;
     for (size_t index = 0U; rc == MYLITE_OK && index < source->warning_count; ++index) {
         const struct mylite_diagnostic_record *warning = &source->warnings[index];
-        rc = mylite_diagnostics_append_warning(
+        rc = append_warning_with_level(
             &copy,
+            warning->level,
             warning->code,
             warning->sqlstate,
             warning->message
@@ -110,6 +120,7 @@ void mylite_diagnostics_set_error(
     set_record(
         &diagnostics->condition,
         &(struct diagnostic_values){
+            .level = "Error",
             .code = code,
             .sqlstate = sqlstate,
             .message = message,
@@ -119,6 +130,25 @@ void mylite_diagnostics_set_error(
 
 int mylite_diagnostics_append_warning(
     struct mylite_diagnostics *diagnostics,
+    int code,
+    const char *sqlstate,
+    const char *message
+) {
+    return append_warning_with_level(diagnostics, "Warning", code, sqlstate, message);
+}
+
+int mylite_diagnostics_append_note(
+    struct mylite_diagnostics *diagnostics,
+    int code,
+    const char *sqlstate,
+    const char *message
+) {
+    return append_warning_with_level(diagnostics, "Note", code, sqlstate, message);
+}
+
+static int append_warning_with_level(
+    struct mylite_diagnostics *diagnostics,
+    const char *level,
     int code,
     const char *sqlstate,
     const char *message
@@ -149,6 +179,7 @@ int mylite_diagnostics_append_warning(
     set_record(
         warning,
         &(struct diagnostic_values){
+            .level = level,
             .code = code,
             .sqlstate = sqlstate,
             .message = message,
@@ -262,6 +293,7 @@ static void set_record(
     struct mylite_diagnostic_record *record,
     const struct diagnostic_values *values
 ) {
+    copy_text(record->level, sizeof(record->level), values->level);
     record->code = values->code;
     set_sqlstate(record, values->sqlstate);
     copy_text(record->message, sizeof(record->message), values->message);

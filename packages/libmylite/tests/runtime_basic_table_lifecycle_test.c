@@ -489,15 +489,26 @@ static int test_failure_diagnostics_and_unwinding(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "DROP TABLE IF EXISTS missing_table",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+    failures += execute_ok(database, "DROP TABLE IF EXISTS missing_table", &result);
+    failures += expect_size(
+        mylite_result_column_count(result),
+        0U,
+        "DROP TABLE IF EXISTS missing column count"
     );
+    failures +=
+        expect_size(mylite_result_row_count(result), 0U, "DROP TABLE IF EXISTS missing row count");
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "DROP TABLE IF EXISTS missing affected rows"
+    );
+    failures += expect_size(
+        mylite_result_warning_count(result),
+        1U,
+        "DROP TABLE IF EXISTS missing warning count"
+    );
+    mylite_result_free(result);
+    result = NULL;
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {

@@ -167,9 +167,16 @@ use_statement(A) ::= USE(T) identifier(B). {
 }
 
 create_table_statement(A) ::=
-    CREATE(C) TABLE table_name(T) LPAREN column_definition_list(L) RPAREN(R)
-    table_option_list_opt(O). {
-    A = mylite_sql_parser_make_create_table_statement(state, C, T, L, R, O);
+    CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) LPAREN
+    column_definition_list(L) RPAREN(R) table_option_list_opt(O). {
+    A = mylite_sql_parser_make_create_table_statement(state, C, E, T, L, R, O);
+}
+
+create_if_not_exists_opt(A) ::= . {
+    A = NULL;
+}
+create_if_not_exists_opt(A) ::= IF(I) NOT EXISTS(E). {
+    A = mylite_sql_parser_make_create_if_not_exists_clause(state, I, E);
 }
 
 table_option_list_opt(A) ::= . {
@@ -219,8 +226,15 @@ create_schema_statement(A) ::= CREATE(C) SCHEMA identifier(S). {
     A = mylite_sql_parser_make_create_schema_statement(state, C, S);
 }
 
-drop_table_statement(A) ::= DROP(D) TABLE table_name(T). {
-    A = mylite_sql_parser_make_drop_table_statement(state, D, T);
+drop_table_statement(A) ::= DROP(D) TABLE drop_if_exists_opt(E) table_name(T). {
+    A = mylite_sql_parser_make_drop_table_statement(state, D, E, T);
+}
+
+drop_if_exists_opt(A) ::= . {
+    A = NULL;
+}
+drop_if_exists_opt(A) ::= IF(I) EXISTS(E). {
+    A = mylite_sql_parser_make_drop_if_exists_clause(state, I, E);
 }
 
 drop_schema_statement(A) ::= DROP(D) DATABASE identifier(S). {

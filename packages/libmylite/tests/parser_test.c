@@ -1251,6 +1251,8 @@ static int test_table_lifecycle_statements(void) {
     const struct mylite_sql_ast_node *engine_option = NULL;
     const struct mylite_sql_ast_node *charset_option = NULL;
     const struct mylite_sql_ast_node *collation_option = NULL;
+    const struct mylite_sql_ast_node *if_not_exists = NULL;
+    const struct mylite_sql_ast_node *if_exists = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -1309,6 +1311,42 @@ static int test_table_lifecycle_statements(void) {
         "third column nullability"
     );
 
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE IF NOT EXISTS app.if_missing (id INT) ENGINE=InnoDB;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_name = child_at(statement, 0U);
+    columns = child_at(statement, 1U);
+    if_not_exists = child_at(statement, 2U);
+    table_options = child_at(statement, 3U);
+    failures += expect_child_count(statement, 4U, "create if not exists child count");
+    failures += expect_node(
+        if_not_exists,
+        MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE,
+        "create if not exists clause"
+    );
+    failures += expect_span_text(child_at(table_name, 1U), "if_missing", "if not exists table");
+    failures += expect_child_count(columns, 1U, "if not exists column list");
+    failures +=
+        expect_node(table_options, MYLITE_SQL_AST_TABLE_OPTION_LIST, "if not exists options");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE IF EXISTS app.if_missing;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    table_name = child_at(statement, 0U);
+    if_exists = child_at(statement, 1U);
+    failures += expect_child_count(statement, 2U, "drop if exists child count");
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, "drop table statement");
+    failures +=
+        expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "drop qualified table");
+    failures +=
+        expect_node(if_exists, MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE, "drop if exists clause");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "drop if exists schema");
+    failures += expect_span_text(child_at(table_name, 1U), "if_missing", "drop if exists table");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -3597,7 +3635,15 @@ static int test_syntax_errors(void) {
         parse_sql("CREATE TABLE t (id INT) COMMENT='x';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("DROP TABLE IF EXISTS t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures +=
+        parse_sql("CREATE TABLE IF EXISTS t (id INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE IF NOT t (id INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP TABLE IF NOT EXISTS t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DROP TABLE a, b;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

@@ -39,7 +39,7 @@
 | `ucs2` | ❌ | Metadata and conversions |
 | `ujis` | ❌ | Metadata and conversions |
 | `utf8mb3` | ❌ | Metadata and conversions |
-| `utf8mb4` | ❌ | Metadata and conversions |
+| `utf8mb4` | 🟡 | Limited static `SHOW CHARACTER SET` row and fixed `CREATE TABLE` option acceptance only; no conversions, string types, connection state, or full catalog semantics |
 | `utf16` | ❌ | Metadata and conversions |
 | `utf16le` | ❌ | Metadata and conversions |
 | `utf32` | ❌ | Metadata and conversions |

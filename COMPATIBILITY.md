@@ -56,7 +56,7 @@ tests.
 | Column definition grammar | 🟡 | Limited integer column descriptors and nullability only. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Default expressions | ❌ | Literal and expression defaults. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | Table engine options | 🟡 | Optional explicit `ENGINE [=] InnoDB` only for the limited persistent `CREATE TABLE` subset; non-InnoDB engines are rejected with MyLite's embedded InnoDB-only diagnostic. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
-| Table charset and collation options | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options only for the limited persistent `CREATE TABLE` subset; no non-default charsets/collations, descriptor metadata, string semantics, or charset/collation catalogs. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
+| Table charset and collation options | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options only for the limited persistent `CREATE TABLE` subset, with matching static `SHOW CHARACTER SET` / `SHOW COLLATION` rows; no non-default charsets/collations, descriptor metadata, string semantics, or full charset/collation catalogs. | [SQL table DDL](docs/compatibility/sql-table-ddl.md), [collations](docs/compatibility/collations.md) |
 | `ADD COLUMN` | ❌ | Positioning, defaults, metadata. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `DROP COLUMN` | ❌ | Dependency checks and errors. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
 | `RENAME COLUMN` | ❌ | Metadata rewrite. | [SQL table DDL](docs/compatibility/sql-table-ddl.md) |
@@ -170,14 +170,14 @@ tests.
 | --- | :-: | --- | --- |
 | `ascii` character set | ❌ | Baseline character set. | [character sets](docs/compatibility/character-sets.md) |
 | `binary` character set | ❌ | Baseline character set. | [character sets](docs/compatibility/character-sets.md) |
-| `utf8mb4` character set | ❌ | Baseline character set. | [character sets](docs/compatibility/character-sets.md) |
+| `utf8mb4` character set | 🟡 | Limited static `SHOW CHARACTER SET` row and fixed `CREATE TABLE` option acceptance only; no conversions, string types, connection charset state, or full catalog semantics. | [character sets](docs/compatibility/character-sets.md) |
 | `ascii_general_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `ascii_bin` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `binary` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `utf8mb4_general_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `utf8mb4_bin` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `utf8mb4_unicode_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
-| `utf8mb4_0900_ai_ci` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
+| `utf8mb4_0900_ai_ci` collation | 🟡 | Limited static `SHOW COLLATION` row and fixed `CREATE TABLE` option acceptance only; no comparison semantics, coercibility, string metadata, or full catalog semantics. | [collations](docs/compatibility/collations.md) |
 | `utf8mb4_0900_bin` collation | ❌ | Baseline collation. | [collations](docs/compatibility/collations.md) |
 | `SET` | ❌ | Session variable assignment. | [SQL SET statements](docs/compatibility/sql-set-statements.md), [runtime system variables](docs/compatibility/runtime-system-variables.md) |
 | `SET NAMES` | ❌ | Client character-set state. | [SQL SET statements](docs/compatibility/sql-set-statements.md), [character sets](docs/compatibility/character-sets.md) |
@@ -542,8 +542,8 @@ tests.
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
-| `SHOW CHARACTER SET` | ❌ | Result shape and filters. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
-| `SHOW COLLATION` | ❌ | Result shape and filters. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
+| `SHOW CHARACTER SET` | 🟡 | Limited static `utf8mb4` row with MySQL 8.4.9 column labels and `LIKE` filters; no `WHERE`, alternate charsets, privileges, or `INFORMATION_SCHEMA`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [character sets](docs/compatibility/character-sets.md) |
+| `SHOW COLLATION` | 🟡 | Limited static `utf8mb4_0900_ai_ci` row with MySQL 8.4.9 column labels and `LIKE` filters; no `WHERE`, alternate collations, privileges, or `INFORMATION_SCHEMA`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [collations](docs/compatibility/collations.md) |
 | `SHOW COLUMNS` | 🟡 | Limited descriptor-driven column listing for persistent base tables with integer-family descriptors; supports `FROM`/`IN`, schema-qualified targets, explicit schema forms, and `LIKE` filters, but no NUL-producing pattern escapes, `FULL`, `EXTENDED`, `WHERE`, views, privileges, indexes, defaults, or hidden columns. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW FIELDS` | 🟡 | Limited alias for the supported `SHOW COLUMNS` subset. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md) |
 | `SHOW CREATE DATABASE` / `SHOW CREATE SCHEMA` | 🟡 | Limited descriptor-driven schema DDL rendering with MySQL 8.4.9 columns and fixed default charset/collation/encryption text for current optionless schema descriptors; no `IF NOT EXISTS`, schema options, privileges, system schemas, or `sql_quote_show_create`. | [SQL SHOW statements](docs/compatibility/sql-show-statements.md), [SQL schemas](docs/compatibility/sql-schemas.md) |
@@ -654,6 +654,7 @@ target above.
 - [MySQL 8.4.9 release notes](https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-4-9.html)
 - [What Is New in MySQL 8.4 since MySQL 8.0](https://dev.mysql.com/doc/refman/8.4/en/mysql-nutshell.html)
 - [MySQL 8.4 supported character sets and collations](https://dev.mysql.com/doc/refman/8.4/en/charset-charsets.html)
+- [MySQL 8.4 `SHOW CHARACTER SET` statement](https://dev.mysql.com/doc/refman/8.4/en/show-character-set.html)
 - [MySQL 8.4 `SHOW COLLATION` statement](https://dev.mysql.com/doc/refman/8.4/en/show-collation.html)
 - [MySQL 8.4 SQL statement manual](https://dev.mysql.com/doc/refman/8.4/en/sql-statements.html)
 - [MySQL 8.4 built-in function and operator reference](https://dev.mysql.com/doc/refman/8.4/en/built-in-function-reference.html)

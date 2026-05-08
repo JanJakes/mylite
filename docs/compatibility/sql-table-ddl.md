@@ -31,7 +31,7 @@ actions.
 | Generated invisible primary keys | ❌ | Invisible primary key metadata |
 | AUTO_INCREMENT columns | ❌ | Allocation and metadata |
 | Table options: engine | 🟡 | Optional explicit `ENGINE [=] InnoDB` only; no alternate engines, engine substitution, or durable per-table engine metadata |
-| Table options: charset/collation | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options only for the limited persistent `CREATE TABLE` subset; no alternate defaults, descriptor metadata, string semantics, or charset/collation catalogs |
+| Table options: charset/collation | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options only for the limited persistent `CREATE TABLE` subset, with matching static `SHOW CHARACTER SET` / `SHOW COLLATION` rows; no alternate defaults, descriptor metadata, string semantics, or full charset/collation catalogs |
 | Table options: storage | ❌ | Storage option metadata |
 | Table options: statistics | ❌ | Statistics option metadata |
 | Table options: misc | ❌ | Misc table options |

@@ -7,8 +7,8 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW BINARY LOG STATUS` | ❌ | Result shape, filters, privileges |
 | `SHOW BINARY LOGS` | ❌ | Result shape, filters, privileges |
 | `SHOW BINLOG EVENTS` | ❌ | Result shape, filters, privileges |
-| `SHOW CHARACTER SET` | ❌ | Result shape, filters, privileges |
-| `SHOW COLLATION` | ❌ | Result shape, filters, privileges |
+| `SHOW CHARACTER SET` / `SHOW CHARSET` | 🟡 | Limited static `utf8mb4` row with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; no NUL-producing pattern escapes, `WHERE`, alternate charsets, privileges, or `INFORMATION_SCHEMA` |
+| `SHOW COLLATION` | 🟡 | Limited static `utf8mb4_0900_ai_ci` row with MySQL 8.4.9 column labels and `LIKE 'pattern'` filters; no NUL-producing pattern escapes, `WHERE`, alternate collations, privileges, or `INFORMATION_SCHEMA` |
 | `SHOW COLUMNS` / `SHOW FIELDS` | 🟡 | Limited descriptor-driven column listing for persistent base tables; supports `FROM`/`IN`, schema-qualified targets, explicit schema forms, and `LIKE 'pattern'` filters with `Field`, `Type`, `Null`, `Key`, `Default`, and `Extra`; no NUL-producing pattern escapes, `FULL`, `EXTENDED`, `WHERE`, views, privileges, indexes, defaults, hidden columns, or `INFORMATION_SCHEMA` |
 | `SHOW COUNT(*) ERRORS` | ❌ | Result shape, filters, privileges |
 | `SHOW COUNT(*) WARNINGS` | ❌ | Result shape, filters, privileges |

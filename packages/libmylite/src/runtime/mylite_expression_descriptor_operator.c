@@ -52,6 +52,27 @@ static bool descriptor_has_integer_result(const struct mylite_field_descriptor *
 
 static bool descriptor_uses_double_arithmetic(const struct mylite_field_descriptor *descriptor);
 
+static bool operator_uses_numeric_context(enum mylite_sql_ast_operator operator_kind);
+
+static void apply_binary_literal_numeric_context_descriptor(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *descriptor
+);
+
+static uint64_t binary_literal_numeric_context_length(
+    const struct mylite_sql_ast_node *expression,
+    bool bit_literal
+);
+
+static uint64_t binary_literal_storage_max_value(
+    const struct mylite_sql_ast_node *expression,
+    bool bit_literal
+);
+
+static size_t binary_literal_digit_count(const struct mylite_sql_ast_node *expression);
+
+static uint64_t decimal_digits_u64(uint64_t value);
+
 static bool infer_divide_descriptor(
     const struct mylite_field_descriptor *left,
     const struct mylite_field_descriptor *right,
@@ -368,6 +389,13 @@ int mylite_expression_descriptor_infer_binary_expression(
     if (status != MYLITE_OK) {
         return status;
     }
+    if (operator_uses_numeric_context(expression->operator_kind)) {
+        apply_binary_literal_numeric_context_descriptor(mylite_ast_child_at(expression, 0U), &left);
+        apply_binary_literal_numeric_context_descriptor(
+            mylite_ast_child_at(expression, 1U),
+            &right
+        );
+    }
     if (mylite_expression_descriptor_is_nullable(&left) ||
         mylite_expression_descriptor_is_nullable(&right)) {
         nullable = true;
@@ -500,6 +528,126 @@ int mylite_expression_descriptor_infer_binary_expression(
 
     *out_descriptor = mylite_expression_descriptor_from_value(value);
     return MYLITE_OK;
+}
+
+static bool operator_uses_numeric_context(enum mylite_sql_ast_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_LEFT:
+    case MYLITE_SQL_AST_OPERATOR_SHIFT_RIGHT:
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BINARY_CAST:
+    case MYLITE_SQL_AST_OPERATOR_COLLATE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_BETWEEN:
+    case MYLITE_SQL_AST_OPERATOR_IN:
+    case MYLITE_SQL_AST_OPERATOR_NOT_IN:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_NOT_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_NOT_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+        return false;
+    }
+    return false;
+}
+
+static void apply_binary_literal_numeric_context_descriptor(
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_field_descriptor *descriptor
+) {
+    const struct mylite_sql_ast_node *literal =
+        mylite_sql_ast_unwrap_parenthesized_expression(expression);
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL || descriptor == NULL) {
+        return;
+    }
+    if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
+        *descriptor = mylite_expression_descriptor_unsigned_longlong(false);
+        descriptor->length = binary_literal_numeric_context_length(literal, false);
+    } else if (literal->literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+        *descriptor = mylite_expression_descriptor_signed_longlong(false);
+        descriptor->length = binary_literal_numeric_context_length(literal, true);
+    }
+}
+
+static uint64_t binary_literal_numeric_context_length(
+    const struct mylite_sql_ast_node *expression,
+    bool bit_literal
+) {
+    uint64_t digits = decimal_digits_u64(binary_literal_storage_max_value(expression, bit_literal));
+
+    return bit_literal ? digits + 1U : digits;
+}
+
+static uint64_t binary_literal_storage_max_value(
+    const struct mylite_sql_ast_node *expression,
+    bool bit_literal
+) {
+    size_t digit_count = binary_literal_digit_count(expression);
+    size_t byte_count = bit_literal ? (digit_count + 7U) / 8U : (digit_count + 1U) / 2U;
+    uint64_t max_value = 0U;
+
+    if (byte_count >= sizeof(uint64_t)) {
+        return UINT64_MAX;
+    }
+    max_value = (UINT64_C(1) << (byte_count * 8U)) - 1U;
+    return max_value;
+}
+
+static size_t binary_literal_digit_count(const struct mylite_sql_ast_node *expression) {
+    const char *text = expression == NULL ? NULL : expression->span.text;
+    size_t length = expression == NULL ? 0U : expression->span.length;
+
+    if (text == NULL) {
+        return 0U;
+    }
+    if (length >= 3U && text[1] == '\'' && text[length - 1U] == '\'') {
+        return length - 3U;
+    }
+    return length < 2U ? 0U : length - 2U;
+}
+
+static uint64_t decimal_digits_u64(uint64_t value) {
+    uint64_t digits = 1U;
+
+    while (value >= 10U) {
+        value /= 10U;
+        ++digits;
+    }
+    return digits;
 }
 
 static bool descriptor_uses_double_arithmetic(const struct mylite_field_descriptor *descriptor) {

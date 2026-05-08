@@ -6553,6 +6553,111 @@ static int test_expression_operator_foundation(void) {
         "1",
         "-1",
     };
+    static const char *const binary_literal_numeric_values[] = {
+        "12594",
+        "0",
+        "12594",
+        "10",
+        "1",
+        "-1",
+        "18446744073709551615",
+    };
+    static const struct expected_result_metadata binary_literal_numeric_metadata[] = {
+        {"x_plus",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         6U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"x_eq_12",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"ox_plus",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         6U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"b_plus",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         5U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_UNSIGNED,
+         0},
+        {"b_eq_10",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+        {"b64_plus",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         22U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+         MYLITE_FIELD_FLAG_UNSIGNED,
+         0},
+        {"x_max_plus",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         21U,
+         MYLITE_FIELD_TYPE_LONGLONG,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY |
+             MYLITE_FIELD_FLAG_NUM,
+         0U,
+         0},
+    };
     int failures = 0;
 
     failures += expect_status(mylite_open_memory(&database), MYLITE_OK, "open memory database");
@@ -6668,6 +6773,36 @@ static int test_expression_operator_foundation(void) {
         1,
         "unsigned arithmetic"
     );
+
+    failures += prepare_sql(
+        database,
+        "SELECT X'3132' + 0 AS x_plus, X'3132' = 12 AS x_eq_12, "
+        "0x3132 + 0 AS ox_plus, B'1010' + 0 AS b_plus, "
+        "B'1010' = 10 AS b_eq_10, "
+        "B'1111111111111111111111111111111111111111111111111111111111111111' + 0 "
+        "AS b64_plus, X'FFFFFFFFFFFFFFFF' + 0 AS x_max_plus",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        binary_literal_numeric_metadata,
+        (int)(sizeof(binary_literal_numeric_metadata) / sizeof(binary_literal_numeric_metadata[0])),
+        "binary literal numeric metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "binary literal numeric row");
+    for (int index = 0; index < 7; ++index) {
+        failures += expect_string(
+            mylite_column_text(stmt, index),
+            binary_literal_numeric_values[index],
+            "binary literal numeric value"
+        );
+    }
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "binary literal numeric warning count");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "binary literal numeric done");
+    mylite_finalize(stmt);
+    stmt = NULL;
 
     failures += expect_prepare_error(
         database,

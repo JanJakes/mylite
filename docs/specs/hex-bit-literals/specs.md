@@ -75,6 +75,11 @@ Representative results:
 | `CAST(X'3132' AS UNSIGNED)` | `12594` |
 | `CAST(0b1010 AS SIGNED)` | `10` |
 | `CAST(B'1010' AS UNSIGNED)` | `10` |
+| `X'3132' + 0` | `12594` |
+| `X'3132' = 12` | `0` |
+| `B'1010' + 0` | `10` |
+| `B'1010' = 10` | `1` |
+| `B'1111111111111111111111111111111111111111111111111111111111111111' + 0` | `-1` |
 | `HEX(_binary 'a\0b')` | `610062` |
 | `LENGTH(_binary 'a\0b')` | `3` |
 | `CHARSET(_binary 'abc')` | `binary` |

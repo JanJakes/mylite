@@ -330,9 +330,13 @@ Task 16 must introduce a reusable value model that can represent at least:
 
 Numeric conversion of strings should preserve MySQL's prefix-number behavior
 and warning records for truncated nonnumeric suffixes. Full range clipping,
-invalid temporal comparison diagnostics, JSON comparison order, hexadecimal and
-bit literal contextual typing, and complete decimal precision math are deferred
-unless directly needed by the verified Task 16 tests.
+invalid temporal comparison diagnostics, JSON comparison order, and complete
+decimal precision math are deferred unless directly needed by the verified
+Task 16 tests. Hexadecimal and bit literals retain binary-string results in
+string contexts but use MySQL's literal numeric value in covered numeric
+operator contexts; hexadecimal literals enter unsigned integer arithmetic,
+while bit literals enter signed integer arithmetic using their packed byte
+value.
 
 ### SQL modes
 

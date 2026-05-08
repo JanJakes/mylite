@@ -305,8 +305,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       targets now reject negative approximate values below the signed 64-bit
       floor with MySQL-style 1690 diagnostics while preserving MySQL's
       positive approximate overflow clipping behavior. Hex and bit literal
-      `CAST` / `CONVERT` to signed and unsigned integer targets now use the
-      literal's numeric value instead of the decoded binary string bytes.
+      `CAST` / `CONVERT` plus covered arithmetic, comparison, and bitwise
+      numeric contexts now use the literal's numeric value instead of the
+      decoded binary string bytes.
       Scalar numeric conversion for embedded-NUL text values now keeps the
       numeric prefix for signed, unsigned, decimal, and approximate targets
       while still treating the NUL plus following bytes as trailing garbage for

@@ -22345,8 +22345,10 @@ static int eval_hex_literal(
     size_t output = 0U;
     char *result = NULL;
     unsigned char *result_bytes = NULL;
+    uint64_t numeric_value = 0U;
 
-    if (!hex_literal_digits(node, &digits, &digit_count)) {
+    if (!hex_literal_digits(node, &digits, &digit_count) ||
+        !cast_hex_literal_unsigned_integer_value(node, &numeric_value)) {
         return -1;
     }
 
@@ -22383,7 +22385,10 @@ static int eval_hex_literal(
         .kind = MYLITE_EXPRESSION_VALUE_TEXT,
         .text_value = result,
         .text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY,
-        .text_length = result_length
+        .text_length = result_length,
+        .has_literal_numeric_value = true,
+        .literal_numeric_unsigned = true,
+        .literal_numeric_value = numeric_value,
     };
     return 0;
 }
@@ -22398,8 +22403,10 @@ static int eval_bit_literal(
     size_t leading_pad = 0U;
     char *result = NULL;
     unsigned char *result_bytes = NULL;
+    uint64_t numeric_value = 0U;
 
-    if (!bit_literal_digits(node, &digits, &digit_count)) {
+    if (!bit_literal_digits(node, &digits, &digit_count) ||
+        !cast_bit_literal_unsigned_integer_value(node, &numeric_value)) {
         return -1;
     }
 
@@ -22433,7 +22440,11 @@ static int eval_bit_literal(
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_TEXT,
         .text_value = result,
-        .text_length = result_length
+        .text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY,
+        .text_length = result_length,
+        .has_literal_numeric_value = true,
+        .literal_numeric_unsigned = false,
+        .literal_numeric_value = numeric_value,
     };
     return 0;
 }
@@ -24656,6 +24667,16 @@ static int value_to_numeric(
         out_numeric->int64_value = numeric_real_to_truncated_int64(value->real_value);
         return 0;
     case MYLITE_EXPRESSION_VALUE_TEXT:
+        if (value->has_literal_numeric_value) {
+            out_numeric->uint64_value = value->literal_numeric_value;
+            out_numeric->int64_value = signed_integer_from_uint64(value->literal_numeric_value);
+            out_numeric->real_value = value->literal_numeric_unsigned
+                                          ? (double)value->literal_numeric_value
+                                          : (double)out_numeric->int64_value;
+            out_numeric->is_integer = true;
+            out_numeric->is_unsigned = value->literal_numeric_unsigned;
+            return 0;
+        }
         return text_value_to_numeric(value, warnings, out_numeric);
     case MYLITE_EXPRESSION_VALUE_NULL:
         return -1;

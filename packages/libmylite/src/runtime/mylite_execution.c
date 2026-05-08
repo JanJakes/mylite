@@ -51,6 +51,8 @@ enum {
     show_index_result_column_count = 15,
     show_create_table_result_column_count = 2,
     show_create_database_result_column_count = 2,
+    show_table_status_result_column_count = 18,
+    show_table_status_data_length = 16384,
     show_engines_result_column_count = 6,
 };
 
@@ -230,6 +232,12 @@ struct show_tables_context {
     const struct show_like_filter *filter;
 };
 
+struct show_table_status_context {
+    struct mylite_db *database;
+    mylite_result *result;
+    const struct show_like_filter *filter;
+};
+
 struct show_columns_context {
     struct mylite_db *database;
     mylite_result *result;
@@ -328,6 +336,11 @@ static int execute_select_statement(
     mylite_result **out_result
 );
 static int execute_show_tables_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_table_status_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -961,6 +974,10 @@ static int is_unqualified_identifier_select_item(
 );
 
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data);
+static int append_show_table_status(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+);
 static int append_show_column(
     const struct mylite_catalog_column_descriptor *column,
     void *user_data
@@ -1078,6 +1095,21 @@ static int build_show_tables_column_name(
     const char *schema_name,
     const struct show_like_filter *filter,
     char **out_name
+);
+static int read_show_table_status_row_count(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t *out_count
+);
+static int build_show_table_status_count_sql(
+    const struct mylite_catalog_table_descriptor *table,
+    char **out_sql
+);
+static int format_show_table_status_integer(
+    struct mylite_db *database,
+    int64_t value,
+    char *buffer,
+    size_t buffer_size
 );
 static int decode_show_like_pattern(
     struct mylite_db *database,
@@ -1310,6 +1342,8 @@ static int execute_parsed_statement(
         return execute_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
         return execute_show_tables_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
+        return execute_show_table_status_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -1871,6 +1905,105 @@ static int execute_show_tables_statement(
     }
 
     free(column_name);
+    show_like_filter_deinit(&filter);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_show_table_status_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_table_status_result_column_count] = {
+        "Name",
+        "Engine",
+        "Version",
+        "Row_format",
+        "Rows",
+        "Avg_row_length",
+        "Data_length",
+        "Max_data_length",
+        "Index_length",
+        "Data_free",
+        "Auto_increment",
+        "Create_time",
+        "Update_time",
+        "Check_time",
+        "Collation",
+        "Checksum",
+        "Create_options",
+        "Comment",
+    };
+    struct mylite_catalog_schema_descriptor schema = {0};
+    const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *schema_node = first_child;
+    const struct mylite_sql_ast_node *like_node = second_child;
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    struct show_table_status_context context = {0};
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_LITERAL) {
+        schema_node = NULL;
+        like_node = first_child;
+    }
+    if (schema_node == NULL) {
+        rc = resolve_selected_schema(database, &schema);
+    } else {
+        char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+
+        rc = copy_identifier_text(schema_node, schema_name, sizeof(schema_name), database);
+        if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
+            set_reserved_name_error(database, "database", schema_name);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = resolve_schema_name(database, schema_name, &schema);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = make_show_like_filter(database, like_node, &filter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_table_status_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        context.database = database;
+        context.result = result;
+        context.filter = &filter;
+        rc = mylite_catalog_for_each_table_in_schema(
+            database,
+            schema.schema_id,
+            append_show_table_status,
+            &context
+        );
+        if (rc != MYLITE_OK &&
+            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+            set_runtime_error(database, "failed to build SHOW TABLE STATUS result");
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        show_like_filter_deinit(&filter);
+        return rc;
+    }
+
     show_like_filter_deinit(&filter);
     return finish_successful_result(database, result, out_result);
 }
@@ -2454,6 +2587,7 @@ static int64_t row_count_for_completed_statement(
         return 0;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
@@ -6614,6 +6748,87 @@ static int append_show_table(const struct mylite_catalog_table_descriptor *table
     return mylite_result_append_text_row(context->result, values);
 }
 
+static int append_show_table_status(
+    const struct mylite_catalog_table_descriptor *table,
+    void *user_data
+) {
+    struct show_table_status_context *context = user_data;
+    int64_t row_count = 0;
+    int64_t average_row_length = 0;
+    char row_count_text[integer_text_capacity];
+    char average_row_length_text[integer_text_capacity];
+    const char *values[show_table_status_result_column_count] = {
+        NULL,
+        "InnoDB",
+        "10",
+        "Dynamic",
+        row_count_text,
+        average_row_length_text,
+        "16384",
+        "0",
+        "0",
+        "0",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "utf8mb4_0900_ai_ci",
+        NULL,
+        "",
+        "",
+    };
+    int rc = MYLITE_OK;
+
+    if (table == NULL || context == NULL || context->database == NULL || context->result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_OK;
+    }
+    if (!show_like_filter_matches(context->filter, table->name, true)) {
+        return MYLITE_OK;
+    }
+
+    rc = read_show_table_status_row_count(context->database, table, &row_count);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(context->database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(context->database, "failed to read SHOW TABLE STATUS row count");
+        return MYLITE_ERROR;
+    }
+
+    if (row_count > 0) {
+        average_row_length = show_table_status_data_length / row_count;
+    }
+    rc = format_show_table_status_integer(
+        context->database,
+        row_count,
+        row_count_text,
+        sizeof(row_count_text)
+    );
+    if (rc == MYLITE_OK) {
+        rc = format_show_table_status_integer(
+            context->database,
+            average_row_length,
+            average_row_length_text,
+            sizeof(average_row_length_text)
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    values[0] = table->name;
+
+    rc = mylite_result_append_text_row(context->result, values);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(context->database);
+    }
+    return rc;
+}
+
 static int append_show_column(
     const struct mylite_catalog_column_descriptor *column,
     void *user_data
@@ -6831,6 +7046,73 @@ static int build_show_tables_column_name(
     }
     dynamic_string_deinit(&string);
     return rc;
+}
+
+static int read_show_table_status_row_count(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t *out_count
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int rc = build_show_table_status_count_sql(table, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_count_statement(statement, out_count);
+    }
+
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    return rc;
+}
+
+static int build_show_table_status_count_sql(
+    const struct mylite_catalog_table_descriptor *table,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    if (table == NULL || out_sql == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, table->physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int format_show_table_status_integer(
+    struct mylite_db *database,
+    int64_t value,
+    char *buffer,
+    size_t buffer_size
+) {
+    int written = snprintf(buffer, buffer_size, "%" PRId64, value);
+
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format SHOW TABLE STATUS value");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int decode_show_like_pattern(

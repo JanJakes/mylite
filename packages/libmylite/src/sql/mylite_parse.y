@@ -74,6 +74,9 @@ statement(A) ::= truncate_table_statement(B). {
 statement(A) ::= show_tables_statement(B). {
     A = B;
 }
+statement(A) ::= show_table_status_statement(B). {
+    A = B;
+}
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
@@ -200,6 +203,16 @@ show_tables_statement(A) ::= SHOW(S) TABLES(T) FROM identifier(D) show_like_clau
 }
 show_tables_statement(A) ::= SHOW(S) TABLES(T) IN identifier(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_tables_statement(state, S, T, D, L);
+}
+
+show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_table_status_statement(state, S, T, NULL, L);
+}
+show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_table_status_statement(state, S, T, D, L);
+}
+show_table_status_statement(A) ::= SHOW(S) TABLE STATUS(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_table_status_statement(state, S, T, D, L);
 }
 
 show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) show_like_clause_opt(L). {
@@ -770,6 +783,9 @@ identifier(A) ::= ENGINE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ENGINES(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= STATUS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= STORAGE(T). {

@@ -1227,6 +1227,9 @@ static int test_table_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("CREATE TABLE status (status INT);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("DROP TABLE app.simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, "drop table statement");
@@ -1286,6 +1289,53 @@ static int test_table_lifecycle_statements(void) {
     failures +=
         expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "schema like");
     failures += expect_span_text(child_at(statement, 1U), "'a\\_%'", "schema like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT,
+        "bare show table status"
+    );
+    failures +=
+        expect_true(child_at(statement, 0U) == NULL, "bare table status has no schema child");
+    failures += expect_true(child_at(statement, 1U) == NULL, "bare table status has no like child");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS FROM app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT,
+        "show table status from"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "app", "show table status schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS IN app LIKE 'a\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT,
+        "show table status in like"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "app", "show table status like schema");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "status like");
+    failures += expect_span_text(child_at(statement, 1U), "'a\\_%'", "status like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS LIKE 'a%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT,
+        "show table status like"
+    );
+    failures +=
+        expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING, "status bare like");
+    failures += expect_span_text(child_at(statement, 0U), "'a%'", "status bare like pattern");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW ENGINES;", MYLITE_SQL_PARSE_OK, &result);
@@ -2205,6 +2255,32 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW FULL DATABASES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL TABLE STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EXTENDED TABLE STATUS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS FULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW TABLE STATUS WHERE Name = 't';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS LIKE NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLE STATUS LIKE N't%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW TABLE STATUS LIKE 't%' FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW CREATE DATABASE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

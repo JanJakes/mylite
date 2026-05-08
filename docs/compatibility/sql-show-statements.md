@@ -9,7 +9,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW BINLOG EVENTS` | ❌ | Result shape, filters, privileges |
 | `SHOW CHARACTER SET` | ❌ | Result shape, filters, privileges |
 | `SHOW COLLATION` | ❌ | Result shape, filters, privileges |
-| `SHOW COLUMNS` / `SHOW FIELDS` | 🟡 | Limited descriptor-driven column listing for persistent base tables; supports `FROM`/`IN`, schema-qualified targets, and explicit schema forms with `Field`, `Type`, `Null`, `Key`, `Default`, and `Extra`; no `FULL`, `EXTENDED`, `LIKE`, `WHERE`, views, privileges, indexes, defaults, hidden columns, or `INFORMATION_SCHEMA` |
+| `SHOW COLUMNS` / `SHOW FIELDS` | 🟡 | Limited descriptor-driven column listing for persistent base tables; supports `FROM`/`IN`, schema-qualified targets, explicit schema forms, and `LIKE 'pattern'` filters with `Field`, `Type`, `Null`, `Key`, `Default`, and `Extra`; no NUL-producing pattern escapes, `FULL`, `EXTENDED`, `WHERE`, views, privileges, indexes, defaults, hidden columns, or `INFORMATION_SCHEMA` |
 | `SHOW COUNT(*) ERRORS` | ❌ | Result shape, filters, privileges |
 | `SHOW COUNT(*) WARNINGS` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE DATABASE` | ❌ | Result shape, filters, privileges |
@@ -20,7 +20,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW CREATE TRIGGER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE USER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE VIEW` | ❌ | Result shape, filters, privileges |
-| `SHOW DATABASES` / `SHOW SCHEMAS` | 🟡 | Limited descriptor-driven catalog schema listing; no `LIKE`, `WHERE`, system schemas, or privileges |
+| `SHOW DATABASES` / `SHOW SCHEMAS` | 🟡 | Limited descriptor-driven catalog schema listing with `LIKE 'pattern'` filters; no NUL-producing pattern escapes, `WHERE`, system schemas, or privileges |
 | `SHOW ENGINE` | ❌ | Subcommands and result shape |
 | `SHOW ENGINE LOGS` | ❌ | Result shape, filters, privileges |
 | `SHOW ENGINE MUTEX` | ❌ | Result shape, filters, privileges |
@@ -47,7 +47,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW REPLICAS` | ❌ | Result shape, filters, privileges |
 | `SHOW STATUS` | ❌ | Result shape, filters, privileges |
 | `SHOW TABLE STATUS` | ❌ | Result shape, filters, privileges |
-| `SHOW TABLES` | 🟡 | Limited descriptor-driven `SHOW TABLES` with optional `FROM`/`IN` schema; no `FULL`, `EXTENDED`, `LIKE`, `WHERE`, views, privileges, or temporary tables |
+| `SHOW TABLES` | 🟡 | Limited descriptor-driven `SHOW TABLES` with optional `FROM`/`IN` schema and `LIKE 'pattern'` filters; no NUL-producing pattern escapes, `FULL`, `EXTENDED`, `WHERE`, views, privileges, or temporary tables |
 | `SHOW TRIGGERS` | ❌ | Result shape, filters, privileges |
 | `SHOW VARIABLES` | ❌ | Result shape, filters, privileges |
 | `SHOW WARNINGS` | ❌ | Result shape, filters, privileges |

@@ -343,7 +343,7 @@ static int test_show_columns_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SHOW COLUMNS FROM numbers LIKE 'i%'",
+        "SHOW COLUMNS FROM numbers WHERE Field = 'id'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -352,7 +352,7 @@ static int test_show_columns_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SHOW COLUMNS FROM numbers WHERE Field = 'id'",
+        "SHOW COLUMNS FROM numbers LIKE N'i%'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

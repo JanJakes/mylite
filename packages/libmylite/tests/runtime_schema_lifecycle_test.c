@@ -423,7 +423,7 @@ static int test_schema_diagnostics_and_unsupported_syntax(void) {
     );
     failures += execute_error(
         database,
-        "SHOW DATABASES LIKE 'app%'",
+        "SHOW DATABASES WHERE `Database` = 'app'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -432,7 +432,7 @@ static int test_schema_diagnostics_and_unsupported_syntax(void) {
     );
     failures += execute_error(
         database,
-        "SHOW DATABASES WHERE `Database` = 'app'",
+        "SHOW DATABASES LIKE N'app%'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

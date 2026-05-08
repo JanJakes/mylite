@@ -1128,6 +1128,24 @@ static int test_table_lifecycle_statements(void) {
     failures += expect_true(child_at(statement, 0U) == NULL, "bare show has no schema child");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SHOW TABLES LIKE 'a%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "show tables like");
+    failures +=
+        expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING, "tables like");
+    failures += expect_span_text(child_at(statement, 0U), "'a%'", "show tables like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TABLES FROM app LIKE 'a\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_TABLES_STATEMENT, "show tables schema like");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show tables like schema");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "schema like");
+    failures += expect_span_text(child_at(statement, 1U), "'a\\_%'", "schema like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
         "RENAME TABLE app.simple_lifecycle TO archive.renamed_lifecycle;",
         MYLITE_SQL_PARSE_OK,
@@ -1257,6 +1275,15 @@ static int test_schema_lifecycle_statements(void) {
     failures += expect_child_count(statement, 0U, "show databases child count");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SHOW DATABASES LIKE 'app%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT, "show databases like");
+    failures +=
+        expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING, "databases like");
+    failures += expect_span_text(child_at(statement, 0U), "'app%'", "databases like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SHOW SCHEMAS;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT, "show schemas");
@@ -1320,6 +1347,32 @@ static int test_show_columns_introspection_statements(void) {
     failures +=
         expect_span_text(child_at(statement, 0U), "app.numbers", "show columns qualified table");
     failures += expect_span_text(child_at(statement, 1U), "other", "show columns trailing schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW COLUMNS FROM numbers LIKE 'i%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "show columns like");
+    failures += expect_child_count(statement, 2U, "show columns like child count");
+    failures += expect_span_text(child_at(statement, 0U), "numbers", "show columns like table");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "columns like");
+    failures += expect_span_text(child_at(statement, 1U), "'i%'", "show columns like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW FIELDS FROM app.numbers FROM other LIKE 'i\\_1';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT, "show fields qualified like");
+    failures += expect_child_count(statement, 3U, "show fields qualified like child count");
+    failures += expect_span_text(child_at(statement, 0U), "app.numbers", "fields like table");
+    failures += expect_span_text(child_at(statement, 1U), "other", "fields like schema");
+    failures +=
+        expect_literal(child_at(statement, 2U), MYLITE_SQL_AST_LITERAL_STRING, "fields like");
+    failures += expect_span_text(child_at(statement, 2U), "'i\\_1'", "fields like pattern");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DESCRIBE app.numbers;", MYLITE_SQL_PARSE_OK, &result);
@@ -1793,7 +1846,13 @@ static int test_syntax_errors(void) {
     failures += parse_sql("DROP DATABASE IF EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SHOW DATABASES LIKE 'app%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SHOW DATABASES LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW DATABASES LIKE NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW DATABASES LIKE N'app%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -1809,7 +1868,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("SHOW EXTENDED COLUMNS FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("SHOW COLUMNS FROM t LIKE 'i%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("SHOW COLUMNS FROM t LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

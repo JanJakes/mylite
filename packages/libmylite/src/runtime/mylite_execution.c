@@ -186,6 +186,20 @@ struct dynamic_string {
     size_t capacity;
 };
 
+struct show_like_filter {
+    bool has_pattern;
+    char *pattern;
+    size_t pattern_length;
+};
+
+struct show_like_pattern_item_request {
+    const char *pattern;
+    size_t pattern_length;
+    size_t pattern_index;
+    char value_byte;
+    bool case_sensitive;
+};
+
 struct load_columns_context {
     struct mylite_catalog_column_descriptor *columns;
     size_t count;
@@ -194,11 +208,13 @@ struct load_columns_context {
 
 struct show_tables_context {
     mylite_result *result;
+    const struct show_like_filter *filter;
 };
 
 struct show_columns_context {
     struct mylite_db *database;
     mylite_result *result;
+    const struct show_like_filter *filter;
 };
 
 struct show_columns_target_nodes {
@@ -208,6 +224,7 @@ struct show_columns_target_nodes {
 
 struct show_databases_context {
     mylite_result *result;
+    const struct show_like_filter *filter;
 };
 
 struct collect_drop_schema_tables_context {
@@ -889,6 +906,51 @@ static bool column_name_exists(
     size_t column_count,
     const char *name
 );
+static int make_show_like_filter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *pattern_node,
+    struct show_like_filter *out_filter
+);
+static void show_like_filter_deinit(struct show_like_filter *filter);
+static bool show_like_filter_matches(
+    const struct show_like_filter *filter,
+    const char *value,
+    bool case_sensitive
+);
+static int build_show_databases_column_name(const struct show_like_filter *filter, char **out_name);
+static int build_show_tables_column_name(
+    const char *schema_name,
+    const struct show_like_filter *filter,
+    char **out_name
+);
+static int decode_show_like_pattern(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *pattern_node,
+    char **out_pattern
+);
+static int append_decoded_string_escape(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    char escaped_byte
+);
+static bool show_like_pattern_matches(
+    const char *pattern,
+    size_t pattern_length,
+    const char *value,
+    size_t value_length,
+    bool case_sensitive
+);
+static size_t show_like_skip_percent_run(
+    const char *pattern,
+    size_t pattern_length,
+    size_t pattern_index
+);
+static bool show_like_pattern_item_matches(
+    struct show_like_pattern_item_request request,
+    size_t *out_next_pattern_index
+);
+static bool show_like_bytes_equal(char left, char right, bool case_sensitive);
+static char show_like_ascii_lower(char byte);
 
 static void dynamic_string_init(struct dynamic_string *string);
 static void dynamic_string_deinit(struct dynamic_string *string);
@@ -1500,13 +1562,24 @@ static int execute_show_tables_statement(
     mylite_result **out_result
 ) {
     struct mylite_catalog_schema_descriptor schema = {0};
-    const struct mylite_sql_ast_node *schema_node = child_at(statement, 0U);
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY + sizeof("Tables_in_")];
+    const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *schema_node = first_child;
+    const struct mylite_sql_ast_node *like_node = second_child;
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    char *column_name = NULL;
     struct show_tables_context context = {0};
     mylite_result *result = NULL;
-    int written = 0;
     int rc = MYLITE_OK;
 
+    if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_LITERAL) {
+        schema_node = NULL;
+        like_node = first_child;
+    }
     if (schema_node == NULL) {
         rc = resolve_selected_schema(database, &schema);
     } else {
@@ -1522,15 +1595,18 @@ static int execute_show_tables_statement(
         }
     }
     if (rc == MYLITE_OK) {
+        rc = make_show_like_filter(database, like_node, &filter);
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
     }
     if (rc == MYLITE_OK) {
-        written = snprintf(column_name, sizeof(column_name), "Tables_in_%s", schema.name);
-        if (written < 0 || (size_t)written >= sizeof(column_name)) {
-            set_identifier_too_long_error(database, "database");
+        rc = build_show_tables_column_name(schema.name, &filter, &column_name);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
             rc = MYLITE_ERROR;
         }
     }
@@ -1542,6 +1618,7 @@ static int execute_show_tables_statement(
     }
     if (rc == MYLITE_OK) {
         context.result = result;
+        context.filter = &filter;
         rc = mylite_catalog_for_each_table_in_schema(
             database,
             schema.schema_id,
@@ -1554,9 +1631,13 @@ static int execute_show_tables_statement(
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
+        free(column_name);
+        show_like_filter_deinit(&filter);
         return rc;
     }
 
+    free(column_name);
+    show_like_filter_deinit(&filter);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -1569,20 +1650,35 @@ static int execute_show_columns_statement(
         {"Field", "Type", "Null", "Key", "Default", "Extra"};
     struct table_name_resolution target = {0};
     struct mylite_catalog_table_descriptor table = {0};
+    const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *schema_node = second_child;
+    const struct mylite_sql_ast_node *like_node = child_at(statement, 2U);
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
     struct show_columns_context context = {0};
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
+    if (second_child != NULL && second_child->kind == MYLITE_SQL_AST_LITERAL) {
+        schema_node = NULL;
+        like_node = second_child;
+    }
     rc = resolve_show_columns_table_name(
         database,
         (struct show_columns_target_nodes){
             .table = child_at(statement, 0U),
-            .schema = child_at(statement, 1U),
+            .schema = schema_node,
         },
         &target
     );
     if (rc == MYLITE_OK) {
         rc = resolve_readable_base_table(database, &target, &table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = make_show_like_filter(database, like_node, &filter);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_result_create(&result);
@@ -1601,6 +1697,7 @@ static int execute_show_columns_statement(
     if (rc == MYLITE_OK) {
         context.database = database;
         context.result = result;
+        context.filter = &filter;
         rc = mylite_catalog_for_each_column_in_table(
             database,
             table.table_id,
@@ -1618,9 +1715,11 @@ static int execute_show_columns_statement(
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
+        show_like_filter_deinit(&filter);
         return rc;
     }
 
+    show_like_filter_deinit(&filter);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -1629,24 +1728,38 @@ static int execute_show_databases_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
     struct show_databases_context context = {0};
+    char *column_name = NULL;
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
-    (void)statement;
-
-    rc = mylite_result_create(&result);
-    if (rc != MYLITE_OK) {
-        set_nomem_error(database);
+    rc = make_show_like_filter(database, child_at(statement, 0U), &filter);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, "Database");
+        rc = build_show_databases_column_name(&filter, &column_name);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column(result, column_name);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
     }
     if (rc == MYLITE_OK) {
         context.result = result;
+        context.filter = &filter;
         rc = mylite_catalog_for_each_schema(database, append_show_database, &context);
         if (rc != MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW DATABASES result");
@@ -1654,9 +1767,13 @@ static int execute_show_databases_statement(
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
+        free(column_name);
+        show_like_filter_deinit(&filter);
         return rc;
     }
 
+    free(column_name);
+    show_like_filter_deinit(&filter);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -5252,6 +5369,10 @@ static int append_show_table(const struct mylite_catalog_table_descriptor *table
         return MYLITE_MISUSE;
     }
 
+    if (!show_like_filter_matches(context->filter, table->name, true)) {
+        return MYLITE_OK;
+    }
+
     values[0] = table->name;
 
     return mylite_result_append_text_row(context->result, values);
@@ -5268,6 +5389,10 @@ static int append_show_column(
 
     if (column == NULL || context == NULL || context->result == NULL) {
         return MYLITE_MISUSE;
+    }
+
+    if (!show_like_filter_matches(context->filter, column->name, false)) {
+        return MYLITE_OK;
     }
 
     rc = show_column_type_text(context->database, column->logical_type, &type_text);
@@ -5327,9 +5452,356 @@ static int append_show_database(
         return MYLITE_MISUSE;
     }
 
+    if (!show_like_filter_matches(context->filter, schema->name, true)) {
+        return MYLITE_OK;
+    }
+
     values[0] = schema->name;
 
     return mylite_result_append_text_row(context->result, values);
+}
+
+static int make_show_like_filter(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *pattern_node,
+    struct show_like_filter *out_filter
+) {
+    char *pattern = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_filter == NULL) {
+        set_runtime_error(database, "invalid SHOW LIKE filter");
+        return MYLITE_ERROR;
+    }
+    *out_filter = (struct show_like_filter){
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    if (pattern_node == NULL) {
+        return MYLITE_OK;
+    }
+
+    rc = decode_show_like_pattern(database, pattern_node, &pattern);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_filter->has_pattern = true;
+    out_filter->pattern = pattern;
+    out_filter->pattern_length = strlen(pattern);
+    return MYLITE_OK;
+}
+
+static void show_like_filter_deinit(struct show_like_filter *filter) {
+    if (filter == NULL) {
+        return;
+    }
+
+    free(filter->pattern);
+    *filter = (struct show_like_filter){
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+}
+
+static bool show_like_filter_matches(
+    const struct show_like_filter *filter,
+    const char *value,
+    bool case_sensitive
+) {
+    if (filter == NULL || !filter->has_pattern) {
+        return true;
+    }
+    if (value == NULL) {
+        return false;
+    }
+
+    return show_like_pattern_matches(
+        filter->pattern,
+        filter->pattern_length,
+        value,
+        strlen(value),
+        case_sensitive
+    );
+}
+
+static int build_show_databases_column_name(
+    const struct show_like_filter *filter,
+    char **out_name
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    if (out_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_name = NULL;
+
+    dynamic_string_init(&string);
+    rc = dynamic_string_append(&string, "Database");
+    if (rc == MYLITE_OK && filter != NULL && filter->has_pattern) {
+        rc = dynamic_string_append(&string, " (");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, filter->pattern);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(&string, ')');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        *out_name = dynamic_string_take(&string);
+        if (*out_name == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int build_show_tables_column_name(
+    const char *schema_name,
+    const struct show_like_filter *filter,
+    char **out_name
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    if (schema_name == NULL || out_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_name = NULL;
+
+    dynamic_string_init(&string);
+    rc = dynamic_string_append(&string, "Tables_in_");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, schema_name);
+    }
+    if (rc == MYLITE_OK && filter != NULL && filter->has_pattern) {
+        rc = dynamic_string_append(&string, " (");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&string, filter->pattern);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(&string, ')');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        *out_name = dynamic_string_take(&string);
+        if (*out_name == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int decode_show_like_pattern(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *pattern_node,
+    char **out_pattern
+) {
+    struct dynamic_string string;
+    const char *text = NULL;
+    size_t length = 0U;
+    char quote = '\0';
+    int rc = MYLITE_OK;
+
+    if (out_pattern == NULL) {
+        set_runtime_error(database, "invalid SHOW LIKE pattern");
+        return MYLITE_ERROR;
+    }
+    *out_pattern = NULL;
+    if (pattern_node == NULL || pattern_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(pattern_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, "SHOW LIKE supports only string literal patterns");
+        return MYLITE_ERROR;
+    }
+
+    text = pattern_node->span.text;
+    length = pattern_node->span.length;
+    if (text == NULL || length < 2U) {
+        set_runtime_error(database, "invalid SHOW LIKE pattern");
+        return MYLITE_ERROR;
+    }
+
+    quote = text[0];
+    dynamic_string_init(&string);
+    for (size_t index = 1U; rc == MYLITE_OK && index + 1U < length; ++index) {
+        char byte = text[index];
+
+        if (byte == quote && index + 2U < length && text[index + 1U] == quote) {
+            rc = dynamic_string_append_char(&string, quote);
+            ++index;
+        } else if (byte == '\\' && index + 2U < length) {
+            ++index;
+            rc = append_decoded_string_escape(database, &string, text[index]);
+        } else {
+            rc = dynamic_string_append_char(&string, byte);
+        }
+    }
+    if (rc == MYLITE_OK && string.text == NULL) {
+        rc = dynamic_string_append(&string, "");
+    }
+    if (rc == MYLITE_OK) {
+        *out_pattern = dynamic_string_take(&string);
+        if (*out_pattern == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_decoded_string_escape(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    char escaped_byte
+) {
+    switch (escaped_byte) {
+    case '0':
+        set_unsupported_error(database, "SHOW LIKE does not support NUL bytes in patterns");
+        return MYLITE_ERROR;
+    case 'n':
+        return dynamic_string_append_char(string, '\n');
+    case 'r':
+        return dynamic_string_append_char(string, '\r');
+    case 't':
+        return dynamic_string_append_char(string, '\t');
+    case 'b':
+        return dynamic_string_append_char(string, '\b');
+    case 'Z':
+        return dynamic_string_append_char(string, '\032');
+    case '\\':
+        return dynamic_string_append_char(string, '\\');
+    case '\'':
+        return dynamic_string_append_char(string, '\'');
+    case '"':
+        return dynamic_string_append_char(string, '"');
+    case '%':
+        if (dynamic_string_append_char(string, '\\') != MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        return dynamic_string_append_char(string, '%');
+    case '_':
+        if (dynamic_string_append_char(string, '\\') != MYLITE_OK) {
+            return MYLITE_NOMEM;
+        }
+        return dynamic_string_append_char(string, '_');
+    default:
+        return dynamic_string_append_char(string, escaped_byte);
+    }
+}
+
+static bool show_like_pattern_matches(
+    const char *pattern,
+    size_t pattern_length,
+    const char *value,
+    size_t value_length,
+    bool case_sensitive
+) {
+    const size_t no_retry_pattern = SIZE_MAX;
+    size_t pattern_index = 0U;
+    size_t value_index = 0U;
+    size_t retry_pattern_index = no_retry_pattern;
+    size_t retry_value_index = 0U;
+
+    while (value_index < value_length) {
+        size_t next_pattern_index = pattern_index;
+
+        if (pattern_index < pattern_length && pattern[pattern_index] == '%') {
+            pattern_index = show_like_skip_percent_run(pattern, pattern_length, pattern_index);
+            if (pattern_index == pattern_length) {
+                return true;
+            }
+            retry_pattern_index = pattern_index;
+            retry_value_index = value_index;
+            continue;
+        }
+        if (show_like_pattern_item_matches(
+                (struct show_like_pattern_item_request){
+                    .pattern = pattern,
+                    .pattern_length = pattern_length,
+                    .pattern_index = pattern_index,
+                    .value_byte = value[value_index],
+                    .case_sensitive = case_sensitive,
+                },
+                &next_pattern_index
+            )) {
+            pattern_index = next_pattern_index;
+            ++value_index;
+            continue;
+        }
+        if (retry_pattern_index == no_retry_pattern || retry_value_index >= value_length) {
+            return false;
+        }
+        ++retry_value_index;
+        value_index = retry_value_index;
+        pattern_index = retry_pattern_index;
+    }
+
+    pattern_index = show_like_skip_percent_run(pattern, pattern_length, pattern_index);
+
+    return pattern_index == pattern_length;
+}
+
+static size_t show_like_skip_percent_run(
+    const char *pattern,
+    size_t pattern_length,
+    size_t pattern_index
+) {
+    while (pattern_index < pattern_length && pattern[pattern_index] == '%') {
+        ++pattern_index;
+    }
+    return pattern_index;
+}
+
+static bool show_like_pattern_item_matches(
+    struct show_like_pattern_item_request request,
+    size_t *out_next_pattern_index
+) {
+    char pattern_byte = '\0';
+    size_t next_pattern_index = request.pattern_index;
+
+    if (request.pattern_index >= request.pattern_length || out_next_pattern_index == NULL) {
+        return false;
+    }
+
+    pattern_byte = request.pattern[request.pattern_index];
+    if (pattern_byte == '_') {
+        *out_next_pattern_index = request.pattern_index + 1U;
+        return true;
+    }
+    if (pattern_byte == '\\' && request.pattern_index + 1U < request.pattern_length) {
+        ++next_pattern_index;
+        pattern_byte = request.pattern[next_pattern_index];
+    }
+    ++next_pattern_index;
+    if (!show_like_bytes_equal(pattern_byte, request.value_byte, request.case_sensitive)) {
+        return false;
+    }
+
+    *out_next_pattern_index = next_pattern_index;
+    return true;
+}
+
+static bool show_like_bytes_equal(char left, char right, bool case_sensitive) {
+    if (case_sensitive) {
+        return left == right;
+    }
+
+    return show_like_ascii_lower(left) == show_like_ascii_lower(right);
+}
+
+static char show_like_ascii_lower(char byte) {
+    if (byte >= 'A' && byte <= 'Z') {
+        return (char)(byte - 'A' + 'a');
+    }
+    return byte;
 }
 
 static int build_physical_table_name(int64_t table_id, char *destination, size_t destination_size) {

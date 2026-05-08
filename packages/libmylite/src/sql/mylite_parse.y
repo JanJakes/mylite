@@ -132,69 +132,76 @@ truncate_table_statement(A) ::= TRUNCATE(T) TABLE table_name(N). {
     A = mylite_sql_parser_make_truncate_table_statement(state, T, N);
 }
 
-show_tables_statement(A) ::= SHOW(S) TABLES(T). {
-    A = mylite_sql_parser_make_show_tables_statement(state, S, T, NULL);
+show_tables_statement(A) ::= SHOW(S) TABLES(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, NULL, L);
 }
-show_tables_statement(A) ::= SHOW(S) TABLES(T) FROM identifier(D). {
-    A = mylite_sql_parser_make_show_tables_statement(state, S, T, D);
+show_tables_statement(A) ::= SHOW(S) TABLES(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, D, L);
 }
-show_tables_statement(A) ::= SHOW(S) TABLES(T) IN identifier(D). {
-    A = mylite_sql_parser_make_show_tables_statement(state, S, T, D);
-}
-
-show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL);
-}
-show_columns_statement(A) ::= SHOW(S) COLUMNS IN table_name(T). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS FROM table_name(T). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL);
-}
-show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) FROM identifier(D). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D);
-}
-show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) IN identifier(D). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D);
-}
-show_columns_statement(A) ::= SHOW(S) COLUMNS IN table_name(T) FROM identifier(D). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D);
-}
-show_columns_statement(A) ::= SHOW(S) COLUMNS IN table_name(T) IN identifier(D). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS FROM table_name(T) FROM identifier(D). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS FROM table_name(T) IN identifier(D). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) FROM identifier(D). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D);
-}
-show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) IN identifier(D). {
-    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D);
+show_tables_statement(A) ::= SHOW(S) TABLES(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_tables_statement(state, S, T, D, L);
 }
 
-show_databases_statement(A) ::= SHOW(S) DATABASES(D). {
-    A = mylite_sql_parser_make_show_databases_statement(state, S, D);
+show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL, L);
 }
-show_databases_statement(A) ::= SHOW(S) SCHEMAS(D). {
-    A = mylite_sql_parser_make_show_databases_statement(state, S, D);
+show_columns_statement(A) ::= SHOW(S) COLUMNS IN table_name(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL, L);
+}
+show_columns_statement(A) ::= SHOW(S) FIELDS FROM table_name(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL, L);
+}
+show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, NULL, L);
+}
+show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) COLUMNS IN table_name(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) COLUMNS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FIELDS FROM table_name(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FIELDS FROM table_name(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+}
+show_columns_statement(A) ::= SHOW(S) FIELDS IN table_name(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_columns_statement(state, S, T, D, L);
+}
+
+show_databases_statement(A) ::= SHOW(S) DATABASES(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_databases_statement(state, S, D, L);
+}
+show_databases_statement(A) ::= SHOW(S) SCHEMAS(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_databases_statement(state, S, D, L);
 }
 
 describe_table_statement(A) ::= DESCRIBE(D) table_name(T). {
-    A = mylite_sql_parser_make_show_columns_statement(state, D, T, NULL);
+    A = mylite_sql_parser_make_show_columns_statement(state, D, T, NULL, NULL);
 }
 describe_table_statement(A) ::= DESC(D) table_name(T). {
-    A = mylite_sql_parser_make_show_columns_statement(state, D, T, NULL);
+    A = mylite_sql_parser_make_show_columns_statement(state, D, T, NULL, NULL);
 }
 
 explain_table_statement(A) ::= EXPLAIN(E) table_name(T). {
-    A = mylite_sql_parser_make_show_columns_statement(state, E, T, NULL);
+    A = mylite_sql_parser_make_show_columns_statement(state, E, T, NULL, NULL);
+}
+
+show_like_clause_opt(A) ::= . {
+    A = NULL;
+}
+show_like_clause_opt(A) ::= LIKE STRING(P). {
+    A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 rename_table_statement(A) ::= RENAME(R) TABLE table_name(S) TO table_name(T). {

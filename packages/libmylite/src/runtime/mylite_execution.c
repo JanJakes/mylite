@@ -311,6 +311,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS = 18,
     SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS = 19,
     SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT = 20,
+    SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES = 21,
 };
 
 struct system_variable_component {
@@ -6100,6 +6101,12 @@ static int system_variable_value(
             out_cell->value = out_cell->integer_text;
         }
         return rc;
+    case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
+        rc = format_uint64(database, 0U, out_cell->integer_text, sizeof(out_cell->integer_text));
+        if (rc == MYLITE_OK) {
+            out_cell->value = out_cell->integer_text;
+        }
+        return rc;
     case SESSION_SYSTEM_VARIABLE_VERSION:
         out_cell->value = mylite_version();
         return MYLITE_OK;
@@ -6225,6 +6232,7 @@ static bool resolve_system_variable_kind(
         {"foreign_key_checks", SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS},
         {"unique_checks", SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS},
         {"updatable_views_with_limit", SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT},
+        {"sql_safe_updates", SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES},
         {"version", SESSION_SYSTEM_VARIABLE_VERSION},
         {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT},
     };
@@ -6257,6 +6265,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
     case SESSION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case SESSION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
+    case SESSION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
         return true;

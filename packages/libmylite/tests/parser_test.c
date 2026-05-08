@@ -1550,6 +1550,24 @@ static int test_schema_lifecycle_statements(void) {
     failures += expect_node(statement, MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT, "show schemas");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SHOW CREATE DATABASE app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT,
+        "show create database"
+    );
+    failures += expect_child_count(statement, 1U, "show create database child count");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show create database name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE SCHEMA `select`;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT, "show create schema");
+    failures += expect_span_text(child_at(statement, 0U), "`select`", "show create schema name");
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -2187,6 +2205,34 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW FULL DATABASES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE DATABASE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW CREATE DATABASE IF NOT EXISTS app;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW CREATE DATABASE IF EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW CREATE DATABASE app LIKE 'a%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW CREATE DATABASE app DEFAULT CHARACTER SET utf8mb4;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE DATABASE app.db;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW ENGINES LIKE 'InnoDB';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

@@ -83,6 +83,9 @@ statement(A) ::= show_index_statement(B). {
 statement(A) ::= show_create_table_statement(B). {
     A = B;
 }
+statement(A) ::= show_create_database_statement(B). {
+    A = B;
+}
 statement(A) ::= show_engines_statement(B). {
     A = B;
 }
@@ -268,6 +271,13 @@ show_databases_statement(A) ::= SHOW(S) SCHEMAS(D) show_like_clause_opt(L). {
 
 show_create_table_statement(A) ::= SHOW(S) CREATE TABLE table_name(T). {
     A = mylite_sql_parser_make_show_create_table_statement(state, S, T);
+}
+
+show_create_database_statement(A) ::= SHOW(S) CREATE DATABASE identifier(D). {
+    A = mylite_sql_parser_make_show_create_database_statement(state, S, D);
+}
+show_create_database_statement(A) ::= SHOW(S) CREATE SCHEMA identifier(D). {
+    A = mylite_sql_parser_make_show_create_database_statement(state, S, D);
 }
 
 show_engines_statement(A) ::= SHOW(S) ENGINES(E). {

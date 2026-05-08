@@ -50,6 +50,7 @@ enum {
     show_columns_result_column_count = 6,
     show_index_result_column_count = 15,
     show_create_table_result_column_count = 2,
+    show_create_database_result_column_count = 2,
     show_engines_result_column_count = 6,
 };
 
@@ -346,6 +347,11 @@ static int execute_show_create_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_show_create_database_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_show_engines_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_show_databases_statement(
     struct mylite_db *database,
@@ -612,6 +618,7 @@ static int show_create_table_type_text(
     const char *logical_type,
     const char **out_type_text
 );
+static int build_show_create_database_sql(const char *schema_name, char **out_sql);
 
 static int plan_delete(
     struct mylite_db *database,
@@ -1309,6 +1316,8 @@ static int execute_parsed_statement(
         return execute_show_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
         return execute_show_create_table_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
+        return execute_show_create_database_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
         return execute_show_engines_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
@@ -2034,6 +2043,67 @@ static int execute_show_create_table_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_create_database_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_create_database_result_column_count] = {
+        "Database",
+        "Create Database",
+    };
+    struct mylite_catalog_schema_descriptor schema = {0};
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char *create_sql = NULL;
+    const char *values[show_create_database_result_column_count] = {NULL, NULL};
+    mylite_result *result = NULL;
+    int rc =
+        copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
+
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
+        set_reserved_name_error(database, "database", schema_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_schema_name(database, schema_name, &schema);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_create_database_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_show_create_database_sql(schema.name, &create_sql);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        values[0] = schema.name;
+        values[1] = create_sql;
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    free(create_sql);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_engines_statement(struct mylite_db *database, mylite_result **out_result) {
     static const char *const result_columns[show_engines_result_column_count] = {
         "Engine",
@@ -2328,6 +2398,33 @@ static int show_create_table_type_text(
     return MYLITE_ERROR;
 }
 
+static int build_show_create_database_sql(const char *schema_name, char **out_sql) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "CREATE DATABASE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(&string, schema_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(
+            &string,
+            " /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ "
+            "/*!80016 DEFAULT ENCRYPTION='N' */"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = string.text;
+        return MYLITE_OK;
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
 static int64_t row_count_for_completed_statement(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
@@ -2360,6 +2457,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return -1;

@@ -61337,6 +61337,140 @@ static int test_insert_select_execution(void) {
 
     failures += execute_sql(
         database,
+        "CREATE TABLE target_binary_literal_select ("
+        "id INT PRIMARY KEY, i INT, vc VARCHAR(10), vb VARBINARY(10))",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO target_binary_literal_select "
+        "SELECT 1, 0x41, 0x41, 0x41 FROM source_rows WHERE id = 1",
+        1,
+        "INSERT SELECT hex literal target-aware row"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO target_binary_literal_select "
+        "SELECT 2, 0b01000001, 0b01000001, 0b01000001",
+        1,
+        "INSERT SELECT bit literal target-aware row"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, i, vc, HEX(vc) AS vc_hex, HEX(vb) AS vb_hex, LENGTH(vb) AS vb_len "
+        "FROM target_binary_literal_select ORDER BY id",
+        (const char *const[]){"id", "i", "vc", "vc_hex", "vb_hex", "vb_len"},
+        6,
+        (const char *const[]){"1", "65", "A", "41", "41", "1", "2", "65", "A", "41", "41", "1"},
+        2,
+        "INSERT SELECT target-aware hex and bit literal values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE source_lob_select ("
+        "id INT PRIMARY KEY, t TEXT, b BLOB, v VARCHAR(300), vb VARBINARY(300))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO source_lob_select VALUES "
+        "(1, REPEAT('a', 256), REPEAT('b', 256), REPEAT('c', 256), REPEAT('d', 256))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE target_tiny_select_lobs ("
+        "id INT PRIMARY KEY, t TINYTEXT, b TINYBLOB)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_tiny_select_lobs SELECT id, t, b FROM source_lob_select",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "INSERT SELECT direct text lob strict length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "INSERT SELECT direct text lob strict length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM target_tiny_select_lobs",
+        0,
+        "INSERT SELECT direct text lob strict rollback"
+    );
+
+    failures += prepare_sql(
+        database,
+        "INSERT INTO target_tiny_select_lobs SELECT id, v, vb FROM source_lob_select",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_exec_error(
+        stmt,
+        database,
+        "Data too long for column 't' at row 1",
+        "INSERT SELECT varchar source tiny lob strict length error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_error_data_too_long,
+        "INSERT SELECT varchar source tiny lob strict length code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_row_count(
+        database,
+        "SELECT id FROM target_tiny_select_lobs",
+        0,
+        "INSERT SELECT varchar source tiny lob strict rollback"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT IGNORE INTO target_tiny_select_lobs SELECT id, t, b FROM source_lob_select",
+        1,
+        "INSERT IGNORE SELECT tiny lob truncation"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        2,
+        "INSERT IGNORE SELECT tiny lob warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_data_truncated,
+        "INSERT IGNORE SELECT tiny text warning code"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 1),
+        mysql_warning_data_truncated,
+        "INSERT IGNORE SELECT tiny blob warning code"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, LENGTH(t) AS t_len, LENGTH(b) AS b_len, "
+        "RIGHT(t, 1) AS t_last, HEX(RIGHT(b, 1)) AS b_last "
+        "FROM target_tiny_select_lobs",
+        (const char *const[]){"id", "t_len", "b_len", "t_last", "b_last"},
+        5,
+        (const char *const[]){"1", "255", "255", "a", "62"},
+        1,
+        "INSERT IGNORE SELECT tiny lob clipped row"
+    );
+
+    failures += execute_sql(
+        database,
         "CREATE TABLE target_strict_literal_text (note VARCHAR(3))",
         MYLITE_DONE
     );

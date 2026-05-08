@@ -3,6 +3,7 @@
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
 #include "mylite_dml.h"
+#include "mylite_dml_binary_literal.h"
 #include "mylite_dml_insert_diagnostics.h"
 #include "mylite_error_codes.h"
 #include "mylite_runtime.h"
@@ -108,14 +109,31 @@ static int materialize_insert_select_rows(
 static int append_insert_select_row(
     mylite_db *database,
     struct mylite_insert_values_plan *plan,
+    const struct mylite_sql_ast_node *select_statement,
     const mylite_stmt *select_stmt,
     size_t column_count
 );
 
 static int copy_insert_select_column_value(
     const mylite_stmt *select_stmt,
+    const struct mylite_sql_ast_node *select_statement,
     size_t column_index,
     struct mylite_insert_value *out_value
+);
+
+static const struct mylite_sql_ast_node *insert_select_output_expression(
+    const mylite_stmt *select_stmt,
+    const struct mylite_sql_ast_node *select_statement,
+    size_t column_index
+);
+
+static const struct mylite_sql_ast_node *insert_select_source_projection_expression(
+    const struct mylite_sql_ast_node *select_statement,
+    size_t column_index
+);
+
+static enum mylite_insert_value_kind insert_select_binary_literal_value_kind(
+    const struct mylite_sql_ast_node *expression
 );
 
 static bool insert_select_source_column_uses_strict_data_truncated(
@@ -844,6 +862,7 @@ static int materialize_insert_select_rows(
         status = append_insert_select_row(
             stmt->database,
             &stmt->insert_values,
+            stmt->insert_select.select_statement,
             select_stmt,
             column_count
         );
@@ -857,6 +876,7 @@ static int materialize_insert_select_rows(
 static int append_insert_select_row(
     mylite_db *database,
     struct mylite_insert_values_plan *plan,
+    const struct mylite_sql_ast_node *select_statement,
     const mylite_stmt *select_stmt,
     size_t column_count
 ) {
@@ -874,7 +894,12 @@ static int append_insert_select_row(
     }
 
     for (size_t column = 0U; column < column_count; ++column) {
-        status = copy_insert_select_column_value(select_stmt, column, &row.values[column]);
+        status = copy_insert_select_column_value(
+            select_stmt,
+            select_statement,
+            column,
+            &row.values[column]
+        );
         if (status != MYLITE_OK) {
             mylite_dml_insert_row_deinit(&row);
             if (status == MYLITE_NOMEM) {
@@ -897,13 +922,31 @@ static int append_insert_select_row(
 
 static int copy_insert_select_column_value(
     const mylite_stmt *select_stmt,
+    const struct mylite_sql_ast_node *select_statement,
     size_t column_index,
     struct mylite_insert_value *out_value
 ) {
+    const struct mylite_sql_ast_node *expression =
+        insert_select_output_expression(select_stmt, select_statement, column_index);
+    enum mylite_insert_value_kind literal_kind =
+        insert_select_binary_literal_value_kind(expression);
     const char *text = mylite_column_text(select_stmt, (int)column_index);
     uint64_t bytes = mylite_column_bytes(select_stmt, (int)column_index);
     char *copy = NULL;
 
+    if (literal_kind != MYLITE_INSERT_VALUE_UNSUPPORTED && expression != NULL &&
+        expression->span.text != NULL) {
+        copy = mylite_copy_span_text(expression->span.text, expression->span.length);
+        if (copy == NULL) {
+            return MYLITE_NOMEM;
+        }
+        *out_value = (struct mylite_insert_value){
+            .kind = literal_kind,
+            .text = copy,
+            .text_length = expression->span.length,
+        };
+        return MYLITE_OK;
+    }
     if (text == NULL) {
         *out_value = (struct mylite_insert_value){.kind = MYLITE_INSERT_VALUE_NULL};
         return MYLITE_OK;
@@ -927,6 +970,65 @@ static int copy_insert_select_column_value(
         .text_length = (size_t)bytes,
     };
     return MYLITE_OK;
+}
+
+static const struct mylite_sql_ast_node *insert_select_output_expression(
+    const mylite_stmt *select_stmt,
+    const struct mylite_sql_ast_node *select_statement,
+    size_t column_index
+) {
+    const struct mylite_select_output_column *output = NULL;
+
+    if (select_stmt == NULL) {
+        return NULL;
+    }
+    if (select_stmt->kind == MYLITE_STMT_SCALAR_SELECT &&
+        column_index < select_stmt->scalar_result.value_count) {
+        return select_stmt->scalar_result.expressions[column_index] != NULL
+                   ? select_stmt->scalar_result.expressions[column_index]
+                   : insert_select_source_projection_expression(select_statement, column_index);
+    }
+    if (select_stmt->kind == MYLITE_STMT_TABLE_SELECT &&
+        column_index < select_stmt->select_plan.output_count) {
+        output = &select_stmt->select_plan.outputs[column_index];
+        return output->kind == MYLITE_SELECT_OUTPUT_EXPRESSION ? output->expression : NULL;
+    }
+    return NULL;
+}
+
+static const struct mylite_sql_ast_node *insert_select_source_projection_expression(
+    const struct mylite_sql_ast_node *select_statement,
+    size_t column_index
+) {
+    const struct mylite_sql_ast_node *select_list = mylite_ast_child_at(select_statement, 0U);
+    size_t current_index = 0U;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        return NULL;
+    }
+    for (const struct mylite_sql_ast_node *item = select_list->first_child; item != NULL;
+         item = item->next_sibling, ++current_index) {
+        if (current_index == column_index) {
+            return mylite_ast_child_at(item, 0U);
+        }
+    }
+    return NULL;
+}
+
+static enum mylite_insert_value_kind insert_select_binary_literal_value_kind(
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_dml_binary_literal_kind literal_kind = MYLITE_DML_BINARY_LITERAL_NONE;
+
+    expression = mylite_sql_ast_unwrap_parenthesized_expression(expression);
+    literal_kind = mylite_dml_binary_literal_kind_for_ast(expression);
+    if (literal_kind == MYLITE_DML_BINARY_LITERAL_HEX) {
+        return MYLITE_INSERT_VALUE_HEX_LITERAL;
+    }
+    if (literal_kind == MYLITE_DML_BINARY_LITERAL_BIT) {
+        return MYLITE_INSERT_VALUE_BIT_LITERAL;
+    }
+    return MYLITE_INSERT_VALUE_UNSUPPORTED;
 }
 
 static bool insert_select_source_column_uses_strict_data_truncated(

@@ -1038,7 +1038,10 @@ static int handle_string_truncation(
     bool strict_truncation_is_data_truncated
 ) {
     if (!ignore && mylite_connection_sql_mode_is_strict(database)) {
-        if (strict_truncation_is_data_truncated) {
+        const char *data_type = column == NULL ? NULL : column->data_type;
+
+        if (strict_truncation_is_data_truncated && !column_data_type_is_text_bytes(data_type) &&
+            !column_data_type_is_blob_bytes(data_type)) {
             return set_string_truncated_error(database, column, row_number);
         }
         return set_string_too_long_error(database, column, row_number);

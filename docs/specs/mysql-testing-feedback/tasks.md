@@ -266,10 +266,12 @@ MySQL 8.4.9 runtime before each item is marked complete.
       target clipping, is covered for strict, non-strict, `INSERT IGNORE`, and
       single-table `UPDATE IGNORE` paths. `TINYTEXT` and `TINYBLOB`
       255-byte write limits and plain `TEXT`/`BLOB` 65,535-byte write limits
-      are now covered for strict and non-strict `INSERT ... VALUES`, `REPLACE`,
-      `REPLACE ... SET`, `INSERT IGNORE`, strict single-table `UPDATE`, and
-      single-table `UPDATE IGNORE`, including strict `REPLACE` conflict-row
-      preservation and UTF-8 boundary truncation for `TINYTEXT` and `TEXT`.
+      are now covered for strict and non-strict `INSERT ... VALUES`,
+      strict/`IGNORE` `INSERT ... SELECT` into `TINYTEXT`/`TINYBLOB`,
+      `REPLACE`, `REPLACE ... SET`, `INSERT IGNORE`, strict single-table
+      `UPDATE`, and single-table `UPDATE IGNORE`, including strict `REPLACE`
+      conflict-row preservation and UTF-8 boundary truncation for `TINYTEXT`
+      and `TEXT`.
       Table-backed `DECIMAL` column stringification is now covered for
       `CAST(... AS CHAR)`, `CONCAT`, `HEX(CAST(... AS CHAR))`, `TO_BASE64`,
       and single-table `UPDATE` expression assignment.
@@ -356,11 +358,11 @@ MySQL 8.4.9 runtime before each item is marked complete.
       byte truncation, right-padding, warning text, and binary metadata.
       Single-byte `latin1` connection `CHAR(N)` casts and conversions now
       truncate by bytes rather than UTF-8 code points. Hex and
-      bit literals in covered `INSERT ... VALUES`, `INSERT ... SET`, ODKU
-      update assignments, single-table `UPDATE`, and joined `UPDATE` paths now
-      resolve with target-aware MySQL semantics: numeric columns receive the
-      literal numeric value and text/binary columns receive decoded bytes before
-      normal column coercion.
+      bit literals in covered `INSERT ... VALUES`, `INSERT ... SET`,
+      `INSERT ... SELECT`, ODKU update assignments, single-table `UPDATE`, and
+      joined `UPDATE` paths now resolve with target-aware MySQL semantics:
+      numeric columns receive the literal numeric value and text/binary columns
+      receive decoded bytes before normal column coercion.
       Scalar `CONVERT(... USING ...)` now transcodes between known `latin1` and
       `utf8mb4` character values, including `?` substitution for valid UTF-8
       codepoints outside latin1, while preserving invalid unknown byte-string

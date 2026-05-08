@@ -17,8 +17,8 @@ This slice aligns write-time length coercion for currently supported `CHAR`,
 It also covers the first TEXT/BLOB-family runtime edges:
 
 - `TINYTEXT` and `TINYBLOB` 255-byte write limits for `INSERT ... VALUES`,
-  `REPLACE ... VALUES`, `REPLACE ... SET`, `INSERT IGNORE`,
-  single-table `UPDATE`, and single-table `UPDATE IGNORE`
+  `INSERT ... SELECT`, `REPLACE ... VALUES`, `REPLACE ... SET`,
+  `INSERT IGNORE`, single-table `UPDATE`, and single-table `UPDATE IGNORE`
 - plain `TEXT` and `BLOB` 65,535-byte write limits for `INSERT ... VALUES`,
   `REPLACE ... VALUES`, `REPLACE ... SET`, `INSERT IGNORE`,
   single-table `UPDATE`, and single-table `UPDATE IGNORE`
@@ -86,11 +86,13 @@ For `TINYTEXT` and `TINYBLOB`, MySQL enforces a 255-byte maximum. In strict
 mode, assigning 256 ASCII bytes to `TINYTEXT` and `TINYBLOB` rejects the
 statement at the first overflowing column with error 1406 and leaves rows
 unchanged, including existing rows that a failing `REPLACE` would otherwise
-delete. In non-strict mode, covered `REPLACE` forms, and the covered `IGNORE`
-forms, MySQL stores 255 bytes and emits warning 1265 per truncated column. For
-multibyte `TINYTEXT`, non-strict truncation does not store a partial UTF-8
-character; 128 two-byte characters become 127 characters / 254 bytes with one
-warning.
+delete. The covered `INSERT ... SELECT` path uses this 1406 strict diagnostic
+for direct source string and binary columns as well as literal or computed
+source expressions. In non-strict mode, covered `REPLACE` forms, and the
+covered `IGNORE` forms, MySQL stores 255 bytes and emits warning 1265 per
+truncated column. For multibyte `TINYTEXT`, non-strict truncation does not store
+a partial UTF-8 character; 128 two-byte characters become 127 characters / 254
+bytes with one warning.
 
 For plain `TEXT` and `BLOB`, MySQL enforces a 65,535-byte maximum. In strict
 mode, assigning 65,536 ASCII bytes to `TEXT` and `BLOB` rejects the statement at
@@ -176,6 +178,8 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
   truncation, and single-table `UPDATE IGNORE` padding/truncation
 - strict rejection, non-strict truncation, `INSERT IGNORE`, and
   single-table `UPDATE IGNORE` for `TINYTEXT` and `TINYBLOB`
+- strict rejection and `INSERT IGNORE ... SELECT` demotion for direct source
+  columns into `TINYTEXT` and `TINYBLOB`
 - `REPLACE ... VALUES` and `REPLACE ... SET` truncation behavior for
   `TINYTEXT` and `TINYBLOB`, including conflict-row preservation on strict
   failure

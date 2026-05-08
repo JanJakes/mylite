@@ -83,11 +83,16 @@ Rows are inserted as if each selected row were a values row in source result
 order. Omitted target columns use the existing insert default path. Source
 `NULL` values remain `NULL`; non-`NULL` values are copied with byte length and
 then coerced by the target column's existing DML conversion logic.
+Selected hex and bit literal projections keep their literal provenance during
+materialization so numeric targets receive the literal's numeric value, while
+text and binary targets receive decoded bytes before ordinary target coercion.
 When a direct source string or binary column is inserted into a shorter string
-or binary target, MySQL reports strict truncation as error 1265,
-`Data truncated for column ...`; literal and computed string expressions still
-use error 1406, `Data too long ...`. MyLite preserves that distinction from
-source result metadata during materialization.
+or binary `CHAR`/`VARCHAR`/`BINARY`/`VARBINARY` target, MySQL reports strict
+truncation as error 1265, `Data truncated for column ...`; literal and
+computed string expressions still use error 1406, `Data too long ...`.
+TEXT/BLOB-family targets use error 1406 for strict overflow even when the
+source is a direct string or binary column. MyLite preserves these distinctions
+from source result metadata and target column metadata during materialization.
 Conversion diagnostics use the selected output row's 1-based position. For
 example, if the second selected row contains an invalid integer, date, or
 overlength direct source string, strict errors and non-strict warnings report
@@ -105,7 +110,9 @@ Observed MySQL 8.4.9 behavior for covered cases:
 | duplicate key without `IGNORE` or ODKU | error 1062, statement rollback |
 | `INSERT IGNORE ... SELECT` duplicate row | warning 1062, duplicate skipped, affected rows count accepted rows |
 | strict direct source string/binary column truncation | error 1265, statement rollback |
+| strict direct source string/binary column overflow into TEXT/BLOB-family target | error 1406, statement rollback |
 | strict literal/computed string truncation | error 1406, statement rollback |
+| selected hex/bit literal into numeric/text/binary targets | numeric targets receive numeric value; text/binary targets receive decoded bytes |
 | strict selected-row integer/date conversion failure | error 1366/1292 with the selected row number, statement rollback |
 | non-strict selected-row integer/string conversion | warning 1366/1265 with the selected row number, coerced value inserted |
 | `AUTO_INCREMENT` target with omitted id | generated ids allocated in source order, `LAST_INSERT_ID()` is first generated id |

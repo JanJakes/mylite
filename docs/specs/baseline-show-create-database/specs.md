@@ -73,9 +73,10 @@ Observed against the local `mysql:8.4.9` runtime:
   `/*!32312 IF NOT EXISTS*/` version comment in the DDL cell. This first MyLite
   slice defers that optional form.
 - With `@@sql_quote_show_create = 0`, MySQL omits backticks around simple
-  schema names in the rendered DDL. MyLite does not expose system variable
-  assignment yet, so this slice always renders quoted identifiers and
-  documents `sql_quote_show_create` as a compatibility gap.
+  schema names in the rendered DDL. MyLite's later
+  `baseline-sql-quote-show-create-system-variable` slice exposes a fixed
+  enabled scalar value only, so rendering remains quoted and disabled rendering
+  remains unsupported.
 - `SHOW CREATE DATABASE IF EXISTS db_name`, missing schema names, `LIKE`,
   `WHERE`, and schema options are syntax errors.
 
@@ -102,7 +103,7 @@ This feature must not implement:
 
 - `SHOW CREATE DATABASE IF NOT EXISTS`;
 - schema option storage or rendering beyond the fixed default text;
-- `sql_quote_show_create`;
+- mutable `sql_quote_show_create` state or disabled quote rendering;
 - `ALTER DATABASE`, schema default charset/collation mutation, encryption
   mutation, privilege filtering, system schemas, partial revokes,
   `INFORMATION_SCHEMA.SCHEMATA`, or `SHOW DATABASES WHERE`;
@@ -188,7 +189,7 @@ CREATE DATABASE `schema_name` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf
 The schema name is always backtick quoted in the DDL cell. Embedded backticks
 are escaped by doubling them. The first `Database` cell is the raw descriptor
 name. MySQL's `sql_quote_show_create` session variable can suppress quoting in
-server output; MyLite does not implement that variable yet, so the
+server output; MyLite exposes only the fixed enabled scalar value, so the
 descriptor-rendered DDL remains quoted for deterministic baseline output.
 
 The fixed option suffix matches observed MySQL 8.4.9 output for schemas
@@ -240,7 +241,8 @@ Tests must cover:
 - independent file-backed handles;
 - catalog generation, SQLite schema generation, and preamble preservation;
 - the MySQL 8.4.9 expectation artifact for supported behavior and deferred
-  `IF NOT EXISTS` and `sql_quote_show_create` behavior.
+  `IF NOT EXISTS`, mutable `sql_quote_show_create` state, and disabled quote
+  rendering.
 
 Existing lexer, parser, runtime handle, diagnostics, statement context, result
 metadata, SQLite bootstrap policy, file-backed opening, VFS, catalog

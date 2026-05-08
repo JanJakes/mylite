@@ -14,7 +14,7 @@ MySQL-style `CREATE TABLE` statement only for the descriptor shapes MyLite can
 create today: persistent base tables with `INT`, `INTEGER`, `BIGINT`, optional
 `UNSIGNED`, and `NULL`/`NOT NULL` column nullability. It does not add table
 options, indexes, defaults, constraints, generated columns, auto-increment,
-views, temporary tables, `sql_quote_show_create`, privileges, or
+views, temporary tables, mutable `sql_quote_show_create`, privileges, or
 `INFORMATION_SCHEMA`.
 
 ## Sources
@@ -98,8 +98,9 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
   `collation_connection`. Views remain outside this slice.
 - `LIKE`, `WHERE`, `FROM schema`, `TEMPORARY`, and `FULL` modifiers are syntax
   errors on `SHOW CREATE TABLE`.
-- Setting `sql_quote_show_create = 0` changes identifier quoting in MySQL. This
-  slice does not add the system variable or unquoted rendering.
+- Setting `sql_quote_show_create = 0` changes identifier quoting in MySQL.
+  MyLite's later `baseline-sql-quote-show-create-system-variable` slice exposes
+  a fixed enabled scalar value only; unquoted rendering remains unsupported.
 
 ## Scope
 
@@ -129,8 +130,9 @@ This feature must not implement:
   charsets, collations, comments, indexes, primary keys, unique keys, foreign
   keys, check constraints, generated columns, generated invisible primary keys,
   explicit defaults, auto-increment, triggers, privileges, SQL modes,
-  `sql_quote_show_create`, arbitrary SQLite metadata reads, arbitrary SQLite
-  SQL pass-through, or SQLite fork patches.
+  mutable `sql_quote_show_create` state, disabled quote rendering, arbitrary
+  SQLite metadata reads, arbitrary SQLite SQL pass-through, or SQLite fork
+  patches.
 
 ## Ownership Boundary
 
@@ -323,7 +325,8 @@ After implementation:
   table option exposure needs explicit cross-reference wording;
 - do not overclaim full `SHOW CREATE TABLE`, views, temporary tables, table
   options, indexes, constraints, defaults, generated columns, auto-increment,
-  privileges, or `sql_quote_show_create`.
+  privileges, mutable `sql_quote_show_create` state, or disabled quote
+  rendering.
 
 ## Verification
 

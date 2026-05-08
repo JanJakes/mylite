@@ -122,11 +122,13 @@ With MySQL's default `group_concat_max_len=1024`, text inputs return a
 `LONG_BLOB`-family descriptor with the connection/table collation and nullable
 result. When the session value is `512` bytes or lower, MySQL reports a
 `VAR_STRING`-family descriptor for nonbinary inputs. Binary inputs return a
-binary descriptor. MyLite maps nonbinary results to nullable `BLOB`
+binary descriptor. MyLite maps nonbinary results to nullable type-252
 metadata when the session limit is above `512`, and nullable `VAR_STRING`
-metadata when it is `512` or lower. Declared nonbinary length is the session
-limit multiplied by the connection charset maxlen, decimals are `31`, and the
-current connection charset is reported.
+metadata when it is `512` or lower. MySQL does not set the BLOB flag for the
+nonbinary type-252 path. Declared nonbinary length is the session limit
+multiplied by the connection charset maxlen for `512` or lower, and by the
+connection charset maxlen plus MySQL's observed long-text factor of `16` above
+`512`; decimals are `31`, and the current connection charset is reported.
 
 If any concatenated argument expression has binary string metadata, MyLite
 reports a binary result: charset id `63`, `BINARY` flag, nullable, decimals

@@ -353,6 +353,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       `TRUNCATE()` now duplicates truncated scale warnings for exact DECIMAL
       value arguments while retaining single-warning behavior for approximate
       and mixed text conversions.
+      `GROUP_CONCAT()` nonbinary result metadata now matches MySQL's
+      long-result length scaling and omits the BLOB flag for default
+      `group_concat_max_len` values while preserving binary-argument byte
+      metadata.
       `LONGTEXT` and `LONGBLOB` now enter the covered string/binary DML
       coercion path for approximate numeric text conversion, and covered
       `LONGTEXT` invalid UTF-8 writes reject or demote like MySQL while paired

@@ -39825,12 +39825,12 @@ static int test_aggregate_grouping_execution(void) {
          NULL,
          NULL,
          NULL,
-         4096U,
+         65536U,
          MYLITE_FIELD_TYPE_BLOB,
          31U,
          255U,
-         MYLITE_FIELD_FLAG_BLOB,
-         MYLITE_FIELD_FLAG_NOT_NULL,
+         0U,
+         MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
     static const struct expected_result_metadata group_concat_short_metadata[] = {
@@ -39894,12 +39894,13 @@ static int test_aggregate_grouping_execution(void) {
          NULL,
          NULL,
          NULL,
-         4096U,
+         65536U,
          MYLITE_FIELD_TYPE_BLOB,
          31U,
          255U,
-         MYLITE_FIELD_FLAG_BLOB,
-         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         0U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL |
+             MYLITE_FIELD_FLAG_NUM,
          1},
     };
     static const struct expected_result_metadata group_concat_binary_short_metadata[] = {

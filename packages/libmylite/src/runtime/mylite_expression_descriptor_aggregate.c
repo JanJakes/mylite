@@ -24,6 +24,11 @@ static int group_concat_argument_list_has_binary_result(
     bool *out_has_binary_result
 );
 
+static uint64_t group_concat_text_descriptor_length(
+    uint64_t group_concat_max_len,
+    uint64_t character_max_length
+);
+
 static bool descriptor_is_binary_string(const struct mylite_field_descriptor *descriptor);
 
 int mylite_expression_descriptor_infer_aggregate_expression(
@@ -161,10 +166,9 @@ static int infer_group_concat_descriptor(
         descriptor = (struct mylite_field_descriptor){
             .type = group_concat_max_len <= 512U ? MYLITE_FIELD_TYPE_VAR_STRING
                                                  : MYLITE_FIELD_TYPE_BLOB,
-            .flags = group_concat_max_len <= 512U ? 0U : MYLITE_FIELD_FLAG_BLOB,
-            .length = group_concat_max_len > UINT64_MAX / character_max_length
-                          ? UINT64_MAX
-                          : group_concat_max_len * character_max_length,
+            .flags = 0U,
+            .length =
+                group_concat_text_descriptor_length(group_concat_max_len, character_max_length),
             .decimals = mylite_mysql_not_fixed_decimals,
             .charset_id = mylite_expression_descriptor_connection_collation_id(database),
             .nullable = true,
@@ -173,6 +177,27 @@ static int infer_group_concat_descriptor(
     mylite_field_descriptor_set_nullable(&descriptor, true);
     *out_descriptor = descriptor;
     return MYLITE_OK;
+}
+
+static uint64_t group_concat_text_descriptor_length(
+    uint64_t group_concat_max_len,
+    uint64_t character_max_length
+) {
+    enum { mysql_group_concat_long_text_length_factor = 16U };
+
+    uint64_t multiplier = character_max_length;
+
+    if (multiplier == 0U) {
+        multiplier = 1U;
+    }
+    if (group_concat_max_len > 512U) {
+        if (multiplier > UINT64_MAX / mysql_group_concat_long_text_length_factor) {
+            return UINT64_MAX;
+        }
+        multiplier *= mysql_group_concat_long_text_length_factor;
+    }
+    return group_concat_max_len > UINT64_MAX / multiplier ? UINT64_MAX
+                                                          : group_concat_max_len * multiplier;
 }
 
 static int group_concat_argument_list_has_binary_result(

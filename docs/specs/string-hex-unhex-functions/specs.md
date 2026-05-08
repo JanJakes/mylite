@@ -139,10 +139,13 @@ their decoded binary-string bytes.
 
 ## Result metadata
 
-`HEX()` reports `VAR_STRING`, MySQL's not-fixed decimals marker `31`, and the
-connection result character set/collation. Its declared length is two hex
-characters per possible input byte, measured in the connection result character
-set. Numeric input reports up to 16 hex characters.
+`HEX()` reports `VAR_STRING` and MySQL's not-fixed decimals marker `31`.
+No-table scalar expressions use the connection result character set/collation;
+their declared length is two hex characters per possible input byte, measured
+in the connection result character set. Table-dependent expressions report
+latin1 metadata because hex digits are ASCII bytes: table string input reports
+twice the source byte width, and table numeric input reports up to 16 hex
+characters.
 
 `UNHEX()` reports `VAR_STRING`, MySQL's not-fixed decimals marker `31`, binary
 charset/collation, and `BINARY` flag. Its declared length is half of the input
@@ -166,6 +169,8 @@ Verified metadata:
 | `HEX(255)` | `latin1` | `VAR_STRING` | `8` | `16` | `31` | none |
 | `UNHEX('417a')` | `latin1` | `VAR_STRING` | `63` | `2` | `31` | `BINARY` |
 | `UNHEX('GG')` | `latin1` | `VAR_STRING` | `63` | `1` | `31` | `BINARY` |
+| `HEX(varchar_utf8mb4_20_col)` | table-backed | `VAR_STRING` | `8` | `160` | `31` | none |
+| `HEX(int_col)` | table-backed | `VAR_STRING` | `8` | `16` | `31` | none |
 
 MyLite's current metadata API also exposes expression nullability through its
 existing `NOT_NULL` flag model. That model can be stricter than the MySQL CLI

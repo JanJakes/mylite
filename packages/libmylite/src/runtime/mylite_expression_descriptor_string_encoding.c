@@ -5,6 +5,7 @@
 #include "mylite_metadata_constants.h"
 #include "mylite_span.h"
 #include "sql/mylite_ast.h"
+#include "sql/mylite_expression.h"
 
 #include <stdint.h>
 
@@ -103,6 +104,8 @@ static int infer_hex_function_descriptor(
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     const struct mylite_sql_ast_node *source = mylite_ast_child_at(arguments, 0U);
     struct mylite_field_descriptor source_descriptor = mylite_expression_descriptor_defaults();
+    const bool source_depends_on_row =
+        plan != NULL && !mylite_expression_is_supported_no_table(source);
     uint64_t max_bytes_per_character =
         mylite_expression_descriptor_connection_character_max_length(database);
     uint64_t length = 0U;
@@ -115,9 +118,17 @@ static int infer_hex_function_descriptor(
     if (source_descriptor.type == MYLITE_FIELD_TYPE_NULL) {
         length = 0U;
     } else if (mylite_expression_descriptor_has_numeric_result(&source_descriptor)) {
-        length = max_bytes_per_character > UINT64_MAX / mylite_mysql_hex_numeric_result_chars
-                     ? mylite_mysql_long_text_length
-                     : mylite_mysql_hex_numeric_result_chars * max_bytes_per_character;
+        if (source_depends_on_row) {
+            length = mylite_mysql_hex_numeric_result_chars;
+        } else if (max_bytes_per_character > UINT64_MAX / mylite_mysql_hex_numeric_result_chars) {
+            length = mylite_mysql_long_text_length;
+        } else {
+            length = mylite_mysql_hex_numeric_result_chars * max_bytes_per_character;
+        }
+    } else if (source_depends_on_row && source_descriptor.length > UINT64_MAX / 2U) {
+        length = mylite_mysql_long_text_length;
+    } else if (source_depends_on_row) {
+        length = source_descriptor.length * 2U;
     } else if (
         source_descriptor.length > UINT64_MAX / 2U ||
         (source_descriptor.length * 2U) > UINT64_MAX / max_bytes_per_character
@@ -132,7 +143,9 @@ static int infer_hex_function_descriptor(
         .flags = 0U,
         .length = length,
         .decimals = mylite_mysql_not_fixed_decimals,
-        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
+        .charset_id = source_depends_on_row
+                          ? mylite_mysql_latin1_swedish_ci_charset_id
+                          : mylite_expression_descriptor_connection_charset_id(database),
         .nullable = true,
     };
     mylite_field_descriptor_set_nullable(out_descriptor, true);

@@ -10641,10 +10641,10 @@ static int test_scalar_builtin_functions_execution(void) {
          NULL,
          NULL,
          NULL,
-         640U,
+         160U,
          MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
-         255U,
+         8U,
          0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
@@ -10655,10 +10655,10 @@ static int test_scalar_builtin_functions_execution(void) {
          NULL,
          NULL,
          NULL,
-         64U,
+         16U,
          MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
-         255U,
+         8U,
          0U,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
@@ -10688,6 +10688,36 @@ static int test_scalar_builtin_functions_execution(void) {
          63U,
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
+    static const struct expected_result_metadata hex_table_literal_metadata[] = {
+        {"hex_lit",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"hex_num_lit",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         64U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
          1},
     };
     static const struct expected_result_metadata base64_table_metadata[] = {
@@ -13649,6 +13679,21 @@ static int test_scalar_builtin_functions_execution(void) {
         (int)(sizeof(hex_table_metadata) / sizeof(hex_table_metadata[0])),
         "table hex/unhex function metadata"
     );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "SELECT HEX('Az') AS hex_lit, HEX(255) AS hex_num_lit FROM t LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        hex_table_literal_metadata,
+        (int)(sizeof(hex_table_literal_metadata) / sizeof(hex_table_literal_metadata[0])),
+        "table hex literal function metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "table hex literal metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(

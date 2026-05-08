@@ -436,6 +436,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       result character set and collation, including MySQL-shaped `utf8mb4`
       metadata after `SET NAMES utf8mb4` and latin1 metadata after
       `SET NAMES latin1`.
+      Table-dependent `HEX()` expressions now report MySQL-shaped latin1
+      result descriptors with byte-counted widths for string and numeric
+      source columns, while scalar literals retain connection-charset metadata.
       User-variable reads now report MySQL-shaped nullable descriptors for
       assigned signed integer and default `utf8mb4` text values, including
       `LONG_BLOB` text metadata with length `268435440` and no flags.

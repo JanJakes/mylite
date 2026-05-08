@@ -181,6 +181,7 @@ Verified constant metadata with `SET NAMES utf8mb4`:
 | `LOWER(varchar_col)` | `VAR_STRING` | source collation id | source octet length | `31` | none |
 | `LOWER(varbinary_col)` | `VAR_STRING` | `63` | source octet length | `31` | `BINARY` |
 | `LOWER(NULL)` | `VAR_STRING` | `63` | `0` | `31` | `BINARY` |
+| `LOWER(int_col)` | `VAR_STRING` | `255` | source display length times connection max bytes per character | `31` | none |
 
 Verified table-backed `SUBSTRING()` metadata over `s VARCHAR(12)` and
 `n INT NULL` with `SET NAMES utf8mb4`:

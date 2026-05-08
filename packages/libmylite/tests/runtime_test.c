@@ -10508,6 +10508,34 @@ static int test_scalar_builtin_functions_execution(void) {
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
          1},
+        {"lower_id",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         44U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"lower_lit",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         16U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const struct expected_result_metadata binary_string_table_metadata[] = {
         {"reverse_vb",
@@ -13735,7 +13763,8 @@ static int test_scalar_builtin_functions_execution(void) {
         "SELECT LOWER(s) AS lower_s, LOWER(sn) AS lower_sn, "
         "UPPER(s) AS upper_s, LCASE(sn) AS lcase_sn, UCASE(s) AS ucase_s, "
         "LOWER(vb) AS lower_vb, UPPER(vbn) AS upper_vbn, "
-        "LOWER(NULL) AS lower_null "
+        "LOWER(NULL) AS lower_null, LOWER(id) AS lower_id, "
+        "LOWER(123) AS lower_lit "
         "FROM case_conversion_meta LIMIT 0",
         MYLITE_OK,
         &stmt

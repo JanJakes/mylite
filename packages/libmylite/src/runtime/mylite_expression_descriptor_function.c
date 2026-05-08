@@ -490,14 +490,16 @@ static struct mylite_field_descriptor case_conversion_result_descriptor(
     uint64_t length = case_conversion_result_length(database, argument);
     unsigned int charset_id = mylite_expression_descriptor_connection_charset_id(database);
     unsigned int flags = 0U;
-
-    if (argument != NULL &&
+    bool preserves_argument_charset =
+        argument != NULL &&
         (mylite_expression_descriptor_has_text_result(argument) ||
-         argument->type == MYLITE_FIELD_TYPE_BLOB || argument->type == MYLITE_FIELD_TYPE_NULL)) {
+         argument->type == MYLITE_FIELD_TYPE_BLOB || argument->type == MYLITE_FIELD_TYPE_NULL);
+
+    if (preserves_argument_charset) {
         charset_id = argument->charset_id;
     }
-    if (argument != NULL && ((argument->flags & MYLITE_FIELD_FLAG_BINARY) != 0U ||
-                             argument->charset_id == mylite_mysql_binary_charset_id)) {
+    if (preserves_argument_charset && ((argument->flags & MYLITE_FIELD_FLAG_BINARY) != 0U ||
+                                       argument->charset_id == mylite_mysql_binary_charset_id)) {
         flags |= MYLITE_FIELD_FLAG_BINARY;
     }
 

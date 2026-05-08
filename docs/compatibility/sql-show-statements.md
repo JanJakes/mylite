@@ -31,7 +31,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW FUNCTION CODE` | ❌ | Debug-only routine bytecode listing |
 | `SHOW FUNCTION STATUS` | ❌ | Result shape, filters, privileges |
 | `SHOW GRANTS` | ❌ | Result shape, filters, privileges |
-| `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` | ❌ | Result shape, filters, privileges |
+| `SHOW INDEX` / `SHOW INDEXES` / `SHOW KEYS` | 🟡 | Limited descriptor-resolved persistent base-table introspection with MySQL 8.4.9 column labels and zero rows for current no-index tables; no index descriptors, indexed rows, `EXTENDED`, `WHERE`, temporary tables, views, privileges, or statistics |
 | `SHOW MASTER STATUS` | ❌ | Removed; use SHOW BINARY LOG STATUS |
 | `SHOW OPEN TABLES` | ❌ | Result shape, filters, privileges |
 | `SHOW PARSE_TREE` | ❌ | Conditional parse-tree debug output |

@@ -32,6 +32,11 @@ static const char mylite_default_sql_mode[] =
     "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"
     "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION";
 
+enum mylite_utf8mb4_default_collation {
+    MYLITE_UTF8MB4_DEFAULT_COLLATION_0900_AI_CI = 0,
+    MYLITE_UTF8MB4_DEFAULT_COLLATION_GENERAL_CI = 1,
+};
+
 enum mylite_sql_mode_mask {
     MYLITE_SQL_MODE_REAL_AS_FLOAT = 1U << 0U,
     MYLITE_SQL_MODE_PIPES_AS_CONCAT = 1U << 1U,
@@ -71,6 +76,8 @@ struct mylite_sql_mode_token_search {
 };
 
 static _Atomic uint64_t mylite_global_sql_mode_mask = MYLITE_DEFAULT_SQL_MODE_MASK;
+static _Atomic uint64_t mylite_global_default_collation_for_utf8mb4 =
+    MYLITE_UTF8MB4_DEFAULT_COLLATION_0900_AI_CI;
 
 static const struct mylite_sql_mode_entry mylite_sql_mode_canonical_order[] = {
     {"REAL_AS_FLOAT", MYLITE_SQL_MODE_REAL_AS_FLOAT},
@@ -105,6 +112,14 @@ static int open_sqlite_database(
 static int set_connection_text_value(mylite_db *database, const char *value, char **out_value);
 
 static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, char **out_value);
+
+static int utf8mb4_default_collation_from_name(
+    mylite_db *database,
+    const char *collation_name,
+    uint64_t *out_value
+);
+
+static const char *utf8mb4_default_collation_name(uint64_t value);
 
 static int sql_mode_mask_from_string(mylite_db *database, const char *sql_mode, uint64_t *out_mask);
 
@@ -208,11 +223,24 @@ const char *mylite_connection_collation_connection(const mylite_db *database) {
     return database == NULL ? NULL : database->collation_connection;
 }
 
+const char *mylite_connection_default_collation_for_utf8mb4(void) {
+    uint64_t value =
+        atomic_load_explicit(&mylite_global_default_collation_for_utf8mb4, memory_order_relaxed);
+
+    return utf8mb4_default_collation_name(value);
+}
+
+const char *mylite_connection_collation_for_utf8mb4(const mylite_db *database) {
+    return database == NULL || database->default_collation_for_utf8mb4 == NULL
+               ? mylite_charset_default_collation_name()
+               : database->default_collation_for_utf8mb4;
+}
+
 int mylite_connection_set_default_state(mylite_db *database) {
     database->character_set_client = mylite_charset_default_name();
     database->character_set_connection = mylite_charset_default_name();
     database->character_set_results = mylite_charset_default_name();
-    database->collation_connection = mylite_charset_default_collation_name();
+    database->collation_connection = mylite_connection_collation_for_utf8mb4(database);
     return MYLITE_OK;
 }
 
@@ -260,7 +288,11 @@ int mylite_connection_set_names_state(
     }
 
     if (state.collation_name == NULL) {
-        collation = mylite_collation_lookup(character_set->default_collation);
+        const char *collation_name = mylite_ascii_case_equal(character_set->name, "utf8mb4")
+                                         ? mylite_connection_collation_for_utf8mb4(database)
+                                         : character_set->default_collation;
+
+        collation = mylite_collation_lookup(collation_name);
     } else {
         collation = mylite_collation_lookup(state.collation_name);
         if (collation == NULL) {
@@ -379,6 +411,62 @@ int mylite_connection_set_collation_connection(mylite_db *database, const char *
 
     database->character_set_connection = collation->character_set;
     database->collation_connection = collation->name;
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_initial_default_collation_for_utf8mb4(mylite_db *database) {
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    database->default_collation_for_utf8mb4 = mylite_connection_default_collation_for_utf8mb4();
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_default_collation_for_utf8mb4(mylite_db *database) {
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    database->default_collation_for_utf8mb4 = mylite_charset_default_collation_name();
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_collation_for_utf8mb4(mylite_db *database, const char *collation_name) {
+    uint64_t value = 0U;
+    int status = utf8mb4_default_collation_from_name(database, collation_name, &value);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    database->default_collation_for_utf8mb4 = utf8mb4_default_collation_name(value);
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_default_global_collation_for_utf8mb4(void) {
+    atomic_store_explicit(
+        &mylite_global_default_collation_for_utf8mb4,
+        MYLITE_UTF8MB4_DEFAULT_COLLATION_0900_AI_CI,
+        memory_order_relaxed
+    );
+    return MYLITE_OK;
+}
+
+int mylite_connection_set_global_collation_for_utf8mb4(
+    mylite_db *database,
+    const char *collation_name
+) {
+    uint64_t value = 0U;
+    int status = utf8mb4_default_collation_from_name(database, collation_name, &value);
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    atomic_store_explicit(
+        &mylite_global_default_collation_for_utf8mb4,
+        value,
+        memory_order_relaxed
+    );
     return MYLITE_OK;
 }
 
@@ -752,6 +840,7 @@ static int open_sqlite_database(
         return rc;
     }
 
+    (void)mylite_connection_set_initial_default_collation_for_utf8mb4(database);
     (void)mylite_connection_set_default_state(database);
     (void)mylite_connection_set_default_group_concat_max_len(database);
     (void)mylite_connection_set_default_wait_timeout(database);
@@ -797,6 +886,53 @@ static int set_connection_text_value(mylite_db *database, const char *value, cha
     free(*out_value);
     *out_value = copy;
     return MYLITE_OK;
+}
+
+static int utf8mb4_default_collation_from_name(
+    mylite_db *database,
+    const char *collation_name,
+    uint64_t *out_value
+) {
+    char *message = NULL;
+    int status = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = MYLITE_UTF8MB4_DEFAULT_COLLATION_0900_AI_CI;
+    if (mylite_ascii_case_equal(collation_name, "utf8mb4_0900_ai_ci")) {
+        return MYLITE_OK;
+    }
+    if (mylite_ascii_case_equal(collation_name, "utf8mb4_general_ci")) {
+        *out_value = MYLITE_UTF8MB4_DEFAULT_COLLATION_GENERAL_CI;
+        return MYLITE_OK;
+    }
+
+    message = sqlite3_mprintf(
+        "Invalid default collation %s: utf8mb4_0900_ai_ci or utf8mb4_general_ci expected",
+        collation_name == NULL ? "" : collation_name
+    );
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_INVALID_DEFAULT_COLLATION_FOR_UTF8MB4,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static const char *utf8mb4_default_collation_name(uint64_t value) {
+    if (value == MYLITE_UTF8MB4_DEFAULT_COLLATION_GENERAL_CI) {
+        return "utf8mb4_general_ci";
+    }
+    return mylite_charset_default_collation_name();
 }
 
 static int copy_canonical_sql_mode(mylite_db *database, const char *sql_mode, char **out_value) {

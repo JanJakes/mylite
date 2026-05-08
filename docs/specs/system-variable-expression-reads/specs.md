@@ -86,6 +86,8 @@ matching MySQL's `SELECT @@...` surface rather than the display strings used by
 Session values reflect handle-owned MyLite state:
 
 - `sql_mode` reads the current session mode.
+- `default_collation_for_utf8mb4` reads the current session value, defaulting
+  to `utf8mb4_0900_ai_ci`.
 - `group_concat_max_len` reads the current session limit.
 - `character_set_client`, `character_set_connection`, `character_set_results`,
   and `collation_connection` read the current connection state.
@@ -96,6 +98,9 @@ Global values reflect MyLite defaults and the currently supported process-global
 mutable variables for this embedded runtime:
 
 - `sql_mode` and `group_concat_max_len` read their current global values.
+- `default_collation_for_utf8mb4` reads the current global value; new
+  connections inherit it, while session `DEFAULT` restores the built-in
+  `utf8mb4_0900_ai_ci` value.
 - Charset and collation globals read the built-in default registry values.
 - `version` reads the MySQL compatibility target, currently `8.4.9`.
 - `gtid_purged` reads an empty string, and `log_bin` /

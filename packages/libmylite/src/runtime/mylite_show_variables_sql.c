@@ -41,6 +41,7 @@ int mylite_show_variables_sql(
     const char *character_set_results = mylite_charset_default_name();
     const char *collation_connection = mylite_charset_default_collation_name();
     const char *collation_database = mylite_charset_default_collation_name();
+    const char *default_collation_for_utf8mb4 = mylite_connection_default_collation_for_utf8mb4();
     const char *default_storage_engine = mylite_connection_default_storage_engine();
     const char *time_zone = mylite_connection_default_time_zone();
     char group_concat_max_len[integer_buffer_size] = {0};
@@ -76,6 +77,7 @@ int mylite_show_variables_sql(
         character_set_results = database->character_set_results;
         collation_connection = database->collation_connection;
         collation_database = schema_default.collation;
+        default_collation_for_utf8mb4 = mylite_connection_collation_for_utf8mb4(database);
         default_storage_engine = mylite_connection_storage_engine(database);
         foreign_key_checks = mylite_connection_foreign_key_checks(database);
         sql_log_bin = mylite_connection_sql_log_bin(database);
@@ -140,6 +142,12 @@ int mylite_show_variables_sql(
         &first,
         "collation_server",
         mylite_charset_default_collation_name()
+    );
+    append_show_variable_row(
+        sql,
+        &first,
+        "default_collation_for_utf8mb4",
+        default_collation_for_utf8mb4
     );
     append_show_variable_row(sql, &first, "default_storage_engine", default_storage_engine);
     if (!global) {

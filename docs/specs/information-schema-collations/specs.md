@@ -86,6 +86,7 @@ The verified supported-subset probe, ordered by collation name, returned:
 | `utf8mb3_general_ci` | `utf8mb3` | 33 | `Yes` | `Yes` | 1 | `PAD SPACE` |
 | `utf8mb4_0900_ai_ci` | `utf8mb4` | 255 | `Yes` | `Yes` | 0 | `NO PAD` |
 | `utf8mb4_bin` | `utf8mb4` | 46 | `` | `Yes` | 1 | `PAD SPACE` |
+| `utf8mb4_general_ci` | `utf8mb4` | 45 | `` | `Yes` | 1 | `PAD SPACE` |
 | `utf8mb4_unicode_520_ci` | `utf8mb4` | 246 | `` | `Yes` | 8 | `PAD SPACE` |
 | `utf8mb4_unicode_ci` | `utf8mb4` | 224 | `` | `Yes` | 8 | `PAD SPACE` |
 
@@ -153,6 +154,7 @@ MyLite first-slice rows:
 | `utf8mb3_general_ci` | `utf8mb3` | 33 | `Yes` | `Yes` | 1 | `PAD SPACE` |
 | `utf8mb4_0900_ai_ci` | `utf8mb4` | 255 | `Yes` | `Yes` | 0 | `NO PAD` |
 | `utf8mb4_bin` | `utf8mb4` | 46 | `` | `Yes` | 1 | `PAD SPACE` |
+| `utf8mb4_general_ci` | `utf8mb4` | 45 | `` | `Yes` | 1 | `PAD SPACE` |
 | `utf8mb4_unicode_520_ci` | `utf8mb4` | 246 | `` | `Yes` | 8 | `PAD SPACE` |
 | `utf8mb4_unicode_ci` | `utf8mb4` | 224 | `` | `Yes` | 8 | `PAD SPACE` |
 

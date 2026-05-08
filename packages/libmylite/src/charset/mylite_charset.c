@@ -79,6 +79,12 @@ static const struct mylite_collation collations[] = {
      .sort_length = 1,
      .pad_attribute = "PAD SPACE",
      .is_default = false},
+    {.name = "utf8mb4_general_ci",
+     .character_set = "utf8mb4",
+     .id = 45,
+     .sort_length = 1,
+     .pad_attribute = "PAD SPACE",
+     .is_default = false},
 };
 
 const char *mylite_charset_default_name(void) {

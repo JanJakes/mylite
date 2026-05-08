@@ -19,6 +19,7 @@ and use through its charset/collation registry:
 - `utf8mb3_general_ci`
 - `utf8mb4_0900_ai_ci`
 - `utf8mb4_bin`
+- `utf8mb4_general_ci`
 - `utf8mb4_unicode_520_ci`
 - `utf8mb4_unicode_ci`
 
@@ -59,8 +60,8 @@ The following behavior was verified against MySQL 8.4.9:
 | SQL | Result |
 | --- | --- |
 | `SHOW COLLATION` | Columns `Collation`, `Charset`, `Id`, `Default`, `Compiled`, `Sortlen`, `Pad_attribute`; rows are ordered by `Collation`. |
-| `SHOW COLLATION WHERE Collation IN (...)` for the MyLite-supported names | Returns `binary`, `latin1_bin`, `latin1_swedish_ci`, `utf8mb3_bin`, `utf8mb3_general_ci`, `utf8mb4_0900_ai_ci`, `utf8mb4_bin`, `utf8mb4_unicode_520_ci`, and `utf8mb4_unicode_ci` in collation-name order. |
-| `SHOW COLLATION LIKE 'utf8mb4\_%'` | Returns all displayed `utf8mb4_...` collations, including `utf8mb4_0900_ai_ci`, `utf8mb4_bin`, `utf8mb4_unicode_520_ci`, and `utf8mb4_unicode_ci`. |
+| `SHOW COLLATION WHERE Collation IN (...)` for the MyLite-supported names | Returns `binary`, `latin1_bin`, `latin1_swedish_ci`, `utf8mb3_bin`, `utf8mb3_general_ci`, `utf8mb4_0900_ai_ci`, `utf8mb4_bin`, `utf8mb4_general_ci`, `utf8mb4_unicode_520_ci`, and `utf8mb4_unicode_ci` in collation-name order. |
+| `SHOW COLLATION LIKE 'utf8mb4\_%'` | Returns all displayed `utf8mb4_...` collations, including `utf8mb4_0900_ai_ci`, `utf8mb4_bin`, `utf8mb4_general_ci`, `utf8mb4_unicode_520_ci`, and `utf8mb4_unicode_ci`. |
 | `SHOW COLLATION LIKE 'UTF8MB4\_%'` | Returns the same rows as the lowercase escaped pattern; matching is case-insensitive in the verified runtime. |
 | `SHOW COLLATION LIKE 'utf8mb4\_bin'` | Returns the `utf8mb4_bin` row. |
 | `SHOW COLLATION LIKE 'UTF8MB4\_BIN'` | Returns the `utf8mb4_bin` row; escaped literals are still matched case-insensitively. |
@@ -153,6 +154,7 @@ Catalog for this slice:
 | `utf8mb3_general_ci` | `utf8mb3` | 33 | `Yes` | `Yes` | 1 | `PAD SPACE` |
 | `utf8mb4_0900_ai_ci` | `utf8mb4` | 255 | `Yes` | `Yes` | 0 | `NO PAD` |
 | `utf8mb4_bin` | `utf8mb4` | 46 | `` | `Yes` | 1 | `PAD SPACE` |
+| `utf8mb4_general_ci` | `utf8mb4` | 45 | `` | `Yes` | 1 | `PAD SPACE` |
 | `utf8mb4_unicode_520_ci` | `utf8mb4` | 246 | `` | `Yes` | 8 | `PAD SPACE` |
 | `utf8mb4_unicode_ci` | `utf8mb4` | 224 | `` | `Yes` | 8 | `PAD SPACE` |
 

@@ -63,6 +63,7 @@ struct mylite_db {
     const char *character_set_connection;
     const char *character_set_results;
     const char *collation_connection;
+    const char *default_collation_for_utf8mb4;
     char *sql_mode;
     char *default_storage_engine;
     char *time_zone;

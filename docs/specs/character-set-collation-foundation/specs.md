@@ -16,6 +16,8 @@ This feature adds the first MyLite character set and collation foundation:
   `SET CHARACTER SET charset`, and `SET CHARACTER SET DEFAULT`
 - direct session assignment for `character_set_client`,
   `character_set_results`, and `collation_connection`
+- session/global `default_collation_for_utf8mb4` visibility and assignment for
+  the two MySQL 8.4.9-accepted values
 - schema default charset/collation normalization and validation for
   `CREATE DATABASE` and `ALTER DATABASE`
 
@@ -98,6 +100,7 @@ Verified collations for this feature:
 | `utf8mb3_bin` | `utf8mb3` | 83 | no |
 | `utf8mb4_0900_ai_ci` | `utf8mb4` | 255 | yes |
 | `utf8mb4_bin` | `utf8mb4` | 46 | no |
+| `utf8mb4_general_ci` | `utf8mb4` | 45 | no |
 | `utf8mb4_unicode_520_ci` | `utf8mb4` | 246 | no |
 | `utf8mb4_unicode_ci` | `utf8mb4` | 224 | no |
 
@@ -109,6 +112,15 @@ checking that the collation belongs to the charset. `SET NAMES DEFAULT` restores
 the default mapping. In the verified runtime, that default mapping is
 `utf8mb4` for all three charset variables and `utf8mb4_0900_ai_ci` for
 `collation_connection`.
+
+`default_collation_for_utf8mb4` is a deprecated session/global system variable
+in MySQL 8.4.9. The verified runtime accepts only `utf8mb4_0900_ai_ci` and
+`utf8mb4_general_ci`; successful `SET` emits warning `1681`, and invalid
+values such as `utf8mb4_bin` fail with error `3721`. `SET NAMES utf8mb4` and
+`SET NAMES DEFAULT` use the current session value when no explicit `COLLATE`
+clause is supplied. `SET SESSION default_collation_for_utf8mb4 = DEFAULT`
+restores `utf8mb4_0900_ai_ci`, while new connections inherit the current global
+value.
 
 `SET CHARACTER SET charset` sets `character_set_client` and
 `character_set_results` to the requested charset. `DEFAULT` uses the default

@@ -30,6 +30,14 @@ int mylite_connection_set_character_set_results(
     const char *character_set_name
 );
 int mylite_connection_set_collation_connection(mylite_db *database, const char *collation_name);
+int mylite_connection_set_initial_default_collation_for_utf8mb4(mylite_db *database);
+int mylite_connection_set_default_collation_for_utf8mb4(mylite_db *database);
+int mylite_connection_set_collation_for_utf8mb4(mylite_db *database, const char *collation_name);
+int mylite_connection_set_default_global_collation_for_utf8mb4(void);
+int mylite_connection_set_global_collation_for_utf8mb4(
+    mylite_db *database,
+    const char *collation_name
+);
 int mylite_connection_set_default_sql_mode(mylite_db *database);
 int mylite_connection_set_sql_mode(mylite_db *database, const char *sql_mode);
 int mylite_connection_set_default_global_sql_mode(void);
@@ -57,6 +65,8 @@ const char *mylite_connection_character_set_client(const mylite_db *database);
 const char *mylite_connection_character_set_connection(const mylite_db *database);
 const char *mylite_connection_character_set_results(const mylite_db *database);
 const char *mylite_connection_collation_connection(const mylite_db *database);
+const char *mylite_connection_default_collation_for_utf8mb4(void);
+const char *mylite_connection_collation_for_utf8mb4(const mylite_db *database);
 const char *mylite_connection_default_sql_mode(void);
 int mylite_connection_copy_global_sql_mode(mylite_db *database, char **out_value);
 const char *mylite_connection_sql_mode(const mylite_db *database);

@@ -165,6 +165,7 @@ enum {
     mysql_warning_row_is_referenced = 1451,
     mysql_warning_no_referenced_row = 1452,
     mysql_warning_drop_index_foreign_key = 1553,
+    mysql_warning_deprecated_syntax_no_replacement = 1681,
     mysql_warning_truncate_foreign_key = 1701,
     mysql_warning_wrong_paramcount_to_native_fct = 1582,
     mysql_warning_wrong_parameters_to_native_fct = 1583,
@@ -189,6 +190,7 @@ enum {
     mysql_warning_using_other_handler = 3502,
     mysql_warning_primary_invisible = 3522,
     mysql_warning_deprecated_utf8_alias = 3719,
+    mysql_warning_invalid_default_collation_for_utf8mb4 = 3721,
     mysql_warning_foreign_key_drop_parent = 3730,
     mysql_warning_foreign_key_incompatible_columns = 3780,
     mysql_warning_check_constraint_disallowed_function = 3814,
@@ -3561,7 +3563,7 @@ static int test_information_schema_collations_execution(void) {
     };
     static const char *const show_tables_values[] = {"COLLATIONS", "SYSTEM VIEW"};
     static const char *const collation_group_columns[] = {"CHARACTER_SET_NAME", "c"};
-    static const char *const collation_group_values[] = {"utf8mb4", "4"};
+    static const char *const collation_group_values[] = {"utf8mb4", "5"};
     static const char *const values[] = {
         "binary",
         "binary",
@@ -3612,6 +3614,13 @@ static int test_information_schema_collations_execution(void) {
         "Yes",
         "1",
         "PAD SPACE",
+        "utf8mb4_general_ci",
+        "utf8mb4",
+        "45",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
         "utf8mb4_unicode_520_ci",
         "utf8mb4",
         "246",
@@ -3643,7 +3652,7 @@ static int test_information_schema_collations_execution(void) {
         columns,
         7,
         values,
-        9,
+        10,
         "information schema collations registry"
     );
     failures += expect_select_rows(
@@ -3652,7 +3661,7 @@ static int test_information_schema_collations_execution(void) {
         columns,
         7,
         values,
-        9,
+        10,
         "information schema collations lower-case"
     );
     failures += expect_select_rows(
@@ -3661,7 +3670,7 @@ static int test_information_schema_collations_execution(void) {
         columns,
         7,
         values,
-        9,
+        10,
         "information schema collations mixed-case"
     );
     failures += expect_select_rows(
@@ -3670,14 +3679,14 @@ static int test_information_schema_collations_execution(void) {
         columns,
         7,
         values,
-        9,
+        10,
         "information schema collations quoted"
     );
     failures += expect_select_rows(
         database,
         "SELECT CHARACTER_SET_NAME, COUNT(*) AS c "
         "FROM INFORMATION_SCHEMA.COLLATIONS "
-        "GROUP BY CHARACTER_SET_NAME HAVING COUNT(*) = 4 "
+        "GROUP BY CHARACTER_SET_NAME HAVING COUNT(*) = 5 "
         "ORDER BY CHARACTER_SET_NAME",
         collation_group_columns,
         2,
@@ -3776,6 +3785,7 @@ static int test_information_schema_collation_character_set_applicability_executi
     static const char *const utf8mb4_collation_values[] = {
         "utf8mb4_0900_ai_ci",
         "utf8mb4_bin",
+        "utf8mb4_general_ci",
         "utf8mb4_unicode_520_ci",
         "utf8mb4_unicode_ci",
     };
@@ -3793,6 +3803,8 @@ static int test_information_schema_collation_character_set_applicability_executi
         "utf8mb4_0900_ai_ci",
         "utf8mb4",
         "utf8mb4_bin",
+        "utf8mb4",
+        "utf8mb4_general_ci",
         "utf8mb4",
         "utf8mb4_unicode_520_ci",
         "utf8mb4",
@@ -3815,7 +3827,7 @@ static int test_information_schema_collation_character_set_applicability_executi
         columns,
         2,
         values,
-        9,
+        10,
         "information schema collation charset applicability registry"
     );
     failures += expect_select_rows(
@@ -3824,7 +3836,7 @@ static int test_information_schema_collation_character_set_applicability_executi
         columns,
         2,
         values,
-        9,
+        10,
         "information schema collation charset applicability lower-case"
     );
     failures += expect_select_rows(
@@ -3833,7 +3845,7 @@ static int test_information_schema_collation_character_set_applicability_executi
         columns,
         2,
         values,
-        9,
+        10,
         "information schema collation charset applicability mixed-case"
     );
     failures += expect_select_rows(
@@ -3842,7 +3854,7 @@ static int test_information_schema_collation_character_set_applicability_executi
         columns,
         2,
         values,
-        9,
+        10,
         "information schema collation charset applicability quoted"
     );
     failures += expect_select_rows(
@@ -3853,7 +3865,7 @@ static int test_information_schema_collation_character_set_applicability_executi
         utf8mb4_collation_columns,
         1,
         utf8mb4_collation_values,
-        4,
+        5,
         "information schema collation charset applicability projected filter"
     );
 
@@ -49188,6 +49200,10 @@ static int test_show_variables_execution(void) {
         "collation_connection",
         "utf8mb4_0900_ai_ci"
     };
+    static const char *const general_collation_values[] = {
+        "collation_connection",
+        "utf8mb4_general_ci"
+    };
     static const char *const direct_charset_columns[] =
         {"client", "connection", "results", "collation"};
     static const char *const direct_charset_values[] = {
@@ -49233,6 +49249,14 @@ static int test_show_variables_execution(void) {
         "group_concat_max_len",
         "1024"
     };
+    static const char *const default_collation_for_utf8mb4_values[] = {
+        "default_collation_for_utf8mb4",
+        "utf8mb4_0900_ai_ci"
+    };
+    static const char *const general_collation_for_utf8mb4_values[] = {
+        "default_collation_for_utf8mb4",
+        "utf8mb4_general_ci"
+    };
     static const char *const default_storage_engine_values[] = {"default_storage_engine", "InnoDB"};
     static const char *const memory_storage_engine_values[] = {"default_storage_engine", "MEMORY"};
     static const char *const foreign_key_checks_values[] = {"foreign_key_checks", "ON"};
@@ -49274,6 +49298,11 @@ static int test_show_variables_execution(void) {
     static const char *const group_concat_scope_columns[] = {"session_value", "global_value"};
     static const char *const group_concat_global_scope_values[] = {"1024", "8"};
     static const char *const group_concat_default_to_global_values[] = {"8", "8"};
+    static const char *const default_collation_scope_columns[] = {"session_value", "global_value"};
+    static const char *const default_collation_global_scope_values[] = {
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_general_ci",
+    };
     static const char *const selected_database_collation_values[] = {
         "collation_database",
         "latin1_bin"
@@ -49557,6 +49586,16 @@ static int test_show_variables_execution(void) {
     );
     failures += expect_select_rows(
         database,
+        "SELECT @@default_collation_for_utf8mb4 AS session_value, "
+        "@@GLOBAL.default_collation_for_utf8mb4 AS global_value",
+        default_collation_scope_columns,
+        2,
+        (const char *const[]){"utf8mb4_0900_ai_ci", "utf8mb4_0900_ai_ci"},
+        1,
+        "system variable default collation expression defaults"
+    );
+    failures += expect_select_rows(
+        database,
         "SELECT @@default_storage_engine AS dse, @@foreign_key_checks AS fk, "
         "@@GLOBAL.foreign_key_checks AS gfk, @@last_insert_id AS li, "
         "@@lower_case_table_names AS lctn, @@max_allowed_packet AS map, "
@@ -49602,6 +49641,15 @@ static int test_show_variables_execution(void) {
         default_group_concat_max_len_values,
         1,
         "show variables group concat max len default"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'default_collation_for_utf8mb4'",
+        columns,
+        2,
+        default_collation_for_utf8mb4_values,
+        1,
+        "show variables default collation for utf8mb4"
     );
     failures += expect_select_rows(
         database,
@@ -50161,6 +50209,145 @@ static int test_show_variables_execution(void) {
         1,
         "show global variables group concat max len default restored"
     );
+    failures += execute_sql(
+        database,
+        "SET SESSION default_collation_for_utf8mb4 = 'utf8mb4_general_ci'",
+        MYLITE_DONE
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "set default collation for utf8mb4 warning count"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_syntax_no_replacement,
+        "set default collation for utf8mb4 warning code"
+    );
+    failures += expect_string(
+        mylite_warning_message(database, 0),
+        "Updating 'default_collation_for_utf8mb4' is deprecated. It will be made read-only in a "
+        "future release.",
+        "set default collation for utf8mb4 warning message"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'default_collation_for_utf8mb4'",
+        columns,
+        2,
+        general_collation_for_utf8mb4_values,
+        1,
+        "show variables default collation for utf8mb4 session set"
+    );
+    failures += execute_sql(database, "SET NAMES DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'collation_connection'",
+        columns,
+        2,
+        general_collation_values,
+        1,
+        "set names default uses session default collation for utf8mb4"
+    );
+    failures +=
+        execute_sql(database, "SET SESSION default_collation_for_utf8mb4 = DEFAULT", MYLITE_DONE);
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "set default collation for utf8mb4 default warning count"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'default_collation_for_utf8mb4'",
+        columns,
+        2,
+        default_collation_for_utf8mb4_values,
+        1,
+        "show variables default collation for utf8mb4 default restored"
+    );
+    failures += execute_sql(database, "SET NAMES DEFAULT", MYLITE_DONE);
+    failures += expect_select_rows(
+        database,
+        "SHOW VARIABLES LIKE 'collation_connection'",
+        columns,
+        2,
+        reset_collation_values,
+        1,
+        "set names default restores built-in default collation for utf8mb4"
+    );
+    failures += execute_sql(
+        database,
+        "SET GLOBAL default_collation_for_utf8mb4 = 'utf8mb4_general_ci'",
+        MYLITE_DONE
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        1,
+        "set global default collation for utf8mb4 warning count"
+    );
+    failures += expect_select_rows(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'default_collation_for_utf8mb4'",
+        columns,
+        2,
+        general_collation_for_utf8mb4_values,
+        1,
+        "show global variables default collation for utf8mb4 changed"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT @@SESSION.default_collation_for_utf8mb4 AS session_value, "
+        "@@GLOBAL.default_collation_for_utf8mb4 AS global_value",
+        default_collation_scope_columns,
+        2,
+        default_collation_global_scope_values,
+        1,
+        "system variable default collation for utf8mb4 global scope"
+    );
+    failures += expect_status(
+        mylite_open_memory(&global_default_database),
+        MYLITE_OK,
+        "open default collation global default database"
+    );
+    failures += expect_select_rows(
+        global_default_database,
+        "SHOW VARIABLES LIKE 'default_collation_for_utf8mb4'",
+        columns,
+        2,
+        general_collation_for_utf8mb4_values,
+        1,
+        "new database inherits global default collation for utf8mb4"
+    );
+    mylite_close(global_default_database);
+    global_default_database = NULL;
+    failures += prepare_sql(
+        database,
+        "SET default_collation_for_utf8mb4 = 'utf8mb4_bin'",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "set invalid default collation for utf8mb4"
+    );
+    failures += expect_string(
+        mylite_error_message(database),
+        "Invalid default collation utf8mb4_bin: utf8mb4_0900_ai_ci or utf8mb4_general_ci "
+        "expected",
+        "set invalid default collation for utf8mb4 error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_invalid_default_collation_for_utf8mb4,
+        "set invalid default collation for utf8mb4 error code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        execute_sql(database, "SET GLOBAL default_collation_for_utf8mb4 = DEFAULT", MYLITE_DONE);
+    failures +=
+        execute_sql(database, "SET SESSION default_collation_for_utf8mb4 = DEFAULT", MYLITE_DONE);
     failures += execute_sql(database, "SET default_storage_engine = 'MEMORY'", MYLITE_DONE);
     failures += execute_sql(database, "SET foreign_key_checks = 0", MYLITE_DONE);
     failures += execute_sql(database, "SET time_zone = '+00:00'", MYLITE_DONE);
@@ -52365,6 +52552,13 @@ static int test_show_collation_execution(void) {
         "Yes",
         "1",
         "PAD SPACE",
+        "utf8mb4_general_ci",
+        "utf8mb4",
+        "45",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
         "utf8mb4_unicode_520_ci",
         "utf8mb4",
         "246",
@@ -52391,6 +52585,13 @@ static int test_show_collation_execution(void) {
         "utf8mb4_bin",
         "utf8mb4",
         "46",
+        "",
+        "Yes",
+        "1",
+        "PAD SPACE",
+        "utf8mb4_general_ci",
+        "utf8mb4",
+        "45",
         "",
         "Yes",
         "1",
@@ -52491,7 +52692,7 @@ static int test_show_collation_execution(void) {
         columns,
         7,
         all_values,
-        9,
+        10,
         "show collation supported catalog"
     );
     failures += expect_select_rows(
@@ -52500,7 +52701,7 @@ static int test_show_collation_execution(void) {
         columns,
         7,
         utf8mb4_values,
-        4,
+        5,
         "show collation utf8mb4 wildcard"
     );
     failures += expect_select_rows(
@@ -52509,7 +52710,7 @@ static int test_show_collation_execution(void) {
         columns,
         7,
         utf8mb4_values,
-        4,
+        5,
         "show collation like is case-insensitive"
     );
     failures += expect_select_rows(
@@ -52518,7 +52719,7 @@ static int test_show_collation_execution(void) {
         columns,
         7,
         utf8mb4_values,
-        4,
+        5,
         "show collation escaped underscore wildcard"
     );
     failures += expect_select_rows(

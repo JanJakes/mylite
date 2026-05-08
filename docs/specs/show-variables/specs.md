@@ -19,8 +19,9 @@ Deferred surfaces:
 
 - execution of `SHOW VARIABLES ... WHERE expr`
 - direct `SET` assignment to system variables beyond the current scoped
-  session-variable slices; focused connection charset/collation assignment is
-  included in this slice
+  session-variable slices; focused connection charset/collation assignment and
+  `default_collation_for_utf8mb4` session/global assignment are included in
+  this slice
 - complete MySQL server variable catalog
 - variable metadata tables in Performance Schema
 - privilege-sensitive or plugin/build-dependent variable behavior
@@ -51,6 +52,9 @@ The following behavior was verified against MySQL 8.4.9:
 | `SHOW VARIABLES LIKE 'character\_set\_%'` | Backslash escapes `_`, so only names with literal underscores after `character` and `set` match; `character_sets_dir` is excluded. |
 | `SHOW VARIABLES LIKE 'CHARACTER\_SET\_%'` | Matches the same rows as the lowercase escaped pattern; variable-name pattern matching is case-insensitive on the verified runtime. |
 | `SHOW VARIABLES LIKE 'collation_%'` | Returns `collation_connection`, `collation_database`, and `collation_server`. |
+| `SHOW VARIABLES LIKE 'default_collation_for_utf8mb4'` | Returns `default_collation_for_utf8mb4`, `utf8mb4_0900_ai_ci` by default. |
+| `SET SESSION default_collation_for_utf8mb4 = 'utf8mb4_general_ci'` | Succeeds with warning `1681`, changes the session value, and makes subsequent `SET NAMES utf8mb4` / `SET NAMES DEFAULT` choose `utf8mb4_general_ci` when no explicit collation is supplied. |
+| `SET default_collation_for_utf8mb4 = 'utf8mb4_bin'` | Fails with error `3721`; MySQL accepts only `utf8mb4_0900_ai_ci` and `utf8mb4_general_ci` for this deprecated variable. |
 | `SHOW VARIABLES LIKE 'autocommit'` | Returns `autocommit`, `ON`. |
 | `SHOW VARIABLES LIKE 'sql_mode'` | Returns `ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION`. |
 | `SHOW VARIABLES LIKE 'group_concat_max_len'` | Returns `group_concat_max_len`, `1024` by default. |
@@ -156,6 +160,7 @@ Catalog for this slice:
 | `collation_connection` | current handle state | `utf8mb4_0900_ai_ci` | Updated by `SET NAMES`, `SET CHARACTER SET`, and direct session assignment. |
 | `collation_database` | selected schema default, or server default when no schema is selected | `utf8mb4_0900_ai_ci` | Backed by MyLite schema defaults for session scope. |
 | `collation_server` | `utf8mb4_0900_ai_ci` | `utf8mb4_0900_ai_ci` | MyLite's current server default collation. |
+| `default_collation_for_utf8mb4` | current handle state, default `utf8mb4_0900_ai_ci` | current global value, default `utf8mb4_0900_ai_ci` | Session/global assignment is implemented for `utf8mb4_0900_ai_ci`, `utf8mb4_general_ci`, and `DEFAULT`, including MySQL-compatible warning `1681`, invalid-value error `3721`, and `SET NAMES` default-collation interaction. |
 | `error_count` | `0` | omitted | SHOW VARIABLES clears prior diagnostics before reporting. |
 | `gtid_purged` | empty string | empty string | Embedded runtime placeholder; MyLite has no binary log or GTID state. |
 | `group_concat_max_len` | current handle state, default from the current global value | current global value, default `1024` | Session/local/global assignment is implemented; session `DEFAULT` reads the current global value. |

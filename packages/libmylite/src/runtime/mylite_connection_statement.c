@@ -80,6 +80,11 @@ static int execute_set_collation_connection_statement(
     const struct mylite_connection_system_variable_plan *plan
 );
 
+static int execute_set_default_collation_for_utf8mb4_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+);
+
 static int copy_connection_group_concat_max_len_value(
     mylite_db *database,
     const struct mylite_sql_ast_node *value,
@@ -154,6 +159,8 @@ static int set_system_variable_wrong_null_value_error(
 static int set_group_concat_max_len_type_error(mylite_db *database);
 
 static int append_group_concat_max_len_truncation_warning(mylite_db *database, const char *value);
+
+static int append_default_collation_for_utf8mb4_warning(mylite_db *database);
 
 static bool copy_signed_integer_value(
     const struct mylite_sql_ast_node *value,
@@ -369,6 +376,9 @@ int mylite_connection_execute_system_variable_plan(
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
         status = execute_set_collation_connection_statement(stmt, plan);
         break;
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
+        status = execute_set_default_collation_for_utf8mb4_statement(stmt, plan);
+        break;
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE:
         (void)mylite_diagnostics_set_error_message(stmt->database, "unsupported SET variable");
         status = MYLITE_UNSUPPORTED;
@@ -530,6 +540,28 @@ static int execute_set_collation_connection_statement(
     return mylite_connection_set_collation_connection(stmt->database, plan->value);
 }
 
+static int execute_set_default_collation_for_utf8mb4_statement(
+    mylite_stmt *stmt,
+    const struct mylite_connection_system_variable_plan *plan
+) {
+    int status = MYLITE_OK;
+
+    if (plan->global_scope) {
+        status =
+            plan->use_default
+                ? mylite_connection_set_default_global_collation_for_utf8mb4()
+                : mylite_connection_set_global_collation_for_utf8mb4(stmt->database, plan->value);
+    } else {
+        status = plan->use_default
+                     ? mylite_connection_set_default_collation_for_utf8mb4(stmt->database)
+                     : mylite_connection_set_collation_for_utf8mb4(stmt->database, plan->value);
+    }
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    return append_default_collation_for_utf8mb4_warning(stmt->database);
+}
+
 void mylite_connection_charset_plan_deinit(struct mylite_connection_charset_plan *plan) {
     if (plan == NULL) {
         return;
@@ -608,7 +640,8 @@ int mylite_connection_copy_system_variable_statement(
     }
     plan->global_scope = global_scope;
     if (global_scope && plan->variable != MYLITE_CONNECTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN &&
-        plan->variable != MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_MODE) {
+        plan->variable != MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_MODE &&
+        plan->variable != MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4) {
         return set_system_variable_global_error(database, plan->variable);
     }
     if (mylite_user_variable_identifier_is_user_variable(value)) {
@@ -641,6 +674,15 @@ int mylite_connection_copy_system_variable_statement(
     }
 
     if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_TIME_ZONE) {
+        return copy_connection_string_system_variable_value(
+            database,
+            value,
+            set_system_variable_name(plan->variable),
+            plan
+        );
+    }
+
+    if (plan->variable == MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4) {
         return copy_connection_string_system_variable_value(
             database,
             value,
@@ -940,6 +982,7 @@ static int resolve_user_variable_system_value(
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_CLIENT:
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_SQL_MODE:
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_TIME_ZONE:
         status = resolve_string_user_variable_value(database, plan, &value, out_plan);
@@ -1083,6 +1126,9 @@ static enum mylite_connection_system_variable set_system_variable_kind(
     if (mylite_ascii_case_equal(name, "collation_connection")) {
         return MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION;
     }
+    if (mylite_ascii_case_equal(name, "default_collation_for_utf8mb4")) {
+        return MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4;
+    }
     return MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE;
 }
 
@@ -1145,6 +1191,8 @@ static const char *set_system_variable_name(enum mylite_connection_system_variab
         return "character_set_results";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
         return "collation_connection";
+    case MYLITE_CONNECTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
+        return "default_collation_for_utf8mb4";
     case MYLITE_CONNECTION_SYSTEM_VARIABLE_NONE:
         break;
     }
@@ -1287,6 +1335,15 @@ static int append_group_concat_max_len_truncation_warning(mylite_db *database, c
         mylite_diagnostics_append_warning(database, MYLITE_MYSQL_ER_TRUNCATED_WRONG_VALUE, message);
     sqlite3_free(message);
     return status;
+}
+
+static int append_default_collation_for_utf8mb4_warning(mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        database,
+        MYLITE_MYSQL_ER_WARN_DEPRECATED_SYNTAX_NO_REPLACEMENT,
+        "Updating 'default_collation_for_utf8mb4' is deprecated. It will be made read-only in a "
+        "future release."
+    );
 }
 
 static bool copy_signed_integer_value(

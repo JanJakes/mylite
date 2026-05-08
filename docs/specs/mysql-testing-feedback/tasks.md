@@ -564,6 +564,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       MySQL-supported `SQL_TSI_*` aliases except MySQL-rejected
       `SQL_TSI_MICROSECOND`, with parser, runtime, metadata, and MySQL-runtime
       regression coverage.
+      `ADDDATE(expr, days)` and `SUBDATE(expr, days)` now parse and execute as
+      MySQL-compatible day arithmetic, including typed `DATE` descriptors,
+      negative days, `NULL`, and truncated integer warnings.
       `TIMEDIFF()` now preserves table-backed fractional `TIME` and `DATETIME`
       operand precision in result metadata, including mixed `TIME(6)`/`TIME`
       and `DATETIME(6)`/`DATETIME(3)` operands.

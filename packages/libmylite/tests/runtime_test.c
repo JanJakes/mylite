@@ -25664,6 +25664,32 @@ static int test_date_add_sub_functions_execution(void) {
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"add_days_date",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         10U,
+         MYLITE_FIELD_TYPE_DATE,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"sub_days_date",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         10U,
+         MYLITE_FIELD_TYPE_DATE,
+         0U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
     };
     static const char *const updated_columns[] = {"id", "d", "dt"};
     static const char *const updated_values[] = {"1", "2024-01-02", "2024-01-01 00:00:01"};
@@ -25696,7 +25722,9 @@ static int test_date_add_sub_functions_execution(void) {
         "SELECT DATE_ADD('2024-02-29', INTERVAL 1 DAY) AS date_add_text, "
         "DATE_ADD(CURDATE(), INTERVAL 1 DAY) AS date_add_date, "
         "DATE_ADD(CURDATE(), INTERVAL 1 HOUR) AS date_add_datetime, "
-        "DATE_ADD(CURDATE(), INTERVAL 1 MICROSECOND) AS date_add_date_us",
+        "DATE_ADD(CURDATE(), INTERVAL 1 MICROSECOND) AS date_add_date_us, "
+        "ADDDATE(CURDATE(), 1) AS add_days_date, "
+        "SUBDATE(CURDATE(), 1) AS sub_days_date",
         MYLITE_OK,
         &stmt
     );
@@ -25716,6 +25744,8 @@ static int test_date_add_sub_functions_execution(void) {
         6U,
         "DATE_ADD date microsecond metadata shape"
     );
+    failures += expect_date_text(mylite_column_text(stmt, 4), "ADDDATE days metadata shape");
+    failures += expect_date_text(mylite_column_text(stmt, 5), "SUBDATE days metadata shape");
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "DATE_ADD metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
@@ -25740,6 +25770,10 @@ static int test_date_add_sub_functions_execution(void) {
         "DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND) AS add_microsecond, "
         "SUBDATE('2024-01-01 00:00:00.000001', INTERVAL 2 MICROSECOND) "
         "AS alias_sub_microsecond, "
+        "ADDDATE('2024-01-01', 1) AS add_days, "
+        "SUBDATE('2024-01-01', 1) AS sub_days, "
+        "ADDDATE('2024-01-01', -1) AS add_negative_days, "
+        "SUBDATE('2024-01-01', -1) AS sub_negative_days, "
         "DATE_ADD(20240229, INTERVAL 1 DAY) AS numeric_date, "
         "DATE_ADD('20240101235959', INTERVAL 1 SECOND) AS compact_datetime",
         MYLITE_OK,
@@ -25773,9 +25807,13 @@ static int test_date_add_sub_functions_execution(void) {
         "2023-12-31 23:59:59.999999",
         "SUBDATE microsecond"
     );
-    failures += expect_string(mylite_column_text(stmt, 17), "2024-03-01", "DATE_ADD numeric date");
+    failures += expect_string(mylite_column_text(stmt, 17), "2024-01-02", "ADDDATE days");
+    failures += expect_string(mylite_column_text(stmt, 18), "2023-12-31", "SUBDATE days");
+    failures += expect_string(mylite_column_text(stmt, 19), "2023-12-31", "ADDDATE negative days");
+    failures += expect_string(mylite_column_text(stmt, 20), "2024-01-02", "SUBDATE negative days");
+    failures += expect_string(mylite_column_text(stmt, 21), "2024-03-01", "DATE_ADD numeric date");
     failures += expect_string(
-        mylite_column_text(stmt, 18),
+        mylite_column_text(stmt, 22),
         "2024-01-02 00:00:00",
         "DATE_ADD compact datetime"
     );
@@ -25836,7 +25874,11 @@ static int test_date_add_sub_functions_execution(void) {
         "SELECT DATE_ADD(NULL, INTERVAL 1/0 DAY) AS null_short, "
         "DATE_ADD('bad', INTERVAL 'bad' DAY) AS bad_date_first, "
         "DATE_ADD('2024-01-01', INTERVAL 'bad' DAY) AS bad_interval, "
-        "DATE_ADD('2006-05-00', INTERVAL 1 DAY) AS incomplete_date",
+        "DATE_ADD('2006-05-00', INTERVAL 1 DAY) AS incomplete_date, "
+        "ADDDATE('2024-01-01', '2x') AS add_days_bad_interval, "
+        "SUBDATE('2024-01-01', '2x') AS sub_days_bad_interval, "
+        "ADDDATE('bad', 1) AS add_days_bad_date, "
+        "ADDDATE('2024-01-01', NULL) AS add_days_null_interval",
         MYLITE_OK,
         &stmt
     );
@@ -25845,8 +25887,12 @@ static int test_date_add_sub_functions_execution(void) {
     failures += expect_null_text(mylite_column_text(stmt, 1), "DATE_ADD bad date");
     failures += expect_string(mylite_column_text(stmt, 2), "2024-01-01", "DATE_ADD bad interval");
     failures += expect_null_text(mylite_column_text(stmt, 3), "DATE_ADD incomplete date");
-    failures += expect_int(mylite_warning_count(database), 3, "DATE_ADD invalid warning count");
-    for (int index = 0; index < 3; ++index) {
+    failures += expect_string(mylite_column_text(stmt, 4), "2024-01-03", "ADDDATE bad interval");
+    failures += expect_string(mylite_column_text(stmt, 5), "2023-12-30", "SUBDATE bad interval");
+    failures += expect_null_text(mylite_column_text(stmt, 6), "ADDDATE bad date");
+    failures += expect_null_text(mylite_column_text(stmt, 7), "ADDDATE null interval");
+    failures += expect_int(mylite_warning_count(database), 6, "DATE_ADD invalid warning count");
+    for (int index = 0; index < 6; ++index) {
         failures += expect_int(
             (int)mylite_warning_code(database, index),
             mysql_warning_truncated_wrong_value,
@@ -25998,10 +26044,10 @@ static int test_date_add_sub_functions_execution(void) {
     failures +=
         prepare_sql(database, "SELECT DATE_ADD('2024-01-01', 1)", MYLITE_PARSE_ERROR, &stmt);
     failures += expect_no_stmt_handle(&stmt, "DATE_ADD missing interval");
-    failures += prepare_sql(database, "SELECT ADDDATE('2024-01-01', 1)", MYLITE_PARSE_ERROR, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "ADDDATE day overload deferred");
-    failures += prepare_sql(database, "SELECT SUBDATE('2024-01-01', 1)", MYLITE_PARSE_ERROR, &stmt);
-    failures += expect_no_stmt_handle(&stmt, "SUBDATE day overload deferred");
+    failures += prepare_sql(database, "SELECT ADDDATE('2024-01-01')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "ADDDATE one-argument rejected");
+    failures += prepare_sql(database, "SELECT SUBDATE('2024-01-01')", MYLITE_PARSE_ERROR, &stmt);
+    failures += expect_no_stmt_handle(&stmt, "SUBDATE one-argument rejected");
     mylite_close(database);
     // NOLINTEND(readability-magic-numbers)
     return failures;

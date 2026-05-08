@@ -5564,6 +5564,50 @@ scalar_function_call(A) ::= date_interval_function_name(B) LPAREN(L) expression(
                       .right_paren = R,
                   });
 }
+scalar_function_call(A) ::= ADDDATE(B) LPAREN(L) expression(C) COMMA INTERVAL expression(D) interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_interval_function_call(
+        state, mylite_sql_parser_make_identifier(state, B),
+        (struct mylite_sql_parser_interval_function_call_parts){
+            .left_paren = L,
+            .temporal = C,
+            .amount = D,
+            .unit = U,
+            .right_paren = R,
+        });
+}
+scalar_function_call(A) ::= SUBDATE(B) LPAREN(L) expression(C) COMMA INTERVAL expression(D) interval_unit(U) RPAREN(R). {
+    A = mylite_sql_parser_make_interval_function_call(
+        state, mylite_sql_parser_make_identifier(state, B),
+        (struct mylite_sql_parser_interval_function_call_parts){
+            .left_paren = L,
+            .temporal = C,
+            .amount = D,
+            .unit = U,
+            .right_paren = R,
+        });
+}
+scalar_function_call(A) ::= ADDDATE(B) LPAREN(L) expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_interval_function_call(
+        state, mylite_sql_parser_make_identifier(state, B),
+        (struct mylite_sql_parser_interval_function_call_parts){
+            .left_paren = L,
+            .temporal = C,
+            .amount = D,
+            .unit = MYLITE_SQL_AST_INTERVAL_UNIT_DAY,
+            .right_paren = R,
+        });
+}
+scalar_function_call(A) ::= SUBDATE(B) LPAREN(L) expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_interval_function_call(
+        state, mylite_sql_parser_make_identifier(state, B),
+        (struct mylite_sql_parser_interval_function_call_parts){
+            .left_paren = L,
+            .temporal = C,
+            .amount = D,
+            .unit = MYLITE_SQL_AST_INTERVAL_UNIT_DAY,
+            .right_paren = R,
+        });
+}
 scalar_function_call(A) ::= CHAR(T) LPAREN(L) function_argument_list(C) RPAREN(R). {
     A = mylite_sql_parser_make_char_function_call(
         state, (struct mylite_sql_parser_char_function_call_parts){
@@ -5675,12 +5719,6 @@ date_interval_function_name(A) ::= DATE_ADD(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 date_interval_function_name(A) ::= DATE_SUB(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
-}
-date_interval_function_name(A) ::= ADDDATE(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
-}
-date_interval_function_name(A) ::= SUBDATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

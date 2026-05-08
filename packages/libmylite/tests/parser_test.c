@@ -11037,7 +11037,9 @@ static int test_scalar_function_call_syntax(void) {
         "DATE_ADD('2024-01-01', INTERVAL 1 MINUTE), "
         "DATE_ADD('2024-01-01', INTERVAL 1 SECOND), "
         "DATE_ADD('2024-01-01', INTERVAL 1 QUARTER), "
-        "DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND);",
+        "DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND), "
+        "ADDDATE('2024-01-01', 1), "
+        "SUBDATE('2024-01-01', 1);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -11095,6 +11097,18 @@ static int test_scalar_function_call_syntax(void) {
         "DATE_ADD",
         MYLITE_SQL_AST_INTERVAL_UNIT_MICROSECOND,
         "DATE_ADD MICROSECOND interval call"
+    );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 9U), 0U),
+        "ADDDATE",
+        MYLITE_SQL_AST_INTERVAL_UNIT_DAY,
+        "ADDDATE days overload call"
+    );
+    failures += expect_interval_function_call(
+        child_at(child_at(select_list, 10U), 0U),
+        "SUBDATE",
+        MYLITE_SQL_AST_INTERVAL_UNIT_DAY,
+        "SUBDATE days overload call"
     );
     mylite_sql_parse_result_deinit(&result);
 

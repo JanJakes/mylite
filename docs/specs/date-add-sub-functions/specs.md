@@ -2,13 +2,15 @@
 
 ## Scope
 
-This first slice implements MySQL-compatible interval arithmetic function calls
+This slice implements MySQL-compatible interval arithmetic function calls
 for:
 
 - `DATE_ADD(expr, INTERVAL expr unit)`
 - `DATE_SUB(expr, INTERVAL expr unit)`
 - `ADDDATE(expr, INTERVAL expr unit)`
 - `SUBDATE(expr, INTERVAL expr unit)`
+- `ADDDATE(expr, days)`
+- `SUBDATE(expr, days)`
 
 The supported interval units in this slice are:
 
@@ -22,13 +24,9 @@ The supported interval units in this slice are:
 - `SECOND`
 - `MICROSECOND`
 
-The `ADDDATE(date, days)` and `SUBDATE(date, days)` non-`INTERVAL` overloads
-are intentionally deferred. MySQL 8.4.9 probes confirmed those overloads exist,
-but they are a separate argument-shape surface from this feature. Combined
-units such as `YEAR_MONTH`, `DAY_SECOND`, `HOUR_MINUTE`,
-and `SECOND_MICROSECOND` are also deferred in this slice so that the
-implementation does not guess interval-string parsing behavior beyond the units
-tested here.
+Combined units such as `YEAR_MONTH`, `DAY_SECOND`, `HOUR_MINUTE`, and
+`SECOND_MICROSECOND` are deferred in this slice so that the implementation does
+not guess interval-string parsing behavior beyond the units tested here.
 
 References used for this independently authored specification:
 
@@ -63,7 +61,10 @@ SELECT
   DATE_ADD('2024-01-01', INTERVAL 1 QUARTER),
   ADDDATE('2024-01-01', INTERVAL 1 QUARTER),
   DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND),
-  SUBDATE('2024-01-01 00:00:00.000001', INTERVAL 2 MICROSECOND);
+  SUBDATE('2024-01-01 00:00:00.000001', INTERVAL 2 MICROSECOND),
+  ADDDATE('2024-01-01', 1),
+  SUBDATE('2024-01-01', 1),
+  ADDDATE('2024-01-01', '2x');
 ```
 
 Verified results:
@@ -86,6 +87,9 @@ Verified results:
 | `ADDDATE('2024-01-01', INTERVAL 1 QUARTER)` | `2024-04-01` | none |
 | `DATE_ADD('2024-01-01', INTERVAL 1 MICROSECOND)` | `2024-01-01 00:00:00.000001` | none |
 | `SUBDATE('2024-01-01 00:00:00.000001', INTERVAL 2 MICROSECOND)` | `2023-12-31 23:59:59.999999` | none |
+| `ADDDATE('2024-01-01', 1)` | `2024-01-02` | none |
+| `SUBDATE('2024-01-01', 1)` | `2023-12-31` | none |
+| `ADDDATE('2024-01-01', '2x')` | `2024-01-03` | 1292, truncated incorrect integer |
 | `DATE_ADD('2024-02-29 23:59:59.1234', INTERVAL 1 SECOND)` | `2024-03-01 00:00:00.123400` | none |
 | `DATE_ADD('2024-02-29 23:59:59.0000005', INTERVAL 0 SECOND)` | `2024-02-29 23:59:59.000001` | none |
 | `DATE_ADD('2024-02-29 23:59:59.9999995', INTERVAL 0 SECOND)` | `2024-03-01 00:00:00` | none |
@@ -119,8 +123,7 @@ Syntax probes verified that `DATE_ADD('2024-01-01', 1)`,
 `DATE_ADD('2024-01-01')`, `DATE_ADD('2024-01-01', INTERVAL 1 DAY, 3)`, and
 `DATE_ADD('2024-01-01', INTERVAL 1 BOGUS)` are rejected by MySQL. MyLite rejects
 unsupported non-`INTERVAL` date-arithmetic shapes in the parser for this slice,
-including the deferred `ADDDATE(date, days)` and `SUBDATE(date, days)`
-overloads.
+including two-argument `DATE_ADD()` and `DATE_SUB()` calls.
 
 Metadata probes with `mysql --column-type-info -vvv` verified:
 
@@ -130,6 +133,7 @@ Metadata probes with `mysql --column-type-info -vvv` verified:
 | `DATE_ADD(CURDATE(), INTERVAL 1 DAY)` | `DATE` | 10 | 0 | `binary` | yes |
 | `DATE_ADD(CURDATE(), INTERVAL 1 HOUR)` | `DATETIME` | 19 | 0 | `binary` | yes |
 | `DATE_ADD(CURDATE(), INTERVAL 1 MICROSECOND)` | `DATETIME` | 26 | 6 | `binary` | yes |
+| `ADDDATE(CURDATE(), 1)` | `DATE` | 10 | 0 | `binary` | yes |
 
 Strict DML probes verified that warnings from invalid temporal operands are
 promoted by MyLite's existing DML warning-promotion path: an update assigning
@@ -142,6 +146,11 @@ row unchanged.
 `DATE_SUB()` and `SUBDATE()` subtract it. Negative interval values invert the
 operation in the same way as MySQL; for example, subtracting `INTERVAL -1 DAY`
 adds one day.
+
+The two-argument `ADDDATE(expr, days)` and `SUBDATE(expr, days)` overloads are
+day arithmetic. The second argument is converted through the same MySQL-style
+signed-integer path used by simple interval amounts, so text such as `'2x'`
+contributes warning 1292 and uses the truncated value `2`.
 
 The first operand is evaluated first. If it is `NULL`, the result is `NULL` and
 the interval expression is not evaluated. If the first operand is non-`NULL`
@@ -182,10 +191,16 @@ child of `MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST`, so recursive expression
 binding for `SELECT`, `UPDATE`, and `DELETE` continues to visit only
 evaluable expressions.
 
+For the `ADDDATE(expr, days)` and `SUBDATE(expr, days)` overloads, the parser
+stores `DAY` as interval-unit metadata and reuses the same two evaluatable
+arguments.
+
 Independently authored Lemon-style grammar shape:
 
 ```lemon
 scalar_function_call ::= function_name LPAREN expression COMMA INTERVAL expression interval_unit RPAREN.
+scalar_function_call ::= ADDDATE LPAREN expression COMMA expression RPAREN.
+scalar_function_call ::= SUBDATE LPAREN expression COMMA expression RPAREN.
 
 interval_unit ::= DAY.
 interval_unit ::= WEEK.
@@ -254,6 +269,7 @@ MyLite does not yet expose prepared parameters.
 Parser tests should cover:
 
 - `DATE_ADD`, `DATE_SUB`, `ADDDATE`, and `SUBDATE` interval form
+- `ADDDATE(expr, days)` and `SUBDATE(expr, days)` day-overload form
 - supported simple units, including `QUARTER` and `MICROSECOND`
 - nested temporal expressions such as `DATE_ADD(CURDATE(), INTERVAL 1 DAY)`
 - malformed interval units and unsupported arities/forms
@@ -271,21 +287,23 @@ Runtime tests should cover:
 - negative intervals
 - `NULL` propagation and short-circuiting
 - invalid dates/times and warning counts
-- invalid interval text using warning 1292 and zero interval value
+- invalid interval text using warning 1292 and MySQL-style truncated integer
+  values
+- non-`INTERVAL` day overloads, including negative days, `NULL`, and truncated
+  integer conversion warnings
 - statement-stable current temporal inputs
 - strict DML warning promotion and rollback
-- parser rejection for unsupported non-`INTERVAL` `ADDDATE`/`SUBDATE` overloads
+- parser rejection for unsupported non-`INTERVAL` `DATE_ADD`/`DATE_SUB` shapes
 - result metadata for string, date, and datetime result shapes
 
 ## Compatibility status
 
 This feature moves `DATE_ADD()`, `DATE_SUB()`, `ADDDATE()`, and `SUBDATE()` to
-partial compatibility for the supported `INTERVAL expr unit` forms and simple
-units listed above.
+partial compatibility for the supported `INTERVAL expr unit` forms, simple
+units listed above, and the two-argument `ADDDATE`/`SUBDATE` day overloads.
 
 Remaining gaps:
 
-- non-`INTERVAL` `ADDDATE(date, days)` and `SUBDATE(date, days)` overloads
 - combined interval units such as `YEAR_MONTH`, `DAY_SECOND`, and
   `SECOND_MICROSECOND`
 - general interval expressions outside the four function calls

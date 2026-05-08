@@ -981,6 +981,10 @@ insert_select_source_statement(A) ::= SELECT(T) select_modifiers(M) select_item_
     A = mylite_sql_parser_make_select_statement(
         state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), E, NULL, NULL, W, I, J);
 }
+insert_select_source_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
+        opt_where_clause(E) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(state, T, M, B, NULL, E, NULL, NULL, W, I, J);
+}
 insert_select_source_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM(F)
         table_name(C) opt_table_alias(D) opt_where_clause(E) opt_group_by_clause(G)
         opt_having_clause(H) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J). {
@@ -994,6 +998,12 @@ insert_select_source_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S) FROM
     A = mylite_sql_parser_make_select_statement(
         state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D), E, NULL, NULL, W, I, J);
+}
+insert_select_source_statement(A) ::= SELECT(T) select_modifiers(M) STAR(S)
+        opt_where_clause(E) opt_window_clause(W) opt_order_by_clause(I) opt_limit_clause(J). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, M, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, E, NULL, NULL,
+        W, I, J);
 }
 insert_set_statement(A) ::= INSERT(T) opt_insert_ignore(I) opt_into table_name(B) SET insert_set_assignment_list(C)
         opt_insert_row_alias(D) opt_insert_duplicate_update(E). {

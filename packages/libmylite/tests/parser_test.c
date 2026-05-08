@@ -7328,6 +7328,22 @@ static int test_insert_values_syntax(void) {
     failures += expect_child_count(child_at(select, 0U), 1U, "insert select without INTO values");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("INSERT t (a, b) SELECT 1 AS one, 'two';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    select = child_at(statement, 2U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert no-from select statement"
+    );
+    failures += expect_node(columns, MYLITE_SQL_AST_INSERT_COLUMN_LIST, "insert no-from columns");
+    failures += expect_child_count(columns, 2U, "insert no-from column count");
+    failures += expect_node(select, MYLITE_SQL_AST_SELECT_STATEMENT, "insert no-from source");
+    failures += expect_child_count(select, 1U, "insert no-from select child count");
+    failures += expect_child_count(child_at(select, 0U), 2U, "insert no-from select values");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
         "INSERT INTO t SELECT DISTINCT 1 FROM DUAL WHERE TRUE ORDER BY 1 LIMIT 1;",
         MYLITE_SQL_PARSE_OK,
@@ -7357,6 +7373,40 @@ static int test_insert_values_syntax(void) {
     if (select == NULL ||
         select->select_duplicate_mode != MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT) {
         fprintf(stderr, "Expected SELECT DISTINCT mode for INSERT SELECT DUAL\n");
+        ++failures;
+    }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO t SELECT DISTINCT 1 WHERE TRUE ORDER BY 1 LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select = child_at(statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "insert no-from select with clauses"
+    );
+    failures += expect_node(
+        child_at(select, 1U),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "insert no-from select where"
+    );
+    failures += expect_node(
+        child_at(select, 2U),
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "insert no-from select order"
+    );
+    failures += expect_node(
+        child_at(select, 3U),
+        MYLITE_SQL_AST_LIMIT_CLAUSE,
+        "insert no-from select limit"
+    );
+    if (select == NULL ||
+        select->select_duplicate_mode != MYLITE_SQL_AST_SELECT_DUPLICATES_DISTINCT) {
+        fprintf(stderr, "Expected SELECT DISTINCT mode for no-from INSERT SELECT\n");
         ++failures;
     }
     mylite_sql_parse_result_deinit(&result);

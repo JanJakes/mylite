@@ -297,6 +297,7 @@ static int prepare_scalar_select_statement(
         mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_FROM_TABLE) != NULL ||
         mylite_ast_find_child_kind(statement, MYLITE_SQL_AST_FROM_TABLE_REFERENCES) != NULL ||
         (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL &&
+         from_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE &&
          from_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE &&
          from_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE)) {
         return MYLITE_UNSUPPORTED;

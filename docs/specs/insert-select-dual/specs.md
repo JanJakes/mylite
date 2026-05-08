@@ -2,22 +2,24 @@
 
 ## Scope
 
-This slice covers MySQL's one-row `DUAL` source for `INSERT ... SELECT`:
+This slice covers MySQL's one-row `DUAL` source and equivalent no-`FROM`
+constant source for `INSERT ... SELECT`:
 
 ```sql
 INSERT [IGNORE] [INTO] tbl_name [(col_name [, col_name] ...)]
 SELECT [ALL | DISTINCT] select_expr [, select_expr] ...
-FROM DUAL
+[FROM DUAL]
 [WHERE expression]
 [ORDER BY order_expr [, order_expr] ...]
 [LIMIT row_count]
 [ON DUPLICATE KEY UPDATE assignment [, assignment] ...]
 ```
 
-`DUAL` remains a special row source, not a catalog table. Real table sources,
-joins, CTEs, `TABLE`, `VALUES`, grouping, `HAVING`, locking clauses, query
-expressions, partitions, priority modifiers, and broad row-source column
-reference semantics remain part of broader `INSERT ... SELECT` work.
+`DUAL` remains a special row source, not a catalog table. Omitting `FROM DUAL`
+uses the same single-row constant source. Real table sources, joins, CTEs,
+`TABLE`, `VALUES`, grouping, `HAVING`, locking clauses, query expressions,
+partitions, priority modifiers, and broad row-source column reference semantics
+remain part of broader `INSERT ... SELECT` work.
 
 ## MySQL 8.4.9 Behavior
 
@@ -38,12 +40,15 @@ INSERT INTO t SELECT 4, 'four' FROM DUAL WHERE TRUE;
 INSERT INTO t SELECT 5, 'five' FROM DUAL WHERE FALSE;
 INSERT INTO t SELECT 6, 'six' FROM DUAL ORDER BY 1 LIMIT 0;
 INSERT INTO t SELECT DISTINCT 7, 'seven' FROM DUAL WHERE TRUE ORDER BY 1 LIMIT 1;
+INSERT INTO t SELECT 8, 'eight';
+INSERT t SELECT 9, 'nine';
+INSERT INTO t (b, a) SELECT 'ten', 10 WHERE TRUE;
 ```
 
-The first, second, third, fourth, and seventh statements report one affected
-row. The false predicate and `LIMIT 0` statements report zero affected rows and
-insert no row. Projection aliases do not affect target mapping. Explicit target
-column order controls destination columns.
+The first, second, third, fourth, seventh, eighth, ninth, and tenth statements
+report one affected row. The false predicate and `LIMIT 0` statements report
+zero affected rows and insert no row. Projection aliases do not affect target
+mapping. Explicit target column order controls destination columns.
 
 Standalone `SELECT * FROM DUAL` and `INSERT ... SELECT * FROM DUAL` fail with
 error 1096, `No tables used`. MySQL rejects aliases after `DUAL` as syntax
@@ -52,9 +57,9 @@ errors.
 ## MyLite Semantics
 
 MyLite parses the supported form as `MYLITE_SQL_AST_INSERT_SELECT_STATEMENT`
-whose source is a normal scalar `SELECT` with `MYLITE_SQL_AST_FROM_DUAL`.
-Execution materializes the scalar source rows through the shared
-`INSERT ... SELECT` path.
+whose source is a normal scalar `SELECT` with either `MYLITE_SQL_AST_FROM_DUAL`
+or no `FROM` child. Execution materializes the scalar source rows through the
+shared `INSERT ... SELECT` path.
 
 The supported path reuses existing insert behavior for:
 
@@ -90,11 +95,16 @@ insert_select_statement ::= INSERT opt_insert_ignore opt_into table_name
 insert_select_source_statement ::= SELECT select_modifiers select_item_list
     FROM DUAL opt_where_clause opt_window_clause opt_order_by_clause
     opt_limit_clause.
+
+insert_select_source_statement ::= SELECT select_modifiers select_item_list
+    opt_where_clause opt_window_clause opt_order_by_clause opt_limit_clause.
 ```
 
-`DUAL` aliases are intentionally not accepted by this production.
+`DUAL` aliases are intentionally not accepted by this production. The no-`FROM`
+form has the same one-row behavior as `FROM DUAL` for this insert slice.
 
 ## Compatibility Notes
 
-This slice addresses applications and generated SQL that use `FROM DUAL` as a
-portable constant row source. It does not claim broad insert-from-query support.
+This slice addresses applications and generated SQL that use either omitted
+`FROM` or `FROM DUAL` as a portable constant row source. It does not claim broad
+insert-from-query support.

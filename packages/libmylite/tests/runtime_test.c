@@ -59036,7 +59036,7 @@ static int test_show_index_execution(void) {
 
 static int test_insert_values_execution(void) {
     enum {
-        insert_forms_row_count = 10,
+        insert_forms_row_count = 13,
         ai_first_insert_id = 10,
         ai_default_value_insert_id = 12,
         ai_empty_column_insert_id = 13,
@@ -59188,6 +59188,36 @@ static int test_insert_values_execution(void) {
         1,
         "insert select distinct from dual affected rows"
     );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms (a, b) SELECT 14, 'fourteen'",
+        1,
+        "insert select no from affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT insert_forms SELECT 15, 'fifteen'",
+        1,
+        "insert select no from without INTO affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms (b, a) SELECT 'sixteen', 16 WHERE TRUE",
+        1,
+        "insert select no from where true affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms SELECT 17, 'seventeen' WHERE FALSE",
+        0,
+        "insert select no from where false affected rows"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO insert_forms SELECT 18, 'eighteen' ORDER BY 1 LIMIT 0",
+        0,
+        "insert select no from limit zero affected rows"
+    );
     failures +=
         prepare_sql(database, "INSERT INTO insert_forms SELECT * FROM DUAL", MYLITE_OK, &stmt);
     failures +=
@@ -59196,6 +59226,16 @@ static int test_insert_values_execution(void) {
         mylite_error_message(database),
         "No tables used",
         "insert select wildcard from dual error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(database, "INSERT INTO insert_forms SELECT *", MYLITE_OK, &stmt);
+    failures +=
+        expect_status(mylite_step(stmt), MYLITE_EXEC_ERROR, "insert select wildcard no from");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "No tables used",
+        "insert select wildcard no from error"
     );
     mylite_finalize(stmt);
     stmt = NULL;
@@ -59260,6 +59300,30 @@ static int test_insert_values_execution(void) {
             "WHERE a = 12",
             "twelve",
             "INSERT SELECT DUAL DISTINCT"
+        );
+        failures += expect_sqlite_physical_text(
+            path,
+            forms_physical,
+            "b",
+            "WHERE a = 14",
+            "fourteen",
+            "INSERT SELECT no FROM"
+        );
+        failures += expect_sqlite_physical_text(
+            path,
+            forms_physical,
+            "b",
+            "WHERE a = 15",
+            "fifteen",
+            "INSERT SELECT no FROM without INTO"
+        );
+        failures += expect_sqlite_physical_text(
+            path,
+            forms_physical,
+            "b",
+            "WHERE a = 16",
+            "sixteen",
+            "INSERT SELECT no FROM column order"
         );
         failures += expect_sqlite_physical_null(
             path,

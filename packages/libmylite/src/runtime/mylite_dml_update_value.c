@@ -34,6 +34,15 @@ static bool column_is_explicitly_assigned(
     size_t explicit_column_count
 );
 
+static int apply_update_on_update_current_timestamps_to_changed_row(
+    mylite_db *database,
+    const struct mylite_insert_table *write_table,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
+    struct mylite_update_row *candidate,
+    struct mylite_dml_timestamp_state *timestamp_state
+);
+
 static int resolve_on_update_current_timestamp_expression(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -113,6 +122,46 @@ int mylite_dml_apply_update_on_update_current_timestamps(
         return MYLITE_OK;
     }
 
+    return apply_update_on_update_current_timestamps_to_changed_row(
+        database,
+        write_table,
+        explicit_column_indexes,
+        explicit_column_count,
+        candidate,
+        timestamp_state
+    );
+}
+
+int mylite_dml_apply_update_on_update_current_timestamps_for_changed_row(
+    mylite_db *database,
+    const struct mylite_insert_table *write_table,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
+    struct mylite_update_row *candidate,
+    struct mylite_dml_timestamp_state *timestamp_state
+) {
+    if (database == NULL || write_table == NULL || candidate == NULL || timestamp_state == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    return apply_update_on_update_current_timestamps_to_changed_row(
+        database,
+        write_table,
+        explicit_column_indexes,
+        explicit_column_count,
+        candidate,
+        timestamp_state
+    );
+}
+
+static int apply_update_on_update_current_timestamps_to_changed_row(
+    mylite_db *database,
+    const struct mylite_insert_table *write_table,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
+    struct mylite_update_row *candidate,
+    struct mylite_dml_timestamp_state *timestamp_state
+) {
     for (size_t index = 0U; index < write_table->column_count; ++index) {
         const struct mylite_insert_table_column *column = &write_table->columns[index];
         struct mylite_expression_value value = {0};

@@ -43,6 +43,26 @@ struct mylite_joined_update_target {
     int64_t affected_rows;
 };
 
+struct mylite_joined_update_accumulated_target {
+    struct mylite_joined_update_target *target;
+    int64_t affected_rows;
+};
+
+struct mylite_joined_update_accumulated_row {
+    struct mylite_joined_update_target *target;
+    struct mylite_update_row stored;
+    struct mylite_update_row candidate;
+    size_t *assignment_column_indexes;
+    size_t assignment_column_count;
+    struct mylite_joined_update_accumulated_target *target_changes;
+    size_t target_change_count;
+};
+
+struct mylite_joined_update_accumulator {
+    struct mylite_joined_update_accumulated_row *rows;
+    size_t row_count;
+};
+
 static int bind_joined_update_select_plan(mylite_stmt *stmt, mylite_stmt *joined_stmt);
 
 static int bind_joined_update_assignments(
@@ -159,6 +179,7 @@ static int execute_joined_update_result_row(
     const struct mylite_table_select_row *joined_row,
     struct mylite_joined_update_target *targets,
     size_t target_count,
+    struct mylite_joined_update_accumulator *accumulator,
     bool ignore
 );
 
@@ -167,6 +188,7 @@ static int execute_joined_update_target_row(
     mylite_stmt *joined_stmt,
     const struct mylite_table_select_row *joined_row,
     struct mylite_joined_update_target *target,
+    struct mylite_joined_update_accumulator *accumulator,
     bool ignore
 );
 
@@ -187,6 +209,26 @@ static int remember_joined_update_target_row(
     sqlite3_int64 rowid
 );
 
+static int find_or_add_joined_update_accumulated_row(
+    mylite_db *database,
+    struct mylite_joined_update_accumulator *accumulator,
+    const struct mylite_table_select_row *joined_row,
+    struct mylite_joined_update_target *target,
+    sqlite3_int64 rowid,
+    struct mylite_joined_update_accumulated_row **out_row
+);
+
+static bool joined_update_accumulated_row_matches(
+    const struct mylite_joined_update_accumulated_row *row,
+    const struct mylite_joined_update_target *target,
+    sqlite3_int64 rowid
+);
+
+static bool joined_update_targets_reference_same_table(
+    const struct mylite_joined_update_target *left,
+    const struct mylite_joined_update_target *right
+);
+
 static int copy_joined_update_target_row(
     mylite_db *database,
     const struct mylite_table_select_row *joined_row,
@@ -202,6 +244,38 @@ static int apply_joined_update_assignments(
     const struct mylite_joined_update_target *target,
     bool ignore,
     struct mylite_update_row *candidate
+);
+
+static int append_joined_update_accumulated_assignment_columns(
+    mylite_db *database,
+    struct mylite_joined_update_accumulated_row *row,
+    const struct mylite_joined_update_target *target
+);
+
+static int add_joined_update_accumulated_target_change(
+    mylite_db *database,
+    struct mylite_joined_update_accumulated_row *row,
+    struct mylite_joined_update_target *target
+);
+
+static int finish_joined_update_accumulated_rows(
+    mylite_db *database,
+    struct mylite_joined_update_accumulator *accumulator,
+    bool ignore
+);
+
+static int finish_joined_update_accumulated_row(
+    mylite_db *database,
+    struct mylite_joined_update_accumulated_row *row,
+    bool ignore
+);
+
+static int64_t joined_update_accumulated_affected_rows(
+    const struct mylite_joined_update_accumulated_row *row
+);
+
+static void apply_joined_update_accumulated_affected_rows(
+    const struct mylite_joined_update_accumulated_row *row
 );
 
 static int evaluate_joined_update_assignment(
@@ -230,6 +304,8 @@ static void joined_update_targets_deinit(
     struct mylite_joined_update_target *targets,
     size_t target_count
 );
+
+static void joined_update_accumulator_deinit(struct mylite_joined_update_accumulator *accumulator);
 
 int mylite_dml_execute_joined_update_statement(
     mylite_stmt *stmt,
@@ -758,6 +834,7 @@ static int execute_joined_update_transaction(
     bool ignore
 ) {
     struct mylite_statement_atomicity atomicity = {0};
+    struct mylite_joined_update_accumulator accumulator = {0};
     int status = mylite_transaction_begin_statement_atomicity(stmt->database, &atomicity);
 
     if (status != MYLITE_OK) {
@@ -773,8 +850,12 @@ static int execute_joined_update_transaction(
             &joined_stmt->select_result.rows[row_index],
             targets,
             target_count,
+            &accumulator,
             ignore
         );
+    }
+    if (status == MYLITE_OK) {
+        status = finish_joined_update_accumulated_rows(stmt->database, &accumulator, ignore);
     }
     if (status == MYLITE_OK) {
         status = finish_joined_update_auto_increment(stmt->database, targets, target_count);
@@ -782,11 +863,13 @@ static int execute_joined_update_transaction(
     if (status == MYLITE_OK) {
         status = mylite_transaction_commit_statement_atomicity(stmt->database, &atomicity);
         if (status == MYLITE_OK) {
+            joined_update_accumulator_deinit(&accumulator);
             return MYLITE_OK;
         }
     }
 
     mylite_transaction_rollback_statement_atomicity(stmt->database, &atomicity);
+    joined_update_accumulator_deinit(&accumulator);
     return status;
 }
 
@@ -796,6 +879,7 @@ static int execute_joined_update_result_row(
     const struct mylite_table_select_row *joined_row,
     struct mylite_joined_update_target *targets,
     size_t target_count,
+    struct mylite_joined_update_accumulator *accumulator,
     bool ignore
 ) {
     for (size_t index = 0U; index < target_count; ++index) {
@@ -804,6 +888,7 @@ static int execute_joined_update_result_row(
             joined_stmt,
             joined_row,
             &targets[index],
+            accumulator,
             ignore
         );
 
@@ -819,13 +904,12 @@ static int execute_joined_update_target_row(
     mylite_stmt *joined_stmt,
     const struct mylite_table_select_row *joined_row,
     struct mylite_joined_update_target *target,
+    struct mylite_joined_update_accumulator *accumulator,
     bool ignore
 ) {
-    struct mylite_update_row stored = {0};
-    struct mylite_update_row candidate = {0};
+    struct mylite_joined_update_accumulated_row *row = NULL;
+    struct mylite_update_row previous = {0};
     sqlite3_int64 rowid = 0;
-    bool ignored = false;
-    bool row_changed = false;
     int status = MYLITE_OK;
 
     if (!joined_update_target_row_is_present(joined_row, target->table_index, &rowid) ||
@@ -838,9 +922,16 @@ static int execute_joined_update_target_row(
     }
     ++target->matched_rows;
 
-    status = copy_joined_update_target_row(database, joined_row, target, rowid, &stored);
+    status = find_or_add_joined_update_accumulated_row(
+        database,
+        accumulator,
+        joined_row,
+        target,
+        rowid,
+        &row
+    );
     if (status == MYLITE_OK) {
-        status = mylite_dml_copy_update_candidate_values(database, &stored, &candidate);
+        status = mylite_dml_copy_update_candidate_values(database, &row->candidate, &previous);
     }
     if (status == MYLITE_OK) {
         status = apply_joined_update_assignments(
@@ -849,96 +940,17 @@ static int execute_joined_update_target_row(
             joined_row,
             target,
             ignore,
-            &candidate
+            &row->candidate
         );
     }
     if (status == MYLITE_OK) {
-        status = mylite_dml_apply_update_on_update_current_timestamps(
-            database,
-            &target->write_table,
-            target->assignment_column_indexes,
-            target->assignment_count,
-            &stored,
-            &candidate,
-            &target->timestamp_state,
-            &row_changed
-        );
+        status = append_joined_update_accumulated_assignment_columns(database, row, target);
     }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_validate_update_check_constraints(
-            database,
-            target->table,
-            &target->write_table,
-            &candidate,
-            ignore,
-            &ignored
-        );
-    }
-    if (status == MYLITE_OK && ignored) {
-        mylite_dml_update_row_deinit(&candidate);
-        mylite_dml_update_row_deinit(&stored);
-        return MYLITE_OK;
-    }
-    if (status == MYLITE_OK) {
-        status = mylite_dml_validate_update_unique_indexes(
-            database,
-            target->table,
-            &target->write_table,
-            &candidate,
-            ignore,
-            &ignored
-        );
-    }
-    if (status == MYLITE_OK && ignored) {
-        mylite_dml_update_row_deinit(&candidate);
-        mylite_dml_update_row_deinit(&stored);
-        return MYLITE_OK;
-    }
-    if (status == MYLITE_OK && row_changed) {
-        status = mylite_dml_validate_update_child_foreign_keys(
-            database,
-            target->table,
-            &target->write_table,
-            &stored,
-            &candidate,
-            ignore,
-            &ignored
-        );
-    }
-    if (status == MYLITE_OK && ignored) {
-        mylite_dml_update_row_deinit(&candidate);
-        mylite_dml_update_row_deinit(&stored);
-        return MYLITE_OK;
-    }
-    if (status == MYLITE_OK && row_changed) {
-        status = mylite_dml_validate_parent_update_foreign_keys(
-            database,
-            target->table,
-            &stored,
-            &candidate,
-            ignore,
-            &ignored
-        );
-    }
-    if (status == MYLITE_OK && ignored) {
-        mylite_dml_update_row_deinit(&candidate);
-        mylite_dml_update_row_deinit(&stored);
-        return MYLITE_OK;
-    }
-    if (status == MYLITE_OK && row_changed) {
-        status = mylite_dml_apply_parent_update_foreign_key_actions(
-            database,
-            target->table,
-            &stored,
-            &candidate
-        );
-    }
-    if (status == MYLITE_OK && row_changed) {
-        status = write_joined_update_candidate(database, target, &candidate);
+    if (status == MYLITE_OK && mylite_dml_update_row_changed(&previous, &row->candidate)) {
+        status = add_joined_update_accumulated_target_change(database, row, target);
     }
 
-    mylite_dml_update_row_deinit(&candidate);
-    mylite_dml_update_row_deinit(&stored);
+    mylite_dml_update_row_deinit(&previous);
     return status;
 }
 
@@ -983,6 +995,86 @@ static int remember_joined_update_target_row(
     target->seen_rowids = rowids;
     target->seen_rowids[target->seen_rowid_count++] = rowid;
     return MYLITE_OK;
+}
+
+static int find_or_add_joined_update_accumulated_row(
+    mylite_db *database,
+    struct mylite_joined_update_accumulator *accumulator,
+    const struct mylite_table_select_row *joined_row,
+    struct mylite_joined_update_target *target,
+    sqlite3_int64 rowid,
+    struct mylite_joined_update_accumulated_row **out_row
+) {
+    struct mylite_joined_update_accumulated_row new_row = {.target = target};
+    struct mylite_joined_update_accumulated_row *rows = NULL;
+    int status = MYLITE_OK;
+
+    if (database == NULL || accumulator == NULL || target == NULL || out_row == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; index < accumulator->row_count; ++index) {
+        if (joined_update_accumulated_row_matches(&accumulator->rows[index], target, rowid)) {
+            *out_row = &accumulator->rows[index];
+            return MYLITE_OK;
+        }
+    }
+
+    status = copy_joined_update_target_row(database, joined_row, target, rowid, &new_row.stored);
+    if (status == MYLITE_OK) {
+        status =
+            mylite_dml_copy_update_candidate_values(database, &new_row.stored, &new_row.candidate);
+    }
+    if (status != MYLITE_OK) {
+        mylite_dml_update_row_deinit(&new_row.candidate);
+        mylite_dml_update_row_deinit(&new_row.stored);
+        return status;
+    }
+
+    rows = realloc(accumulator->rows, (accumulator->row_count + 1U) * sizeof(*rows));
+    if (rows == NULL) {
+        mylite_dml_update_row_deinit(&new_row.candidate);
+        mylite_dml_update_row_deinit(&new_row.stored);
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    accumulator->rows = rows;
+    accumulator->rows[accumulator->row_count] = new_row;
+    *out_row = &accumulator->rows[accumulator->row_count++];
+    return MYLITE_OK;
+}
+
+static bool joined_update_accumulated_row_matches(
+    const struct mylite_joined_update_accumulated_row *row,
+    const struct mylite_joined_update_target *target,
+    sqlite3_int64 rowid
+) {
+    return row != NULL && target != NULL && row->stored.rowid == rowid &&
+           joined_update_targets_reference_same_table(row->target, target);
+}
+
+static bool joined_update_targets_reference_same_table(
+    const struct mylite_joined_update_target *left,
+    const struct mylite_joined_update_target *right
+) {
+    const struct mylite_select_table *left_table = left == NULL ? NULL : left->table;
+    const struct mylite_select_table *right_table = right == NULL ? NULL : right->table;
+
+    if (left_table == NULL || right_table == NULL) {
+        return false;
+    }
+    if (left_table->schema_name == NULL || right_table->schema_name == NULL ||
+        left_table->table_name == NULL || right_table->table_name == NULL) {
+        return false;
+    }
+    if (strcmp(left_table->schema_name, right_table->schema_name) != 0 ||
+        strcmp(left_table->table_name, right_table->table_name) != 0) {
+        return false;
+    }
+    if (left_table->physical_name != NULL || right_table->physical_name != NULL) {
+        return left_table->physical_name != NULL && right_table->physical_name != NULL &&
+               strcmp(left_table->physical_name, right_table->physical_name) == 0;
+    }
+    return true;
 }
 
 static int copy_joined_update_target_row(
@@ -1057,6 +1149,208 @@ static int apply_joined_update_assignments(
         candidate->values[assignment->column_index] = value;
     }
     return MYLITE_OK;
+}
+
+static int append_joined_update_accumulated_assignment_columns(
+    mylite_db *database,
+    struct mylite_joined_update_accumulated_row *row,
+    const struct mylite_joined_update_target *target
+) {
+    size_t new_count = 0U;
+    size_t *indexes = NULL;
+
+    if (database == NULL || row == NULL || target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->assignment_count == 0U) {
+        return MYLITE_OK;
+    }
+    new_count = row->assignment_column_count + target->assignment_count;
+    indexes = realloc(row->assignment_column_indexes, new_count * sizeof(*indexes));
+    if (indexes == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    memcpy(
+        indexes + row->assignment_column_count,
+        target->assignment_column_indexes,
+        target->assignment_count * sizeof(*indexes)
+    );
+    row->assignment_column_indexes = indexes;
+    row->assignment_column_count = new_count;
+    return MYLITE_OK;
+}
+
+static int add_joined_update_accumulated_target_change(
+    mylite_db *database,
+    struct mylite_joined_update_accumulated_row *row,
+    struct mylite_joined_update_target *target
+) {
+    struct mylite_joined_update_accumulated_target *changes = NULL;
+
+    if (database == NULL || row == NULL || target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; index < row->target_change_count; ++index) {
+        if (row->target_changes[index].target == target) {
+            ++row->target_changes[index].affected_rows;
+            return MYLITE_OK;
+        }
+    }
+
+    changes = realloc(row->target_changes, (row->target_change_count + 1U) * sizeof(*changes));
+    if (changes == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    row->target_changes = changes;
+    row->target_changes[row->target_change_count++] =
+        (struct mylite_joined_update_accumulated_target){
+            .target = target,
+            .affected_rows = 1,
+        };
+    return MYLITE_OK;
+}
+
+static int finish_joined_update_accumulated_rows(
+    mylite_db *database,
+    struct mylite_joined_update_accumulator *accumulator,
+    bool ignore
+) {
+    if (database == NULL || accumulator == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; index < accumulator->row_count; ++index) {
+        int status =
+            finish_joined_update_accumulated_row(database, &accumulator->rows[index], ignore);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int finish_joined_update_accumulated_row(
+    mylite_db *database,
+    struct mylite_joined_update_accumulated_row *row,
+    bool ignore
+) {
+    bool ignored = false;
+    bool final_row_changed = false;
+    int status = MYLITE_OK;
+
+    if (database == NULL || row == NULL || row->target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (joined_update_accumulated_affected_rows(row) == 0) {
+        return MYLITE_OK;
+    }
+
+    status = mylite_dml_apply_update_on_update_current_timestamps_for_changed_row(
+        database,
+        &row->target->write_table,
+        row->assignment_column_indexes,
+        row->assignment_column_count,
+        &row->candidate,
+        &row->target->timestamp_state
+    );
+    if (status == MYLITE_OK) {
+        status = mylite_dml_validate_update_check_constraints(
+            database,
+            row->target->table,
+            &row->target->write_table,
+            &row->candidate,
+            ignore,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && ignored) {
+        return MYLITE_OK;
+    }
+    if (status == MYLITE_OK) {
+        status = mylite_dml_validate_update_unique_indexes(
+            database,
+            row->target->table,
+            &row->target->write_table,
+            &row->candidate,
+            ignore,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && ignored) {
+        return MYLITE_OK;
+    }
+
+    final_row_changed = mylite_dml_update_row_changed(&row->stored, &row->candidate);
+    if (status == MYLITE_OK && final_row_changed) {
+        status = mylite_dml_validate_update_child_foreign_keys(
+            database,
+            row->target->table,
+            &row->target->write_table,
+            &row->stored,
+            &row->candidate,
+            ignore,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && ignored) {
+        return MYLITE_OK;
+    }
+    if (status == MYLITE_OK && final_row_changed) {
+        status = mylite_dml_validate_parent_update_foreign_keys(
+            database,
+            row->target->table,
+            &row->stored,
+            &row->candidate,
+            ignore,
+            &ignored
+        );
+    }
+    if (status == MYLITE_OK && ignored) {
+        return MYLITE_OK;
+    }
+    if (status == MYLITE_OK && final_row_changed) {
+        status = mylite_dml_apply_parent_update_foreign_key_actions(
+            database,
+            row->target->table,
+            &row->stored,
+            &row->candidate
+        );
+    }
+    if (status == MYLITE_OK && final_row_changed) {
+        status = write_joined_update_candidate(database, row->target, &row->candidate);
+    }
+    if (status == MYLITE_OK) {
+        apply_joined_update_accumulated_affected_rows(row);
+    }
+    return status;
+}
+
+static int64_t joined_update_accumulated_affected_rows(
+    const struct mylite_joined_update_accumulated_row *row
+) {
+    int64_t affected_rows = 0;
+
+    if (row == NULL) {
+        return 0;
+    }
+    for (size_t index = 0U; index < row->target_change_count; ++index) {
+        affected_rows += row->target_changes[index].affected_rows;
+    }
+    return affected_rows;
+}
+
+static void apply_joined_update_accumulated_affected_rows(
+    const struct mylite_joined_update_accumulated_row *row
+) {
+    if (row == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < row->target_change_count; ++index) {
+        row->target_changes[index].target->affected_rows +=
+            row->target_changes[index].affected_rows;
+    }
 }
 
 static int evaluate_joined_update_assignment(
@@ -1142,7 +1436,6 @@ static int write_joined_update_candidate(
     if (rc != SQLITE_DONE) {
         return mylite_diagnostics_set_sqlite_error(database);
     }
-    ++target->affected_rows;
     return mylite_dml_advance_update_auto_increment(
         database,
         &target->write_table,
@@ -1191,4 +1484,18 @@ static void joined_update_targets_deinit(
         free(targets[index].seen_rowids);
     }
     free(targets);
+}
+
+static void joined_update_accumulator_deinit(struct mylite_joined_update_accumulator *accumulator) {
+    if (accumulator == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < accumulator->row_count; ++index) {
+        mylite_dml_update_row_deinit(&accumulator->rows[index].candidate);
+        mylite_dml_update_row_deinit(&accumulator->rows[index].stored);
+        free(accumulator->rows[index].assignment_column_indexes);
+        free(accumulator->rows[index].target_changes);
+    }
+    free(accumulator->rows);
+    *accumulator = (struct mylite_joined_update_accumulator){0};
 }

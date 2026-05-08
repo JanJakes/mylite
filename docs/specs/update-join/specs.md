@@ -64,15 +64,25 @@ by `SELECT` and multi-table `DELETE`. Assignment nodes are unchanged.
 4. Materialize the joined row source.
 5. For each target table, update each matched physical row at most once.
 6. Evaluate assignment expressions against the matched joined row.
-7. Apply automatic `ON UPDATE CURRENT_TIMESTAMP` refresh for changed target
+7. Merge assignments that target the same physical row through multiple aliases
+   of the same base table before writing the final row image.
+8. Apply automatic `ON UPDATE CURRENT_TIMESTAMP` refresh for changed target
    rows when the temporal column is not explicitly assigned.
-8. Validate target values and unique indexes, then write all changed target rows
+9. Validate target values and unique indexes, then write all changed target rows
    in one statement-level transaction.
 
 For duplicate joined matches to the same target row, MyLite updates the row once
 using the first materialized joined row. This matches the practical MySQL rule
 that each matching target row is updated once while avoiding a dependency on an
 optimizer-specific duplicate-match order.
+
+When multiple aliases of the same physical table resolve to the same target
+row, MyLite evaluates each alias assignment against the original materialized
+joined row and accumulates the final row image before writing. A row that changes
+through one alias and is changed back through another alias still contributes
+changed-row affected counts for the aliases that performed changes, and
+`ON UPDATE CURRENT_TIMESTAMP` refreshes unless that timestamp column is
+explicitly assigned.
 
 `LEFT`/`RIGHT` outer joins only update target rows that are present on the
 target side. A null-extended non-preserved target side is skipped because there
@@ -115,5 +125,8 @@ Coverage includes:
 - automatic `ON UPDATE CURRENT_TIMESTAMP` refresh for changed target rows and
   explicit-assignment suppression
 - multi-target assignment in one statement
+- overlapping aliases of the same physical target row, including merged column
+  updates, change-and-revert affected counts, and self-chain updates where a row
+  is updated through more than one alias
 - left-join unmatched target updates
 - ambiguous assignment diagnostics

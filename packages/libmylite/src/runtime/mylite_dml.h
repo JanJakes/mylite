@@ -486,6 +486,14 @@ int mylite_dml_apply_update_on_update_current_timestamps(
     struct mylite_dml_timestamp_state *timestamp_state,
     bool *out_row_changed
 );
+int mylite_dml_apply_update_on_update_current_timestamps_for_changed_row(
+    mylite_db *database,
+    const struct mylite_insert_table *write_table,
+    const size_t *explicit_column_indexes,
+    size_t explicit_column_count,
+    struct mylite_update_row *candidate,
+    struct mylite_dml_timestamp_state *timestamp_state
+);
 int mylite_dml_apply_insert_on_update_current_timestamps(
     mylite_db *database,
     const struct mylite_insert_table *table,

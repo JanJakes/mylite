@@ -112,7 +112,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
 - [x] Complete more complex joined update forms. Comma joins, `USING` joins,
       `RIGHT JOIN`, self-join aliases, unqualified `USING` assignment targets,
       case-sensitive assignment qualifiers, and parenthesized nested join
-      operands are covered against MySQL 8.4.9 expectations.
+      operands are covered against MySQL 8.4.9 expectations. Overlapping
+      aliases of the same physical target row now merge assignments before the
+      final write, including same-row updates, change-and-revert affected
+      counts, and self-chain updates.
 - [x] Support `INSERT ... SELECT FROM DUAL`.
 - [x] Verify and complete `INSERT ... SET ...` defaults and generated values.
 - [x] Verify and complete `INSERT` without `INTO`.

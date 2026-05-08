@@ -75060,6 +75060,28 @@ static int test_update_single_table_execution(void) {
         "3",
         "8",
     };
+    static const char *const joined_same_row_columns[] = {"id", "x", "y"};
+    static const char *const joined_same_row_values[] = {
+        "1",
+        "100",
+        "200",
+    };
+    static const char *const joined_revert_values[] = {"10", "1", "26"};
+    static const char *const joined_chain_columns[] = {"id", "parent_id", "x", "y"};
+    static const char *const joined_chain_values[] = {
+        "1",
+        NULL,
+        "10",
+        "200",
+        "2",
+        "1",
+        "30",
+        "300",
+        "3",
+        "2",
+        "40",
+        "300",
+    };
     static const char *const joined_using_left_values[] = {
         "2",
         "20",
@@ -75824,6 +75846,111 @@ static int test_update_single_table_execution(void) {
         joined_self_values,
         3,
         "joined update self join aliases values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_same_row_alias (id INT PRIMARY KEY, x INT, y INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_same_row_alias VALUES (1,10,20)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_same_row_alias AS a "
+        "JOIN joined_update_same_row_alias AS b ON a.id = b.id "
+        "SET a.x = 100, b.y = 200",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update same-row aliases");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "joined update same-row aliases affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, x, y FROM joined_update_same_row_alias",
+        joined_same_row_columns,
+        3,
+        joined_same_row_values,
+        1,
+        "joined update same-row aliases values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_same_row_revert ("
+        "id INT PRIMARY KEY, x INT, "
+        "touched DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) "
+        "ON UPDATE CURRENT_TIMESTAMP(6))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_same_row_revert VALUES "
+        "(1,10,'2000-01-01 00:00:00.000000')",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_same_row_revert AS a "
+        "JOIN joined_update_same_row_revert AS b ON a.id = b.id "
+        "SET a.x = 100, b.x = 10",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update same-row revert");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 2, "joined update same-row revert affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT x, touched <> '2000-01-01 00:00:00.000000' AS changed, "
+        "LENGTH(touched) AS len FROM joined_update_same_row_revert",
+        (const char *[]){"x", "changed", "len"},
+        3,
+        joined_revert_values,
+        1,
+        "joined update same-row revert values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE joined_update_self_chain (id INT PRIMARY KEY, parent_id INT, x INT, y INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO joined_update_self_chain VALUES "
+        "(1,NULL,10,100),(2,1,20,200),(3,2,30,300)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "UPDATE joined_update_self_chain AS child "
+        "JOIN joined_update_self_chain AS parent ON child.parent_id = parent.id "
+        "SET child.x = child.x + 10, parent.y = parent.y + 100",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "joined update self-chain aliases");
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), 4, "joined update self-chain aliases affected");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_select_rows(
+        database,
+        "SELECT id, parent_id, x, y FROM joined_update_self_chain ORDER BY id",
+        joined_chain_columns,
+        4,
+        joined_chain_values,
+        3,
+        "joined update self-chain aliases values"
     );
 
     failures += execute_sql(

@@ -187,7 +187,7 @@ The exact value, scope, mutability, privilege requirement, persisted-variable be
 | `external_user` | ❌ | Value, scope, SET, diagnostics |
 | `flush` | ❌ | Value, scope, SET, diagnostics |
 | `flush_time` | ❌ | Value, scope, SET, diagnostics |
-| `foreign_key_checks` | ❌ | Value, scope, SET, diagnostics |
+| `foreign_key_checks` | 🟡 | Limited read-only scalar `SELECT @@foreign_key_checks` with no scope, `session`, `local`, or `global`; returns MyLite's fixed enabled value `1`; no `SET`, mutable global/session state, foreign key DDL, enforcement, cascades, dependency checks, `SHOW VARIABLES`, or Performance Schema variable tables |
 | `ft_boolean_syntax` | ❌ | Value, scope, SET, diagnostics |
 | `ft_max_word_len` | ❌ | Value, scope, SET, diagnostics |
 | `ft_min_word_len` | ❌ | Value, scope, SET, diagnostics |

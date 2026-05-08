@@ -25,6 +25,7 @@ Standalone index statements plus index, key, constraint, foreign-key, and check 
 | FULLTEXT indexes | ❌ | Parser options and MATCH metadata |
 | SPATIAL indexes | ❌ | Geometry column requirements and spatial metadata |
 | Foreign keys | ❌ | Cascades, checks, metadata |
+| Foreign key checks variable | 🟡 | Limited scalar `@@foreign_key_checks` reads report fixed enabled value `1`; no mutable checking state, foreign key DDL, enforcement, cascades, metadata, or dependency checks |
 | CHECK constraints | ❌ | Expression validation, enforcement, names, and metadata |
 | Constraint naming | ❌ | Names, scope, SHOW CREATE |
 | CREATE INDEX options | ❌ | ALGORITHM, LOCK, visibility |

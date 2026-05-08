@@ -361,6 +361,10 @@ Observed `mysql --column-type-info -vvv` metadata:
 | `AVG(s)` where `s VARCHAR(10)` | `DOUBLE` | `23` | `31` | `BINARY NUM` | none |
 | `MIN(n) AS min_n` | `LONG` | `11` | `0` | `BINARY NUM` | none |
 | `MAX(txt) AS max_txt` under utf8mb4 | `VAR_STRING` | `80` | `31` | none | none |
+| `MAX(tx)` where `tx TEXT` under utf8mb4 | `BLOB` | `1048560` | `31` | none | none |
+| `MAX(b)` where `b BLOB` | `BLOB` | `65535` | `31` | `BINARY` | none |
+| `MIN(dt)` where `dt DATETIME(6)` under utf8mb4 | `DATETIME` | `104` | `6` | none | none |
+| `MAX(ts)` where `ts TIMESTAMP(3)` under utf8mb4 | `TIMESTAMP` | `92` | `3` | none | none |
 | grouped `grp` | `VAR_STRING` | `10` | `0` | observed `NUM` flag | `mylite_aggregate_grouping.t.grp` |
 
 Implementation should preserve the existing Task 23 descriptor API behavior:

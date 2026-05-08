@@ -474,7 +474,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Exact numeric `SUM()` / `AVG()` result descriptors now derive MySQL-shaped
       length and scale from the argument descriptor across integer, unsigned,
       and fixed-point domains, and string `MIN()` / `MAX()` descriptors report
-      not-fixed decimals like MySQL.
+      not-fixed decimals like MySQL. `MIN()` / `MAX()` over TEXT/BLOB-family
+      and temporal columns now report MySQL-shaped aggregate lengths, flags,
+      and connection-collation metadata for covered table-backed domains.
       String system-variable expression descriptors now follow the current
       result character set and collation, including MySQL-shaped `utf8mb4`
       metadata after `SET NAMES utf8mb4` and latin1 metadata after

@@ -41426,6 +41426,73 @@ static int test_aggregate_grouping_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
+    static const struct expected_result_metadata min_max_shape_metadata[] = {
+        {"max_tx",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         1048560U,
+         MYLITE_FIELD_TYPE_BLOB,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"max_b",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         65535U,
+         MYLITE_FIELD_TYPE_BLOB,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_BLOB | MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"min_dt",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         104U,
+         MYLITE_FIELD_TYPE_DATETIME,
+         6U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"max_ts",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         92U,
+         MYLITE_FIELD_TYPE_TIMESTAMP,
+         3U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"max_vb",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         20U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+    };
     static const struct expected_result_metadata count_distinct_metadata[] = {
         {"ca",
          NULL,
@@ -41603,6 +41670,12 @@ static int test_aggregate_grouping_execution(void) {
         "CREATE TABLE exact_metadata_t ("
         "d5 DECIMAL(5,0), d20 DECIMAL(20,10), "
         "bi BIGINT, bu BIGINT UNSIGNED)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE minmax_metadata_t ("
+        "tx TEXT, b BLOB, dt DATETIME(6), ts TIMESTAMP(3), vb VARBINARY(20))",
         MYLITE_DONE
     );
 
@@ -41890,6 +41963,23 @@ static int test_aggregate_grouping_execution(void) {
         exact_aggregate_metadata,
         (int)(sizeof(exact_aggregate_metadata) / sizeof(exact_aggregate_metadata[0])),
         "exact aggregate metadata"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += prepare_sql(
+        database,
+        "SELECT MAX(tx) AS max_tx, MAX(b) AS max_b, "
+        "MIN(dt) AS min_dt, MAX(ts) AS max_ts, MAX(vb) AS max_vb "
+        "FROM minmax_metadata_t",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        min_max_shape_metadata,
+        (int)(sizeof(min_max_shape_metadata) / sizeof(min_max_shape_metadata[0])),
+        "min max shape metadata"
     );
     mylite_finalize(stmt);
     stmt = NULL;

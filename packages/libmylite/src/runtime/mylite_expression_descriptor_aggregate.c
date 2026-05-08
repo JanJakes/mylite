@@ -62,7 +62,26 @@ static bool descriptor_has_exact_numeric_result(const struct mylite_field_descri
 
 static bool descriptor_has_string_result(const struct mylite_field_descriptor *descriptor);
 
-static void apply_min_max_aggregate_descriptor_flags(struct mylite_field_descriptor *descriptor);
+static bool descriptor_has_temporal_result(const struct mylite_field_descriptor *descriptor);
+
+static void apply_min_max_aggregate_descriptor_flags(
+    mylite_db *database,
+    struct mylite_field_descriptor *descriptor
+);
+
+static void apply_min_max_string_descriptor(
+    mylite_db *database,
+    struct mylite_field_descriptor *descriptor
+);
+
+static void apply_min_max_temporal_descriptor(
+    mylite_db *database,
+    struct mylite_field_descriptor *descriptor
+);
+
+static bool descriptor_has_blob_field_type(const struct mylite_field_descriptor *descriptor);
+
+static uint64_t min_max_text_blob_display_length(mylite_db *database, uint64_t length);
 
 static bool descriptor_is_binary_string(const struct mylite_field_descriptor *descriptor);
 
@@ -134,7 +153,7 @@ int mylite_expression_descriptor_infer_aggregate_expression(
     case MYLITE_SQL_AST_AGGREGATE_MAX:
         descriptor = argument_descriptor;
         mylite_field_descriptor_set_nullable(&descriptor, true);
-        apply_min_max_aggregate_descriptor_flags(&descriptor);
+        apply_min_max_aggregate_descriptor_flags(database, &descriptor);
         *out_descriptor = descriptor;
         return MYLITE_OK;
     case MYLITE_SQL_AST_AGGREGATE_GROUP_CONCAT: {
@@ -377,7 +396,49 @@ static bool descriptor_has_string_result(const struct mylite_field_descriptor *d
     }
 }
 
-static void apply_min_max_aggregate_descriptor_flags(struct mylite_field_descriptor *descriptor) {
+static bool descriptor_has_temporal_result(const struct mylite_field_descriptor *descriptor) {
+    if (descriptor == NULL) {
+        return false;
+    }
+    switch (descriptor->type) {
+    case MYLITE_FIELD_TYPE_DATE:
+    case MYLITE_FIELD_TYPE_TIME:
+    case MYLITE_FIELD_TYPE_DATETIME:
+    case MYLITE_FIELD_TYPE_TIMESTAMP:
+    case MYLITE_FIELD_TYPE_NEWDATE:
+        return true;
+    case MYLITE_FIELD_TYPE_DECIMAL:
+    case MYLITE_FIELD_TYPE_TINY:
+    case MYLITE_FIELD_TYPE_SHORT:
+    case MYLITE_FIELD_TYPE_LONG:
+    case MYLITE_FIELD_TYPE_FLOAT:
+    case MYLITE_FIELD_TYPE_DOUBLE:
+    case MYLITE_FIELD_TYPE_NULL:
+    case MYLITE_FIELD_TYPE_LONGLONG:
+    case MYLITE_FIELD_TYPE_INT24:
+    case MYLITE_FIELD_TYPE_YEAR:
+    case MYLITE_FIELD_TYPE_VARCHAR:
+    case MYLITE_FIELD_TYPE_BIT:
+    case MYLITE_FIELD_TYPE_JSON:
+    case MYLITE_FIELD_TYPE_NEWDECIMAL:
+    case MYLITE_FIELD_TYPE_ENUM:
+    case MYLITE_FIELD_TYPE_SET:
+    case MYLITE_FIELD_TYPE_TINY_BLOB:
+    case MYLITE_FIELD_TYPE_MEDIUM_BLOB:
+    case MYLITE_FIELD_TYPE_LONG_BLOB:
+    case MYLITE_FIELD_TYPE_BLOB:
+    case MYLITE_FIELD_TYPE_VAR_STRING:
+    case MYLITE_FIELD_TYPE_STRING:
+    case MYLITE_FIELD_TYPE_GEOMETRY:
+    default:
+        return false;
+    }
+}
+
+static void apply_min_max_aggregate_descriptor_flags(
+    mylite_db *database,
+    struct mylite_field_descriptor *descriptor
+) {
     const unsigned int field_only_flags =
         MYLITE_FIELD_FLAG_PRI_KEY | MYLITE_FIELD_FLAG_UNIQUE_KEY | MYLITE_FIELD_FLAG_MULTIPLE_KEY |
         MYLITE_FIELD_FLAG_AUTO_INCREMENT | MYLITE_FIELD_FLAG_NO_DEFAULT_VALUE |
@@ -388,8 +449,91 @@ static void apply_min_max_aggregate_descriptor_flags(struct mylite_field_descrip
         descriptor->flags |= MYLITE_FIELD_FLAG_BINARY;
     }
     if (descriptor_has_string_result(descriptor)) {
-        descriptor->decimals = mylite_mysql_not_fixed_decimals;
+        apply_min_max_string_descriptor(database, descriptor);
+    } else if (descriptor_has_temporal_result(descriptor)) {
+        apply_min_max_temporal_descriptor(database, descriptor);
     }
+}
+
+static void apply_min_max_string_descriptor(
+    mylite_db *database,
+    struct mylite_field_descriptor *descriptor
+) {
+    descriptor->flags &= (unsigned int)~MYLITE_FIELD_FLAG_BLOB;
+    descriptor->decimals = mylite_mysql_not_fixed_decimals;
+    if (descriptor_has_blob_field_type(descriptor) &&
+        descriptor->charset_id != mylite_mysql_binary_charset_id) {
+        descriptor->length = min_max_text_blob_display_length(database, descriptor->length);
+    }
+}
+
+static void apply_min_max_temporal_descriptor(
+    mylite_db *database,
+    struct mylite_field_descriptor *descriptor
+) {
+    uint64_t character_max_length =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (character_max_length == 0U) {
+        character_max_length = 1U;
+    }
+    descriptor->flags &= (unsigned int)~MYLITE_FIELD_FLAG_BINARY;
+    descriptor->charset_id = mylite_expression_descriptor_connection_collation_id(database);
+    descriptor->length = descriptor->length > UINT64_MAX / character_max_length
+                             ? UINT64_MAX
+                             : descriptor->length * character_max_length;
+}
+
+static bool descriptor_has_blob_field_type(const struct mylite_field_descriptor *descriptor) {
+    if (descriptor == NULL) {
+        return false;
+    }
+    switch (descriptor->type) {
+    case MYLITE_FIELD_TYPE_TINY_BLOB:
+    case MYLITE_FIELD_TYPE_MEDIUM_BLOB:
+    case MYLITE_FIELD_TYPE_LONG_BLOB:
+    case MYLITE_FIELD_TYPE_BLOB:
+        return true;
+    case MYLITE_FIELD_TYPE_DECIMAL:
+    case MYLITE_FIELD_TYPE_TINY:
+    case MYLITE_FIELD_TYPE_SHORT:
+    case MYLITE_FIELD_TYPE_LONG:
+    case MYLITE_FIELD_TYPE_FLOAT:
+    case MYLITE_FIELD_TYPE_DOUBLE:
+    case MYLITE_FIELD_TYPE_NULL:
+    case MYLITE_FIELD_TYPE_TIMESTAMP:
+    case MYLITE_FIELD_TYPE_LONGLONG:
+    case MYLITE_FIELD_TYPE_INT24:
+    case MYLITE_FIELD_TYPE_DATE:
+    case MYLITE_FIELD_TYPE_TIME:
+    case MYLITE_FIELD_TYPE_DATETIME:
+    case MYLITE_FIELD_TYPE_YEAR:
+    case MYLITE_FIELD_TYPE_NEWDATE:
+    case MYLITE_FIELD_TYPE_VARCHAR:
+    case MYLITE_FIELD_TYPE_BIT:
+    case MYLITE_FIELD_TYPE_JSON:
+    case MYLITE_FIELD_TYPE_NEWDECIMAL:
+    case MYLITE_FIELD_TYPE_ENUM:
+    case MYLITE_FIELD_TYPE_SET:
+    case MYLITE_FIELD_TYPE_VAR_STRING:
+    case MYLITE_FIELD_TYPE_STRING:
+    case MYLITE_FIELD_TYPE_GEOMETRY:
+    default:
+        return false;
+    }
+}
+
+static uint64_t min_max_text_blob_display_length(mylite_db *database, uint64_t length) {
+    uint64_t character_max_length =
+        mylite_expression_descriptor_connection_character_max_length(database);
+
+    if (character_max_length == 0U) {
+        character_max_length = 1U;
+    }
+    if (length > mylite_mysql_long_text_length / character_max_length) {
+        return mylite_mysql_long_text_length;
+    }
+    return length * character_max_length;
 }
 
 static int group_concat_argument_list_has_binary_result(

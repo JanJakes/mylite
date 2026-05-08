@@ -11652,14 +11652,39 @@ static int test_scalar_builtin_functions_execution(void) {
         "10",
     };
     static const char *const bit_columns[] = {
-        "bc0",     "bc1",         "bc7",     "bcm1",    "bcmax",    "bcnull", "bcs7",
-        "bcsx",    "bc_trailing", "bc_sneg", "bc_real", "bc_rneg",  "bl_abc", "bl_empty",
-        "bl_null", "bl_utf8",     "bl_int",  "bl_real", "bl_unhex",
+        "bc0",
+        "bc1",
+        "bc7",
+        "bcm1",
+        "bcmax",
+        "bcnull",
+        "bcs7",
+        "bcsx",
+        "bc_trailing",
+        "bc_sneg",
+        "bc_real",
+        "bc_rneg",
+        "bc_unhex7",
+        "bc_binary_string",
+        "bc_hex37",
+        "bc_cast_binary",
+        "bc_from_base64",
+        "bc_binary_nul",
+        "bc_binary_long",
+        "bl_abc",
+        "bl_empty",
+        "bl_null",
+        "bl_utf8",
+        "bl_int",
+        "bl_real",
+        "bl_unhex",
     };
     static const char *const bit_values[] = {
-        "0", "1",  "3",  "64", "64", NULL, "3",  "0",  "4",  "64",
-        "1", "63", "24", "0",  NULL, "16", "24", "32", "16",
+        "0", "1", "3", "64", "64", NULL, "3",  "0", "4",  "64", "1",  "63", "5",
+        "5", "5", "5", "5",  "0",  "72", "24", "0", NULL, "16", "24", "32", "16",
     };
+    static const char *const bit_binary_prefix_columns[] = {"bc_binary_prefix"};
+    static const char *const bit_binary_prefix_values[] = {"5"};
     static const char *const crc32_columns[] = {
         "crc_mysql",
         "crc_lower",
@@ -12430,6 +12455,13 @@ static int test_scalar_builtin_functions_execution(void) {
         "BIT_COUNT('-1x') AS bc_sneg, "
         "BIT_COUNT(1.9) AS bc_real, "
         "BIT_COUNT(-1.9) AS bc_rneg, "
+        "BIT_COUNT(UNHEX('37')) AS bc_unhex7, "
+        "BIT_COUNT(_binary '7') AS bc_binary_string, "
+        "BIT_COUNT(X'37') AS bc_hex37, "
+        "BIT_COUNT(CAST('7' AS BINARY)) AS bc_cast_binary, "
+        "BIT_COUNT(FROM_BASE64('Nw==')) AS bc_from_base64, "
+        "BIT_COUNT(UNHEX('00')) AS bc_binary_nul, "
+        "BIT_COUNT(UNHEX('FFFFFFFFFFFFFFFFFF')) AS bc_binary_long, "
         "BIT_LENGTH('abc') AS bl_abc, "
         "BIT_LENGTH('') AS bl_empty, "
         "BIT_LENGTH(NULL) AS bl_null, "
@@ -12451,6 +12483,21 @@ static int test_scalar_builtin_functions_execution(void) {
             "bit utility warning code"
         );
     }
+    failures += expect_select_rows(
+        database,
+        "SELECT BIT_COUNT(BINARY '7') AS bc_binary_prefix",
+        bit_binary_prefix_columns,
+        1,
+        bit_binary_prefix_values,
+        1,
+        "bit count binary prefix"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "bit count binary prefix warnings");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_deprecated_syntax,
+        "bit count binary prefix warning code"
+    );
 
     failures += expect_select_rows(
         database,

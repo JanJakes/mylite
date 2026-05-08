@@ -149,24 +149,29 @@ requires exactly one argument for each.
 3. Convert integer values to their unsigned 64-bit bit pattern.
 4. Convert approximate numeric values using the existing MySQL numeric-to-signed
    integer rounding helper, then reinterpret as unsigned 64-bit.
-5. Convert text values with MySQL integer parsing: leading whitespace, optional
-   sign, decimal digits, optional trailing whitespace, and warning 1292 for
-   empty, trailing-garbage, or overflow input. Negative text values become the
-   corresponding unsigned 64-bit complement without the separate `CAST AS
-   UNSIGNED` complement warning.
-6. Return the popcount as a signed `LONGLONG` value in range `0..64`.
+5. Count binary-string values byte-by-byte. Supported binary producers include
+   `_binary` string literals, hex literals, `BINARY` / `CAST(... AS BINARY)`,
+   `UNHEX()`, and `FROM_BASE64()`. Embedded NUL bytes are counted as bytes, and
+   binary strings longer than eight bytes can return counts above `64`.
+6. Convert nonbinary text values with MySQL integer parsing: leading whitespace,
+   optional sign, decimal digits, optional trailing whitespace, and warning
+   1292 for empty, trailing-garbage, or overflow input. Negative text values
+   become the corresponding unsigned 64-bit complement without the separate
+   `CAST AS UNSIGNED` complement warning.
+7. Return the popcount as a signed `LONGLONG` value.
 
 ## Storage, performance, and compatibility
 
 These functions are deterministic and do not touch storage. Runtime cost is
-linear in the input byte length for string conversion/parsing and constant for
-the final 64-bit popcount. No new dependencies are needed.
+linear in the input byte length for string conversion/parsing and binary byte
+counting; numeric popcount remains constant. No new dependencies are needed.
 
-The first slice intentionally follows the current MyLite scalar-expression
-value model. `BIT_LENGTH()` is exact for current text and binary text values
-because byte length is already carried with expression values. Full
-binary-string `BIT_COUNT()` dispatch for table values remains deferred until
-runtime expression values preserve binary-vs-character type information.
+`BIT_LENGTH()` is exact for current text and binary text values because byte
+length is already carried with expression values. `BIT_COUNT()` uses preserved
+binary-string expression metadata for supported scalar producers and otherwise
+keeps MySQL numeric text parsing for ordinary character strings. Broader
+table-column binary type propagation remains tracked with result value metadata
+work.
 
 ## Test plan
 
@@ -179,7 +184,8 @@ Runtime tests:
 
 - no-table scalar results for positive integers, zero, `NULL`, negative values,
   unsigned 64-bit maximum, approximate numerics, text numerics, invalid text,
-  signed text, UTF-8 text, empty text, numeric `BIT_LENGTH()`, and binary text
+  signed text, binary strings, binary NUL bytes, binary strings longer than
+  eight bytes, UTF-8 text, empty text, numeric `BIT_LENGTH()`, and binary text
   from supported producers
 - warning 1292 for invalid/truncated `BIT_COUNT()` text inputs
 - metadata under `SET NAMES utf8mb4` and `SET NAMES latin1`

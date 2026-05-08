@@ -2552,10 +2552,10 @@ static int eval_bit_count_function(
     struct mylite_expression_value *out_value
 );
 
-static int bit_count_value_bits(
+static int bit_count_value_count(
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
-    uint64_t *out_bits
+    int64_t *out_count
 );
 
 static int bit_count_string_bits(
@@ -2563,6 +2563,8 @@ static int bit_count_string_bits(
     struct mylite_expression_warnings *warnings,
     uint64_t *out_bits
 );
+
+static int bit_count_binary_string_count(const char *text, size_t text_length, int64_t *out_count);
 
 static unsigned int uint64_bit_count(uint64_t value);
 
@@ -4146,6 +4148,12 @@ static bool compact_real_text_round_trips(double value, const char *text);
 static void normalize_real_exponent_text(char *text);
 
 static int set_text_value(
+    const char *text,
+    size_t length,
+    struct mylite_expression_value *out_value
+);
+
+static int set_binary_text_value(
     const char *text,
     size_t length,
     struct mylite_expression_value *out_value
@@ -6405,7 +6413,7 @@ static int eval_binary_cast(
         }
     }
     if (status == 0) {
-        status = set_text_value(text, text_length, out_value);
+        status = set_binary_text_value(text, text_length, out_value);
     }
     free(text);
     return status;
@@ -16606,6 +16614,7 @@ static int unhex_text_value(
     result[result_length] = '\0';
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
     out_value->text_value = result;
+    out_value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
     out_value->text_length = result_length;
     return 0;
 }
@@ -16886,7 +16895,7 @@ static int from_base64_text_value(
     }
     if (clean_length == 0U) {
         free(clean);
-        return set_text_value("", 0U, out_value);
+        return set_binary_text_value("", 0U, out_value);
     }
     if ((clean_length % MYLITE_EXPRESSION_BASE64_OUTPUT_GROUP) != 0U) {
         free(clean);
@@ -16917,6 +16926,7 @@ static int from_base64_text_value(
     result[output] = '\0';
     out_value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
     out_value->text_value = result;
+    out_value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
     out_value->text_length = output;
     return 0;
 }
@@ -17225,7 +17235,7 @@ static int eval_bit_count_function(
     struct mylite_expression_value *out_value
 ) {
     struct mylite_expression_value value = {0};
-    uint64_t bits = 0U;
+    int64_t count = 0;
     int status = eval_node(child_at(arguments, 0U), context, warnings, &value);
 
     if (status != 0) {
@@ -17234,11 +17244,11 @@ static int eval_bit_count_function(
     if (is_null(&value)) {
         *out_value = (struct mylite_expression_value){.kind = MYLITE_EXPRESSION_VALUE_NULL};
     } else {
-        status = bit_count_value_bits(&value, warnings, &bits);
+        status = bit_count_value_count(&value, warnings, &count);
         if (status == 0) {
             *out_value = (struct mylite_expression_value){
                 .kind = MYLITE_EXPRESSION_VALUE_INT64,
-                .int64_value = uint64_bit_count(bits)
+                .int64_value = count
             };
         }
     }
@@ -17246,35 +17256,48 @@ static int eval_bit_count_function(
     return status;
 }
 
-static int bit_count_value_bits(
+static int bit_count_value_count(
     const struct mylite_expression_value *value,
     struct mylite_expression_warnings *warnings,
-    uint64_t *out_bits
+    int64_t *out_count
 ) {
-    if (value == NULL || out_bits == NULL) {
+    uint64_t bits = 0U;
+
+    if (value == NULL || out_count == NULL) {
         return -1;
     }
 
     switch (value->kind) {
     case MYLITE_EXPRESSION_VALUE_INT64:
-        *out_bits = (uint64_t)value->int64_value;
-        return 0;
-    case MYLITE_EXPRESSION_VALUE_UINT64:
-        *out_bits = value->uint64_value;
-        return 0;
-    case MYLITE_EXPRESSION_VALUE_REAL:
-        *out_bits = (uint64_t)cast_real_to_signed_integer(value->real_value);
-        return 0;
-    case MYLITE_EXPRESSION_VALUE_TEXT:
-        return bit_count_string_bits(
-            value->text_value == NULL ? "" : value->text_value,
-            warnings,
-            out_bits
-        );
-    case MYLITE_EXPRESSION_VALUE_NULL:
+        bits = (uint64_t)value->int64_value;
         break;
+    case MYLITE_EXPRESSION_VALUE_UINT64:
+        bits = value->uint64_value;
+        break;
+    case MYLITE_EXPRESSION_VALUE_REAL:
+        bits = (uint64_t)cast_real_to_signed_integer(value->real_value);
+        break;
+    case MYLITE_EXPRESSION_VALUE_TEXT:
+        if (value->text_charset == MYLITE_EXPRESSION_TEXT_CHARSET_BINARY) {
+            return bit_count_binary_string_count(
+                value->text_value == NULL ? "" : value->text_value,
+                value->text_length,
+                out_count
+            );
+        }
+        if (bit_count_string_bits(
+                value->text_value == NULL ? "" : value->text_value,
+                warnings,
+                &bits
+            ) != 0) {
+            return -1;
+        }
+        break;
+    case MYLITE_EXPRESSION_VALUE_NULL:
+        return -1;
     }
-    return -1;
+    *out_count = (int64_t)uint64_bit_count(bits);
+    return 0;
 }
 
 static int bit_count_string_bits(
@@ -17301,6 +17324,23 @@ static int bit_count_string_bits(
     }
     *out_bits =
         parsed.negative ? unsigned_complement_from_magnitude(parsed.magnitude) : parsed.magnitude;
+    return 0;
+}
+
+static int bit_count_binary_string_count(const char *text, size_t text_length, int64_t *out_count) {
+    const unsigned char *bytes = (const unsigned char *)(text == NULL ? "" : text);
+    int64_t count = 0;
+
+    if (out_count == NULL) {
+        return -1;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (count > INT64_MAX - CHAR_BIT) {
+            return -1;
+        }
+        count += (int64_t)uint64_bit_count((uint64_t)bytes[index]);
+    }
+    *out_count = count;
     return 0;
 }
 
@@ -22327,6 +22367,7 @@ static int eval_hex_literal(
     *out_value = (struct mylite_expression_value){
         .kind = MYLITE_EXPRESSION_VALUE_TEXT,
         .text_value = result,
+        .text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY,
         .text_length = result_length
     };
     return 0;
@@ -25578,6 +25619,19 @@ static int set_text_value(
     out_value->temporal_type = MYLITE_EXPRESSION_TEMPORAL_NONE;
     out_value->text_length = length;
     return 0;
+}
+
+static int set_binary_text_value(
+    const char *text,
+    size_t length,
+    struct mylite_expression_value *out_value
+) {
+    int status = set_text_value(text, length, out_value);
+
+    if (status == 0) {
+        out_value->text_charset = MYLITE_EXPRESSION_TEXT_CHARSET_BINARY;
+    }
+    return status;
 }
 
 static int append_text(char **text, size_t *length, const char *addition, size_t addition_length) {

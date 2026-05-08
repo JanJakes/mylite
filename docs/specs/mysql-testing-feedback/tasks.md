@@ -245,13 +245,18 @@ MySQL 8.4.9 runtime before each item is marked complete.
       cases, charset-specific string validation, remaining floating-point
       display and warning-order edge cases, scalar
       `CAST`/`CONVERT` value semantics beyond the covered floating-point and
-      `YEAR` target slices, and conversion/truncation
-      `IGNORE` demotion beyond the currently covered `INSERT IGNORE` invalid
+      `YEAR` target slices, and conversion/truncation `IGNORE` demotion beyond
+      the currently covered `INSERT IGNORE` invalid
       integer, integer range, invalid date, and `VARCHAR` truncation slice plus
       single-table `UPDATE IGNORE` numeric, temporal, string-length, `NULL`
       not-null, duplicate-key, and foreign-key slices plus joined
       `UPDATE IGNORE` assignment coercion, explicit `NULL` not-null coercion,
-      and duplicate-key slices. Signed and unsigned `TINYINT`, `SMALLINT`,
+      and duplicate-key slices. `BIT_COUNT()` now byte-counts supported
+      binary-string expression producers, including `_binary` literals, hex
+      literals, `CAST(... AS BINARY)`, `UNHEX()`, `FROM_BASE64()`, embedded NUL
+      bytes, and binary strings longer than eight bytes, while ordinary text
+      keeps MySQL numeric string parsing. Signed and unsigned `TINYINT`,
+      `SMALLINT`,
       `MEDIUMINT`, `INT`, and covered `BIGINT` range clipping, first-slice
       `DECIMAL(M,D)` endpoint clipping, plus first-slice `FLOAT`/`DOUBLE`
       target clipping, is covered for strict, non-strict, `INSERT IGNORE`, and

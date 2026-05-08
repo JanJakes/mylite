@@ -12,7 +12,6 @@ built-ins: no-table `SELECT`, current table-backed projection, `WHERE`,
 
 Out of scope:
 
-- binary-string-specific result typing and display behavior
 - `max_allowed_packet` result-size enforcement
 - full collation aggregation and coercibility
 - SQL-mode-dependent stored or loadable function name resolution
@@ -113,6 +112,9 @@ Constant result metadata was verified:
 | `QUOTE('Don''t')` | `utf8mb4` | `VAR_STRING` | `255` | `48` | `31` | none |
 | `QUOTE(NULL)` | `utf8mb4` | `VAR_STRING` | `255` | `16` | `31` | none |
 | `QUOTE(42)` | `utf8mb4` | `VAR_STRING` | `255` | `32` | `31` | none |
+| `QUOTE(_binary 'abc')` | `utf8mb4` | `VAR_STRING` | `255` | `32` | `31` | none |
+| `QUOTE(CAST('abc' AS BINARY))` | `utf8mb4` | `VAR_STRING` | `255` | `104` | `31` | none |
+| `QUOTE(varbinary_col_12)` | `utf8mb4` | `VAR_STRING` | `255` | `26` | `31` | none |
 | `QUOTE('Don''t')` | `latin1` | `VAR_STRING` | `8` | `12` | `31` | none |
 
 The observed display length for non-`NULL` text follows:
@@ -130,6 +132,14 @@ The `NULL` input case reports:
 For non-text sources such as numeric literals or columns, MySQL uses the
 source expression display length converted to the result character set as the
 source term, then adds room for doubled content and the surrounding quotes.
+
+Binary-string sources keep `QUOTE()` result collation in the current connection
+character set, but width inference depends on whether the source is row-backed:
+
+- cacheable binary expressions use the binary source descriptor width converted
+  to the result character set, then add room for doubled content and quotes
+- table-backed binary columns use byte-counted binary source width and
+  byte-counted surrounding quotes
 
 ## Parser and AST design
 
@@ -179,7 +189,8 @@ Add C tests for:
   SQL `NULL`
 - embedded `NUL` escaping through length-aware scalar values
 - `QUOTE(NULL) IS NULL` and `LENGTH(QUOTE(NULL))`
-- metadata for verified `utf8mb4` and `latin1` constant cases
+- metadata for verified `utf8mb4`, `latin1`, scalar binary-expression, and
+  table-backed binary-column cases
 - wrong-arity rejection through the existing scalar binding path
 - table-backed projection, `WHERE`, and `ORDER BY`
 - single-table `UPDATE` assignment/predicate and `DELETE` predicate paths
@@ -188,5 +199,5 @@ Add C tests for:
 
 After implementation and verification, the `QUOTE()` row in `COMPATIBILITY.md`
 should move to partial support. The status remains partial because
-binary-string typing, `max_allowed_packet`, full collation/coercibility, and
-exact native arity error-code exposure are deferred.
+`max_allowed_packet`, full collation/coercibility, and exact native arity
+error-code exposure are deferred.

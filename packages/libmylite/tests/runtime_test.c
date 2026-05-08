@@ -8742,6 +8742,20 @@ static int test_scalar_builtin_functions_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
              MYLITE_FIELD_FLAG_UNSIGNED,
          1},
+        {"quote_binary_cast",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         104U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
         {"elt_value",
          NULL,
          NULL,
@@ -10335,6 +10349,22 @@ static int test_scalar_builtin_functions_execution(void) {
          NULL,
          NULL,
          168U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         255U,
+         0U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM |
+             MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+    };
+    static const struct expected_result_metadata quote_binary_table_metadata[] = {
+        {"quote_vb",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         26U,
          MYLITE_FIELD_TYPE_VAR_STRING,
          31U,
          255U,
@@ -12125,6 +12155,7 @@ static int test_scalar_builtin_functions_execution(void) {
         "INSERT(NULL, NULL, NULL, NULL) AS insert_all_null, "
         "QUOTE('Don''t') AS quote_value, "
         "QUOTE(42) AS quote_numeric, "
+        "QUOTE(CAST('abc' AS BINARY)) AS quote_binary_cast, "
         "ELT(2, 'a', 'bc') AS elt_value, "
         "ELT(3, 'a', 'bc') AS elt_oob, "
         "ELT(1, 1, 20) AS elt_ints, "
@@ -13829,6 +13860,21 @@ static int test_scalar_builtin_functions_execution(void) {
         (int)(sizeof(quote_table_metadata) / sizeof(quote_table_metadata[0])),
         "table quote function metadata"
     );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "SELECT QUOTE(vb) AS quote_vb FROM case_conversion_meta LIMIT 0",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        quote_binary_table_metadata,
+        (int)(sizeof(quote_binary_table_metadata) / sizeof(quote_binary_table_metadata[0])),
+        "table binary quote function metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "table binary quote metadata done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += prepare_sql(

@@ -507,6 +507,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       functions now have binary-connection descriptor coverage.
       String `INSERT()` source-`NULL` result metadata now matches MySQL's
       binary `VAR_STRING` descriptors, including all-`NULL` argument lists.
+      `QUOTE()` now reports MySQL-shaped metadata for covered binary-string
+      sources, including scalar binary expressions that use descriptor widths
+      converted to the connection character set and table-backed `VARBINARY`
+      sources that use byte-counted quoted widths.
       No-length numeric `CAST(... AS CHAR)` / `CAST(... AS BINARY)` metadata
       now derives declared widths from the source expression descriptor instead
       of the evaluated display string.

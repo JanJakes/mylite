@@ -204,6 +204,72 @@ expect_output \
     "$DATABASE"
 
 run_mysql \
+    "CREATE TABLE integer_family (i INTEGER, iu INT UNSIGNED, "\
+"integer_unsigned INTEGER UNSIGNED, bu BIGINT UNSIGNED); "\
+"INSERT INTO integer_family VALUES (2, 3, 4, 5), (6, 7, 8, 9);" \
+    "$DATABASE" >/dev/null
+integer_family_expected=$(cat <<'EXPECTED'
+0	0
+0	0
+0	0
+0	0
+plain_integer	int	YES		NULL	
+plain_int_unsigned	int unsigned	YES		NULL	
+plain_integer_unsigned	int unsigned	YES		NULL	
+plain_bigint_unsigned	bigint unsigned	YES		NULL	
+2:3:4:5,6:7:8:9
+EXPECTED
+)
+expect_output \
+    "integer family successful changes" \
+    "$integer_family_expected" \
+    "ALTER TABLE integer_family CHANGE i plain_integer INTEGER; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"ALTER TABLE integer_family CHANGE iu plain_int_unsigned INT UNSIGNED; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"ALTER TABLE integer_family CHANGE integer_unsigned plain_integer_unsigned INTEGER UNSIGNED; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"ALTER TABLE integer_family CHANGE bu plain_bigint_unsigned BIGINT UNSIGNED; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SHOW COLUMNS FROM integer_family; "\
+"SELECT GROUP_CONCAT(CONCAT(plain_integer, ':', plain_int_unsigned, ':', "\
+"plain_integer_unsigned, ':', plain_bigint_unsigned) ORDER BY plain_integer) "\
+"FROM integer_family;" \
+    "$DATABASE"
+
+change_after_alter_expected=$(cat <<'EXPECTED'
+2	0
+id	int	NO		NULL	
+final	bigint	YES		NULL	
+u	int unsigned	YES		NULL	
+b	bigint	YES		NULL	
+bu	bigint unsigned	YES		NULL	
+renamed	bigint	YES		NULL	
+2:6
+EXPECTED
+)
+expect_output \
+    "change after add rename drop and delete" \
+    "$change_after_alter_expected" \
+    "ALTER TABLE numbers ADD added INT; "\
+"ALTER TABLE numbers RENAME COLUMN added TO renamed; "\
+"ALTER TABLE numbers CHANGE renamed renamed BIGINT; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SHOW COLUMNS FROM numbers; "\
+"ALTER TABLE numbers DROP COLUMN renamed; "\
+"DELETE FROM numbers WHERE final = 2; "\
+"SELECT GROUP_CONCAT(CONCAT(id, ':', final) ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+expect_error \
+    "change after dropped column" \
+    1054 \
+    42S22 \
+    "Unknown column 'renamed' in 'numbers'" \
+    "ALTER TABLE numbers CHANGE renamed again BIGINT;" \
+    "$DATABASE"
+
+run_mysql \
     "CREATE TABLE nullable_bad (c INT NULL); INSERT INTO nullable_bad VALUES (NULL), (1);" \
     "$DATABASE" >/dev/null
 expect_error \

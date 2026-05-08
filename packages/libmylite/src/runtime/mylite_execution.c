@@ -128,12 +128,19 @@ struct planned_alter_table_modify_column {
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor original_column;
     struct planned_column column;
+    char lookup_column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
     size_t column_index;
     bool is_noop;
     bool is_metadata_only;
+    bool checks_duplicate_replacement;
     bool reports_rebuild_row_count;
+    const char *unsupported_object_message;
+    const char *rowid_alias_message;
+    const char *integer_support_message;
+    const char *row_count_overflow_message;
+    const char *failure_message;
     const char *rowid_alias;
     int64_t affected_rows;
 };
@@ -436,6 +443,11 @@ static int execute_alter_table_rename_column_statement(
     mylite_result **out_result
 );
 static int execute_alter_table_modify_column_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_alter_table_change_column_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -745,6 +757,15 @@ static int plan_alter_table_modify_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_modify_column *out_plan
 );
+static int plan_alter_table_change_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_modify_column *out_plan
+);
+static int resolve_alter_table_column_replacement_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *out_plan
+);
 static int complete_alter_table_modify_column_plan(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *columns,
@@ -784,7 +805,8 @@ static int validate_existing_integer_for_column(
     struct mylite_db *database,
     int64_t value,
     const struct mylite_catalog_column_descriptor *column,
-    size_t row_number
+    size_t row_number,
+    const char *unsupported_message
 );
 static void make_modify_target_descriptor(
     const struct planned_alter_table_modify_column *plan,
@@ -1863,6 +1885,8 @@ static int execute_parsed_statement(
         return execute_alter_table_rename_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
         return execute_alter_table_modify_column_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
+        return execute_alter_table_change_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_STATEMENT:
         return execute_insert_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
@@ -2334,6 +2358,35 @@ static int execute_alter_table_modify_column_statement(
     }
 
     rc = plan_alter_table_modify_column(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_modify_column_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_modify_column_deinit(&plan);
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, plan.affected_rows);
+    planned_alter_table_modify_column_deinit(&plan);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_change_column_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_modify_column plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_change_column(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = alter_table_modify_column_from_plan(database, &plan);
     }
@@ -4249,6 +4302,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DELETE_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
         return result == NULL ? 0 : mylite_result_affected_rows(result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
         return -1;
@@ -5642,12 +5696,19 @@ static int plan_alter_table_modify_column(
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_modify_column *out_plan
 ) {
-    struct mylite_catalog_column_descriptor *columns = NULL;
-    size_t column_count = 0U;
-    size_t column_index = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_alter_table_modify_column){0};
+    out_plan->unsupported_object_message =
+        "ALTER TABLE MODIFY COLUMN supports only persistent base tables";
+    out_plan->rowid_alias_message =
+        "ALTER TABLE MODIFY COLUMN requires an unshadowed SQLite rowid alias";
+    out_plan->integer_support_message =
+        "ALTER TABLE MODIFY COLUMN supports only baseline integer columns";
+    out_plan->row_count_overflow_message =
+        "too many rows to validate for ALTER TABLE MODIFY COLUMN";
+    out_plan->failure_message = "failed to modify table column";
+
     rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
     if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
         set_reserved_name_error(database, "table", out_plan->target.table_name);
@@ -5657,39 +5718,115 @@ static int plan_alter_table_modify_column(
         rc = plan_column(database, child_at(statement, 1U), &out_plan->column);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_catalog_read_table_by_name(
-            database,
-            out_plan->target.schema.schema_id,
-            out_plan->target.table_name,
-            &out_plan->table
+        memcpy(
+            out_plan->lookup_column_name,
+            out_plan->column.name,
+            sizeof(out_plan->lookup_column_name)
         );
+        rc = resolve_alter_table_column_replacement_plan(database, out_plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_modify_column_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int plan_alter_table_change_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_modify_column){0};
+    out_plan->checks_duplicate_replacement = true;
+    out_plan->unsupported_object_message =
+        "ALTER TABLE CHANGE COLUMN supports only persistent base tables";
+    out_plan->rowid_alias_message =
+        "ALTER TABLE CHANGE COLUMN requires an unshadowed SQLite rowid alias";
+    out_plan->integer_support_message =
+        "ALTER TABLE CHANGE COLUMN supports only baseline integer columns";
+    out_plan->row_count_overflow_message =
+        "too many rows to validate for ALTER TABLE CHANGE COLUMN";
+    out_plan->failure_message = "failed to change table column";
+
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(
+            child_at(statement, 1U),
+            out_plan->lookup_column_name,
+            sizeof(out_plan->lookup_column_name),
+            database
+        );
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->lookup_column_name)) {
+        set_reserved_name_error(database, "column", out_plan->lookup_column_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_column(database, child_at(statement, 2U), &out_plan->column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_alter_table_column_replacement_plan(database, out_plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_alter_table_modify_column_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int resolve_alter_table_column_replacement_plan(
+    struct mylite_db *database,
+    struct planned_alter_table_modify_column *out_plan
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    size_t column_index = 0U;
+    int rc = mylite_catalog_read_table_by_name(
+        database,
+        out_plan->target.schema.schema_id,
+        out_plan->target.table_name,
+        &out_plan->table
+    );
+
+    if (rc != MYLITE_OK) {
+        set_table_does_not_exist_error(
+            database,
+            out_plan->target.schema.name,
+            out_plan->target.table_name
+        );
+        return MYLITE_ERROR;
+    }
+    if (out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(database, out_plan->unsupported_object_message);
+        return MYLITE_ERROR;
+    }
+
+    rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(columns, column_count, out_plan->lookup_column_name, &column_index);
         if (rc != MYLITE_OK) {
-            set_table_does_not_exist_error(
+            set_unknown_column_in_table_error(
                 database,
-                out_plan->target.schema.name,
-                out_plan->target.table_name
+                out_plan->lookup_column_name,
+                out_plan->table.name
             );
             rc = MYLITE_ERROR;
         }
     }
-    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
-        set_unsupported_error(
-            database,
-            "ALTER TABLE MODIFY COLUMN supports only persistent base tables"
-        );
-        rc = MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK) {
-        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
-    }
-    if (rc == MYLITE_OK) {
-        rc = find_column_index(columns, column_count, out_plan->column.name, &column_index);
-        if (rc != MYLITE_OK) {
-            set_unknown_column_in_table_error(
-                database,
-                out_plan->column.name,
-                out_plan->table.name
-            );
+    if (rc == MYLITE_OK && out_plan->checks_duplicate_replacement) {
+        size_t replacement_index = 0U;
+
+        if (find_column_index(columns, column_count, out_plan->column.name, &replacement_index) ==
+                MYLITE_OK &&
+            replacement_index != column_index) {
+            set_duplicate_column_error(database, columns[replacement_index].name);
             rc = MYLITE_ERROR;
         }
     }
@@ -5701,9 +5838,6 @@ static int plan_alter_table_modify_column(
     }
 
     free(columns);
-    if (rc != MYLITE_OK) {
-        planned_alter_table_modify_column_deinit(out_plan);
-    }
 
     return rc;
 }
@@ -5731,7 +5865,7 @@ static int complete_alter_table_modify_column_plan(
         database,
         columns,
         out_plan->column_count,
-        "ALTER TABLE MODIFY COLUMN requires an unshadowed SQLite rowid alias",
+        out_plan->rowid_alias_message,
         &out_plan->rowid_alias
     );
     if (rc == MYLITE_OK) {
@@ -5857,7 +5991,7 @@ static int alter_table_modify_column_from_plan(
         rc = mylite_catalog_commit_mutation(database, &mutation);
     }
     if (rc != MYLITE_OK) {
-        set_internal_error_if_clear(database, rc, "failed to modify table column");
+        set_internal_error_if_clear(database, rc, plan->failure_message);
         mylite_catalog_rollback_mutation(database, &mutation);
         return rc;
     }
@@ -5918,7 +6052,7 @@ static int validate_modify_column_existing_rows(
         int sqlite_type = sqlite3_column_type(statement, 0);
 
         if (row_number >= (size_t)INT64_MAX) {
-            set_runtime_error(database, "too many rows to validate for ALTER TABLE MODIFY COLUMN");
+            set_runtime_error(database, plan->row_count_overflow_message);
             rc = MYLITE_ERROR;
             break;
         }
@@ -5933,7 +6067,8 @@ static int validate_modify_column_existing_rows(
                 database,
                 (int64_t)sqlite3_column_int64(statement, 0),
                 &target_column,
-                row_number
+                row_number,
+                plan->integer_support_message
             );
         } else {
             set_physical_sqlite_row_error(database);
@@ -5962,15 +6097,11 @@ static int validate_existing_integer_for_column(
     struct mylite_db *database,
     int64_t value,
     const struct mylite_catalog_column_descriptor *column,
-    size_t row_number
+    size_t row_number,
+    const char *unsupported_message
 ) {
     struct integer_column_range range = {0};
-    int rc = integer_range_for_column(
-        database,
-        column,
-        "ALTER TABLE MODIFY COLUMN supports only baseline integer columns",
-        &range
-    );
+    int rc = integer_range_for_column(database, column, unsupported_message, &range);
 
     if (rc != MYLITE_OK) {
         return rc;

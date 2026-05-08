@@ -20,13 +20,15 @@
 enum {
     test_path_capacity = 1024,
     show_columns_field_count = 6,
-    numbers_column_count = 6,
+    numbers_column_count = 5,
+    numbers_after_added_column_count = 6,
     row_count_text_capacity = 32,
     physical_drop_sql_capacity = 256,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_unknown_column = 1054,
+    mysql_error_duplicate_column = 1060,
     mysql_error_unknown = 1105,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
@@ -50,12 +52,12 @@ struct expected_query {
     const char *context;
 };
 
-static int test_modify_column_success_persistence_and_dml(void);
-static int test_modify_column_diagnostics_and_rollback(void);
-static int test_modify_column_independent_handles(void);
+static int test_change_column_success_persistence_and_dml(void);
+static int test_change_column_diagnostics_and_rollback(void);
+static int test_change_column_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int expect_modify_ok(mylite_db *database, const char *sql, int64_t affected_rows);
+static int expect_change_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_result_value(
     const mylite_result *result,
@@ -96,49 +98,104 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_modify_column_success_persistence_and_dml();
-    failures += test_modify_column_diagnostics_and_rollback();
-    failures += test_modify_column_independent_handles();
+    failures += test_change_column_success_persistence_and_dml();
+    failures += test_change_column_diagnostics_and_rollback();
+    failures += test_change_column_independent_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_modify_column_success_persistence_and_dml(void) {
-    static const char *const rows_after_type_change[] = {"1", "2", "3", "2", "6", "7"};
-    static const char *const nullable_insert_row[] = {"3", "4", "11", "12"};
-    static const char *const show_columns_after_modify[] = {
-        "id",  "int",
-        "NO",  "",
-        NULL,  "",
-        "i",   "bigint",
-        "YES", "",
-        NULL,  "",
-        "iu",  "bigint unsigned",
-        "NO",  "",
-        NULL,  "",
-        "b",   "int",
-        "YES", "",
-        NULL,  "",
-        "bu",  "bigint unsigned",
-        "YES", "",
-        NULL,  "",
-        "n",   "int",
-        "YES", "",
-        NULL,  "",
+static int test_change_column_success_persistence_and_dml(void) {
+    static const char *const qualified_rows[] = {"1", "2", "2", "3"};
+    static const char *const rows_after_type_change[] = {"1", "2", "2", "6"};
+    static const char *const changed_insert_row[] = {"3", "4", "11", "12"};
+    static const char *const show_columns_after_change[] = {
+        "id",    "int",
+        "NO",    "",
+        NULL,    "",
+        "final", "bigint",
+        "YES",   "",
+        NULL,    "",
+        "u",     "int unsigned",
+        "YES",   "",
+        NULL,    "",
+        "b",     "bigint",
+        "YES",   "",
+        NULL,    "",
+        "bu",    "bigint unsigned",
+        "YES",   "",
+        NULL,    "",
     };
-    static const char *const show_create_after_modify[] = {
+    static const char *const show_create_after_change[] = {
         "numbers",
         "CREATE TABLE `numbers` (\n"
         "  `id` int NOT NULL,\n"
-        "  `i` bigint DEFAULT NULL,\n"
-        "  `iu` bigint unsigned NOT NULL,\n"
-        "  `b` int DEFAULT NULL,\n"
-        "  `bu` bigint unsigned DEFAULT NULL,\n"
-        "  `n` int DEFAULT NULL\n"
+        "  `final` bigint DEFAULT NULL,\n"
+        "  `u` int unsigned DEFAULT NULL,\n"
+        "  `b` bigint DEFAULT NULL,\n"
+        "  `bu` bigint unsigned DEFAULT NULL\n"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
+    static const char *const nullability_only_columns[] = {"c", "int", "YES", "", NULL, ""};
     static const char *const case_column_rows[] = {"mixed", "int", "YES", "", NULL, ""};
-    static const char *const persisted_rows[] = {"1", "2", "2", "6", "3", "4"};
+    static const char *const integer_family_columns[] = {
+        "plain_integer",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+        "plain_int_unsigned",
+        "int unsigned",
+        "YES",
+        "",
+        NULL,
+        "",
+        "plain_integer_unsigned",
+        "int unsigned",
+        "YES",
+        "",
+        NULL,
+        "",
+        "plain_bigint_unsigned",
+        "bigint unsigned",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const integer_family_rows[] = {
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+    };
+    static const char *const change_after_add_rename_columns[] = {
+        "id",      "int",
+        "NO",      "",
+        NULL,      "",
+        "final",   "bigint",
+        "YES",     "",
+        NULL,      "",
+        "u",       "int unsigned",
+        "YES",     "",
+        NULL,      "",
+        "b",       "bigint",
+        "YES",     "",
+        NULL,      "",
+        "bu",      "bigint unsigned",
+        "YES",     "",
+        NULL,      "",
+        "renamed", "bigint",
+        "YES",     "",
+        NULL,      "",
+    };
+    static const char *const rows_after_delete[] = {"1", "2", "2", "6"};
+    static const char *const persisted_rows[] = {"1", "2", "2", "6"};
     static const char *const renamed_rows[] = {"9"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -163,90 +220,71 @@ static int test_modify_column_success_persistence_and_dml(void) {
     failures += execute_ok(database, "CREATE DATABASE app", &result);
     mylite_result_free(result);
     result = NULL;
+    failures +=
+        execute_ok(database, "CREATE TABLE app.qualified (id INT NOT NULL, n INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO app.qualified VALUES (1, 2), (2, 3)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE app.qualified CHANGE COLUMN n renamed BIGINT NOT NULL",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, renamed FROM app.qualified ORDER BY id",
+            .values = qualified_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "schema-qualified change without selected schema",
+        }
+    );
+
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(
         database,
         "CREATE TABLE numbers ("
-        "id INT NOT NULL, i INT NOT NULL, iu INT UNSIGNED, b BIGINT, "
-        "bu BIGINT UNSIGNED, n INT NULL)",
+        "id INT NOT NULL, n INT NOT NULL, u INT UNSIGNED, b BIGINT, bu BIGINT UNSIGNED)",
         &result
     );
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(
         database,
-        "INSERT INTO numbers VALUES (1, 2, 3, 4, 5, NULL), (2, 6, 7, 8, 9, 10)",
+        "INSERT INTO numbers VALUES (1, 2, 3, 4, 5), (2, 6, 7, 8, 9)",
         &result
     );
     mylite_result_free(result);
     result = NULL;
 
-    failures += expect_modify_ok(database, "ALTER TABLE numbers MODIFY i BIGINT", 2);
-    failures +=
-        expect_modify_ok(database, "ALTER TABLE numbers MODIFY iu BIGINT UNSIGNED NOT NULL", 2);
-    failures += expect_modify_ok(database, "ALTER TABLE numbers MODIFY COLUMN b INT", 2);
+    failures += expect_change_ok(database, "ALTER TABLE numbers CHANGE n renamed INT NOT NULL", 0);
+    failures += expect_change_ok(database, "ALTER TABLE numbers CHANGE renamed renamed BIGINT", 2);
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE numbers CHANGE COLUMN renamed final BIGINT NULL",
+        0
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, i, iu FROM numbers ORDER BY id",
+            .sql = "SELECT id, final FROM numbers ORDER BY id",
             .values = rows_after_type_change,
-            .column_count = 3U,
-            .row_count = 2U,
-            .context = "rows preserved after modify",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SHOW COLUMNS FROM numbers",
-            .values = show_columns_after_modify,
-            .column_count = show_columns_field_count,
-            .row_count = numbers_column_count,
-            .context = "show columns after modify",
-        }
-    );
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SHOW CREATE TABLE numbers",
-            .values = show_create_after_modify,
             .column_count = 2U,
-            .row_count = 1U,
-            .context = "show create after modify",
+            .row_count = 2U,
+            .context = "rows preserved after change",
         }
     );
-
-    failures += expect_int(
-        mylite_catalog_read_schema_by_name(database, "app", &schema),
-        MYLITE_OK,
-        "read schema"
-    );
-    failures += expect_int(
-        mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &table),
-        MYLITE_OK,
-        "read numbers descriptor"
-    );
-    failures +=
-        expect_column_descriptor(database, table.table_id, "i", 2, "BIGINT", true, "i descriptor");
-    failures += expect_column_descriptor(
-        database,
-        table.table_id,
-        "iu",
-        3,
-        "BIGINT UNSIGNED",
-        false,
-        "iu descriptor"
-    );
-    failures +=
-        expect_column_descriptor(database, table.table_id, "b", 4, "INT", true, "b descriptor");
 
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     noop_catalog_generation = catalog == NULL ? 0U : catalog->generation;
     noop_sqlite_generation = session == NULL ? 0U : session->sqlite_schema_generation;
-    failures += expect_modify_ok(database, "ALTER TABLE numbers MODIFY i BIGINT NULL", 0);
+    failures += expect_change_ok(database, "ALTER TABLE numbers CHANGE final final BIGINT NULL", 0);
     catalog = mylite_connection_catalog_for_test(database);
     session = mylite_connection_session_state(database);
     failures += expect_size(
@@ -260,13 +298,89 @@ static int test_modify_column_success_persistence_and_dml(void) {
         "same definition leaves SQLite schema generation"
     );
 
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM numbers",
+            .values = show_columns_after_change,
+            .column_count = show_columns_field_count,
+            .row_count = numbers_column_count,
+            .context = "show columns after change",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE numbers",
+            .values = show_create_after_change,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "show create after change",
+        }
+    );
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &table),
+        MYLITE_OK,
+        "read numbers descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        "final",
+        2,
+        "BIGINT",
+        true,
+        "final descriptor"
+    );
+
+    failures += execute_ok(database, "INSERT INTO numbers VALUES (3, NULL, 11, 12, 13)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "UPDATE numbers SET final = 4 WHERE id = 3", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 1, "update after change");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, final, u, b FROM numbers WHERE id = 3",
+            .values = changed_insert_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "insert and update after change",
+        }
+    );
+
+    failures += execute_ok(database, "CREATE TABLE nullability_only (c INT NOT NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO nullability_only VALUES (1), (2)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_change_ok(database, "ALTER TABLE nullability_only CHANGE c c INT", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM nullability_only",
+            .values = nullability_only_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "omitted nullability becomes nullable",
+        }
+    );
+
     failures += execute_ok(database, "CREATE TABLE case_columns (MiXeD INT)", &result);
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "INSERT INTO case_columns VALUES (1)", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_modify_ok(database, "ALTER TABLE case_columns MODIFY mixed INT", 0);
+    failures += expect_change_ok(database, "ALTER TABLE case_columns CHANGE MiXeD mixed INT", 0);
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -278,60 +392,102 @@ static int test_modify_column_success_persistence_and_dml(void) {
         }
     );
 
-    failures += expect_modify_ok(database, "ALTER TABLE numbers MODIFY b INT NOT NULL", 0);
-    failures += expect_modify_ok(database, "ALTER TABLE numbers MODIFY b INT", 0);
-
+    failures += execute_ok(
+        database,
+        "CREATE TABLE integer_family (i INTEGER, iu INT UNSIGNED, "
+        "integer_unsigned INTEGER UNSIGNED, bu BIGINT UNSIGNED)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO integer_family VALUES (2, 3, 4, 5), (6, 7, 8, 9)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures +=
-        execute_ok(database, "INSERT INTO numbers VALUES (3, NULL, 11, 12, 13, NULL)", &result);
-    mylite_result_free(result);
-    result = NULL;
-    failures += execute_ok(database, "UPDATE numbers SET i = 4 WHERE id = 3", &result);
-    failures += expect_int64(mylite_result_affected_rows(result), 1, "update after modify");
-    mylite_result_free(result);
-    result = NULL;
+        expect_change_ok(database, "ALTER TABLE integer_family CHANGE i plain_integer INTEGER", 0);
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE integer_family CHANGE iu plain_int_unsigned INT UNSIGNED",
+        0
+    );
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE integer_family CHANGE integer_unsigned plain_integer_unsigned "
+        "INTEGER UNSIGNED",
+        0
+    );
+    failures += expect_change_ok(
+        database,
+        "ALTER TABLE integer_family CHANGE bu plain_bigint_unsigned BIGINT UNSIGNED",
+        0
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, i, iu, b FROM numbers WHERE id = 3",
-            .values = nullable_insert_row,
+            .sql = "SHOW COLUMNS FROM integer_family",
+            .values = integer_family_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 4U,
+            .context = "integer family descriptors after change",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT plain_integer, plain_int_unsigned, plain_integer_unsigned, "
+                   "plain_bigint_unsigned FROM integer_family ORDER BY plain_integer",
+            .values = integer_family_rows,
             .column_count = 4U,
-            .row_count = 1U,
-            .context = "insert and update after modify",
+            .row_count = 2U,
+            .context = "integer family rows after change",
         }
     );
 
-    failures +=
-        execute_ok(database, "CREATE TABLE app.qualified (id INT NOT NULL, n INT)", &result);
+    failures += execute_ok(database, "ALTER TABLE numbers ADD added INT", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += execute_ok(database, "INSERT INTO app.qualified VALUES (1, 2), (2, 3)", &result);
+    failures += execute_ok(database, "ALTER TABLE numbers RENAME COLUMN added TO renamed", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_modify_ok(database, "ALTER TABLE app.qualified MODIFY n BIGINT NOT NULL", 2);
-
-    mylite_close(database);
-    database = NULL;
-
-    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
-    failures += expect_bytes(
-        actual_preamble,
-        expected_preamble,
-        sizeof(expected_preamble),
-        "modify preserves preamble"
+    failures += expect_change_ok(database, "ALTER TABLE numbers CHANGE renamed renamed BIGINT", 3);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM numbers",
+            .values = change_after_add_rename_columns,
+            .column_count = show_columns_field_count,
+            .row_count = numbers_after_added_column_count,
+            .context = "change after add and rename column",
+        }
     );
-
-    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
-    failures += execute_ok(database, "USE app", &result);
+    failures += execute_ok(database, "ALTER TABLE numbers DROP COLUMN renamed", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers CHANGE renamed again BIGINT",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'renamed' in 'numbers'",
+        }
+    );
+    failures += execute_ok(database, "DELETE FROM numbers WHERE final = 4", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 1, "delete after change");
     mylite_result_free(result);
     result = NULL;
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, i FROM numbers ORDER BY id",
-            .values = persisted_rows,
+            .sql = "SELECT id, final FROM numbers ORDER BY id",
+            .values = rows_after_delete,
             .column_count = 2U,
-            .row_count = 3U,
-            .context = "modified table persists after reopen",
+            .row_count = 2U,
+            .context = "delete observes changed column",
         }
     );
 
@@ -345,15 +501,15 @@ static int test_modify_column_success_persistence_and_dml(void) {
     failures += execute_ok(database, "RENAME TABLE rename_source TO renamed_target", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += expect_modify_ok(database, "ALTER TABLE renamed_target MODIFY n BIGINT", 1);
+    failures += expect_change_ok(database, "ALTER TABLE renamed_target CHANGE n changed BIGINT", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT n FROM renamed_target",
+            .sql = "SELECT changed FROM renamed_target",
             .values = renamed_rows,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "modify after table rename",
+            .context = "change after table rename",
         }
     );
     failures += execute_ok(database, "DROP TABLE renamed_target", &result);
@@ -361,7 +517,7 @@ static int test_modify_column_success_persistence_and_dml(void) {
     result = NULL;
     failures += execute_error(
         database,
-        "ALTER TABLE renamed_target MODIFY n INT",
+        "ALTER TABLE renamed_target CHANGE changed again INT",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -370,11 +526,37 @@ static int test_modify_column_success_persistence_and_dml(void) {
     );
 
     mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "change preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, final FROM numbers ORDER BY id",
+            .values = persisted_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "changed table persists after reopen",
+        }
+    );
+
+    mylite_close(database);
     remove_related_files(path);
     return failures;
 }
 
-static int test_modify_column_diagnostics_and_rollback(void) {
+static int test_change_column_diagnostics_and_rollback(void) {
     static const char *const unchanged_nullable[] = {NULL, "1"};
     static const char *const unchanged_range[] = {"2147483648"};
     char path[test_path_capacity];
@@ -397,7 +579,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
 
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY n BIGINT",
+        "ALTER TABLE numbers CHANGE n renamed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_no_database_selected,
             .sqlstate = "3D000",
@@ -406,7 +588,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE missing_schema.numbers MODIFY n BIGINT",
+        "ALTER TABLE missing_schema.numbers CHANGE n renamed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
             .sqlstate = "42000",
@@ -415,7 +597,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE _mylite_reserved.numbers MODIFY n BIGINT",
+        "ALTER TABLE _mylite_reserved.numbers CHANGE n renamed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
             .sqlstate = "42000",
@@ -428,7 +610,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     result = NULL;
     failures += execute_ok(
         database,
-        "CREATE TABLE numbers (id INT NOT NULL, n INT, nn INT NOT NULL)",
+        "CREATE TABLE numbers (id INT NOT NULL, n INT, other INT NOT NULL)",
         &result
     );
     mylite_result_free(result);
@@ -439,7 +621,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
 
     failures += execute_error(
         database,
-        "ALTER TABLE missing_table MODIFY n BIGINT",
+        "ALTER TABLE missing_table CHANGE n renamed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -448,7 +630,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE _mylite_reserved MODIFY n BIGINT",
+        "ALTER TABLE _mylite_reserved CHANGE n renamed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
             .sqlstate = "42000",
@@ -457,7 +639,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY _mylite_hidden BIGINT",
+        "ALTER TABLE numbers CHANGE _mylite_hidden changed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_column_name,
             .sqlstate = "42000",
@@ -466,7 +648,16 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY missing BIGINT",
+        "ALTER TABLE numbers CHANGE n _mylite_hidden BIGINT",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_column_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect column name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers CHANGE missing changed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -475,11 +666,20 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY n BIGINT NOT NULL",
+        "ALTER TABLE numbers CHANGE n other BIGINT",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_column,
+            .sqlstate = "42S21",
+            .message_part = "Duplicate column name 'other'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers CHANGE n changed BIGINT NOT NULL",
         (struct expected_sql_error){
             .code = mysql_error_data_truncated,
             .sqlstate = "01000",
-            .message_part = "Data truncated for column 'n' at row 1",
+            .message_part = "Data truncated for column 'changed' at row 1",
         }
     );
     failures += expect_query_values(
@@ -501,11 +701,11 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     result = NULL;
     failures += execute_error(
         database,
-        "ALTER TABLE range_bad MODIFY c INT NOT NULL",
+        "ALTER TABLE range_bad CHANGE c changed INT NOT NULL",
         (struct expected_sql_error){
             .code = mysql_error_data_out_of_range,
             .sqlstate = "22003",
-            .message_part = "Out of range value for column 'c' at row 1",
+            .message_part = "Out of range value for column 'changed' at row 1",
         }
     );
     failures += expect_query_values(
@@ -527,17 +727,17 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     result = NULL;
     failures += execute_error(
         database,
-        "ALTER TABLE unsigned_bad MODIFY c INT UNSIGNED NOT NULL",
+        "ALTER TABLE unsigned_bad CHANGE c changed INT UNSIGNED NOT NULL",
         (struct expected_sql_error){
             .code = mysql_error_data_out_of_range,
             .sqlstate = "22003",
-            .message_part = "Out of range value for column 'c' at row 1",
+            .message_part = "Out of range value for column 'changed' at row 1",
         }
     );
 
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY numbers.n BIGINT",
+        "ALTER TABLE numbers CHANGE numbers.n changed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -546,7 +746,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY n BIGINT DEFAULT 5",
+        "ALTER TABLE numbers CHANGE n numbers.changed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -555,7 +755,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY n BIGINT FIRST",
+        "ALTER TABLE numbers CHANGE n changed",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -564,7 +764,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY n BIGINT, MODIFY nn BIGINT",
+        "ALTER TABLE numbers CHANGE n changed BIGINT DEFAULT 5",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -573,7 +773,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY n VARCHAR(10)",
+        "ALTER TABLE numbers CHANGE n changed BIGINT FIRST",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -582,7 +782,25 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY n BIGINT, ALGORITHM=INSTANT",
+        "ALTER TABLE numbers CHANGE n changed BIGINT, CHANGE other other2 BIGINT",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers CHANGE n changed VARCHAR(10)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers CHANGE n changed BIGINT, ALGORITHM=INPLACE",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -602,11 +820,11 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     result = NULL;
     failures += execute_error(
         database,
-        "ALTER TABLE rowid_shadow MODIFY rowid BIGINT",
+        "ALTER TABLE rowid_shadow CHANGE rowid changed BIGINT",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ALTER TABLE MODIFY COLUMN requires an unshadowed SQLite rowid alias",
+            .message_part = "ALTER TABLE CHANGE COLUMN requires an unshadowed SQLite rowid alias",
         }
     );
 
@@ -626,7 +844,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     }
     failures += execute_error(
         database,
-        "ALTER TABLE numbers MODIFY nn BIGINT NOT NULL",
+        "ALTER TABLE numbers CHANGE other changed BIGINT NOT NULL",
         (struct expected_sql_error){
             .code = mysql_error_unknown,
             .sqlstate = "HY000",
@@ -636,7 +854,7 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     failures += expect_column_descriptor(
         database,
         table.table_id,
-        "nn",
+        "other",
         3,
         "INT",
         false,
@@ -648,8 +866,8 @@ static int test_modify_column_diagnostics_and_rollback(void) {
     return failures;
 }
 
-static int test_modify_column_independent_handles(void) {
-    static const char *const first_columns[] = {"n", "bigint", "YES", "", NULL, ""};
+static int test_change_column_independent_handles(void) {
+    static const char *const first_columns[] = {"changed", "bigint", "YES", "", NULL, ""};
     static const char *const second_columns[] = {"n", "int", "YES", "", NULL, ""};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
@@ -686,7 +904,7 @@ static int test_modify_column_independent_handles(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += expect_modify_ok(first, "ALTER TABLE app.t MODIFY n BIGINT", 1);
+    failures += expect_change_ok(first, "ALTER TABLE app.t CHANGE n changed BIGINT", 1);
     failures += expect_query_values(
         first,
         (struct expected_query){
@@ -761,7 +979,7 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     return failures;
 }
 
-static int expect_modify_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
+static int expect_change_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
     char row_count_text[row_count_text_capacity];
     const char *row_count_values[] = {row_count_text};
     mylite_result *result = NULL;
@@ -773,10 +991,10 @@ static int expect_modify_ok(mylite_db *database, const char *sql, int64_t affect
         fprintf(stderr, "failed to format expected affected rows\n");
         failures += 1;
     }
-    failures += expect_size(mylite_result_column_count(result), 0U, "modify column count");
-    failures += expect_size(mylite_result_row_count(result), 0U, "modify row count");
-    failures += expect_int64(mylite_result_affected_rows(result), affected_rows, "modify affected");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "modify warning count");
+    failures += expect_size(mylite_result_column_count(result), 0U, "change column count");
+    failures += expect_size(mylite_result_row_count(result), 0U, "change row count");
+    failures += expect_int64(mylite_result_affected_rows(result), affected_rows, "change affected");
+    failures += expect_size(mylite_result_warning_count(result), 0U, "change warning count");
     mylite_result_free(result);
     failures += expect_query_values(
         database,
@@ -785,7 +1003,7 @@ static int expect_modify_ok(mylite_db *database, const char *sql, int64_t affect
             .values = row_count_values,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "ROW_COUNT after modify",
+            .context = "ROW_COUNT after change",
         }
     );
 
@@ -867,7 +1085,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     written = snprintf(
         path,
         path_size,
-        "%s/mylite_alter_table_modify_column_%d_%s.mylite",
+        "%s/mylite_alter_table_change_column_%d_%s.mylite",
         directory,
         current_process_id(),
         name

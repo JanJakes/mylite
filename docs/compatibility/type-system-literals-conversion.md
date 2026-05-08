@@ -7,8 +7,8 @@
 | `TINYINT` | ❌ | Ranges, display width, metadata |
 | `SMALLINT` | ❌ | Ranges, display width, metadata |
 | `MEDIUMINT` | ❌ | Ranges, display width, metadata |
-| `INT` / `INTEGER` | 🟡 | Limited DDL descriptors plus `ALTER TABLE ... MODIFY [COLUMN]` descriptor replacement, integer/`NULL` `INSERT` and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion, and single-column sort support; no general expression semantics, display width, or protocol-grade result metadata |
-| `BIGINT` | 🟡 | Limited DDL descriptors plus `ALTER TABLE ... MODIFY [COLUMN]` descriptor replacement, integer/`NULL` `INSERT` and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion, and single-column sort support; `BIGINT UNSIGNED` is capped at the signed 64-bit SQLite integer range in this slice |
+| `INT` / `INTEGER` | 🟡 | Limited DDL descriptors plus `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]` descriptor replacement, integer/`NULL` `INSERT` and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion, and single-column sort support; no general expression semantics, display width, or protocol-grade result metadata |
+| `BIGINT` | 🟡 | Limited DDL descriptors plus `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]` descriptor replacement, integer/`NULL` `INSERT` and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion, and single-column sort support; `BIGINT UNSIGNED` is capped at the signed 64-bit SQLite integer range in this slice |
 | Integer type aliases | ❌ | Alias rewrites and metadata |
 | `DECIMAL` / `NUMERIC` | ❌ | Exact math and metadata |
 | `FIXED` | ❌ | Alias rewrites and metadata |
@@ -93,7 +93,7 @@
 | --- | --- | --- |
 | User variables | ❌ | Retention, coercion, metadata |
 | Local variables | ❌ | Stored-program variable typing, scope, and diagnostics |
-| Type conversion | 🟡 | Limited strict assignment conversion for inserted and updated integer/`NULL` values, descriptor-driven existing-row validation for supported `ALTER TABLE ... MODIFY [COLUMN]`, descriptor-driven integer predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only |
+| Type conversion | 🟡 | Limited strict assignment conversion for inserted and updated integer/`NULL` values, descriptor-driven existing-row validation for supported `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]`, descriptor-driven integer predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only |
 | Collation coercibility | ❌ | Coercibility and diagnostics |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

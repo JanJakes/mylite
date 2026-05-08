@@ -146,6 +146,9 @@ statement(A) ::= alter_table_rename_column_statement(B). {
 statement(A) ::= alter_table_modify_column_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_change_column_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -480,6 +483,11 @@ alter_table_rename_column_statement(A) ::=
 alter_table_modify_column_statement(A) ::=
     ALTER(A1) TABLE table_name(T) MODIFY column_keyword_opt column_definition(C). {
     A = mylite_sql_parser_make_alter_table_modify_column_statement(state, A1, T, C);
+}
+
+alter_table_change_column_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) CHANGE column_keyword_opt identifier(O) column_definition(C). {
+    A = mylite_sql_parser_make_alter_table_change_column_statement(state, A1, T, O, C);
 }
 
 column_keyword_opt(A) ::= . {

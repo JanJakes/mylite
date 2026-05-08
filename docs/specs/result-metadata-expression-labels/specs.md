@@ -442,8 +442,9 @@ Literal descriptors should be inferred without reading rows:
   per character for that charset
 - binary string literals produce `VAR_STRING` metadata with binary collation,
   byte length equal to literal byte length, and `BINARY`
-- decimal literals should produce `NEWDECIMAL` with precision/scale-derived
-  length and decimals once decimal literal metadata is implemented
+- exact decimal literals produce `NEWDECIMAL` with precision/scale-derived
+  length and decimals; leading-zero forms such as `001.20` and `000.1200`
+  use MySQL's normalized display width rather than the raw token width
 - exponent-form approximate literals such as `1e2` produce `DOUBLE` metadata
   with display length equal to the literal token length, decimals `31`, and
   `BINARY NUM NOT_NULL` flags

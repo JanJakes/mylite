@@ -3400,6 +3400,15 @@ static int handle_decimal_integer_literal_exact_value(
     struct mylite_expression_value *out_value
 );
 
+static int set_decimal_literal_value(char *text, struct mylite_expression_value *out_value);
+
+static int normalize_decimal_literal_text(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+);
+
 static bool integer_literal_is_outside_int64(struct char_integer_parse integer);
 
 static int eval_temporal_literal(
@@ -22184,11 +22193,7 @@ static int eval_literal(
         if (handled != 0) {
             return 0;
         }
-        out_value->kind = MYLITE_EXPRESSION_VALUE_REAL;
-        out_value->real_value = strtod(text, NULL);
-        out_value->text_value = text;
-        out_value->text_length = strlen(text);
-        return 0;
+        return set_decimal_literal_value(text, out_value);
     case MYLITE_SQL_AST_LITERAL_FLOAT:
         text = copy_span_text(node->span.text, node->span.length);
         if (text == NULL) {
@@ -22322,6 +22327,99 @@ static int handle_decimal_integer_literal_exact_value(
     out_value->text_length = strlen(text);
     *io_text = NULL;
     return 1;
+}
+
+static int set_decimal_literal_value(char *text, struct mylite_expression_value *out_value) {
+    char *normalized = NULL;
+    size_t normalized_length = 0U;
+    double value = strtod(text, NULL);
+    int status =
+        normalize_decimal_literal_text(text, strlen(text), &normalized, &normalized_length);
+
+    free(text);
+    if (status != 0) {
+        return status;
+    }
+    *out_value = (struct mylite_expression_value){
+        .kind = MYLITE_EXPRESSION_VALUE_REAL,
+        .real_value = value,
+        .preserve_real_text = true,
+        .text_value = normalized,
+        .text_length = normalized_length,
+    };
+    return 0;
+}
+
+static int normalize_decimal_literal_text(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_length
+) {
+    size_t sign_offset = 0U;
+    size_t integer_start = 0U;
+    size_t dot_offset = 0U;
+    size_t integer_end = 0U;
+    size_t first_kept_integer = 0U;
+    size_t integer_length = 0U;
+    size_t fraction_start = 0U;
+    size_t fraction_length = 0U;
+    size_t output_length = 0U;
+    size_t output = 0U;
+    char *normalized = NULL;
+    bool negative = false;
+
+    if (text == NULL || out_text == NULL || out_length == NULL) {
+        return -1;
+    }
+    if (text_length == 0U) {
+        *out_text = copy_span_text("", 0U);
+        *out_length = 0U;
+        return *out_text == NULL ? -1 : 0;
+    }
+    negative = text[0] == '-';
+    sign_offset = text_length != 0U && (text[0] == '-' || text[0] == '+') ? 1U : 0U;
+    integer_start = sign_offset;
+    dot_offset = integer_start;
+    while (dot_offset < text_length && text[dot_offset] != '.') {
+        ++dot_offset;
+    }
+    integer_end = dot_offset;
+    fraction_start = dot_offset < text_length ? dot_offset + 1U : text_length;
+    fraction_length = text_length - fraction_start;
+    first_kept_integer = integer_start;
+    while (first_kept_integer + 1U < integer_end && text[first_kept_integer] == '0') {
+        ++first_kept_integer;
+    }
+    if (integer_end == integer_start) {
+        integer_length = 1U;
+    } else {
+        integer_length = integer_end - first_kept_integer;
+    }
+    output_length =
+        (negative ? 1U : 0U) + integer_length + (fraction_length == 0U ? 0U : 1U + fraction_length);
+    normalized = malloc(output_length + 1U);
+    if (normalized == NULL) {
+        return -1;
+    }
+    if (negative) {
+        normalized[output++] = '-';
+    }
+    if (integer_end == integer_start) {
+        normalized[output++] = '0';
+    } else {
+        memcpy(normalized + output, text + first_kept_integer, integer_length);
+        output += integer_length;
+    }
+    if (fraction_length != 0U) {
+        normalized[output++] = '.';
+        memcpy(normalized + output, text + fraction_start, fraction_length);
+        output += fraction_length;
+    }
+    normalized[output] = '\0';
+    *out_text = normalized;
+    *out_length = output;
+    return 0;
 }
 
 static bool integer_literal_is_outside_int64(struct char_integer_parse integer) {
@@ -23919,6 +24017,7 @@ static int set_unary_real_value(
         .kind = MYLITE_EXPRESSION_VALUE_REAL,
         .real_value = real_value,
         .compact_real_text = operand != NULL && operand->compact_real_text,
+        .preserve_real_text = operand != NULL && operand->preserve_real_text,
         .text_value = signed_text,
         .text_length = signed_text == NULL ? 0U : signed_length,
     };

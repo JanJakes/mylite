@@ -30,6 +30,8 @@ static struct mylite_field_descriptor binary_string_literal_descriptor(
     const struct mylite_expression_value *value
 );
 
+static uint64_t decimal_literal_descriptor_length(const struct mylite_sql_ast_node *expression);
+
 static struct mylite_field_descriptor float_literal_descriptor(
     const struct mylite_sql_ast_node *expression
 );
@@ -68,7 +70,7 @@ int mylite_expression_descriptor_infer_literal(
     case MYLITE_SQL_AST_LITERAL_DECIMAL:
         descriptor = mylite_expression_descriptor_decimal(false);
         descriptor.decimals = mylite_expression_descriptor_literal_decimal_scale(expression);
-        descriptor.length = expression->span.length + 1U;
+        descriptor.length = decimal_literal_descriptor_length(expression);
         break;
     case MYLITE_SQL_AST_LITERAL_FLOAT:
         descriptor = float_literal_descriptor(expression);
@@ -106,6 +108,42 @@ int mylite_expression_descriptor_infer_literal(
 
     *out_descriptor = descriptor;
     return MYLITE_OK;
+}
+
+static uint64_t decimal_literal_descriptor_length(const struct mylite_sql_ast_node *expression) {
+    const char *text = expression == NULL ? NULL : expression->span.text;
+    size_t text_length = expression == NULL ? 0U : expression->span.length;
+    bool negative = false;
+    size_t sign_offset = 0U;
+    size_t integer_start = 0U;
+    size_t integer_end = 0U;
+    size_t first_nonzero = 0U;
+    size_t fraction_length = 0U;
+    size_t integer_length = 0U;
+    uint64_t output_length = 0U;
+
+    if (text == NULL || text_length == 0U) {
+        return 0U;
+    }
+    negative = text[0] == '-';
+    sign_offset = text[0] == '-' || text[0] == '+' ? 1U : 0U;
+    integer_start = sign_offset;
+    integer_end = integer_start;
+    first_nonzero = integer_start;
+    output_length = negative ? 1U : 0U;
+    while (integer_end < text_length && text[integer_end] != '.') {
+        ++integer_end;
+    }
+    fraction_length = integer_end < text_length ? text_length - integer_end - 1U : 0U;
+    while (first_nonzero < integer_end && text[first_nonzero] == '0') {
+        ++first_nonzero;
+    }
+    integer_length = first_nonzero == integer_end ? 1U : integer_end - first_nonzero;
+    output_length += integer_length + (fraction_length == 0U ? 0U : 1U + fraction_length);
+    if (integer_end == integer_start) {
+        return output_length;
+    }
+    return output_length + (first_nonzero > integer_start && first_nonzero < integer_end ? 2U : 1U);
 }
 
 static struct mylite_field_descriptor float_literal_descriptor(

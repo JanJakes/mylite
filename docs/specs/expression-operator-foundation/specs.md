@@ -338,6 +338,10 @@ text uses MySQL-shaped compact double formatting, for example `1e2` displays
 as `100`, unary `-1e2` as `-100`, `1e-2` as `0.01`, and large/small values
 keep lowercase exponent markers without a positive exponent plus sign.
 
+Exact decimal literal result text preserves the declared fractional scale while
+normalizing redundant leading integer zeros and trailing-dot forms, so
+`001.20` displays as `1.20`, `.5` as `0.5`, and `1.` as `1`.
+
 Numeric conversion of strings should preserve MySQL's prefix-number behavior
 and warning records for truncated nonnumeric suffixes. Full range clipping,
 invalid temporal comparison diagnostics, JSON comparison order, and complete

@@ -378,6 +378,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Exponent-form numeric literals now evaluate as approximate `DOUBLE`
       literals and use MySQL-shaped compact display text such as `100`,
       `-100`, `0.01`, `1e20`, and `1e-20`.
+      Exact decimal literal result text now preserves the declared fractional
+      scale while normalizing redundant leading integer zeros and trailing-dot
+      forms, so `001.20` displays as `1.20`, `.5` as `0.5`, and `1.` as `1`.
       `TRUNCATE()` now duplicates truncated scale warnings for exact DECIMAL
       value arguments while retaining single-warning behavior for approximate
       and mixed text conversions.
@@ -567,6 +570,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       now expose direct scalar `DOUBLE` result metadata with token-length
       display widths, decimals `31`, and `BINARY NUM NOT_NULL` flags instead
       of exact-decimal descriptors.
+      Exact decimal literals now expose MySQL-shaped normalized display widths
+      for direct scalar metadata, including leading-zero and trailing-dot forms.
       Remaining expression and other SQLite-backed result metadata gaps are
       still tracked here.
 

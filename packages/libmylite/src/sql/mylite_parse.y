@@ -83,6 +83,9 @@ statement(A) ::= show_character_set_statement(B). {
 statement(A) ::= show_collation_statement(B). {
     A = B;
 }
+statement(A) ::= show_triggers_statement(B). {
+    A = B;
+}
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
@@ -230,6 +233,25 @@ show_character_set_statement(A) ::= SHOW(S) CHARSET(T) show_like_clause_opt(L). 
 
 show_collation_statement(A) ::= SHOW(S) COLLATION(C) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_collation_statement(state, S, C, L);
+}
+
+show_triggers_statement(A) ::= SHOW(S) TRIGGERS(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_triggers_statement(state, S, T, NULL, L);
+}
+show_triggers_statement(A) ::= SHOW(S) FULL TRIGGERS(T) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_triggers_statement(state, S, T, NULL, L);
+}
+show_triggers_statement(A) ::= SHOW(S) TRIGGERS(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_triggers_statement(state, S, T, D, L);
+}
+show_triggers_statement(A) ::= SHOW(S) TRIGGERS(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_triggers_statement(state, S, T, D, L);
+}
+show_triggers_statement(A) ::= SHOW(S) FULL TRIGGERS(T) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_triggers_statement(state, S, T, D, L);
+}
+show_triggers_statement(A) ::= SHOW(S) FULL TRIGGERS(T) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_triggers_statement(state, S, T, D, L);
 }
 
 show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) show_like_clause_opt(L). {
@@ -794,6 +816,12 @@ identifier(A) ::= FIELDS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= INDEXES(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= FULL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TRIGGERS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ENGINE(T). {

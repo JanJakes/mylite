@@ -347,6 +347,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_character_set_statement";
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
         return "show_collation_statement";
+    case MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT:
+        return "show_triggers_statement";
     }
 
     return "unknown";

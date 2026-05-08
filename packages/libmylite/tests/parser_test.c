@@ -19,6 +19,7 @@ static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_show_columns_introspection_statements(void);
+static int test_show_triggers_empty_introspection_statements(void);
 static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
@@ -101,6 +102,7 @@ int main(void) {
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
     failures += test_show_columns_introspection_statements();
+    failures += test_show_triggers_empty_introspection_statements();
     failures += test_show_index_empty_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
@@ -1773,6 +1775,92 @@ static int test_show_columns_introspection_statements(void) {
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "columns table name");
     failures += expect_span_text(child_at(statement, 0U), "columns", "columns identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_triggers_empty_introspection_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW TRIGGERS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT, "show triggers");
+    failures += expect_child_count(statement, 0U, "show triggers child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL TRIGGERS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT, "show full triggers");
+    failures += expect_child_count(statement, 0U, "show full triggers child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TRIGGERS FROM app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT, "show triggers from");
+    failures += expect_child_count(statement, 1U, "show triggers from child count");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show triggers schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TRIGGERS IN app LIKE 'account\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT, "show triggers in like");
+    failures += expect_child_count(statement, 2U, "show triggers in like child count");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show triggers like schema");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "triggers like");
+    failures += expect_span_text(child_at(statement, 1U), "'account\\_%'", "triggers like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL TRIGGERS LIKE 'account';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT, "show full triggers like");
+    failures += expect_child_count(statement, 1U, "show full triggers like child count");
+    failures += expect_literal(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "full triggers like"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 0U), "'account'", "full triggers like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE triggers (full INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "triggers table");
+    failures += expect_span_text(child_at(statement, 0U), "triggers", "triggers identifier");
+    failures += expect_span_text(
+        child_at(child_at(child_at(statement, 1U), 0U), 0U),
+        "full",
+        "full identifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW TRIGGER FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW EXTENDED TRIGGERS FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW TRIGGERS FROM app WHERE `Table` = 'account';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW TRIGGERS FROM app LIKE 'account' WHERE `Table` = 'account';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

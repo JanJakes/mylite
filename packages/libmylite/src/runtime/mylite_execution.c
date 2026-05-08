@@ -55,6 +55,7 @@ enum {
     show_table_status_data_length = 16384,
     show_character_set_result_column_count = 4,
     show_collation_result_column_count = 7,
+    show_triggers_result_column_count = 11,
     show_engines_result_column_count = 6,
 };
 
@@ -353,6 +354,11 @@ static int execute_show_character_set_statement(
     mylite_result **out_result
 );
 static int execute_show_collation_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_triggers_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -1360,6 +1366,8 @@ static int execute_parsed_statement(
         return execute_show_character_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
         return execute_show_collation_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT:
+        return execute_show_triggers_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
@@ -2142,6 +2150,82 @@ static int execute_show_collation_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_triggers_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_triggers_result_column_count] = {
+        "Trigger",
+        "Event",
+        "Table",
+        "Statement",
+        "Timing",
+        "Created",
+        "sql_mode",
+        "Definer",
+        "character_set_client",
+        "collation_connection",
+        "Database Collation",
+    };
+    struct mylite_catalog_schema_descriptor schema = {0};
+    const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *schema_node = first_child;
+    const struct mylite_sql_ast_node *like_node = second_child;
+    struct show_like_filter filter = {
+        .has_pattern = false,
+        .pattern = NULL,
+        .pattern_length = 0U,
+    };
+    mylite_result *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_LITERAL) {
+        schema_node = NULL;
+        like_node = first_child;
+    }
+    if (schema_node == NULL) {
+        rc = resolve_selected_schema(database, &schema);
+    } else {
+        char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+
+        rc = copy_identifier_text(schema_node, schema_name, sizeof(schema_name), database);
+        if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
+            set_reserved_name_error(database, "database", schema_name);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = resolve_schema_name(database, schema_name, &schema);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = make_show_like_filter(database, like_node, &filter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_create(&result);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_triggers_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        show_like_filter_deinit(&filter);
+        return rc;
+    }
+
+    show_like_filter_deinit(&filter);
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_columns_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -2724,6 +2808,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SHOW_TABLE_STATUS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLLATION_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_TRIGGERS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
     case MYLITE_SQL_AST_SHOW_INDEX_STATEMENT:
     case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:

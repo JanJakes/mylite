@@ -82,6 +82,15 @@ static uint64_t make_set_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
+    bool binary_result,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
+
+static uint64_t make_set_argument_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 );
 
@@ -94,6 +103,14 @@ static int make_set_function_members_are_all_null(
 );
 
 static uint64_t make_set_all_null_result_length(const struct mylite_sql_ast_node *expression);
+
+static int infer_make_set_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+);
 
 static uint64_t elt_function_result_length(
     mylite_db *database,
@@ -540,6 +557,7 @@ static int infer_make_set_function_descriptor(
         callbacks
     );
     bool nullable = false;
+    bool binary_result = false;
     unsigned int flags = 0U;
     uint64_t length = 0U;
     unsigned int charset_id = mylite_expression_descriptor_connection_charset_id(database);
@@ -557,13 +575,20 @@ static int infer_make_set_function_descriptor(
     if (status != MYLITE_OK) {
         return status;
     }
+    status = infer_make_set_binary_result(database, plan, expression, &binary_result, callbacks);
+    if (status != MYLITE_OK) {
+        return status;
+    }
 
     if (all_members_null) {
         flags = MYLITE_FIELD_FLAG_BINARY;
         length = make_set_all_null_result_length(expression);
         charset_id = mylite_mysql_binary_charset_id;
     } else {
-        length = make_set_function_result_length(database, plan, expression, callbacks);
+        flags = binary_result ? MYLITE_FIELD_FLAG_BINARY : 0U;
+        length =
+            make_set_function_result_length(database, plan, expression, binary_result, callbacks);
+        charset_id = binary_result ? mylite_mysql_binary_charset_id : charset_id;
     }
 
     *out_descriptor = (struct mylite_field_descriptor){
@@ -633,11 +658,12 @@ static uint64_t make_set_function_result_length(
     mylite_db *database,
     const struct mylite_select_plan *plan,
     const struct mylite_sql_ast_node *expression,
+    bool binary_result,
     const struct mylite_expression_descriptor_string_callbacks *callbacks
 ) {
     const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
     uint64_t separator_length =
-        mylite_expression_descriptor_connection_character_max_length(database);
+        binary_result ? 1U : mylite_expression_descriptor_connection_character_max_length(database);
     uint64_t result = 0U;
     size_t member_count = 0U;
 
@@ -647,7 +673,8 @@ static uint64_t make_set_function_result_length(
                                                           : arguments->first_child->next_sibling;
          argument != NULL;
          argument = argument->next_sibling) {
-        uint64_t length = elt_argument_result_length(database, plan, argument, callbacks);
+        uint64_t length =
+            make_set_argument_result_length(database, plan, argument, binary_result, callbacks);
 
         if (member_count != 0U) {
             if (result > UINT64_MAX - separator_length) {
@@ -662,6 +689,73 @@ static uint64_t make_set_function_result_length(
         ++member_count;
     }
     return result;
+}
+
+static uint64_t make_set_argument_result_length(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool binary_result,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
+
+    if (!binary_result) {
+        return elt_argument_result_length(database, plan, expression, callbacks);
+    }
+    if (callbacks->infer_expression_descriptor(database, plan, expression, NULL, &descriptor) !=
+        MYLITE_OK) {
+        return expression_text_display_length(database, plan, expression, callbacks);
+    }
+    if (descriptor.type == MYLITE_FIELD_TYPE_NULL) {
+        return 0U;
+    }
+    if (field_descriptor_is_binary_string(&descriptor) ||
+        mylite_expression_descriptor_has_numeric_result(&descriptor)) {
+        return descriptor.length;
+    }
+    if (mylite_expression_descriptor_has_text_result(&descriptor) ||
+        descriptor.type == MYLITE_FIELD_TYPE_BLOB) {
+        return string_character_capacity(
+            descriptor.length,
+            mylite_expression_descriptor_connection_character_max_length(database)
+        );
+    }
+    return descriptor.length;
+}
+
+static int infer_make_set_binary_result(
+    mylite_db *database,
+    const struct mylite_select_plan *plan,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_binary,
+    const struct mylite_expression_descriptor_string_callbacks *callbacks
+) {
+    const struct mylite_sql_ast_node *arguments = mylite_ast_child_at(expression, 1U);
+
+    if (out_binary == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_binary = false;
+    for (const struct mylite_sql_ast_node *argument = arguments == NULL ||
+                                                              arguments->first_child == NULL
+                                                          ? NULL
+                                                          : arguments->first_child->next_sibling;
+         argument != NULL;
+         argument = argument->next_sibling) {
+        struct mylite_field_descriptor descriptor = mylite_expression_descriptor_defaults();
+        int status =
+            callbacks->infer_expression_descriptor(database, plan, argument, NULL, &descriptor);
+
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (field_descriptor_is_binary_string(&descriptor)) {
+            *out_binary = true;
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int make_set_function_members_are_all_null(

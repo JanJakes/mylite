@@ -141,7 +141,9 @@ Observed lazy evaluation:
 `MAKE_SET()` reports `VAR_STRING` with MySQL's not-fixed decimals marker `31`.
 The result charset/collation follows the string-member aggregation shape
 currently used by MyLite string functions: ordinary text results use the
-connection result collation, and all-`NULL` member lists use binary metadata.
+connection result collation, any binary member makes the result binary with
+byte-counted member and comma widths, and all-`NULL` member lists use binary
+metadata.
 
 The display length is the sum of member display lengths plus one separator
 character between adjacent member positions. This is a maximum declaration
@@ -166,6 +168,9 @@ Verified metadata:
 | `MAKE_SET(3,'a','bc')` | `latin1` | `VAR_STRING` | `8` | `4` | `31` | `NOT_NULL` |
 | `MAKE_SET(NULL,'a')` | `latin1` | `VAR_STRING` | `8` | `1` | `31` | none |
 | `MAKE_SET(nullable_bits, s, n, u)` over `VARCHAR(20), INT, BIGINT UNSIGNED` | `latin1` | `VAR_STRING` | `8` | `53` | `31` | none |
+| `MAKE_SET(1, _binary 'ab')` | `utf8mb4` | `VAR_STRING` | `63` | `2` | `31` | `NOT_NULL BINARY` |
+| `MAKE_SET(3, _binary 'ab', 'cd')` | `utf8mb4` | `VAR_STRING` | `63` | `5` | `31` | `NOT_NULL BINARY` |
+| `MAKE_SET(3, b, s)` over `VARBINARY(8), VARCHAR(8)` | `utf8mb4` | `VAR_STRING` | `63` | `17` | `31` | `BINARY` |
 
 ## Runtime design
 

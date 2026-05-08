@@ -10444,6 +10444,73 @@ static int test_scalar_builtin_functions_execution(void) {
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
          1},
     };
+    static const struct expected_result_metadata make_set_binary_metadata[] = {
+        {"make_b",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         8U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"make_mixed",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         17U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"make_bin_num",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         20U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         1},
+        {"lit_bin",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         2U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         0},
+        {"lit_mixed",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         5U,
+         MYLITE_FIELD_TYPE_VAR_STRING,
+         31U,
+         63U,
+         MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NUM | MYLITE_FIELD_FLAG_UNSIGNED,
+         0},
+    };
     static const struct expected_result_metadata hex_table_metadata[] = {
         {"hex_s",
          NULL,
@@ -11150,6 +11217,9 @@ static int test_scalar_builtin_functions_execution(void) {
     static const unsigned char base64_zero_byte[] = {0x00};
     static const unsigned char base64_nul_text[] = {'a', 0x00, 'b'};
     static const unsigned char unhex_leading_nul[] = {0x00, 'A'};
+    static const unsigned char make_set_binary_value[] = {'a', 'b'};
+    static const unsigned char make_set_binary_mixed_value[] = {'a', 'b', ',', 't', 'x'};
+    static const unsigned char make_set_binary_num_value[] = {'a', 'b', ',', '4', '2'};
     static const char *const base64_invalid_columns[] = {
         "bad_chars",
         "missing_pad",
@@ -13256,6 +13326,73 @@ static int test_scalar_builtin_functions_execution(void) {
         "binary string table metadata"
     );
     failures += expect_status(mylite_step(stmt), MYLITE_DONE, "binary string metadata done");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(
+        database,
+        "CREATE TABLE make_set_binary_meta ("
+        "id INT PRIMARY KEY, b VARBINARY(8), s VARCHAR(8), n INT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "INSERT INTO make_set_binary_meta VALUES (1, X'6162', 'tx', 42)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "SELECT MAKE_SET(1, b) AS make_b, "
+        "MAKE_SET(3, b, s) AS make_mixed, "
+        "MAKE_SET(3, b, n) AS make_bin_num, "
+        "MAKE_SET(1, _binary 'ab') AS lit_bin, "
+        "MAKE_SET(3, _binary 'ab', 'cd') AS lit_mixed "
+        "FROM make_set_binary_meta",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        make_set_binary_metadata,
+        (int)(sizeof(make_set_binary_metadata) / sizeof(make_set_binary_metadata[0])),
+        "MAKE_SET binary metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "MAKE_SET binary row");
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 0),
+        (int64_t)sizeof(make_set_binary_value),
+        "MAKE_SET binary byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 0),
+        make_set_binary_value,
+        sizeof(make_set_binary_value),
+        "MAKE_SET binary raw value"
+    );
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 1),
+        (int64_t)sizeof(make_set_binary_mixed_value),
+        "MAKE_SET mixed binary byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 1),
+        make_set_binary_mixed_value,
+        sizeof(make_set_binary_mixed_value),
+        "MAKE_SET mixed binary raw value"
+    );
+    failures += expect_int64(
+        (int64_t)mylite_column_bytes(stmt, 2),
+        (int64_t)sizeof(make_set_binary_num_value),
+        "MAKE_SET binary numeric byte length"
+    );
+    failures += expect_bytes(
+        (const unsigned char *)mylite_column_text(stmt, 2),
+        make_set_binary_num_value,
+        sizeof(make_set_binary_num_value),
+        "MAKE_SET binary numeric raw value"
+    );
+    failures += expect_string(mylite_column_text(stmt, 3), "ab", "MAKE_SET binary literal value");
+    failures += expect_string(mylite_column_text(stmt, 4), "ab,cd", "MAKE_SET mixed literal value");
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "MAKE_SET binary done");
     mylite_finalize(stmt);
     stmt = NULL;
     failures += execute_sql(

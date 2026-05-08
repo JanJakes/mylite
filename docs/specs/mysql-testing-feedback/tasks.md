@@ -420,6 +420,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       and `INSERT()`, now infer MySQL-shaped binary `VAR_STRING` descriptors
       with byte-counted lengths, collation id 63, decimals 31, and the
       `BINARY` flag.
+      `MAKE_SET()` now infers the same binary descriptor shape for binary and
+      mixed binary/text member lists, including byte-counted comma separators.
       `FOUND_ROWS()` now reports MySQL-shaped signed `LONGLONG` flags while
       neighboring session integer functions retain their verified signedness.
       `RAND()` / `RAND(seed)` now report MySQL-shaped `DOUBLE` metadata with

@@ -312,6 +312,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       numeric prefix for signed, unsigned, decimal, and approximate targets
       while still treating the NUL plus following bytes as trailing garbage for
       warning emission.
+      `ROUND()` now preserves integer trailing zeroes for approximate and cast
+      DECIMAL inputs after zero-scale and negative-scale rounding, so results
+      like `20` and `10` are not shortened to `2` and `1`.
       Positive signed integer string casts above the signed 64-bit range now
       preserve MySQL's warning split: values through the unsigned 64-bit
       endpoint emit the signed-complement warning, while values above that

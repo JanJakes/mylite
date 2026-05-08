@@ -21238,11 +21238,13 @@ static int set_round_approximate_text(
     if (length < 0 || (size_t)length >= sizeof(buffer)) {
         return -1;
     }
-    while (length > 0 && buffer[length - 1] == '0') {
-        buffer[--length] = '\0';
-    }
-    if (length > 0 && buffer[length - 1] == '.') {
-        buffer[--length] = '\0';
+    if (decimals > 0) {
+        while (length > 0 && buffer[length - 1] == '0') {
+            buffer[--length] = '\0';
+        }
+        if (length > 0 && buffer[length - 1] == '.') {
+            buffer[--length] = '\0';
+        }
     }
     if (strcmp(buffer, "-0") == 0 || buffer[0] == '\0') {
         buffer[0] = '0';

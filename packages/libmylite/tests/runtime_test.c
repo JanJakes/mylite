@@ -25441,22 +25441,19 @@ static int test_round_scalar_function_execution(mylite_db *database) {
          1},
     };
     static const char *const round_columns[] = {
-        "exact_half", "exact_neg_half", "approx_half", "approx_neg_half", "pos_scale",
-        "half_scale", "neg_half_scale", "neg_one",     "neg_three",       "scale_high",
-        "neg_high",   "unsigned_round", "null_x",      "null_d",          "text_decimal",
-        "text_trail", "text_bad",       "text_half",   "scale_decimal",   "scale_text_decimal",
+        "exact_half",  "exact_neg_half", "approx_half",        "approx_neg_half",
+        "pos_scale",   "half_scale",     "neg_half_scale",     "neg_one",
+        "neg_three",   "scale_high",     "approx_neg",         "cast_neg_scale",
+        "approx_zero", "neg_high",       "unsigned_round",     "null_x",
+        "null_d",      "text_decimal",   "text_trail",         "text_bad",
+        "text_half",   "scale_decimal",  "scale_text_decimal",
     };
     static const char *const round_values[] = {
-        "3",       "-3",
-        "2",       "-2",
-        "123.46",  "123.46",
-        "-123.46", "20",
-        "99000",   "0.123456789012345678901234567890",
-        "0",       "9223372036854775810",
-        NULL,      NULL,
-        "123.46",  "123.46",
-        "0",       "2",
-        "12.56",   "12.6",
+        "3",      "-3",      "2",      "-2",     "123.46",
+        "123.46", "-123.46", "20",     "99000",  "0.123456789012345678901234567890",
+        "20",     "10",      "20",     "0",      "9223372036854775810",
+        NULL,     NULL,      "123.46", "123.46", "0",
+        "2",      "12.56",   "12.6",
     };
     static const char *const round_site_projection_columns[] = {"id", "ri", "rf", "rs"};
     static const char *const round_site_projection_values[] = {
@@ -25488,6 +25485,9 @@ static int test_round_scalar_function_execution(mylite_db *database) {
         "ROUND(23.298,-1) AS neg_one, "
         "ROUND(98765.4321,-3) AS neg_three, "
         "ROUND(.12345678901234567890123456789012345,35) AS scale_high, "
+        "ROUND(25E0,-1) AS approx_neg, "
+        "ROUND(CAST(12.34 AS DECIMAL(4,2)),-1) AS cast_neg_scale, "
+        "ROUND(20E0) AS approx_zero, "
         "ROUND(12345,-35) AS neg_high, "
         "ROUND(9223372036854775808,-1) AS unsigned_round, "
         "ROUND(NULL) AS null_x, "

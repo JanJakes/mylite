@@ -245,7 +245,8 @@ MySQL 8.4.9 runtime before each item is marked complete.
       cases, charset-specific string validation, remaining floating-point
       display and warning-order edge cases, scalar
       `CAST`/`CONVERT` value semantics beyond the covered floating-point and
-      `YEAR` target slices, and conversion/truncation `IGNORE` demotion beyond
+      `YEAR`/`JSON` target slices, and conversion/truncation `IGNORE` demotion
+      beyond
       the currently covered `INSERT IGNORE` invalid
       integer, integer range, invalid date, and `VARCHAR` truncation slice plus
       single-table `UPDATE IGNORE` numeric, temporal, string-length, `NULL`

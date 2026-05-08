@@ -8038,6 +8038,8 @@ static const char *column_type_descriptor_name(enum mylite_sql_ast_column_type c
         return "TIMESTAMP";
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         return "YEAR";
+    case MYLITE_SQL_AST_COLUMN_TYPE_JSON:
+        return "JSON";
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
     case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
@@ -8334,6 +8336,7 @@ static bool lookup_keyword_parser_token(
         {"INVOKER", MYLITE_SQL_PARSE_INVOKER},
         {"IS", MYLITE_SQL_PARSE_IS},
         {"JOIN", MYLITE_SQL_PARSE_JOIN},
+        {"JSON", MYLITE_SQL_PARSE_JSON},
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEYS", MYLITE_SQL_PARSE_KEYS},
         {"KEY_BLOCK_SIZE", MYLITE_SQL_PARSE_KEY_BLOCK_SIZE},

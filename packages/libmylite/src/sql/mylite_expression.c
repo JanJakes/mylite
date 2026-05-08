@@ -917,6 +917,13 @@ static int eval_char_cast(
     struct mylite_expression_value *out_value
 );
 
+static int eval_json_cast(
+    const struct mylite_sql_ast_node *source,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+);
+
 static int transcode_char_cast_text(
     const struct mylite_sql_ast_node *target,
     const struct mylite_expression_value *value,
@@ -5642,6 +5649,9 @@ static int eval_cast_expression(
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         status = eval_year_cast(&value, warnings, out_value);
         break;
+    case MYLITE_SQL_AST_COLUMN_TYPE_JSON:
+        status = eval_json_cast(source, &value, warnings, out_value);
+        break;
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
     case MYLITE_SQL_AST_COLUMN_TYPE_SMALLINT:
@@ -5940,6 +5950,61 @@ static int eval_char_cast(
         out_value->text_charset =
             expression_text_charset_from_char_function(char_cast_target_charset(target, context));
     }
+    free(text);
+    return status;
+}
+
+static int eval_json_cast(
+    const struct mylite_sql_ast_node *source,
+    const struct mylite_expression_value *value,
+    struct mylite_expression_warnings *warnings,
+    struct mylite_expression_value *out_value
+) {
+    const struct mylite_sql_ast_node *unwrapped_source =
+        mylite_sql_ast_unwrap_parenthesized_expression(source);
+    struct mylite_json_error error = {0};
+    char *text = NULL;
+    size_t text_length = 0U;
+    char *json = NULL;
+    size_t json_length = 0U;
+    int status = 0;
+
+    if (unwrapped_source != NULL && unwrapped_source->kind == MYLITE_SQL_AST_LITERAL &&
+        unwrapped_source->literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        static const char true_json[] = "true";
+        text_length = sizeof(true_json) - 1U;
+        text = copy_span_text(true_json, text_length);
+    } else if (
+        unwrapped_source != NULL && unwrapped_source->kind == MYLITE_SQL_AST_LITERAL &&
+        unwrapped_source->literal_kind == MYLITE_SQL_AST_LITERAL_FALSE
+    ) {
+        static const char false_json[] = "false";
+        text_length = sizeof(false_json) - 1U;
+        text = copy_span_text(false_json, text_length);
+    } else {
+        status = cast_value_to_string_with_length(value, &text, &text_length);
+    }
+    if (status != 0) {
+        return status;
+    }
+    if (text == NULL) {
+        return -1;
+    }
+
+    status = mylite_json_normalize(text, text_length, &json, &json_length, &error);
+    if (status == MYLITE_JSON_STATUS_INVALID_DOCUMENT) {
+        status = append_json_invalid_text_error(warnings, "cast_as_json", &error);
+        status = status == 0 ? MYLITE_EXEC_ERROR : status;
+        goto cleanup;
+    }
+    if (status != MYLITE_JSON_STATUS_OK) {
+        status = -1;
+        goto cleanup;
+    }
+    status = set_text_value(json, json_length, out_value);
+
+cleanup:
+    free(json);
     free(text);
     return status;
 }

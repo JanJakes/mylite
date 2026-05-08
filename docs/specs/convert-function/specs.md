@@ -26,6 +26,8 @@ This task implements:
   `CONVERT(expr, DATETIME)`, and `CONVERT(expr, DATETIME(fsp))`
 - `CONVERT(expr, YEAR)`, sharing the `CAST(... AS YEAR)` value, warning, and
   metadata behavior
+- `CONVERT(expr, JSON)`, sharing the `CAST(... AS JSON)` normalization,
+  invalid-document diagnostics, `NULL` propagation, and result metadata
 - `CONVERT(expr USING charset_name)` for the current MyLite expression-level
   charset set: `binary`, `latin1`, `utf8mb3` / `utf8`, `utf8mb4`, and `ascii`
 
@@ -43,7 +45,7 @@ The following behavior is deferred with the same compatibility boundaries as
 `docs/specs/cast-expression/specs.md`:
 
 - `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
-  JSON, spatial, and timezone-aware casts remain deferred
+  spatial and timezone-aware casts remain deferred
 - multi-valued-index `ARRAY` casts
 - full byte transcoding between character sets beyond the covered scalar
   `latin1` to UTF-8 and UTF-8 to `latin1` slice
@@ -76,6 +78,8 @@ using:
 - `docker exec -i mylite-mysql-849 mysql -h127.0.0.1 -uroot --force --batch --raw --show-warnings`
 
 YEAR target behavior was additionally checked on 2026-05-07 against the same
+MySQL 8.4.9 runtime through the shared CAST-family implementation.
+JSON target behavior was additionally checked on 2026-05-08 against the same
 MySQL 8.4.9 runtime through the shared CAST-family implementation.
 
 Temporal target behavior was additionally checked on 2026-05-07 against the
@@ -125,6 +129,9 @@ is `NULL` and otherwise follows the CAST result, warning, and metadata rules.
 | `CONVERT('2024-01-02 03:04:05.123456', DATE)` | `2024-01-02` | none |
 | `CONVERT('2024-01-02 03:04:05.123456', DATETIME(6))` | `2024-01-02 03:04:05.123456` | none |
 | `CONVERT('03:04:05.987654', TIME)` | `03:04:06` | none |
+| `CONVERT('{"b":2,"a":1}', JSON)` | `{"a": 1, "b": 2}` | none |
+| `CONVERT('[1,2]', JSON)` | `[1, 2]` | none |
+| `CONVERT('bad', JSON)` | error 3141 / `22032` | invalid JSON text |
 
 The `CONVERT(expr USING charset_name)` form returns `NULL` when `expr` is
 `NULL`. Otherwise, MySQL returns string bytes exposed with the requested
@@ -409,8 +416,8 @@ transcoding project. Known differences after this implementation:
   unrepresentable UTF-8 codepoints
 - binary strings cannot yet preserve embedded NUL bytes through every public
   text-value path
-- `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; JSON,
-  spatial, and timezone-aware casts are separate tasks
+- `TIMESTAMP` direct targets remain syntax errors as in MySQL 8.4.9; spatial
+  and timezone-aware casts are separate tasks
 - `REAL_AS_FLOAT` is applied to expression-level `REAL` cast targets, but
   broader approximate-numeric DDL and storage-mode behavior remains deferred
 - overflow and SQL-mode diagnostics remain incomplete in the same places as

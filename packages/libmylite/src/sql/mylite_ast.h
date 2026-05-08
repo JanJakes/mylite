@@ -347,6 +347,7 @@ enum mylite_sql_ast_column_type {
     MYLITE_SQL_AST_COLUMN_TYPE_MULTILINESTRING = 35,
     MYLITE_SQL_AST_COLUMN_TYPE_MULTIPOLYGON = 36,
     MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION = 37,
+    MYLITE_SQL_AST_COLUMN_TYPE_JSON = 38,
 };
 
 enum mylite_sql_ast_column_attribute {

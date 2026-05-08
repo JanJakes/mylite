@@ -29,6 +29,8 @@ The current implementation supports the application-facing CAST slice:
   `CAST(expr AS DATETIME)`, and `CAST(expr AS DATETIME(fsp))`
 - `CAST(expr AS YEAR)`, including MySQL-compatible two-digit-year pivots,
   string-zero handling, range diagnostics, warnings, and result metadata
+- `CAST(expr AS JSON)`, including scalar/object/array normalization, SQL
+  `NULL` propagation, invalid-document diagnostics, and JSON result metadata
 
 The expression must work everywhere the current supported scalar expression
 subset works:
@@ -46,8 +48,7 @@ The following behavior is deferred:
   operator is specified in
   `docs/specs/expression-operator-foundation/specs.md`
 - `TIMESTAMP` as a direct cast target remains rejected to match MySQL 8.4.9;
-  `JSON`, spatial casts, and `CAST(... AT TIME ZONE ... AS DATETIME)` remain
-  deferred
+  spatial casts and `CAST(... AT TIME ZONE ... AS DATETIME)` remain deferred
 - multi-valued-index `ARRAY` casts
 - exhaustive overflow/range clipping and every SQL-mode variant
 
@@ -89,6 +90,8 @@ Table-backed `DECIMAL` string coercions were additionally checked on
 inserted as integers, quoted integers, quoted decimals, and exponent notation.
 `CHAR ASCII` target shorthand behavior was additionally checked on 2026-05-07
 against the same MySQL 8.4.9 runtime.
+JSON target behavior was additionally checked on 2026-05-08 against the same
+MySQL 8.4.9 runtime.
 
 ## MySQL observations
 
@@ -238,6 +241,22 @@ into the next second when needed. Missing fractional precision means `0`.
 | `CAST('bad' AS DATE)` | `NULL` | 1292 truncated datetime |
 | `CAST('bad' AS TIME)` | `NULL` | 1292 truncated time |
 
+JSON casts parse the string form as a JSON document and return MySQL's
+normalized JSON text. SQL `NULL` remains SQL `NULL`; JSON literal `null`
+remains the JSON document `null`. Boolean literals use JSON `true`/`false`.
+Invalid JSON documents raise error 3141 with function name `cast_as_json`.
+
+| SQL | Result | Warnings |
+| --- | --- | --- |
+| `CAST('{"b":2,"a":1}' AS JSON)` | `{"a": 1, "b": 2}` | none |
+| `CAST('[1,2]' AS JSON)` | `[1, 2]` | none |
+| `CAST('1' AS JSON)` | `1` | none |
+| `CAST(TRUE AS JSON)` | `true` | none |
+| `CAST(FALSE AS JSON)` | `false` | none |
+| `CAST('null' AS JSON)` | `null` | none |
+| `CAST(NULL AS JSON)` | `NULL` | none |
+| `CAST('bad' AS JSON)` | error 3141 / `22032` | invalid JSON text |
+
 Parser errors observed with MySQL 8.4.9:
 
 | SQL | MySQL behavior |
@@ -281,6 +300,7 @@ Metadata observations from `mysql --column-type-info -vvv`:
 | `CAST('2024-01-02 03:04:05' AS DATETIME(3))` | `DATETIME` | `23` | `3` | `binary` | `BINARY` |
 | `CAST('03:04:05' AS TIME(2))` | `TIME` | `13` | `2` | `binary` | `BINARY` |
 | `CAST(NULL AS DATETIME(6))` | `DATETIME` | `26` | `6` | `binary` | nullable `BINARY` |
+| `CAST('{"a":1}' AS JSON)` | `JSON` | max JSON document bytes scaled by charset | `31` | connection dependent | `BINARY` |
 
 ## Syntax
 
@@ -310,6 +330,8 @@ cast_target_type ::= BINARY opt_column_length.
 cast_target_type ::= DATE.
 cast_target_type ::= TIME opt_temporal_fsp.
 cast_target_type ::= DATETIME opt_temporal_fsp.
+cast_target_type ::= YEAR.
+cast_target_type ::= JSON.
 
 opt_integer_keyword ::= .
 opt_integer_keyword ::= INTEGERKW.

@@ -35,6 +35,13 @@ bool mylite_json_validate(
     enum mylite_json_type *out_type,
     struct mylite_json_error *out_error
 );
+int mylite_json_normalize(
+    const char *text,
+    size_t length,
+    char **out_text,
+    size_t *out_length,
+    struct mylite_json_error *out_error
+);
 const char *mylite_json_type_name(enum mylite_json_type type);
 int mylite_json_quote_string(const char *text, size_t length, char **out_text, size_t *out_length);
 int mylite_json_unquote_string(

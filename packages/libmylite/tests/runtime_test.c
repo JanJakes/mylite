@@ -37746,6 +37746,24 @@ static int test_cast_expression_execution(void) {
         "plus_value",
     };
     static const char *const nul_numeric_values[] = {"12", "12", "12.00", "12.00", "12.0000"};
+    static const char *const json_cast_columns[] = {
+        "object_doc",
+        "number_doc",
+        "true_doc",
+        "false_doc",
+        "json_null_doc",
+        "sql_null_doc",
+        "array_doc",
+    };
+    static const char *const json_cast_values[] = {
+        "{\"a\": 1, \"b\": 2}",
+        "1",
+        "true",
+        "false",
+        "null",
+        NULL,
+        "[1, 2]",
+    };
     static const struct expected_result_metadata metadata[] = {
         {"signed_value",
          NULL,
@@ -37942,6 +37960,99 @@ static int test_cast_expression_execution(void) {
          63U,
          MYLITE_FIELD_FLAG_BINARY,
          MYLITE_FIELD_FLAG_NOT_NULL | MYLITE_FIELD_FLAG_NUM,
+         1},
+    };
+    static const struct expected_result_metadata json_cast_metadata[] = {
+        {"object_doc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967292),
+         MYLITE_FIELD_TYPE_JSON,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"number_doc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967292),
+         MYLITE_FIELD_TYPE_JSON,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"true_doc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967292),
+         MYLITE_FIELD_TYPE_JSON,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"false_doc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967292),
+         MYLITE_FIELD_TYPE_JSON,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"json_null_doc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967292),
+         MYLITE_FIELD_TYPE_JSON,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"sql_null_doc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967292),
+         MYLITE_FIELD_TYPE_JSON,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
+         1},
+        {"array_doc",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         UINT64_C(4294967292),
+         MYLITE_FIELD_TYPE_JSON,
+         31U,
+         255U,
+         MYLITE_FIELD_FLAG_BINARY,
+         MYLITE_FIELD_FLAG_NOT_NULL,
          1},
     };
     static const struct expected_result_metadata binary_length_metadata[] = {
@@ -39627,6 +39738,61 @@ static int test_cast_expression_execution(void) {
         (int)mylite_warning_code(database, 0),
         mysql_warning_deprecated_national,
         "CAST NCHAR utf8mb4 warning code"
+    );
+
+    failures += prepare_sql(
+        database,
+        "SELECT CAST('{\"b\":2,\"a\":1}' AS JSON) AS object_doc, "
+        "CAST('1' AS JSON) AS number_doc, "
+        "CAST(TRUE AS JSON) AS true_doc, "
+        "CAST(FALSE AS JSON) AS false_doc, "
+        "CAST('null' AS JSON) AS json_null_doc, "
+        "CAST(NULL AS JSON) AS sql_null_doc, "
+        "CONVERT('[1,2]', JSON) AS array_doc",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_result_metadata(
+        stmt,
+        json_cast_metadata,
+        (int)(sizeof(json_cast_metadata) / sizeof(json_cast_metadata[0])),
+        "CAST JSON metadata"
+    );
+    failures += expect_status(mylite_step(stmt), MYLITE_ROW, "CAST JSON row");
+    for (int index = 0; index < 7; ++index) {
+        if (json_cast_values[index] == NULL) {
+            failures += expect_null_text(mylite_column_text(stmt, index), "CAST JSON value");
+        } else {
+            failures += expect_string(
+                mylite_column_text(stmt, index),
+                json_cast_values[index],
+                "CAST JSON value"
+            );
+        }
+    }
+    failures += expect_status(mylite_step(stmt), MYLITE_DONE, "CAST JSON done");
+    failures += expect_column_names(stmt, json_cast_columns, 7, "CAST JSON columns");
+    failures += expect_int(mylite_warning_count(database), 0, "CAST JSON warning count");
+    mylite_finalize(stmt);
+    stmt = NULL;
+
+    failures += expect_prepare_error(
+        database,
+        "SELECT CAST('bad' AS JSON)",
+        MYLITE_EXEC_ERROR,
+        "Invalid JSON text",
+        "CAST JSON invalid text"
+    );
+    failures += expect_int(mylite_warning_count(database), 1, "CAST JSON invalid warning count");
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_invalid_json_text,
+        "CAST JSON invalid warning code"
+    );
+    failures += expect_contains(
+        mylite_warning_message(database, 0),
+        "cast_as_json",
+        "CAST JSON invalid warning message"
     );
 
     failures += execute_sql(

@@ -309,6 +309,8 @@ static const char *create_table_column_type_name(enum mylite_sql_ast_column_type
         return "MULTIPOLYGON";
     case MYLITE_SQL_AST_COLUMN_TYPE_GEOMCOLLECTION:
         return "GEOMCOLLECTION";
+    case MYLITE_SQL_AST_COLUMN_TYPE_JSON:
+        return "JSON";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOL:
         return "BOOL";
     case MYLITE_SQL_AST_COLUMN_TYPE_BOOLEAN:

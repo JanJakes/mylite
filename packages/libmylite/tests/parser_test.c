@@ -11891,6 +11891,14 @@ static int test_cast_expression_syntax(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT CAST('{\"a\":1}' AS JSON);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    cast_expression = child_at(child_at(select_list, 0U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_JSON, "JSON CAST target");
+    failures += expect_span_text(target, "JSON", "JSON CAST target span");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
         "SELECT CAST('1.25' AS FLOAT), CAST('1.25' AS FLOAT(24)), "
         "CAST('1.25' AS FLOAT(25)), CAST('1.25' AS FLOAT4), "
@@ -12168,6 +12176,14 @@ static int test_convert_expression_syntax(void) {
         fprintf(stderr, "DATETIME CONVERT did not record precision 6\n");
         failures = 1;
     }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT CONVERT('{\"a\":1}', JSON);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    cast_expression = child_at(child_at(select_list, 0U), 0U);
+    target = child_at(cast_expression, 1U);
+    failures += expect_column_type(target, MYLITE_SQL_AST_COLUMN_TYPE_JSON, "JSON CONVERT target");
+    failures += expect_span_text(target, "JSON", "JSON CONVERT target span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

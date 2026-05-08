@@ -311,6 +311,29 @@ bool mylite_json_validate(
     return true;
 }
 
+int mylite_json_normalize(
+    const char *text,
+    size_t length,
+    char **out_text,
+    size_t *out_length,
+    struct mylite_json_error *out_error
+) {
+    struct json_value value = {0};
+    int status = MYLITE_JSON_STATUS_OK;
+
+    if (out_text == NULL || out_length == NULL) {
+        return MYLITE_JSON_STATUS_NOMEM;
+    }
+    *out_text = NULL;
+    *out_length = 0U;
+    status = parse_document(text, length, &value, out_error);
+    if (status == MYLITE_JSON_STATUS_OK) {
+        status = json_value_to_text(&value, out_text, out_length);
+    }
+    json_value_deinit(&value);
+    return status;
+}
+
 const char *mylite_json_type_name(enum mylite_json_type type) {
     switch (type) {
     case MYLITE_JSON_TYPE_NULL:

@@ -51,6 +51,8 @@ static struct mylite_field_descriptor cast_datetime_descriptor(
 
 static struct mylite_field_descriptor cast_year_descriptor(void);
 
+static struct mylite_field_descriptor cast_json_descriptor(mylite_db *database);
+
 static unsigned int cast_decimal_precision(const struct mylite_sql_ast_node *target);
 
 static unsigned int cast_decimal_scale(const struct mylite_sql_ast_node *target);
@@ -143,6 +145,9 @@ int mylite_expression_descriptor_infer_cast_expression(
         return MYLITE_OK;
     case MYLITE_SQL_AST_COLUMN_TYPE_YEAR:
         *out_descriptor = cast_year_descriptor();
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_COLUMN_TYPE_JSON:
+        *out_descriptor = cast_json_descriptor(database);
         return MYLITE_OK;
     case MYLITE_SQL_AST_COLUMN_TYPE_NONE:
     case MYLITE_SQL_AST_COLUMN_TYPE_TINYINT:
@@ -322,6 +327,25 @@ static struct mylite_field_descriptor cast_year_descriptor(void) {
         .flags = MYLITE_FIELD_FLAG_UNSIGNED | MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
         .length = mylite_mysql_year_display_length,
         .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+
+    mylite_field_descriptor_set_nullable(&descriptor, true);
+    return descriptor;
+}
+
+static struct mylite_field_descriptor cast_json_descriptor(mylite_db *database) {
+    uint64_t max_bytes_per_character =
+        mylite_expression_descriptor_connection_character_max_length(database);
+    uint64_t length = max_bytes_per_character > UINT64_MAX / mylite_mysql_json_document_length
+                          ? mylite_mysql_long_text_length
+                          : mylite_mysql_json_document_length * max_bytes_per_character;
+    struct mylite_field_descriptor descriptor = {
+        .type = MYLITE_FIELD_TYPE_JSON,
+        .flags = MYLITE_FIELD_FLAG_BINARY,
+        .length = length,
+        .decimals = mylite_mysql_not_fixed_decimals,
+        .charset_id = mylite_expression_descriptor_connection_charset_id(database),
         .nullable = true,
     };
 

@@ -50,9 +50,32 @@ struct alter_table_mixed_constraint_state {
     int64_t check_affected_rows;
 };
 
+enum alter_table_generic_constraint_kind {
+    ALTER_TABLE_GENERIC_CONSTRAINT_NONE = 0,
+    ALTER_TABLE_GENERIC_CONSTRAINT_CHECK = 1,
+    ALTER_TABLE_GENERIC_CONSTRAINT_FOREIGN_KEY = 2,
+    ALTER_TABLE_GENERIC_CONSTRAINT_INDEX = 3,
+};
+
 static bool alter_table_has_table_rename_action(const mylite_stmt *stmt);
 
 static int commit_alter_table_implicit_transaction(mylite_db *database);
+
+static bool alter_table_has_generic_drop_constraint_action(const mylite_stmt *stmt);
+
+static int resolve_alter_table_generic_drop_constraint_actions(mylite_stmt *stmt);
+
+static int resolve_alter_table_generic_drop_constraint_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    bool temporary,
+    struct mylite_alter_table_action *action
+);
+
+static size_t alter_table_model_unique_constraint_index(
+    const struct mylite_alter_table_model *model,
+    const char *constraint_name
+);
 
 static bool alter_table_has_only_check_actions(const mylite_stmt *stmt);
 
@@ -305,6 +328,11 @@ static int set_alter_table_missing_generic_constraint_error(
     const char *constraint_name
 );
 
+static int set_alter_table_multiple_generic_constraint_error(
+    mylite_db *database,
+    const char *constraint_name
+);
+
 static int set_alter_table_check_violation_error(mylite_db *database, const char *constraint_name);
 
 static int ensure_alter_table_foreign_key_constraint_name(
@@ -450,6 +478,13 @@ int mylite_table_ddl_execute_alter_table_prepared_statement(mylite_stmt *stmt) {
     if (alter_table_has_table_rename_action(stmt)) {
         return execute_alter_table_rename_statement(stmt);
     }
+    if (alter_table_has_generic_drop_constraint_action(stmt)) {
+        status = resolve_alter_table_generic_drop_constraint_actions(stmt);
+        if (status != MYLITE_OK) {
+            stmt->affected_rows = -1;
+            return status;
+        }
+    }
     if (alter_table_has_only_check_actions(stmt) && !stmt->alter_table.has_auto_increment) {
         return execute_alter_table_check_statement(stmt);
     }
@@ -516,6 +551,131 @@ static bool alter_table_has_table_rename_action(const mylite_stmt *stmt) {
         }
     }
     return false;
+}
+
+static bool alter_table_has_generic_drop_constraint_action(const mylite_stmt *stmt) {
+    for (size_t index = 0U; index < stmt->alter_table.action_count; ++index) {
+        const struct mylite_alter_table_action *action = &stmt->alter_table.actions[index];
+
+        if (action->kind == MYLITE_ALTER_TABLE_ACTION_DROP_CHECK && action->generic_constraint) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int resolve_alter_table_generic_drop_constraint_actions(mylite_stmt *stmt) {
+    const char *schema_name = NULL;
+    struct mylite_alter_table_model model = {0};
+    bool temporary = false;
+    int status = validate_alter_table_plan(stmt, &schema_name, &temporary);
+
+    if (status == MYLITE_OK) {
+        status = mylite_table_ddl_load_alter_table_model(
+            stmt->database,
+            schema_name,
+            stmt->alter_table.table_name,
+            temporary,
+            &model
+        );
+    }
+    for (size_t index = 0U; status == MYLITE_OK && index < stmt->alter_table.action_count;
+         ++index) {
+        struct mylite_alter_table_action *action = &stmt->alter_table.actions[index];
+
+        if (action->kind != MYLITE_ALTER_TABLE_ACTION_DROP_CHECK || !action->generic_constraint) {
+            continue;
+        }
+        status =
+            resolve_alter_table_generic_drop_constraint_action(stmt, &model, temporary, action);
+    }
+
+    mylite_table_ddl_alter_table_model_deinit(&model);
+    return status;
+}
+
+static int resolve_alter_table_generic_drop_constraint_action(
+    mylite_stmt *stmt,
+    const struct mylite_alter_table_model *model,
+    bool temporary,
+    struct mylite_alter_table_action *action
+) {
+    enum alter_table_generic_constraint_kind kind = ALTER_TABLE_GENERIC_CONSTRAINT_NONE;
+    struct mylite_create_table_check check = {0};
+    bool check_exists = false;
+    bool foreign_key_exists = false;
+    size_t index_constraint = model->index_count;
+    size_t match_count = 0U;
+    int status =
+        load_alter_table_check_constraint(stmt, temporary, action->old_name, &check, &check_exists);
+
+    mylite_table_ddl_create_table_check_deinit(&check);
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (check_exists) {
+        kind = ALTER_TABLE_GENERIC_CONSTRAINT_CHECK;
+        ++match_count;
+    }
+    if (!temporary) {
+        status = alter_table_foreign_key_constraint_exists(
+            stmt->database,
+            model->schema_name,
+            model->table_name,
+            action->old_name,
+            &foreign_key_exists
+        );
+        if (status != MYLITE_OK) {
+            return status;
+        }
+        if (foreign_key_exists) {
+            kind = ALTER_TABLE_GENERIC_CONSTRAINT_FOREIGN_KEY;
+            ++match_count;
+        }
+    }
+
+    index_constraint = alter_table_model_unique_constraint_index(model, action->old_name);
+    if (index_constraint < model->index_count) {
+        kind = ALTER_TABLE_GENERIC_CONSTRAINT_INDEX;
+        ++match_count;
+    }
+
+    if (match_count == 0U) {
+        return set_alter_table_missing_generic_constraint_error(stmt->database, action->old_name);
+    }
+    if (match_count > 1U) {
+        return set_alter_table_multiple_generic_constraint_error(stmt->database, action->old_name);
+    }
+
+    action->generic_constraint = false;
+    switch (kind) {
+    case ALTER_TABLE_GENERIC_CONSTRAINT_CHECK:
+        action->kind = MYLITE_ALTER_TABLE_ACTION_DROP_CHECK;
+        return MYLITE_OK;
+    case ALTER_TABLE_GENERIC_CONSTRAINT_FOREIGN_KEY:
+        action->kind = MYLITE_ALTER_TABLE_ACTION_DROP_FOREIGN_KEY;
+        return MYLITE_OK;
+    case ALTER_TABLE_GENERIC_CONSTRAINT_INDEX:
+        action->kind = mylite_ascii_case_equal(model->indexes[index_constraint].name, "PRIMARY")
+                           ? MYLITE_ALTER_TABLE_ACTION_DROP_PRIMARY_KEY
+                           : MYLITE_ALTER_TABLE_ACTION_DROP_INDEX;
+        return MYLITE_OK;
+    case ALTER_TABLE_GENERIC_CONSTRAINT_NONE:
+        break;
+    }
+    return MYLITE_MISUSE;
+}
+
+static size_t alter_table_model_unique_constraint_index(
+    const struct mylite_alter_table_model *model,
+    const char *constraint_name
+) {
+    size_t index = mylite_table_ddl_alter_table_index_index(model, constraint_name);
+
+    if (index == model->index_count || model->indexes[index].non_unique != 0) {
+        return model->index_count;
+    }
+    return index;
 }
 
 static bool alter_table_has_only_check_actions(const mylite_stmt *stmt) {
@@ -2318,6 +2478,33 @@ static int set_alter_table_missing_generic_constraint_error(
         status = mylite_diagnostics_append_error(
             database,
             MYLITE_MYSQL_ER_CONSTRAINT_NOT_FOUND,
+            message
+        );
+    }
+    sqlite3_free(message);
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_multiple_generic_constraint_error(
+    mylite_db *database,
+    const char *constraint_name
+) {
+    char *message = sqlite3_mprintf(
+        "Table has multiple constraints with the name '%q'. Please use constraint specific "
+        "'DROP' clause.",
+        constraint_name
+    );
+    int status = MYLITE_OK;
+
+    if (message == NULL) {
+        (void)mylite_diagnostics_set_error_message(database, "out of memory");
+        return MYLITE_NOMEM;
+    }
+    status = mylite_diagnostics_set_error_message(database, message);
+    if (status == MYLITE_OK) {
+        status = mylite_diagnostics_append_error(
+            database,
+            MYLITE_MYSQL_ER_MULTIPLE_CONSTRAINTS_WITH_NAME,
             message
         );
     }

@@ -207,6 +207,8 @@ enum {
     mysql_warning_check_constraint_unknown_column = 3820,
     mysql_warning_check_constraint_not_found = 3821,
     mysql_warning_check_constraint_duplicate_name = 3822,
+    mysql_warning_multiple_constraints_with_name = 3939,
+    mysql_warning_constraint_not_found = 3940,
     mysql_warning_default_value_generated = 3773,
     mysql_warning_user_lock_name_too_long = 4163,
     mysql_warning_illegal_regexp_argument = 3685,
@@ -4328,13 +4330,88 @@ static int test_information_schema_table_constraints_execution(void) {
 
     failures += execute_sql(
         database,
-        "ALTER TABLE table_constraints_fixture DROP PRIMARY KEY",
+        "ALTER TABLE table_constraints_fixture DROP CONSTRAINT code_renamed",
+        MYLITE_DONE
+    );
+    failures += expect_no_information_schema_table_constraints_row(
+        database,
+        "table_constraints_fixture",
+        "code_renamed"
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE table_constraints_fixture DROP CONSTRAINT idx_name",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "drop nonconstraint secondary index with drop constraint"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Constraint 'idx_name' does not exist.",
+        "drop nonconstraint secondary index with drop constraint error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_constraint_not_found,
+        "drop nonconstraint secondary index with drop constraint code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += execute_sql(
+        database,
+        "ALTER TABLE table_constraints_fixture DROP CONSTRAINT `PRIMARY`",
         MYLITE_DONE
     );
     failures += expect_no_information_schema_table_constraints_row(
         database,
         "table_constraints_fixture",
         "PRIMARY"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE constraint_name_collision ("
+        "id INT PRIMARY KEY,"
+        "code INT,"
+        "CONSTRAINT same UNIQUE (code),"
+        "CONSTRAINT same CHECK (code > 0))",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE constraint_name_collision DROP CONSTRAINT same",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "drop ambiguous check and unique constraint"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Table has multiple constraints with the name 'same'. Please use constraint specific "
+        "'DROP' clause.",
+        "drop ambiguous check and unique constraint error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_multiple_constraints_with_name,
+        "drop ambiguous check and unique constraint code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_information_schema_table_constraints_row(
+        database,
+        &(const struct expected_table_constraints_row){
+            .schema_name = "mylite_table_constraints",
+            .table_name = "constraint_name_collision",
+            .constraint_name = "same",
+            .constraint_type = "UNIQUE",
+        }
     );
 
     mylite_close(database);
@@ -43709,6 +43786,52 @@ static int test_create_table_base_execution(void) {
         fk_order_values,
         4,
         "foreign key key column usage default ordering"
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE ambiguous_foreign_key_constraint ("
+        "id INT PRIMARY KEY, parent_id INT, "
+        "CONSTRAINT fk_same FOREIGN KEY (parent_id) REFERENCES parent(id))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "ALTER TABLE ambiguous_foreign_key_constraint "
+        "ADD CONSTRAINT fk_same CHECK (parent_id > 0)",
+        MYLITE_DONE
+    );
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE ambiguous_foreign_key_constraint DROP CONSTRAINT fk_same",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_EXEC_ERROR,
+        "drop ambiguous check and foreign key constraint"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "Table has multiple constraints with the name 'fk_same'. Please use constraint specific "
+        "'DROP' clause.",
+        "drop ambiguous check and foreign key constraint error"
+    );
+    failures += expect_int(
+        (int)mylite_warning_code(database, 0),
+        mysql_warning_multiple_constraints_with_name,
+        "drop ambiguous check and foreign key constraint code"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_information_schema_table_constraints_row(
+        database,
+        &(const struct expected_table_constraints_row){
+            .schema_name = "mylite_ct11",
+            .table_name = "ambiguous_foreign_key_constraint",
+            .constraint_name = "fk_same",
+            .constraint_type = "FOREIGN KEY",
+        }
     );
     failures += execute_sql(
         database,

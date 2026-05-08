@@ -204,9 +204,9 @@ Verified diagnostics:
 `DROP PRIMARY KEY` removes the primary-key index and constraint metadata. It
 does not make primary-key columns nullable again; observed columns remained
 `IS_NULLABLE='NO'` after the primary key was dropped. Dropping a primary key
-that is required by an `AUTO_INCREMENT` column fails with error 1075. Future
-foreign-key support must also reject dropping a primary or unique parent index
-that is needed by a foreign-key relationship.
+that is required by an `AUTO_INCREMENT` column fails with error 1075. Dropping
+a primary or unique parent index that is needed by a foreign-key relationship
+fails with error 1553.
 
 ### Unique, ordinary, full-text, and spatial index addition
 
@@ -292,8 +292,11 @@ enforced.
 
 `ALTER CHECK symbol ENFORCED` validates existing rows before changing the
 constraint to enforced. `ALTER CHECK symbol NOT ENFORCED` is metadata-only for
-the verified simple shapes. `DROP CHECK symbol` and `DROP CONSTRAINT symbol`
-remove CHECK metadata. Missing CHECK names fail with error 3821.
+the verified simple shapes. `DROP CHECK symbol` removes CHECK metadata. Missing
+CHECK names fail with error 3821. `DROP CONSTRAINT symbol` resolves supported
+CHECK, foreign-key, primary-key, and unique-key constraint names. It fails with
+error 3940 when the symbol is not a constraint name, and with error 3939 when
+different supported constraint classes on the table share the same symbol.
 
 CHECK metadata appears in `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` and
 `INFORMATION_SCHEMA.TABLE_CONSTRAINTS`, including the enforcement flag in
@@ -781,6 +784,8 @@ deferred surfaces:
 | CHECK violation | 3819 / `HY000` |
 | missing CHECK constraint | 3821 / `HY000` |
 | duplicate CHECK constraint name | 3822 / `HY000` |
+| ambiguous generic `DROP CONSTRAINT` name | 3939 / `HY000` |
+| missing generic `DROP CONSTRAINT` name | 3940 / `HY000` |
 | foreign-key existing-row violation | 1452 / `23000` |
 | duplicate-index warning | warning 1831 |
 | HASH index fallback note | note 3502 |
@@ -853,6 +858,10 @@ fixtures should create and drop isolated schemas.
 | `ALTER CHECK chk_a_pos_ne NOT ENFORCED` | Succeeds for an existing CHECK. |
 | `DROP CHECK chk_a_pos_ne` | Succeeds; CHECK metadata disappears. |
 | `DROP CONSTRAINT chk_valid_chk_1` for a CHECK | Succeeds; CHECK metadata disappears. |
+| `DROP CONSTRAINT uq_a` for a unique key | Succeeds; unique-key metadata disappears. |
+| `DROP CONSTRAINT PRIMARY` for a primary key | Succeeds; primary-key metadata disappears. |
+| `DROP CONSTRAINT idx_a` for a nonunique index | Error 3940. |
+| `DROP CONSTRAINT same` when CHECK and UNIQUE/FK constraints share the name | Error 3939; no constraint metadata changes. |
 | `DROP CHECK missing_chk` | Error 3821. |
 | duplicate CHECK name in the same schema | Error 3822. |
 | enforced CHECK violation on `INSERT` | Error 3819; row is not inserted. |
@@ -872,6 +881,7 @@ fixtures should create and drop isolated schemas.
 | adding the same shape while `foreign_key_checks=0` | MySQL accepts without scanning old rows; future bad writes fail after checks are re-enabled. |
 | `DROP INDEX fk_named_idx` while the FK depends on it | Error 1553; FK and index remain. |
 | `DROP FOREIGN KEY child_named_ibfk_1` | Succeeds; supporting child index remains. |
+| `DROP CONSTRAINT child_named_ibfk_1` for a foreign key | Succeeds; supporting child index remains. |
 | `DROP FOREIGN KEY missing_fk` | Error 1091. |
 
 ### Mixed actions and atomicity

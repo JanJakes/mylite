@@ -16,7 +16,7 @@ MySQL SHOW statement result shapes, filters, privileges, and compatibility diagn
 | `SHOW CREATE EVENT` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE FUNCTION` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE PROCEDURE` | ❌ | Result shape, filters, privileges |
-| `SHOW CREATE TABLE` | ❌ | Result shape, filters, privileges |
+| `SHOW CREATE TABLE` | 🟡 | Limited descriptor-driven MySQL-style DDL for persistent base tables with current integer-family descriptors and nullability; fixed InnoDB/utf8mb4 suffix; no views, temporary tables, indexes, defaults, constraints, generated columns, auto-increment, privileges, or `sql_quote_show_create` |
 | `SHOW CREATE TRIGGER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE USER` | ❌ | Result shape, filters, privileges |
 | `SHOW CREATE VIEW` | ❌ | Result shape, filters, privileges |

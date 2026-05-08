@@ -260,6 +260,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_show_like_filters_test)
 
+  add_executable(mylite_runtime_show_create_table_test
+    tests/runtime_show_create_table_test.c
+  )
+  target_link_libraries(mylite_runtime_show_create_table_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_show_create_table_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_show_create_table_test)
+
   add_executable(mylite_runtime_explain_table_introspection_test
     tests/runtime_explain_table_introspection_test.c
   )
@@ -453,6 +465,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.show_like_filters
     COMMAND mylite_runtime_show_like_filters_test
+  )
+  add_test(
+    NAME libmylite.runtime.show_create_table
+    COMMAND mylite_runtime_show_create_table_test
   )
   add_test(
     NAME libmylite.runtime.explain_table_introspection

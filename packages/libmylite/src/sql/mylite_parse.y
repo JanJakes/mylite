@@ -77,6 +77,9 @@ statement(A) ::= show_tables_statement(B). {
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
+statement(A) ::= show_create_table_statement(B). {
+    A = B;
+}
 statement(A) ::= show_databases_statement(B). {
     A = B;
 }
@@ -184,6 +187,10 @@ show_databases_statement(A) ::= SHOW(S) DATABASES(D) show_like_clause_opt(L). {
 }
 show_databases_statement(A) ::= SHOW(S) SCHEMAS(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_databases_statement(state, S, D, L);
+}
+
+show_create_table_statement(A) ::= SHOW(S) CREATE TABLE table_name(T). {
+    A = mylite_sql_parser_make_show_create_table_statement(state, S, T);
 }
 
 describe_table_statement(A) ::= DESCRIBE(D) table_name(T). {

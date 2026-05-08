@@ -45,6 +45,7 @@ enum {
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
     show_columns_result_column_count = 6,
+    show_create_table_result_column_count = 2,
 };
 
 struct table_name_resolution {
@@ -157,6 +158,13 @@ struct planned_count {
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
     struct planned_select_predicate predicate;
+};
+
+struct planned_show_create_table {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
 };
 
 struct planned_delete {
@@ -304,6 +312,11 @@ static int execute_show_tables_statement(
     mylite_result **out_result
 );
 static int execute_show_columns_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_create_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -485,6 +498,34 @@ static int copy_source_span_text(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
     char **out_text
+);
+
+static int plan_show_create_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_show_create_table *out_plan
+);
+static void planned_show_create_table_deinit(struct planned_show_create_table *plan);
+static int execute_show_create_table_from_plan(
+    struct mylite_db *database,
+    const struct planned_show_create_table *plan,
+    mylite_result *result
+);
+static int build_show_create_table_sql(
+    struct mylite_db *database,
+    const struct planned_show_create_table *plan,
+    char **out_sql
+);
+static int append_show_create_table_column_definition(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_last_column
+);
+static int show_create_table_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char **out_type_text
 );
 
 static int plan_delete(
@@ -957,6 +998,10 @@ static void dynamic_string_deinit(struct dynamic_string *string);
 static int dynamic_string_append(struct dynamic_string *string, const char *text);
 static int dynamic_string_append_char(struct dynamic_string *string, char byte);
 static int dynamic_string_append_quoted_identifier(struct dynamic_string *string, const char *text);
+static int dynamic_string_append_mysql_quoted_identifier(
+    struct dynamic_string *string,
+    const char *text
+);
 static int dynamic_string_reserve(struct dynamic_string *string, size_t required_capacity);
 static char *dynamic_string_take(struct dynamic_string *string);
 
@@ -1145,6 +1190,8 @@ static int execute_parsed_statement(
         return execute_show_tables_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
         return execute_show_columns_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
+        return execute_show_create_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return execute_show_databases_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SCRIPT:
@@ -1723,6 +1770,33 @@ static int execute_show_columns_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_create_table_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_show_create_table plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_show_create_table(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = execute_show_create_table_from_plan(database, &plan, result);
+    }
+    planned_show_create_table_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_databases_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1777,6 +1851,199 @@ static int execute_show_databases_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int plan_show_create_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_show_create_table *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_show_create_table){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &out_plan->target, &out_plan->table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &out_plan->columns,
+            &out_plan->column_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_show_create_table_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static void planned_show_create_table_deinit(struct planned_show_create_table *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->columns);
+    *plan = (struct planned_show_create_table){0};
+}
+
+static int execute_show_create_table_from_plan(
+    struct mylite_db *database,
+    const struct planned_show_create_table *plan,
+    mylite_result *result
+) {
+    static const char *const result_columns[show_create_table_result_column_count] = {
+        "Table",
+        "Create Table",
+    };
+    char *create_sql = NULL;
+    const char *values[show_create_table_result_column_count] = {NULL, NULL};
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_create_table_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_show_create_table_sql(database, plan, &create_sql);
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        values[0] = plan->table.name;
+        values[1] = create_sql;
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    free(create_sql);
+    return rc;
+}
+
+static int build_show_create_table_sql(
+    struct mylite_db *database,
+    const struct planned_show_create_table *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "CREATE TABLE ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(&string, plan->table.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " (\n");
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
+         ++column_index) {
+        rc = append_show_create_table_column_definition(
+            database,
+            &string,
+            &plan->columns[column_index],
+            column_index + 1U == plan->column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(
+            &string,
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_show_create_table_column_definition(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_last_column
+) {
+    const char *type_text = NULL;
+    int rc = show_create_table_type_text(database, column->logical_type, &type_text);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, "  ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_mysql_quoted_identifier(string, column->name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ' ');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, type_text);
+    }
+    if (rc == MYLITE_OK) {
+        if (column->is_nullable) {
+            rc = dynamic_string_append(string, " DEFAULT NULL");
+        } else {
+            rc = dynamic_string_append(string, " NOT NULL");
+        }
+    }
+    if (rc == MYLITE_OK && !is_last_column) {
+        rc = dynamic_string_append_char(string, ',');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '\n');
+    }
+
+    return rc;
+}
+
+static int show_create_table_type_text(
+    struct mylite_db *database,
+    const char *logical_type,
+    const char **out_type_text
+) {
+    if (logical_type == NULL || out_type_text == NULL) {
+        set_runtime_error(database, "invalid column descriptor");
+        return MYLITE_ERROR;
+    }
+    if (strcmp(logical_type, "INT") == 0 || strcmp(logical_type, "INTEGER") == 0) {
+        *out_type_text = "int";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "INT UNSIGNED") == 0 ||
+        strcmp(logical_type, "INTEGER UNSIGNED") == 0) {
+        *out_type_text = "int unsigned";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "BIGINT") == 0) {
+        *out_type_text = "bigint";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "BIGINT UNSIGNED") == 0) {
+        *out_type_text = "bigint unsigned";
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(database, "SHOW CREATE TABLE supports only integer column descriptors");
+    return MYLITE_ERROR;
+}
+
 static int64_t row_count_for_completed_statement(
     const struct mylite_sql_ast_node *statement,
     const mylite_result *result
@@ -1805,6 +2072,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
     case MYLITE_SQL_AST_SHOW_COLUMNS_STATEMENT:
+    case MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:
         return -1;
     case MYLITE_SQL_AST_SCRIPT:
@@ -6809,6 +7077,26 @@ static int dynamic_string_append_quoted_identifier(
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, '"');
+    }
+
+    return rc;
+}
+
+static int dynamic_string_append_mysql_quoted_identifier(
+    struct dynamic_string *string,
+    const char *text
+) {
+    int rc = dynamic_string_append_char(string, '`');
+
+    for (size_t index = 0U; rc == MYLITE_OK && text[index] != '\0'; ++index) {
+        if (text[index] == '`') {
+            rc = dynamic_string_append(string, "``");
+        } else {
+            rc = dynamic_string_append_char(string, text[index]);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '`');
     }
 
     return rc;

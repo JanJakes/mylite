@@ -1393,6 +1393,14 @@ static int test_show_columns_introspection_statements(void) {
     failures += expect_span_text(child_at(statement, 0U), "app.numbers", "explain target");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SHOW CREATE TABLE app.numbers;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SHOW_CREATE_TABLE_STATEMENT, "show create table");
+    failures += expect_child_count(statement, 1U, "show create child count");
+    failures += expect_span_text(child_at(statement, 0U), "app.numbers", "show create target");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("CREATE TABLE columns (fields INT);", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "columns table name");
@@ -1863,6 +1871,22 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW FULL COLUMNS FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE TABLE t LIKE 't';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SHOW CREATE TABLE t WHERE Table = 't';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE TABLE t FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW CREATE TEMPORARY TABLE t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL CREATE TABLE t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW EXTENDED COLUMNS FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

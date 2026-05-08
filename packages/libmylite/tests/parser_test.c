@@ -20,6 +20,7 @@ static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_show_columns_introspection_statements(void);
 static int test_show_triggers_empty_introspection_statements(void);
+static int test_show_events_empty_introspection_statements(void);
 static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
@@ -103,6 +104,7 @@ int main(void) {
     failures += test_table_lifecycle_statements();
     failures += test_show_columns_introspection_statements();
     failures += test_show_triggers_empty_introspection_statements();
+    failures += test_show_events_empty_introspection_statements();
     failures += test_show_index_empty_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
@@ -1858,6 +1860,75 @@ static int test_show_triggers_empty_introspection_statements(void) {
 
     failures += parse_sql(
         "SHOW TRIGGERS FROM app LIKE 'account' WHERE `Table` = 'account';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_events_empty_introspection_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SHOW EVENTS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT, "show events");
+    failures += expect_child_count(statement, 0U, "show events child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EVENTS FROM app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT, "show events from");
+    failures += expect_child_count(statement, 1U, "show events from child count");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show events schema");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EVENTS IN app LIKE 'daily\\_%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT, "show events in like");
+    failures += expect_child_count(statement, 2U, "show events in like child count");
+    failures += expect_span_text(child_at(statement, 0U), "app", "show events like schema");
+    failures +=
+        expect_literal(child_at(statement, 1U), MYLITE_SQL_AST_LITERAL_STRING, "events like");
+    failures += expect_span_text(child_at(statement, 1U), "'daily\\_%'", "events like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EVENTS LIKE 'daily%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT, "show events like");
+    failures += expect_child_count(statement, 1U, "show events like child count");
+    failures +=
+        expect_literal(child_at(statement, 0U), MYLITE_SQL_AST_LITERAL_STRING, "events bare like");
+    failures += expect_span_text(child_at(statement, 0U), "'daily%'", "events bare like pattern");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE events (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "events table");
+    failures += expect_span_text(child_at(statement, 0U), "events", "events identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW FULL EVENTS FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EXTENDED EVENTS FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SHOW EVENT FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW EVENTS FROM app WHERE Name = 'daily_event';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SHOW EVENTS FROM app LIKE 'daily%' WHERE Name = 'daily_event';",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

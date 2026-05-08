@@ -140,6 +140,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_triggers_statement(
     struct mylite_sql_ast_node *schema_name,
     struct mylite_sql_ast_node *like_pattern
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_events_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token events_token,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *like_pattern
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_columns_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token start_token,

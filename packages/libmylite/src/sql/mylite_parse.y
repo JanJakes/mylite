@@ -86,6 +86,9 @@ statement(A) ::= show_collation_statement(B). {
 statement(A) ::= show_triggers_statement(B). {
     A = B;
 }
+statement(A) ::= show_events_statement(B). {
+    A = B;
+}
 statement(A) ::= show_columns_statement(B). {
     A = B;
 }
@@ -252,6 +255,16 @@ show_triggers_statement(A) ::= SHOW(S) FULL TRIGGERS(T) FROM identifier(D) show_
 }
 show_triggers_statement(A) ::= SHOW(S) FULL TRIGGERS(T) IN identifier(D) show_like_clause_opt(L). {
     A = mylite_sql_parser_make_show_triggers_statement(state, S, T, D, L);
+}
+
+show_events_statement(A) ::= SHOW(S) EVENTS(E) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_events_statement(state, S, E, NULL, L);
+}
+show_events_statement(A) ::= SHOW(S) EVENTS(E) FROM identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_events_statement(state, S, E, D, L);
+}
+show_events_statement(A) ::= SHOW(S) EVENTS(E) IN identifier(D) show_like_clause_opt(L). {
+    A = mylite_sql_parser_make_show_events_statement(state, S, E, D, L);
 }
 
 show_columns_statement(A) ::= SHOW(S) COLUMNS FROM table_name(T) show_like_clause_opt(L). {
@@ -822,6 +835,9 @@ identifier(A) ::= FULL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TRIGGERS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= EVENTS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= ENGINE(T). {

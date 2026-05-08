@@ -299,6 +299,8 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION = 6,
     SESSION_SYSTEM_VARIABLE_VERSION = 7,
     SESSION_SYSTEM_VARIABLE_VERSION_COMMENT = 8,
+    SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER = 9,
+    SESSION_SYSTEM_VARIABLE_COLLATION_SERVER = 10,
 };
 
 struct system_variable_component {
@@ -6055,6 +6057,12 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
         out_cell->value = database->session.collation_connection;
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER:
+        out_cell->value = "utf8mb4";
+        return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_COLLATION_SERVER:
+        out_cell->value = "utf8mb4_0900_ai_ci";
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_VERSION:
         out_cell->value = mylite_version();
         return MYLITE_OK;
@@ -6168,6 +6176,8 @@ static bool resolve_system_variable_kind(
         {"character_set_connection", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION},
         {"character_set_results", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS},
         {"collation_connection", SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION},
+        {"character_set_server", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER},
+        {"collation_server", SESSION_SYSTEM_VARIABLE_COLLATION_SERVER},
         {"version", SESSION_SYSTEM_VARIABLE_VERSION},
         {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT},
     };
@@ -6188,6 +6198,8 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_CONNECTION:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_RESULTS:
     case SESSION_SYSTEM_VARIABLE_COLLATION_CONNECTION:
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER:
+    case SESSION_SYSTEM_VARIABLE_COLLATION_SERVER:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
         return true;

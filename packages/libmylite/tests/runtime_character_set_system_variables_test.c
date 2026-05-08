@@ -18,8 +18,11 @@ enum {
     path_suffix_capacity = 16,
     charset_variable_column_count = 6,
     scoped_variable_column_count = 4,
-    mixed_variable_column_count = 7,
-    diagnostics_variable_column_count = 4,
+    server_variable_column_count = 10,
+    mixed_variable_column_count = 11,
+    diagnostics_variable_column_count = 5,
+    reopen_variable_column_count = 4,
+    database_variable_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
 };
@@ -110,25 +113,64 @@ static int test_character_set_system_variable_values_and_persistence(void) {
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
     };
+    static const char *const server_columns[] = {
+        "@@character_set_server",
+        "@@global.character_set_server",
+        "@@session.character_set_server",
+        "@@local.character_set_server",
+        "@@collation_server",
+        "@@global.collation_server",
+        "@@session.collation_server",
+        "@@local.collation_server",
+        "@@warning_count",
+        "ROW_COUNT()",
+    };
+    static const char *const server_values[] = {
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_ai_ci",
+        "0",
+        "-1",
+    };
     static const char *const warning_columns[] = {
-        "@@character_set_client",
+        "@@character_set_server",
+        "@@collation_server",
         "@@warning_count",
         "@@error_count",
         "ROW_COUNT()",
     };
-    static const char *const warning_values[] = {"utf8mb4", "1", "0", "-1"};
+    static const char *const warning_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci", "1", "0", "-1"};
     static const char *const error_columns[] = {
-        "@@character_set_connection",
+        "@@character_set_server",
+        "@@collation_server",
         "@@warning_count",
         "@@error_count",
         "ROW_COUNT()",
     };
-    static const char *const error_values[] = {"utf8mb4", "1", "1", "-1"};
+    static const char *const error_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci", "1", "1", "-1"};
+    static const char *const database_columns[] = {
+        "@@character_set_server",
+        "@@collation_server",
+        "DATABASE()",
+    };
+    static const char *const database_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci", "app"};
     static const char *const reopen_columns[] = {
         "@@character_set_client",
         "@@collation_connection",
+        "@@character_set_server",
+        "@@collation_server",
     };
-    static const char *const reopen_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci"};
+    static const char *const reopen_values[] = {
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -186,10 +228,31 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_server, @@global.character_set_server, "
+        "@@session.character_set_server, @@local.character_set_server, "
+        "@@collation_server, @@global.collation_server, @@session.collation_server, "
+        "@@local.collation_server, @@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = server_columns,
+            .values = server_values,
+            .count = server_variable_column_count,
+            .context = "server charset variable values",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
     failures += execute_ok(
         database,
-        "SELECT @@character_set_client, @@warning_count, @@error_count, ROW_COUNT()",
+        "SELECT @@character_set_server, @@collation_server, @@warning_count, @@error_count, "
+        "ROW_COUNT()",
         &result
     );
     failures += expect_scalar_result(
@@ -216,7 +279,8 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     );
     failures += execute_ok(
         database,
-        "SELECT @@character_set_connection, @@warning_count, @@error_count, ROW_COUNT()",
+        "SELECT @@character_set_server, @@collation_server, @@warning_count, @@error_count, "
+        "ROW_COUNT()",
         &result
     );
     failures += expect_scalar_result(
@@ -247,6 +311,23 @@ static int test_character_set_system_variable_values_and_persistence(void) {
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_server, @@collation_server, DATABASE()",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = database_columns,
+            .values = database_values,
+            .count = database_variable_column_count,
+            .context = "server charset variables with selected database",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_statement_ok(database, "CREATE TABLE numbers (id INT NOT NULL, value INT)");
     failures += execute_statement_ok(database, "INSERT INTO numbers VALUES (1, 2)");
 
@@ -256,14 +337,18 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     failures +=
         expect_int(mylite_open(path, &database), MYLITE_OK, "reopen charset variables file");
     failures += execute_statement_ok(database, "USE app");
-    failures +=
-        execute_ok(database, "SELECT @@character_set_client, @@collation_connection", &result);
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_client, @@collation_connection, @@character_set_server, "
+        "@@collation_server",
+        &result
+    );
     failures += expect_scalar_result(
         result,
         (struct expected_scalar_result){
             .columns = reopen_columns,
             .values = reopen_values,
-            .count = 2U,
+            .count = reopen_variable_column_count,
             .context = "reopened charset variable values",
         }
     );
@@ -299,6 +384,10 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
         "@@session.`character_set_client`",
         "@@`character_set_results`",
         "@@global.`collation_connection`",
+        "@@CHARACTER_SET_SERVER",
+        "@@Session.Collation_Server",
+        "@@session.`character_set_server`",
+        "@@global.`collation_server`",
     };
     static const char *const mixed_values[] = {
         "utf8mb4",
@@ -306,6 +395,10 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
         "utf8mb4",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
         "utf8mb4",
         "utf8mb4_0900_ai_ci",
     };
@@ -320,7 +413,9 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
         "SELECT @@CHARACTER_SET_CLIENT, @@Session.Character_Set_Connection, "
         "@@LOCAL.Character_Set_Results, @@GLOBAL.Collation_Connection, "
         "@@session.`character_set_client`, @@`character_set_results`, "
-        "@@global.`collation_connection`",
+        "@@global.`collation_connection`, @@CHARACTER_SET_SERVER, "
+        "@@Session.Collation_Server, @@session.`character_set_server`, "
+        "@@global.`collation_server`",
         &result
     );
     failures += expect_scalar_result(
@@ -373,6 +468,24 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
     );
     failures += execute_error(
         database,
+        "SELECT @@no_such_server_charset_variable",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_system_variable,
+            .sqlstate = "HY000",
+            .message_part = "Unknown system variable 'no_such_server_charset_variable'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@global.no_such_server_charset_variable",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_system_variable,
+            .sqlstate = "HY000",
+            .message_part = "Unknown system variable 'no_such_server_charset_variable'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT @@`session`.character_set_client",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -382,7 +495,7 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
     );
     failures += execute_error(
         database,
-        "SELECT @@character_set_client + 1",
+        "SELECT @@character_set_server + 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -398,10 +511,24 @@ static int test_independent_character_set_system_variable_handles(void) {
     static const char *const columns[] = {
         "@@character_set_client",
         "@@collation_connection",
+        "@@character_set_server",
+        "@@collation_server",
         "@@warning_count",
     };
-    static const char *const first_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci", "1"};
-    static const char *const second_values[] = {"utf8mb4", "utf8mb4_0900_ai_ci", "0"};
+    static const char *const first_values[] = {
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "1",
+    };
+    static const char *const second_values[] = {
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "0",
+    };
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     mylite_result *result = NULL;
@@ -413,7 +540,8 @@ static int test_independent_character_set_system_variable_handles(void) {
 
     failures += execute_ok(
         first,
-        "SELECT @@character_set_client, @@collation_connection, @@warning_count",
+        "SELECT @@character_set_client, @@collation_connection, @@character_set_server, "
+        "@@collation_server, @@warning_count",
         &result
     );
     failures += expect_scalar_result(
@@ -421,7 +549,7 @@ static int test_independent_character_set_system_variable_handles(void) {
         (struct expected_scalar_result){
             .columns = columns,
             .values = first_values,
-            .count = 3U,
+            .count = diagnostics_variable_column_count,
             .context = "first handle charset variables",
         }
     );
@@ -430,7 +558,8 @@ static int test_independent_character_set_system_variable_handles(void) {
 
     failures += execute_ok(
         second,
-        "SELECT @@character_set_client, @@collation_connection, @@warning_count",
+        "SELECT @@character_set_client, @@collation_connection, @@character_set_server, "
+        "@@collation_server, @@warning_count",
         &result
     );
     failures += expect_scalar_result(
@@ -438,7 +567,7 @@ static int test_independent_character_set_system_variable_handles(void) {
         (struct expected_scalar_result){
             .columns = columns,
             .values = second_values,
-            .count = 3U,
+            .count = diagnostics_variable_column_count,
             .context = "second handle charset variables",
         }
     );

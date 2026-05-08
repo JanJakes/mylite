@@ -305,6 +305,7 @@ enum session_system_variable_kind {
     SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE = 12,
     SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE = 13,
     SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM = 14,
+    SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM = 15,
 };
 
 struct system_variable_component {
@@ -6079,6 +6080,9 @@ static int system_variable_value(
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
         out_cell->value = "utf8mb3";
         return MYLITE_OK;
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
+        out_cell->value = "binary";
+        return MYLITE_OK;
     case SESSION_SYSTEM_VARIABLE_VERSION:
         out_cell->value = mylite_version();
         return MYLITE_OK;
@@ -6198,6 +6202,7 @@ static bool resolve_system_variable_kind(
         {"collation_database", SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE},
         {"default_storage_engine", SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE},
         {"character_set_system", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM},
+        {"character_set_filesystem", SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM},
         {"version", SESSION_SYSTEM_VARIABLE_VERSION},
         {"version_comment", SESSION_SYSTEM_VARIABLE_VERSION_COMMENT},
     };
@@ -6224,6 +6229,7 @@ static bool system_variable_kind_allows_global_scope(enum session_system_variabl
     case SESSION_SYSTEM_VARIABLE_COLLATION_DATABASE:
     case SESSION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
     case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
+    case SESSION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
     case SESSION_SYSTEM_VARIABLE_VERSION:
     case SESSION_SYSTEM_VARIABLE_VERSION_COMMENT:
         return true;

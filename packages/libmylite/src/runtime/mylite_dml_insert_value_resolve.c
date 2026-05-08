@@ -3,8 +3,13 @@
 #include "mylite_connection.h"
 #include "mylite_dml_insert_default.h"
 #include "mylite_dml_insert_diagnostics.h"
+#include "mylite_span.h"
 
+#include <ctype.h>
+#include <errno.h>
+#include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 static int resolve_insert_column_list_row_values(
     mylite_db *database,
@@ -89,6 +94,10 @@ static bool insert_plan_errors_on_omitted_no_default(
     const mylite_db *database,
     const struct mylite_insert_values_plan *plan
 );
+
+static bool insert_column_is_string_storage_target(const struct mylite_insert_table_column *column);
+
+static bool insert_real_literal_to_double(const char *text, size_t text_length, double *out_value);
 
 static size_t insert_row_target_column_count(
     const struct mylite_insert_values_plan *plan,
@@ -424,6 +433,33 @@ static int resolve_insert_explicit_value(
         if (column->auto_increment) {
             return mylite_dml_insert_set_unsupported_expression_error(database);
         }
+        if (insert_column_is_string_storage_target(column)) {
+            double real_value = 0.0;
+
+            if (!insert_real_literal_to_double(value->text, value->text_length, &real_value)) {
+                return mylite_dml_resolve_insert_text_value(
+                    database,
+                    column,
+                    value->text,
+                    value->text_length,
+                    statement_row_count,
+                    state,
+                    (plan != NULL && plan->ignore) != 0,
+                    out_value
+                );
+            }
+            *out_value = (struct mylite_insert_bound_value){
+                .kind = MYLITE_INSERT_BOUND_REAL,
+                .real_value = real_value,
+            };
+            return mylite_dml_coerce_insert_string_value(
+                database,
+                column,
+                statement_row_count,
+                (plan != NULL && plan->ignore) != 0,
+                out_value
+            );
+        }
         return mylite_dml_resolve_insert_text_value(
             database,
             column,
@@ -493,6 +529,57 @@ static bool insert_plan_errors_on_omitted_no_default(
     const struct mylite_insert_values_plan *plan
 ) {
     return (plan != NULL && !plan->ignore && mylite_connection_sql_mode_is_strict(database)) != 0;
+}
+
+static bool insert_column_is_string_storage_target(
+    const struct mylite_insert_table_column *column
+) {
+    if (column == NULL || column->data_type == NULL || !column->has_character_maximum_length) {
+        return false;
+    }
+    return mylite_ascii_case_equal(column->data_type, "char") ||
+           mylite_ascii_case_equal(column->data_type, "varchar") ||
+           mylite_ascii_case_equal(column->data_type, "binary") ||
+           mylite_ascii_case_equal(column->data_type, "varbinary") ||
+           mylite_ascii_case_equal(column->data_type, "tinytext") ||
+           mylite_ascii_case_equal(column->data_type, "text") ||
+           mylite_ascii_case_equal(column->data_type, "mediumtext") ||
+           mylite_ascii_case_equal(column->data_type, "tinyblob") ||
+           mylite_ascii_case_equal(column->data_type, "blob") ||
+           mylite_ascii_case_equal(column->data_type, "mediumblob");
+}
+
+static bool insert_real_literal_to_double(const char *text, size_t text_length, double *out_value) {
+    char *copy = NULL;
+    char *end = NULL;
+    size_t end_offset = 0U;
+    double value = 0.0;
+
+    if (text == NULL || text_length == 0U || out_value == NULL) {
+        return false;
+    }
+    copy = mylite_copy_span_text(text, text_length);
+    if (copy == NULL) {
+        return false;
+    }
+    errno = 0;
+    value = strtod(copy, &end);
+    if ((errno != 0 && (errno != ERANGE || value == HUGE_VAL || value == -HUGE_VAL)) ||
+        end == copy) {
+        free(copy);
+        return false;
+    }
+    end_offset = (size_t)(end - copy);
+    while (end_offset < text_length && isspace((unsigned char)copy[end_offset])) {
+        ++end_offset;
+    }
+    if (end_offset != text_length) {
+        free(copy);
+        return false;
+    }
+    *out_value = value;
+    free(copy);
+    return true;
 }
 
 static size_t insert_row_target_column_count(

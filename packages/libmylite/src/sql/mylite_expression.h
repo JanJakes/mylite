@@ -187,6 +187,8 @@ int mylite_expression_value_truth(
     struct mylite_expression_warnings *warnings,
     int *out_truth
 );
+int mylite_format_compact_real_text(double value, char *buffer, size_t buffer_size);
+int mylite_format_storage_real_text(double value, char *buffer, size_t buffer_size);
 bool mylite_expression_is_supported_no_table(const struct mylite_sql_ast_node *expression);
 bool mylite_expression_is_cacheable_no_table(const struct mylite_sql_ast_node *expression);
 bool mylite_expression_is_supported_function_call(const struct mylite_sql_ast_node *expression);

@@ -4075,8 +4075,6 @@ static int value_to_string_with_length(
     size_t *out_length
 );
 
-static int format_compact_real_text(double value, char *buffer, size_t buffer_size);
-
 static bool compact_real_text_round_trips(double value, const char *text);
 
 static void normalize_real_exponent_text(char *text);
@@ -4369,7 +4367,7 @@ char *mylite_expression_value_to_text(const struct mylite_expression_value *valu
                    : copy_span_text(buffer, (size_t)length);
     }
     int length = value->compact_real_text
-                     ? format_compact_real_text(value->real_value, buffer, sizeof(buffer))
+                     ? mylite_format_compact_real_text(value->real_value, buffer, sizeof(buffer))
                      : snprintf(buffer, sizeof(buffer), "%.4f", value->real_value);
     return length <= 0 || (size_t)length >= sizeof(buffer) ? NULL
                                                            : copy_span_text(buffer, (size_t)length);
@@ -7707,7 +7705,7 @@ static int json_argument_to_text(
         return 0;
     }
     if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
-        length = format_compact_real_text(value->real_value, buffer, sizeof(buffer));
+        length = mylite_format_compact_real_text(value->real_value, buffer, sizeof(buffer));
         if (length <= 0 || (size_t)length >= sizeof(buffer)) {
             return -1;
         }
@@ -11185,7 +11183,7 @@ static size_t sec_to_time_warning_text(
     } else if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_UINT64) {
         length = snprintf(buffer, buffer_size, "%llu", (unsigned long long)value->uint64_value);
     } else {
-        length = format_compact_real_text(fallback, buffer, buffer_size);
+        length = mylite_format_compact_real_text(fallback, buffer, buffer_size);
     }
     return length <= 0 || (size_t)length >= buffer_size ? 0U : (size_t)length;
 }
@@ -11330,7 +11328,7 @@ static int time_value_from_untyped_value(
                 out_valid
             );
         }
-        int length = format_compact_real_text(value->real_value, buffer, sizeof(buffer));
+        int length = mylite_format_compact_real_text(value->real_value, buffer, sizeof(buffer));
 
         if (length <= 0 || (size_t)length >= sizeof(buffer)) {
             return -1;
@@ -11368,7 +11366,7 @@ static int time_value_from_approximate_real(
 ) {
     char parse_buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
     char warning_buffer[MYLITE_EXPRESSION_TEXT_BUFFER_SIZE];
-    int warning_length = format_compact_real_text(
+    int warning_length = mylite_format_compact_real_text(
         value == NULL ? 0.0 : value->real_value,
         warning_buffer,
         sizeof(warning_buffer)
@@ -12531,7 +12529,7 @@ static int temporal_date_source_from_value(
         );
         break;
     case MYLITE_EXPRESSION_VALUE_REAL: {
-        int original_length = format_compact_real_text(
+        int original_length = mylite_format_compact_real_text(
             value->real_value,
             out_source->warning_buffer,
             sizeof(out_source->warning_buffer)
@@ -25071,7 +25069,7 @@ static int value_to_string_with_length(
     return 0;
 }
 
-static int format_compact_real_text(double value, char *buffer, size_t buffer_size) {
+int mylite_format_compact_real_text(double value, char *buffer, size_t buffer_size) {
     enum {
         min_double_precision = 15,
         max_double_precision = 17,
@@ -25101,6 +25099,38 @@ static int format_compact_real_text(double value, char *buffer, size_t buffer_si
     }
     normalize_real_exponent_text(buffer);
     return (int)strlen(buffer);
+}
+
+int mylite_format_storage_real_text(double value, char *buffer, size_t buffer_size) {
+    enum {
+        min_short_precision = 1,
+        min_compact_precision = 15,
+    };
+
+    char candidate[64];
+    int length = mylite_format_compact_real_text(value, buffer, buffer_size);
+
+    if (length <= 0 || (size_t)length >= buffer_size || strchr(buffer, 'e') == NULL) {
+        return length;
+    }
+    for (int precision = min_short_precision; precision < min_compact_precision; ++precision) {
+        int candidate_length = snprintf(candidate, sizeof(candidate), "%.*g", precision, value);
+
+        if (candidate_length <= 0 || (size_t)candidate_length >= sizeof(candidate)) {
+            return candidate_length;
+        }
+        normalize_real_exponent_text(candidate);
+        if (compact_real_text_round_trips(value, candidate)) {
+            size_t normalized_length = strlen(candidate);
+
+            if (normalized_length >= buffer_size) {
+                return (int)normalized_length;
+            }
+            memcpy(buffer, candidate, normalized_length + 1U);
+            return (int)normalized_length;
+        }
+    }
+    return length;
 }
 
 static bool compact_real_text_round_trips(double value, const char *text) {

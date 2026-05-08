@@ -28,9 +28,17 @@ It also covers the first TEXT/BLOB-family runtime edges:
   columns for `INSERT ... VALUES`, `INSERT IGNORE`, non-strict inserts, and
   single-table `UPDATE IGNORE`
 
+It also covers MySQL-shaped conversion text for approximate numeric values
+stored into `VARCHAR` and `TEXT` columns through `INSERT ... VALUES` and
+single-table `UPDATE`. MySQL renders stored DOUBLE values with a compact
+round-trippable decimal form: `1.2345678901234567E0` stores as
+`1.2345678901234567`, `1.7976931348623157E308` stores as
+`1.7976931348623157e308`, and `1E-320` stores as `1e-320`.
+
 `LONGTEXT`/`LONGBLOB` maximum sizes, exhaustive TEXT/BLOB coverage across all
 write forms, broader charset-specific byte validation, strict SQLSTATE details,
-`LOAD DATA`, and full numeric-to-string format fidelity remain separate tasks.
+`LOAD DATA`, and remaining numeric-to-string format fidelity outside the
+covered approximate numeric paths remain separate tasks.
 
 ## Sources
 
@@ -153,6 +161,9 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - `REPLACE ... VALUES` and `REPLACE ... SET` truncation behavior for `TEXT`
   and `BLOB`, including conflict-row preservation on strict failure
 - `TEXT` byte-limit truncation at a complete UTF-8 character boundary
+- approximate numeric value conversion to `VARCHAR` and `TEXT` for covered
+  `INSERT ... VALUES` and single-table `UPDATE` paths, including lowercase
+  exponent markers and no positive exponent plus sign
 - strict rejection, non-strict truncation, `INSERT IGNORE`, `REPLACE`, ODKU
   update assignments, and single-table `UPDATE` / `UPDATE IGNORE` for
   `MEDIUMTEXT` and `MEDIUMBLOB`

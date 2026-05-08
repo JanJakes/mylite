@@ -62038,6 +62038,29 @@ static int test_string_dml_coercion_execution(void) {
         {"1", "", "0", "", "0", "C3", "1"};
     static const char *const invalid_utf8_ignore_update_values[] =
         {"1", "", "0", "", "0", "61C362", "3"};
+    static const char *const real_string_columns[] = {"id", "v", "v_len", "tx", "tx_len"};
+    static const char *const real_string_values[] = {
+        "1",
+        "1.2345678901234567",
+        "18",
+        "1.2345678901234567",
+        "18",
+        "2",
+        "1.7976931348623157e308",
+        "22",
+        "1.7976931348623157e308",
+        "22",
+        "3",
+        "1e-320",
+        "6",
+        "1e-320",
+        "6",
+        "4",
+        "1.7976931348623157e308",
+        "22",
+        "1e-320",
+        "6",
+    };
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     int failures = 0;
@@ -62174,6 +62197,39 @@ static int test_string_dml_coercion_execution(void) {
         string_values,
         3,
         "string final coerced values"
+    );
+
+    failures += execute_sql(
+        database,
+        "CREATE TABLE real_string_values (id INT PRIMARY KEY, v VARCHAR(80), tx TEXT)",
+        MYLITE_DONE
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO real_string_values VALUES "
+        "(1, 1.2345678901234567E0, 1.2345678901234567E0), "
+        "(2, 1.7976931348623157E308, 1.7976931348623157E308), "
+        "(3, 1E-320, 1E-320), "
+        "(4, NULL, NULL)",
+        4,
+        "real-to-string insert values"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE real_string_values SET "
+        "v = 1.7976931348623157E308, tx = 1E-320 WHERE id = 4",
+        1,
+        "real-to-string update values"
+    );
+    failures += expect_select_rows(
+        database,
+        "SELECT id, v, LENGTH(v) AS v_len, tx, LENGTH(tx) AS tx_len "
+        "FROM real_string_values ORDER BY id",
+        real_string_columns,
+        5,
+        real_string_values,
+        4,
+        "real-to-string DML formatting"
     );
 
     failures += execute_sql(

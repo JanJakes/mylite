@@ -266,12 +266,14 @@ static char *make_string_condition_message(
 );
 
 static int replace_insert_string_value(
-    const struct mylite_dml_string_output *output,
+    const char *text,
+    size_t length,
     struct mylite_insert_bound_value *value
 );
 
 static int replace_update_string_value(
-    const struct mylite_dml_string_output *output,
+    const char *text,
+    size_t length,
     struct mylite_expression_value *value
 );
 
@@ -330,8 +332,12 @@ static int coerce_insert_string_value(
     if (status == MYLITE_OK) {
         status = coerce_string_text(database, column, kind, row_number, ignore, &text, &output);
     }
-    if (status == MYLITE_OK && output.replace) {
-        status = replace_insert_string_value(&output, value);
+    if (status == MYLITE_OK && (output.replace || value->kind != MYLITE_INSERT_BOUND_TEXT)) {
+        status = replace_insert_string_value(
+            output.replace ? output.text : text.text,
+            output.replace ? output.length : text.length,
+            value
+        );
     }
     string_output_deinit(&output);
     string_text_deinit(&text);
@@ -353,8 +359,12 @@ static int coerce_update_string_value(
     if (status == MYLITE_OK) {
         status = coerce_string_text(database, column, kind, row_number, ignore, &text, &output);
     }
-    if (status == MYLITE_OK && output.replace) {
-        status = replace_update_string_value(&output, value);
+    if (status == MYLITE_OK && (output.replace || value->kind != MYLITE_EXPRESSION_VALUE_TEXT)) {
+        status = replace_update_string_value(
+            output.replace ? output.text : text.text,
+            output.replace ? output.length : text.length,
+            value
+        );
     }
     string_output_deinit(&output);
     string_text_deinit(&text);
@@ -428,7 +438,7 @@ static int insert_value_to_string_text(
         length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value->integer_value);
         break;
     case MYLITE_INSERT_BOUND_REAL:
-        length = snprintf(buffer, sizeof(buffer), "%.15g", value->real_value);
+        length = mylite_format_storage_real_text(value->real_value, buffer, sizeof(buffer));
         break;
     case MYLITE_INSERT_BOUND_NULL:
         return MYLITE_OK;
@@ -449,11 +459,27 @@ static int expression_value_to_string_text(
     const struct mylite_expression_value *value,
     struct mylite_dml_string_text *out_text
 ) {
+    char buffer[64];
+    int length = 0;
+
     if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
         *out_text = (struct mylite_dml_string_text){
             .text = value->text_value,
             .length = value->text_length,
         };
+        return MYLITE_OK;
+    }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_REAL) {
+        length = mylite_format_storage_real_text(value->real_value, buffer, sizeof(buffer));
+        if (length < 0 || (size_t)length >= sizeof(buffer)) {
+            return MYLITE_NOMEM;
+        }
+        out_text->text = mylite_copy_span_text(buffer, (size_t)length);
+        if (out_text->text == NULL) {
+            return MYLITE_NOMEM;
+        }
+        out_text->length = (size_t)length;
+        out_text->owned = true;
         return MYLITE_OK;
     }
     out_text->text = mylite_expression_value_to_text(value);
@@ -1036,30 +1062,32 @@ static char *make_string_condition_message(
 }
 
 static int replace_insert_string_value(
-    const struct mylite_dml_string_output *output,
+    const char *text,
+    size_t length,
     struct mylite_insert_bound_value *value
 ) {
     mylite_dml_insert_bound_value_deinit(value);
-    value->text_value = mylite_copy_span_text(output->text, output->length);
+    value->text_value = mylite_copy_span_text(text, length);
     if (value->text_value == NULL) {
         return MYLITE_NOMEM;
     }
     value->kind = MYLITE_INSERT_BOUND_TEXT;
-    value->text_length = output->length;
+    value->text_length = length;
     return MYLITE_OK;
 }
 
 static int replace_update_string_value(
-    const struct mylite_dml_string_output *output,
+    const char *text,
+    size_t length,
     struct mylite_expression_value *value
 ) {
     mylite_expression_value_deinit(value);
-    value->text_value = mylite_copy_span_text(output->text, output->length);
+    value->text_value = mylite_copy_span_text(text, length);
     if (value->text_value == NULL) {
         return MYLITE_NOMEM;
     }
     value->kind = MYLITE_EXPRESSION_VALUE_TEXT;
-    value->text_length = output->length;
+    value->text_length = length;
     return MYLITE_OK;
 }
 

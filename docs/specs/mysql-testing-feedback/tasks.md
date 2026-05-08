@@ -471,6 +471,10 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Approximate `SUM()` / `AVG()` result descriptors now report MySQL's
       23-character `DOUBLE` display length for covered approximate and
       string-converted argument domains.
+      Exact numeric `SUM()` / `AVG()` result descriptors now derive MySQL-shaped
+      length and scale from the argument descriptor across integer, unsigned,
+      and fixed-point domains, and string `MIN()` / `MAX()` descriptors report
+      not-fixed decimals like MySQL.
       String system-variable expression descriptors now follow the current
       result character set and collation, including MySQL-shaped `utf8mb4`
       metadata after `SET NAMES utf8mb4` and latin1 metadata after

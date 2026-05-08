@@ -347,12 +347,20 @@ Observed `mysql --column-type-info -vvv` metadata:
 | `AVG(n) AS a_int` | `NEWDECIMAL` | `16` | `4` | `BINARY NUM` | none |
 | `SUM(decv) AS s_dec` | `NEWDECIMAL` | `34` | `2` | `BINARY NUM` | none |
 | `AVG(decv) AS a_dec` | `NEWDECIMAL` | `16` | `6` | `BINARY NUM` | none |
+| `SUM(DECIMAL(5,0))` | `NEWDECIMAL` | `28` | `0` | `BINARY NUM` | none |
+| `AVG(DECIMAL(5,0))` | `NEWDECIMAL` | `11` | `4` | `BINARY NUM` | none |
+| `SUM(DECIMAL(20,10))` | `NEWDECIMAL` | `44` | `10` | `BINARY NUM` | none |
+| `AVG(DECIMAL(20,10))` | `NEWDECIMAL` | `26` | `14` | `BINARY NUM` | none |
+| `SUM(BIGINT)` | `NEWDECIMAL` | `42` | `0` | `BINARY NUM` | none |
+| `AVG(BIGINT)` | `NEWDECIMAL` | `25` | `4` | `BINARY NUM` | none |
+| `SUM(BIGINT UNSIGNED)` | `NEWDECIMAL` | `43` | `0` | `BINARY NUM` | none |
+| `AVG(BIGINT UNSIGNED)` | `NEWDECIMAL` | `26` | `4` | `BINARY NUM` | none |
 | `SUM(r)` where `r DOUBLE` | `DOUBLE` | `23` | `31` | `BINARY NUM` | none |
 | `AVG(r)` where `r DOUBLE` | `DOUBLE` | `23` | `31` | `BINARY NUM` | none |
 | `SUM(s)` where `s VARCHAR(10)` | `DOUBLE` | `23` | `31` | `BINARY NUM` | none |
 | `AVG(s)` where `s VARCHAR(10)` | `DOUBLE` | `23` | `31` | `BINARY NUM` | none |
 | `MIN(n) AS min_n` | `LONG` | `11` | `0` | `BINARY NUM` | none |
-| `MAX(txt) AS max_txt` | `VAR_STRING` | `20` | `31` | none | none |
+| `MAX(txt) AS max_txt` under utf8mb4 | `VAR_STRING` | `80` | `31` | none | none |
 | grouped `grp` | `VAR_STRING` | `10` | `0` | observed `NUM` flag | `mylite_aggregate_grouping.t.grp` |
 
 Implementation should preserve the existing Task 23 descriptor API behavior:
@@ -569,8 +577,8 @@ be deferred, but the design should avoid making that hard to add.
 - Returns `NULL` when no non-`NULL` argument exists.
 - Maintains both numeric sum and count; do not compute by averaging row by row.
 - For integer and decimal input, MySQL reports `NEWDECIMAL` with scale widened
-  from `SUM`; verified examples were `AVG(INT)` decimals `4` and
-  `AVG(DECIMAL(10,2))` decimals `6`.
+  from `SUM`; verified examples were `AVG(INT)` decimals `4`,
+  `AVG(DECIMAL(10,2))` decimals `6`, and `AVG(DECIMAL(20,10))` decimals `14`.
 - String input follows numeric conversion and warning rules.
 
 ### `MIN` and `MAX`
@@ -638,7 +646,7 @@ expectations:
 | invalid aggregate arity | `SELECT COUNT() FROM t` | syntax error 1064 / `42000` |
 | count distinct aggregate | `SELECT COUNT(DISTINCT grp) FROM t` | one row: `2` |
 | ambiguous alias | `SELECT COUNT(col1) AS col2 FROM alias_t GROUP BY col2 HAVING col2 = 2` | result `2`; warnings 1052 for group and having ambiguity |
-| metadata | `SELECT COUNT(*), SUM(n), AVG(n), SUM(decv), AVG(decv), MIN(n), MAX(txt) FROM t` | descriptors match the metadata table above where MyLite exposes fields |
+| metadata | `SELECT COUNT(*), SUM(n), AVG(n), SUM(decv), AVG(decv), MIN(n), MAX(txt) FROM t` | descriptors match the metadata table above where MyLite exposes fields, including exact numeric aggregate widths and string `MIN`/`MAX` decimals |
 
 Tests should also assert that result descriptors stay available for empty
 aggregate results and `HAVING`-filtered empty result sets.

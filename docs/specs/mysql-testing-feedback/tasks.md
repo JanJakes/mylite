@@ -473,8 +473,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       and execute with MySQL-shaped signed `LONGLONG` descriptors, including the
       MySQL-observed `EXTRACT(MICROSECOND...)` display width.
       Table-backed `DECIMAL` arithmetic with exact operands now reports
-      MySQL-shaped `NEWDECIMAL` descriptors for the covered `+`, `-`, and `*`
-      result columns.
+      MySQL-shaped `NEWDECIMAL` descriptors for the covered `+`, `-`, `*`, and
+      `/` result columns, including division scale, unsigned flags, and
+      nullability.
       `CASE` result metadata now preserves binary string metadata for
       `VARBINARY` arms and MySQL-shaped binary collation for mixed
       binary/text result arms.

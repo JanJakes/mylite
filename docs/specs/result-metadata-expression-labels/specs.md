@@ -263,6 +263,10 @@ tasks. Unsupported column families should stay deferred rather than guessed.
 | `d + 1 AS d_plus` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `9`, decimals `2` | `BINARY NUM`; nullable |
 | `d - 1 AS d_sub` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `9`, decimals `2` | `BINARY NUM`; nullable |
 | `d * 2 AS d_mul` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `9`, decimals `2` | `BINARY NUM`; nullable |
+| `d / 2 AS d_div` where `d DECIMAL(6,2)` | `NEWDECIMAL` | length `12`, decimals `6` | `BINARY NUM`; nullable |
+| `u / u AS u_div_u` where `u INT UNSIGNED NOT NULL` | `NEWDECIMAL` | length `15`, decimals `4` | `UNSIGNED BINARY NUM`; nullable |
+| `r / 2 AS r_div` where `r DOUBLE` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
+| `s / 2 AS s_div` where `s VARCHAR(12)` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
 | `r + 1 AS r_plus` where `r DOUBLE` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
 | `s + 1 AS s_plus` where `s VARCHAR(12)` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
 | `-r AS r_neg` where `r DOUBLE` | `DOUBLE` | length `23`, decimals `31` | `BINARY NUM`; nullable |
@@ -455,8 +459,8 @@ Task 23 adds static metadata inference:
   table-backed `DECIMAL` operand keeps `NEWDECIMAL` metadata for the covered
   `+`, `-`, and `*` cases
 - `/` over exact numeric operands returns `NEWDECIMAL` with MySQL-compatible
-  scale rules; Task 23 covers only the verified `5 / 2` scale `4` expectation
-  until broader decimal inference is implemented
+  scale rules and nullable metadata, even when both operands are non-null;
+  `/` over approximate or text operands returns `DOUBLE`
 - `DIV` and modulo return integer metadata but remain nullable for division by
   zero or nullable operands
 - bitwise operators return unsigned integer metadata where MySQL marks
@@ -531,7 +535,7 @@ byte lengths.
 | `SELECT d FROM meta_t LIMIT 0` | `NEWDECIMAL`, length `8`, decimals `2`, `NUM` |
 | `SELECT f FROM meta_t LIMIT 0` | `DOUBLE`, length `22`, decimals `31`, `NUM` |
 | `SELECT dt, ts FROM meta_t LIMIT 0` | temporal types with binary collation; `DATETIME(3)` decimals `3`, `TIMESTAMP` decimals `0` |
-| `SELECT 1 + 2, d + 1, d - 1, d * 2, 5 / 2, 5 DIV 2 FROM meta_t LIMIT 0` | `LONGLONG`, three `NEWDECIMAL(9,2)` table-decimal arithmetic fields, `NEWDECIMAL`, and `LONGLONG` respectively |
+| `SELECT 1 + 2, d + 1, d - 1, d * 2, d / 2, 5 / 2, 5 DIV 2 FROM meta_t LIMIT 0` | `LONGLONG`, three `NEWDECIMAL(9,2)` table-decimal arithmetic fields, table-backed `NEWDECIMAL(12,6)` division, scalar `NEWDECIMAL(7,4)` division, and `LONGLONG` respectively |
 | `SELECT n IS NULL, n <=> NULL, n IN (1,2), s LIKE 'a%' FROM meta_t LIMIT 0` | all `LONGLONG` length `1`; first two non-null, latter two nullable with nullable operands |
 
 ### Runtime and lifecycle tests

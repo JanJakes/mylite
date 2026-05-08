@@ -52,6 +52,20 @@ static bool descriptor_has_integer_result(const struct mylite_field_descriptor *
 
 static bool descriptor_uses_double_arithmetic(const struct mylite_field_descriptor *descriptor);
 
+static bool infer_divide_descriptor(
+    const struct mylite_field_descriptor *left,
+    const struct mylite_field_descriptor *right,
+    struct mylite_field_descriptor *out_descriptor
+);
+
+static uint64_t exact_numeric_integral_digits(const struct mylite_field_descriptor *descriptor);
+
+static uint64_t decimal_descriptor_precision(const struct mylite_field_descriptor *descriptor);
+
+static uint64_t saturating_add_u64(uint64_t left, uint64_t right);
+
+static unsigned int saturating_add_uint(unsigned int left, unsigned int right);
+
 static bool infer_decimal_arithmetic_descriptor(
     enum mylite_sql_ast_operator operator_kind,
     const struct mylite_field_descriptor *left,
@@ -398,7 +412,11 @@ int mylite_expression_descriptor_infer_binary_expression(
         out_descriptor->length = mylite_expression_descriptor_max_u64(left.length, right.length);
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+        if (infer_divide_descriptor(&left, &right, out_descriptor)) {
+            return MYLITE_OK;
+        }
         *out_descriptor = mylite_expression_descriptor_decimal(nullable);
+        mylite_field_descriptor_set_nullable(out_descriptor, true);
         return MYLITE_OK;
     case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
     case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
@@ -493,6 +511,99 @@ static bool descriptor_uses_double_arithmetic(const struct mylite_field_descript
         return true;
     }
     return mylite_expression_descriptor_has_text_result(descriptor);
+}
+
+static bool infer_divide_descriptor(
+    const struct mylite_field_descriptor *left,
+    const struct mylite_field_descriptor *right,
+    struct mylite_field_descriptor *out_descriptor
+) {
+    bool result_unsigned = false;
+    uint64_t integral_digits = 0U;
+    unsigned int scale = 0U;
+    uint64_t length = 0U;
+
+    if (descriptor_uses_double_arithmetic(left) || descriptor_uses_double_arithmetic(right)) {
+        *out_descriptor = mylite_expression_descriptor_numeric_double_function(true);
+        return true;
+    }
+    if (!descriptor_has_exact_numeric_result(left) || !descriptor_has_exact_numeric_result(right)) {
+        return false;
+    }
+
+    result_unsigned = (left->flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U &&
+                      (right->flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U;
+    integral_digits = saturating_add_u64(exact_numeric_integral_digits(left), right->decimals);
+    scale = saturating_add_uint(left->decimals, mylite_mysql_decimal_divide_scale);
+    length = saturating_add_u64(integral_digits, scale);
+    if (scale != 0U) {
+        length = saturating_add_u64(length, 1U);
+    }
+    if (!result_unsigned) {
+        length = saturating_add_u64(length, 1U);
+    }
+
+    *out_descriptor = (struct mylite_field_descriptor){
+        .type = MYLITE_FIELD_TYPE_NEWDECIMAL,
+        .flags = MYLITE_FIELD_FLAG_BINARY | MYLITE_FIELD_FLAG_NUM,
+        .length = length,
+        .decimals = scale,
+        .charset_id = mylite_mysql_binary_charset_id,
+        .nullable = true,
+    };
+    if (result_unsigned) {
+        out_descriptor->flags |= MYLITE_FIELD_FLAG_UNSIGNED;
+    }
+    mylite_field_descriptor_set_nullable(out_descriptor, true);
+    return true;
+}
+
+static uint64_t exact_numeric_integral_digits(const struct mylite_field_descriptor *descriptor) {
+    uint64_t precision = 0U;
+
+    if (descriptor == NULL) {
+        return 0U;
+    }
+    if (descriptor->type == MYLITE_FIELD_TYPE_NEWDECIMAL) {
+        precision = decimal_descriptor_precision(descriptor);
+        if (precision < descriptor->decimals) {
+            return 0U;
+        }
+        return precision - descriptor->decimals;
+    }
+    if ((descriptor->flags & MYLITE_FIELD_FLAG_UNSIGNED) != 0U) {
+        return descriptor->length;
+    }
+    return descriptor->length == 0U ? 0U : descriptor->length - 1U;
+}
+
+static uint64_t decimal_descriptor_precision(const struct mylite_field_descriptor *descriptor) {
+    uint64_t precision = descriptor == NULL ? 0U : descriptor->length;
+
+    if (descriptor == NULL) {
+        return 0U;
+    }
+    if ((descriptor->flags & MYLITE_FIELD_FLAG_UNSIGNED) == 0U && precision > 0U) {
+        --precision;
+    }
+    if (descriptor->decimals != 0U && precision > 0U) {
+        --precision;
+    }
+    return precision;
+}
+
+static uint64_t saturating_add_u64(uint64_t left, uint64_t right) {
+    if (left > UINT64_MAX - right) {
+        return UINT64_MAX;
+    }
+    return left + right;
+}
+
+static unsigned int saturating_add_uint(unsigned int left, unsigned int right) {
+    if (left > UINT32_MAX - right) {
+        return UINT32_MAX;
+    }
+    return left + right;
 }
 
 static bool infer_decimal_arithmetic_descriptor(

@@ -32,7 +32,7 @@ static int validate_create_table_column_temporal_current_timestamp(
     const struct mylite_create_table_plan *plan
 );
 
-static bool validate_create_table_indexes(
+static int validate_create_table_indexes(
     mylite_db *database,
     const struct mylite_create_table_plan *plan
 );
@@ -85,6 +85,8 @@ static bool set_create_table_duplicate_column_error(mylite_db *database, const c
 static bool set_create_table_duplicate_key_error(mylite_db *database, const char *index_name);
 
 static bool set_create_table_multiple_primary_key_error(mylite_db *database);
+
+static int set_create_table_unsupported_functional_key_part_error(mylite_db *database);
 
 static int set_create_table_duplicate_check_error(mylite_db *database, const char *constraint_name);
 
@@ -249,8 +251,9 @@ int mylite_table_ddl_validate_create_table_plan(
     if (status != MYLITE_OK) {
         return status;
     }
-    if (!validate_create_table_indexes(database, plan)) {
-        return MYLITE_EXEC_ERROR;
+    status = validate_create_table_indexes(database, plan);
+    if (status != MYLITE_OK) {
+        return status;
     }
     status = validate_create_table_checks(database, plan);
     if (status != MYLITE_OK) {
@@ -412,7 +415,7 @@ static int set_create_table_invalid_default_error(mylite_db *database, const cha
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
 }
 
-static bool validate_create_table_indexes(
+static int validate_create_table_indexes(
     mylite_db *database,
     const struct mylite_create_table_plan *plan
 ) {
@@ -423,15 +426,20 @@ static bool validate_create_table_indexes(
 
         if (table_index->is_primary) {
             if (has_primary) {
-                return set_create_table_multiple_primary_key_error(database);
+                (void)set_create_table_multiple_primary_key_error(database);
+                return MYLITE_EXEC_ERROR;
             }
             has_primary = true;
         }
         if (table_index->explicit_name &&
             create_table_index_name_exists(plan, table_index->name, index)) {
-            return set_create_table_duplicate_key_error(database, table_index->name);
+            (void)set_create_table_duplicate_key_error(database, table_index->name);
+            return MYLITE_EXEC_ERROR;
         }
         for (size_t part = 0U; part < table_index->part_count; ++part) {
+            if (table_index->parts[part].functional) {
+                return set_create_table_unsupported_functional_key_part_error(database);
+            }
             if (mylite_table_ddl_find_create_table_column(
                     plan,
                     table_index->parts[part].column_name
@@ -442,11 +450,11 @@ static bool validate_create_table_indexes(
                     table_index->parts[part].column_name,
                     "' doesn't exist in table"
                 );
-                return false;
+                return MYLITE_EXEC_ERROR;
             }
         }
     }
-    return true;
+    return MYLITE_OK;
 }
 
 static int validate_create_table_checks(
@@ -580,6 +588,13 @@ static bool set_create_table_multiple_primary_key_error(mylite_db *database) {
         );
     }
     return false;
+}
+
+static int set_create_table_unsupported_functional_key_part_error(mylite_db *database) {
+    int status =
+        mylite_diagnostics_set_error_message(database, "Unsupported functional index key parts");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
 }
 
 static int set_create_table_duplicate_check_error(

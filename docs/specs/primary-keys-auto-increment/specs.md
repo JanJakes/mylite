@@ -106,9 +106,9 @@ integer column and `PRIMARY KEY (a(0))` on a string column parse but fail DDL
 validation. Oversized prefix integer tokens are syntax errors.
 
 MySQL parses functional key parts in a primary key and then rejects them because
-primary keys cannot be functional indexes. MyLite does not implement functional
-key parts in this task because expression key-part support belongs with later
-expression and index work.
+primary keys cannot be functional indexes. MyLite now accepts functional
+key-part syntax through the shared key-part parser and rejects it during DDL
+validation until functional-index storage exists.
 
 ### Primary-key index options
 
@@ -274,7 +274,7 @@ index_option ::= SECONDARY_ENGINE_ATTRIBUTE EQ STRING.
 ```
 
 The grammar intentionally does not include `UNIQUE`, secondary `KEY` or
-`INDEX`, functional key parts, `WITH PARSER`, `FULLTEXT`, `SPATIAL`, `RTREE`,
+`INDEX`, multi-valued key parts, `WITH PARSER`, `FULLTEXT`, `SPATIAL`, `RTREE`,
 foreign keys, checks, generated columns, table options, or executable table DDL.
 
 ## MySQL-runtime-verified expectations
@@ -318,7 +318,7 @@ Implementation tests should cover these MySQL 8.4.9 expectations:
 | table-level `KEY (a)` or `INDEX (a)` | parse OK in the secondary-index task |
 | `PRIMARY KEY ()` | parse error |
 | `PRIMARY KEY (a,)` | parse error |
-| `PRIMARY KEY ((a + 1))` | parse error until functional key parts land |
+| `PRIMARY KEY ((a + 1))` | parse OK; semantic diagnostic deferred |
 | overflow prefix length | parse error |
 | `KEY_BLOCK_SIZE '8'` | parse error |
 | `KEY_BLOCK_SIZE -1` | parse error |
@@ -352,6 +352,6 @@ user-object side effects.
 - Primary-key index-option semantics, warnings, visibility diagnostics,
   `KEY_BLOCK_SIZE` effects, engine-attribute JSON validation, unsupported-engine
   diagnostics, and option normalization are deferred.
-- Full-text indexes, spatial indexes, functional key parts, `WITH PARSER`,
+- Full-text indexes, spatial indexes, functional-index storage, `WITH PARSER`,
   foreign keys, checks, generated columns, generated invisible primary keys, and
   table options are deferred to later roadmap tasks.

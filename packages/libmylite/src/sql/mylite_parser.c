@@ -4885,9 +4885,37 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_key_part(
         return NULL;
     }
 
+    mylite_sql_ast_node_set_key_part_kind(key_part, MYLITE_SQL_AST_KEY_PART_IDENTIFIER);
     mylite_sql_ast_node_set_key_part_order(key_part, order);
     mylite_sql_ast_node_append_child(key_part, name);
     mylite_sql_ast_node_append_child(key_part, prefix);
+    return key_part;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_functional_key_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren,
+    enum mylite_sql_ast_key_part_order order,
+    struct mylite_sql_token order_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&left_paren), span_from_token(&right_paren));
+    struct mylite_sql_ast_node *key_part = NULL;
+
+    if (order != MYLITE_SQL_AST_KEY_PART_ORDER_NONE) {
+        span = span_join(span, span_from_token(&order_token));
+    }
+
+    key_part = make_node(state, MYLITE_SQL_AST_KEY_PART, span);
+    if (key_part == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_key_part_kind(key_part, MYLITE_SQL_AST_KEY_PART_FUNCTIONAL);
+    mylite_sql_ast_node_set_key_part_order(key_part, order);
+    mylite_sql_ast_node_append_child(key_part, expression);
     return key_part;
 }
 

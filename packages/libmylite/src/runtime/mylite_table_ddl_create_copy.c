@@ -278,13 +278,28 @@ int mylite_table_ddl_copy_create_table_key_parts(
         struct mylite_create_table_key_part part = {
             .order = part_node->key_part_order,
         };
+        const struct mylite_sql_ast_node *first_child = mylite_ast_child_at(part_node, 0U);
         const struct mylite_sql_ast_node *prefix = mylite_ast_child_at(part_node, 1U);
 
-        part.column_name = mylite_copy_identifier_span(mylite_ast_child_at(part_node, 0U));
-        if (part.column_name == NULL) {
-            return MYLITE_NOMEM;
+        if (part_node->key_part_kind == MYLITE_SQL_AST_KEY_PART_FUNCTIONAL) {
+            if (first_child == NULL || first_child->span.text == NULL) {
+                return MYLITE_UNSUPPORTED;
+            }
+            part.functional = true;
+            part.expression_sql =
+                mylite_copy_span_text(first_child->span.text, first_child->span.length);
+            if (part.expression_sql == NULL) {
+                return MYLITE_NOMEM;
+            }
+        } else if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+            part.column_name = mylite_copy_identifier_span(first_child);
+            if (part.column_name == NULL) {
+                return MYLITE_NOMEM;
+            }
+        } else {
+            return MYLITE_UNSUPPORTED;
         }
-        if (prefix != NULL) {
+        if (prefix != NULL && !part.functional) {
             part.has_prefix_length = true;
             part.prefix_length = prefix->column_length;
         }

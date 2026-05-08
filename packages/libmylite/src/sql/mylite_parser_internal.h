@@ -1416,6 +1416,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_key_part(
     enum mylite_sql_ast_key_part_order order,
     struct mylite_sql_token order_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_functional_key_part(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token left_paren,
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_token right_paren,
+    enum mylite_sql_ast_key_part_order order,
+    struct mylite_sql_token order_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_key_part_prefix(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_parser_key_part_prefix_tokens tokens

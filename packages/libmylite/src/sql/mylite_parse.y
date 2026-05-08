@@ -3673,6 +3673,18 @@ key_part(A) ::= identifier(B) opt_key_part_prefix(C) ASC(T). {
 key_part(A) ::= identifier(B) opt_key_part_prefix(C) DESC(T). {
     A = mylite_sql_parser_make_key_part(state, B, C, MYLITE_SQL_AST_KEY_PART_ORDER_DESC, T);
 }
+key_part(A) ::= LPAREN(L) expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_functional_key_part(
+        state, L, B, R, MYLITE_SQL_AST_KEY_PART_ORDER_NONE, (struct mylite_sql_token){0});
+}
+key_part(A) ::= LPAREN(L) expression(B) RPAREN(R) ASC(T). {
+    A = mylite_sql_parser_make_functional_key_part(
+        state, L, B, R, MYLITE_SQL_AST_KEY_PART_ORDER_ASC, T);
+}
+key_part(A) ::= LPAREN(L) expression(B) RPAREN(R) DESC(T). {
+    A = mylite_sql_parser_make_functional_key_part(
+        state, L, B, R, MYLITE_SQL_AST_KEY_PART_ORDER_DESC, T);
+}
 
 opt_key_part_prefix(A) ::= . {
     A = NULL;

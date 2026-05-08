@@ -45090,6 +45090,31 @@ static int test_create_table_base_execution(void) {
 
     failures += prepare_sql(
         database,
+        "CREATE TABLE bad_functional_index ("
+        "c VARCHAR(20), INDEX idx_lower ((LOWER(c))))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_UNSUPPORTED,
+        "functional create table index unsupported"
+    );
+    failures +=
+        expect_int64(mylite_affected_rows(stmt), -1, "functional create table index affected rows");
+    failures += expect_contains(
+        mylite_error_message(database),
+        "functional index key parts",
+        "functional create table index error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "bad_functional_index");
+    failures +=
+        expect_no_information_schema_statistics_table_name_row(database, "bad_functional_index");
+
+    failures += prepare_sql(
+        database,
         "CREATE TABLE bad_inline_index_collision ("
         "a INT UNIQUE, b INT, KEY a (b))",
         MYLITE_OK,
@@ -46658,12 +46683,16 @@ static int test_create_table_prepare_has_no_side_effects(void) {
     failures += expect_no_stmt_handle(&stmt, "invalid spatial key CREATE TABLE");
     failures += prepare_sql(
         database,
-        "CREATE TABLE invalid_functional_key_part "
+        "CREATE TABLE functional_key_part "
         "(a INT, KEY idx ((a + 1)));",
-        MYLITE_PARSE_ERROR,
+        MYLITE_OK,
         &stmt
     );
-    failures += expect_no_stmt_handle(&stmt, "invalid functional key-part CREATE TABLE");
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures += expect_no_information_schema_table_name_row(database, "functional_key_part");
+    failures +=
+        expect_no_information_schema_statistics_table_name_row(database, "functional_key_part");
     failures += prepare_sql(
         database,
         "CREATE TABLE invalid_unique_identifier (unique INT);",
@@ -48210,6 +48239,32 @@ static int test_create_drop_index_execution(void) {
         "idx_base",
         "idx_missing_column"
     );
+
+    failures += prepare_sql(
+        database,
+        "CREATE INDEX idx_functional ON idx_base ((LOWER(b)))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_UNSUPPORTED,
+        "create index rejects functional key part"
+    );
+    failures += expect_int64(
+        mylite_affected_rows(stmt),
+        -1,
+        "create index functional key part affected rows"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "functional index key parts",
+        "create index functional key part error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "idx_base", "idx_functional");
 
     failures += prepare_sql(database, "CREATE INDEX IDX_B ON idx_base (a)", MYLITE_OK, &stmt);
     failures += expect_exec_error(
@@ -50525,6 +50580,26 @@ static int test_alter_table_key_operations_execution(void) {
     );
     mylite_finalize(stmt);
     stmt = NULL;
+    failures += prepare_sql(
+        database,
+        "ALTER TABLE pk_second ADD INDEX idx_func ((LOWER(b)))",
+        MYLITE_OK,
+        &stmt
+    );
+    failures += expect_status(
+        mylite_step(stmt),
+        MYLITE_UNSUPPORTED,
+        "alter add index rejects functional key part"
+    );
+    failures += expect_contains(
+        mylite_error_message(database),
+        "functional index key parts",
+        "alter add index functional key part error"
+    );
+    mylite_finalize(stmt);
+    stmt = NULL;
+    failures +=
+        expect_no_information_schema_statistics_index_row(database, "pk_second", "idx_func");
     failures += prepare_sql(
         database,
         "ALTER TABLE pk_second ALTER INDEX `PRIMARY` INVISIBLE",

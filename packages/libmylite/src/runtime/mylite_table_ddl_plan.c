@@ -281,6 +281,7 @@ void mylite_table_ddl_create_table_key_part_deinit(struct mylite_create_table_ke
     }
 
     free(part->column_name);
+    free(part->expression_sql);
     *part = (struct mylite_create_table_key_part){0};
 }
 

@@ -14,6 +14,8 @@ static int assign_generated_index_name(
     size_t index
 );
 
+static int set_unsupported_functional_index_key_part_error(mylite_db *database);
+
 static bool create_table_index_name_exists(
     const struct mylite_create_table_plan *plan,
     const char *name,
@@ -50,6 +52,9 @@ static int assign_generated_index_name(
         return MYLITE_OK;
     }
     if (table_index->part_count == 0U || table_index->parts[0].column_name == NULL) {
+        if (table_index->part_count > 0U && table_index->parts[0].functional) {
+            return set_unsupported_functional_index_key_part_error(database);
+        }
         (void)mylite_diagnostics_set_error_message(database, "Index has no key parts");
         return MYLITE_EXEC_ERROR;
     }
@@ -69,6 +74,13 @@ static int assign_generated_index_name(
         free(candidate);
         ++suffix;
     }
+}
+
+static int set_unsupported_functional_index_key_part_error(mylite_db *database) {
+    int status =
+        mylite_diagnostics_set_error_message(database, "Unsupported functional index key parts");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
 }
 
 char *mylite_table_ddl_generated_index_name_candidate(const char *base, unsigned int suffix) {

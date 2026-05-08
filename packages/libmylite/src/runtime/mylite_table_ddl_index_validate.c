@@ -37,6 +37,8 @@ static bool drop_index_primary_has_auto_increment_column(
     const struct mylite_alter_table_model *model
 );
 
+static int set_unsupported_functional_index_key_part_error(mylite_db *database);
+
 static int set_fulltext_index_column_type_error(mylite_db *database, const char *column_name);
 
 static int set_fulltext_index_order_error(mylite_db *database);
@@ -215,6 +217,9 @@ int mylite_table_ddl_validate_create_index_columns(
     for (size_t part = 0U; part < index->part_count; ++part) {
         const char *column_name = index->parts[part].column_name;
 
+        if (index->parts[part].functional) {
+            return set_unsupported_functional_index_key_part_error(database);
+        }
         if (mylite_table_ddl_alter_table_column_index(model, column_name) == model->column_count) {
             (void)mylite_diagnostics_set_error_message_parts(
                 database,
@@ -226,6 +231,13 @@ int mylite_table_ddl_validate_create_index_columns(
         }
     }
     return MYLITE_OK;
+}
+
+static int set_unsupported_functional_index_key_part_error(mylite_db *database) {
+    int status =
+        mylite_diagnostics_set_error_message(database, "Unsupported functional index key parts");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
 }
 
 int mylite_table_ddl_validate_create_index_supported_features(

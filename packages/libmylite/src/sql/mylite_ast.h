@@ -397,6 +397,11 @@ enum mylite_sql_ast_key_part_order {
     MYLITE_SQL_AST_KEY_PART_ORDER_DESC = 2,
 };
 
+enum mylite_sql_ast_key_part_kind {
+    MYLITE_SQL_AST_KEY_PART_IDENTIFIER = 0,
+    MYLITE_SQL_AST_KEY_PART_FUNCTIONAL = 1,
+};
+
 enum mylite_sql_ast_index_algorithm {
     MYLITE_SQL_AST_INDEX_ALGORITHM_NONE = 0,
     MYLITE_SQL_AST_INDEX_ALGORITHM_BTREE = 1,
@@ -676,6 +681,7 @@ struct mylite_sql_ast_node {
     enum mylite_sql_ast_column_storage column_storage;
     enum mylite_sql_ast_generated_column_storage generated_column_storage;
     enum mylite_sql_ast_key_part_order key_part_order;
+    enum mylite_sql_ast_key_part_kind key_part_kind;
     enum mylite_sql_ast_index_algorithm index_algorithm;
     enum mylite_sql_ast_index_option index_option;
     enum mylite_sql_ast_index_class index_class;
@@ -834,6 +840,10 @@ void mylite_sql_ast_node_set_column_storage(
 void mylite_sql_ast_node_set_key_part_order(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_key_part_order order
+);
+void mylite_sql_ast_node_set_key_part_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_key_part_kind kind
 );
 void mylite_sql_ast_node_set_limit_bound_value(struct mylite_sql_ast_node *node, uint64_t value);
 void mylite_sql_ast_node_set_index_algorithm(

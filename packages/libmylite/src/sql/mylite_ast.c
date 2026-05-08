@@ -307,6 +307,17 @@ void mylite_sql_ast_node_set_key_part_order(
     node->key_part_order = order;
 }
 
+void mylite_sql_ast_node_set_key_part_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_key_part_kind kind
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->key_part_kind = kind;
+}
+
 void mylite_sql_ast_node_set_limit_bound_value(struct mylite_sql_ast_node *node, uint64_t value) {
     if (node == NULL) {
         return;

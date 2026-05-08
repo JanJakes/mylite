@@ -46,8 +46,10 @@ struct mylite_create_table_column {
 
 struct mylite_create_table_key_part {
     char *column_name;
+    char *expression_sql;
     uint64_t prefix_length;
     bool has_prefix_length;
+    bool functional;
     enum mylite_sql_ast_key_part_order order;
 };
 

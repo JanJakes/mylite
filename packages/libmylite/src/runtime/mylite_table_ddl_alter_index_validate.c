@@ -20,6 +20,8 @@ static int set_alter_table_multiple_primary_key_error(mylite_db *database);
 
 static int set_alter_table_missing_key_column_error(mylite_db *database, const char *column_name);
 
+static int set_alter_table_unsupported_functional_key_part_error(mylite_db *database);
+
 static int set_alter_table_fulltext_creation_limit_error(
     mylite_db *database,
     const struct mylite_alter_table_model *model
@@ -60,6 +62,9 @@ int mylite_table_ddl_validate_alter_table_added_index(
         return mylite_table_ddl_set_alter_table_primary_invisible_error(database);
     }
     for (size_t part = 0U; part < index->part_count; ++part) {
+        if (index->parts[part].functional) {
+            return set_alter_table_unsupported_functional_key_part_error(database);
+        }
         if (mylite_table_ddl_find_alter_table_column(model, index->parts[part].column_name) ==
             NULL) {
             return set_alter_table_missing_key_column_error(
@@ -224,6 +229,13 @@ static int set_alter_table_missing_key_column_error(mylite_db *database, const c
         mylite_error_message(database)
     );
     return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_EXEC_ERROR;
+}
+
+static int set_alter_table_unsupported_functional_key_part_error(mylite_db *database) {
+    int status =
+        mylite_diagnostics_set_error_message(database, "Unsupported functional index key parts");
+
+    return status == MYLITE_NOMEM ? MYLITE_NOMEM : MYLITE_UNSUPPORTED;
 }
 
 static int set_alter_table_fulltext_creation_limit_error(

@@ -31,7 +31,7 @@ Out of scope:
 - `SHOW CREATE TABLE`, `SHOW INDEX`, and information-schema index population
 - standalone `CREATE INDEX`
 - `ALTER TABLE` index operations
-- `FULLTEXT`, `SPATIAL`, functional key parts, multi-valued indexes, and
+- `FULLTEXT`, `SPATIAL`, multi-valued indexes, functional-index storage, and
   generated-column interactions
 - storage-engine validation, JSON validation for engine attributes, warning
   records, and normalization of index options
@@ -44,6 +44,8 @@ Out of scope:
   https://dev.mysql.com/doc/refman/8.4/en/invisible-indexes.html
 - MySQL 8.4 Reference Manual, Column indexes:
   https://dev.mysql.com/doc/refman/8.4/en/column-indexes.html
+- MyLite functional index key-part parser acceptance spec:
+  `docs/specs/functional-index-key-parts/specs.md`
 - Observed MySQL 8.4.9 runtime behavior from Docker container
   `mylite-mysql-849`, including the Task 10 probe set supplied by Jan.
 
@@ -124,9 +126,12 @@ MyLite accepts the string-valued option syntax and defers validation.
 ### Excluded syntax
 
 MySQL parses `FULLTEXT KEY`, `SPATIAL KEY`, and functional key parts such as
-`KEY idx ((a + 1))`, but those features are intentionally excluded from this
-task. MyLite keeps them as parse errors until their dedicated compatibility
-work is specified and implemented.
+`KEY idx ((a + 1))`. Functional key parts are now accepted by MyLite's shared
+key-part parser and rejected during DDL validation with no mutation until
+functional-index storage is implemented. `FULLTEXT KEY`, `SPATIAL KEY`, and
+multi-valued key parts remain intentionally excluded from this task and stay
+parse errors until their dedicated compatibility work is specified and
+implemented.
 
 ### Keyword treatment
 
@@ -184,6 +189,7 @@ MyLite accepts:
 - `KEY USING BTREE (a)` and `KEY name USING HASH (a)`
 - `KEY name (a) USING HASH USING BTREE`
 - key parts with `identifier[(integer)] [ASC|DESC]`
+- functional key parts with `((expression)) [ASC|DESC]`
 - all Task 9 index options in post-list position
 - `UNIQUE (a)`
 - `UNIQUE name (a)`
@@ -199,7 +205,7 @@ MyLite rejects as syntax errors:
 - empty key-part lists
 - trailing commas in key-part lists
 - missing key-part lists such as `KEY idx` and `UNIQUE KEY idx`
-- functional key parts and multi-valued key parts
+- multi-valued key parts
 - `FULLTEXT` and `SPATIAL` index declarations
 - `COMMENT = 'x'`
 - string, signed, or overflowing values where an integer prefix length or
@@ -207,10 +213,11 @@ MyLite rejects as syntax errors:
 - `a INT UNIQUE INDEX`
 
 Semantic DDL diagnostics are deferred, including duplicate names, duplicate
-indexes, invalid index types for storage engines, invalid `USING HASH` plus
-descending-order combinations, prefix suitability by column type, unsupported
-engine attributes, invalid engine-attribute JSON, key-block-size effects,
-visibility metadata, and warnings.
+indexes, unsupported functional key parts, invalid index types for storage
+engines, invalid `USING HASH` plus descending-order combinations, prefix
+suitability by column type, unsupported engine attributes, invalid
+engine-attribute JSON, key-block-size effects, visibility metadata, and
+warnings.
 
 ### Runtime boundary
 
@@ -263,6 +270,9 @@ key_part_list ::= key_part_list COMMA key_part.
 key_part ::= identifier opt_key_part_prefix.
 key_part ::= identifier opt_key_part_prefix ASC.
 key_part ::= identifier opt_key_part_prefix DESC.
+key_part ::= LPAREN expression RPAREN.
+key_part ::= LPAREN expression RPAREN ASC.
+key_part ::= LPAREN expression RPAREN DESC.
 
 opt_key_part_prefix ::= .
 opt_key_part_prefix ::= LPAREN INTEGER RPAREN.
@@ -296,7 +306,7 @@ Parser tests should inspect AST shape for:
 - `KEY` and `INDEX` synonyms
 - `USING BTREE` and `USING HASH` before the key list
 - repeated post-list `USING` options
-- prefix lengths, `ASC`, and `DESC`
+- prefix lengths, functional key parts, `ASC`, and `DESC`
 - `COMMENT`, `KEY_BLOCK_SIZE`, visibility, and engine-attribute options
 - unnamed and named unique indexes
 - `UNIQUE`, `UNIQUE KEY`, `UNIQUE INDEX`, and `CONSTRAINT ... UNIQUE` forms
@@ -308,5 +318,8 @@ Runtime boundary tests should verify:
 
 - valid parse-only secondary and unique index forms return `MYLITE_UNSUPPORTED`
   with no statement handle
+- functional key parts on the executable `CREATE TABLE` subset return
+  `MYLITE_UNSUPPORTED` during statement execution and create no table or index
+  metadata
 - no table, column, or statistics rows are created
 - malformed or excluded forms return `MYLITE_PARSE_ERROR`

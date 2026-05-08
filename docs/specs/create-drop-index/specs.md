@@ -51,6 +51,8 @@ Executable implementation slice:
 - support `KEY_BLOCK_SIZE`, `COMMENT`, `VISIBLE`, `INVISIBLE`, and
   `SECONDARY_ENGINE_ATTRIBUTE` syntax and metadata where the current catalog
   can represent it; reject `ENGINE_ATTRIBUTE` for the scoped InnoDB runtime
+- accept functional key-part syntax and return a deterministic unsupported
+  diagnostic before catalog/index writes until functional-index storage exists
 - update unique-index conflict surfaces used by `INSERT`, ODKU, `REPLACE`, and
   `UPDATE` immediately after successful `CREATE UNIQUE INDEX`, and remove
   them after successful `DROP INDEX`
@@ -62,7 +64,7 @@ Deferred from the current slice:
 
 - full-text search and `WITH PARSER` runtime behavior beyond metadata
 - spatial search, optimizer support, and physical spatial index structures
-- functional key parts and multi-valued indexes
+- functional-index storage/enforcement and multi-valued indexes
 - optimizer use and index hints
 - complete type/prefix/collation validation and storage-engine warning fidelity
 - primary-key drop when it interacts with `AUTO_INCREMENT`, generated invisible
@@ -77,6 +79,8 @@ Deferred from the current slice:
   https://dev.mysql.com/doc/refman/8.4/en/drop-index.html
 - MySQL 8.4 Reference Manual, `CREATE TABLE` statement:
   https://dev.mysql.com/doc/refman/8.4/en/create-table.html
+- MyLite functional index key-part parser acceptance spec:
+  `docs/specs/functional-index-key-parts/specs.md`
 - MySQL 8.4 Reference Manual, invisible indexes:
   https://dev.mysql.com/doc/refman/8.4/en/invisible-indexes.html
 - MySQL 8.4 Reference Manual, `INFORMATION_SCHEMA.STATISTICS` table:
@@ -188,9 +192,11 @@ Malformed key-part lists are syntax errors:
 | `CREATE INDEX idx_trailing ON t (a,)` | syntax error 1064 |
 | `CREATE INDEX idx_missing_col ON t (missing_col)` | error 1072 |
 
-Functional key parts and multi-valued indexes are MySQL-valid surfaces, but
-they require expression, generated-column, JSON-array, and virtual-index
-support that MyLite does not have yet.
+Functional key parts and multi-valued indexes are MySQL-valid surfaces.
+MyLite accepts functional key-part syntax and rejects it during DDL validation
+without catalog mutation. Functional-index storage and multi-valued index
+support require generated-column, JSON-array, and virtual-index work that MyLite
+does not have yet.
 
 ### Index names, generated names, and duplicates
 

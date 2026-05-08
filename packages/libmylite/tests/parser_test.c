@@ -308,6 +308,12 @@ static int expect_key_part_order(
     const char *context
 );
 
+static int expect_key_part_kind(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_key_part_kind expected,
+    const char *context
+);
+
 static int expect_order_item_direction(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_key_part_order expected,
@@ -3160,9 +3166,9 @@ static int test_create_table_primary_keys_auto_increment(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE bad_primary_functional "
+        "CREATE TABLE primary_functional "
         "(a INT, PRIMARY KEY ((a + 1)));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -3567,11 +3573,41 @@ static int test_create_table_unique_secondary_indexes(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE bad_secondary_functional "
-        "(a INT, KEY idx ((a + 1)));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "CREATE TABLE functional_secondary_index "
+        "(a VARCHAR(20), KEY idx_lower ((LOWER(a)) DESC), UNIQUE KEY uq_len ((LENGTH(a))));",
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    elements = child_at(child_at(result.root, 0U), 1U);
+    index = child_at(elements, 1U);
+    key_parts = child_at(index, 1U);
+    key_part = child_at(key_parts, 0U);
+    failures += expect_key_part_kind(
+        key_part,
+        MYLITE_SQL_AST_KEY_PART_FUNCTIONAL,
+        "functional secondary key part"
+    );
+    failures += expect_function_call(
+        child_at(key_part, 0U),
+        "LOWER",
+        1U,
+        "functional secondary expression"
+    );
+    failures += expect_key_part_order(
+        key_part,
+        MYLITE_SQL_AST_KEY_PART_ORDER_DESC,
+        "functional secondary desc order"
+    );
+    index = child_at(elements, 2U);
+    key_parts = child_at(index, 1U);
+    key_part = child_at(key_parts, 0U);
+    failures += expect_key_part_kind(
+        key_part,
+        MYLITE_SQL_AST_KEY_PART_FUNCTIONAL,
+        "functional unique key part"
+    );
+    failures +=
+        expect_function_call(child_at(key_part, 0U), "LENGTH", 1U, "functional unique expression");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -4353,6 +4389,51 @@ static int test_create_drop_index_syntax(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE INDEX idx_func ON t ((LOWER(c)) DESC, id);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    key_parts = child_at(statement, 2U);
+    key_part = child_at(key_parts, 0U);
+    failures += expect_key_part_kind(
+        key_part,
+        MYLITE_SQL_AST_KEY_PART_FUNCTIONAL,
+        "standalone functional key part"
+    );
+    failures += expect_function_call(
+        child_at(key_part, 0U),
+        "LOWER",
+        1U,
+        "standalone functional expression"
+    );
+    failures += expect_key_part_order(
+        key_part,
+        MYLITE_SQL_AST_KEY_PART_ORDER_DESC,
+        "standalone functional desc order"
+    );
+    key_part = child_at(key_parts, 1U);
+    failures += expect_key_part_kind(
+        key_part,
+        MYLITE_SQL_AST_KEY_PART_IDENTIFIER,
+        "standalone mixed identifier key part"
+    );
+    failures +=
+        expect_span_text(child_at(key_part, 0U), "id", "standalone mixed identifier key part name");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE UNIQUE INDEX uq_func ON t ((LENGTH(c)));", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    key_parts = child_at(statement, 2U);
+    failures += expect_key_part_kind(
+        child_at(key_parts, 0U),
+        MYLITE_SQL_AST_KEY_PART_FUNCTIONAL,
+        "standalone unique functional key part"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "DROP INDEX `PRIMARY` ON t ALGORITHM=COPY LOCK=EXCLUSIVE;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -4885,6 +4966,32 @@ static int test_alter_table_key_constraint_operations_syntax(void) {
         fprintf(stderr, "alter add spatial index class was not recorded\n");
         failures = 1;
     }
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE t ADD INDEX idx_func ((LOWER(c)) DESC);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    action = child_at(child_at(child_at(result.root, 0U), 1U), 0U);
+    failures += expect_alter_table_action(
+        action,
+        MYLITE_SQL_AST_ALTER_TABLE_ACTION_ADD_SECONDARY_INDEX,
+        false,
+        "alter add functional index action"
+    );
+    index = child_at(action, 0U);
+    key_parts = child_at(index, 1U);
+    failures += expect_key_part_kind(
+        child_at(key_parts, 0U),
+        MYLITE_SQL_AST_KEY_PART_FUNCTIONAL,
+        "alter add functional key part"
+    );
+    failures += expect_key_part_order(
+        child_at(key_parts, 0U),
+        MYLITE_SQL_AST_KEY_PART_ORDER_DESC,
+        "alter add functional key part order"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -16372,6 +16479,27 @@ static int expect_key_part_order(
             context,
             mylite_sql_ast_key_part_order_name(expected),
             mylite_sql_ast_key_part_order_name(node->key_part_order)
+        );
+        failures = 1;
+    }
+
+    return failures;
+}
+
+static int expect_key_part_kind(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_key_part_kind expected,
+    const char *context
+) {
+    int failures = expect_node(node, MYLITE_SQL_AST_KEY_PART, context);
+
+    if (node != NULL && node->key_part_kind != expected) {
+        fprintf(
+            stderr,
+            "%s: expected key part kind %d, got %d\n",
+            context,
+            (int)expected,
+            (int)node->key_part_kind
         );
         failures = 1;
     }

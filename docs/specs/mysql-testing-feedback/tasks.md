@@ -416,6 +416,9 @@ MySQL 8.4.9 runtime before each item is marked complete.
       Parenthesized table-column references and unary-positive references
       through parentheses now preserve base-column descriptor and origin
       metadata instead of falling back to empty expression origins.
+      Direct wildcard projections now have regression coverage for full
+      visible-column descriptors, and empty table-backed result sets without
+      `LIMIT 0` now verify metadata before stepping to `DONE`.
       Approximate numeric values stored into `VARCHAR` and `TEXT` through
       covered `INSERT ... VALUES` and single-table `UPDATE` paths now use
       MySQL-shaped compact DOUBLE display text, including lowercase exponent

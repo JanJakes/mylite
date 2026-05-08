@@ -62874,6 +62874,17 @@ static int test_numeric_dml_coercion_execution(void) {
         "5",
         "999.99",
     };
+    static const char *const decimal_exact_columns[] = {"id", "d"};
+    static const char *const decimal_exact_values[] = {
+        "1",
+        "18446744073709551615",
+        "2",
+        "18446744073709551615",
+        "3",
+        "18446744073709551615",
+        "4",
+        "18446744073709551615",
+    };
     static const char *const strict_insert_values[] = {"1", "5", "-5", "4.57"};
     static const char *const non_strict_insert_values[] = {
         "1",
@@ -62910,6 +62921,11 @@ static int test_numeric_dml_coercion_execution(void) {
     failures += execute_sql(
         database,
         "CREATE TABLE decimal_ranges (id INT PRIMARY KEY, d DECIMAL(5,2))",
+        MYLITE_DONE
+    );
+    failures += execute_sql(
+        database,
+        "CREATE TABLE decimal_exact (id INT PRIMARY KEY, d DECIMAL(20,0))",
         MYLITE_DONE
     );
 
@@ -63030,6 +63046,44 @@ static int test_numeric_dml_coercion_execution(void) {
         numeric_nul_count_values,
         1,
         "strict decimal range rollback"
+    );
+
+    failures += execute_sql_expect_done_affected(
+        database,
+        "INSERT INTO decimal_exact VALUES "
+        "(1, CAST('18446744073709551615' AS UNSIGNED)), "
+        "(2, '18446744073709551615'), (3, 0), (4, 0)",
+        4,
+        "strict exact unsigned decimal insert"
+    );
+    failures += expect_int(mylite_warning_count(database), 0, "exact unsigned decimal warnings");
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE decimal_exact SET d = CAST('18446744073709551615' AS UNSIGNED) WHERE id = 3",
+        1,
+        "strict exact unsigned decimal expression update"
+    );
+    failures += expect_int(
+        mylite_warning_count(database),
+        0,
+        "exact unsigned decimal expression update warnings"
+    );
+    failures += execute_sql_expect_done_affected(
+        database,
+        "UPDATE decimal_exact SET d = '18446744073709551615' WHERE id = 4",
+        1,
+        "strict exact unsigned decimal text update"
+    );
+    failures +=
+        expect_int(mylite_warning_count(database), 0, "exact unsigned decimal text warnings");
+    failures += expect_select_rows(
+        database,
+        "SELECT id,d FROM decimal_exact ORDER BY id",
+        decimal_exact_columns,
+        2,
+        decimal_exact_values,
+        4,
+        "exact unsigned decimal values"
     );
 
     failures += execute_sql(database, "SET SESSION sql_mode = ''", MYLITE_DONE);

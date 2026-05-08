@@ -83,7 +83,10 @@ In non-strict mode it stores as `4.57` and records two
 `'4.5x'` stores as `4.50` with one 1265 note in non-strict mode. String `'abc'`
 stores as `0.00` with warning 1366 in non-strict mode and rejects with error
 1366 in strict mode; incorrect integer and decimal diagnostics include the
-offending source text, matching MySQL's 1366 message shape.
+offending source text, matching MySQL's 1366 message shape. Clean unsigned
+integer values above signed 64-bit range, including
+`18446744073709551615`, store exactly in a fitting `DECIMAL(20,0)` target when
+assigned from quoted text or `CAST(... AS UNSIGNED)`.
 
 For `DECIMAL(5,2)` values outside the declared range, strict mode rejects with
 error 1264 and non-strict mode clips to `999.99` or `-999.99` with warning
@@ -134,6 +137,12 @@ For decimal columns, MyLite:
 
 - parses numeric and string inputs as decimal-compatible real values for this
   slice
+- preserves clean unsigned integer text and unsigned integer expression values
+  above signed 64-bit range as exact decimal text when the value fits the
+  declared `DECIMAL(M,D)` envelope
+- uses text-backed physical storage for decimal columns whose declared integer
+  digit capacity exceeds SQLite's reliable signed-integer range, preserving
+  exact high-magnitude fixed-point values for covered reads and writes
 - rounds to the catalog numeric scale
 - clips rounded values outside the catalog numeric precision/scale envelope to
   the nearest endpoint in non-strict and `IGNORE` paths, and rejects them in
@@ -186,5 +195,7 @@ Runtime tests must verify MySQL 8.4.9-observed behavior for:
 - strict rejection and non-strict warning coercion for incorrect decimal strings
 - strict rejection, non-strict clipping, and `INSERT IGNORE` warning demotion
   for declared `DECIMAL(M,D)` range endpoints after scale rounding
+- exact `DECIMAL(20,0)` storage for clean unsigned integer text and
+  `CAST(... AS UNSIGNED)` values above signed 64-bit range
 - `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE`, ODKU update assignments,
   single-table `UPDATE`, and joined `UPDATE`

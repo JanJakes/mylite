@@ -377,6 +377,12 @@ static char *select_decimal_output_value_to_text(
 ) {
     double number = 0.0;
 
+    if (value != NULL && value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return mylite_copy_span_text(
+            value->text_value == NULL ? "" : value->text_value,
+            value->text_value == NULL ? 0U : value->text_length
+        );
+    }
     if (!select_output_value_as_double(value, &number)) {
         return NULL;
     }

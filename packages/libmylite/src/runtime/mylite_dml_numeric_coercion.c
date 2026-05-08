@@ -248,6 +248,16 @@ static int coerce_decimal_double(
     struct mylite_dml_numeric_output *out_output
 );
 
+static int coerce_decimal_uint64(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    uint64_t value,
+    enum mylite_dml_numeric_problem problem,
+    uint64_t row_number,
+    bool ignore,
+    struct mylite_dml_numeric_output *out_output
+);
+
 static int coerce_approximate_double(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -341,6 +351,20 @@ static double decimal_scale_factor(uint64_t scale);
 
 static uint64_t decimal_scale_for_column(const struct mylite_insert_table_column *column);
 
+static bool decimal_uint64_range_exceeded(
+    const struct mylite_insert_table_column *column,
+    uint64_t scale,
+    uint64_t value
+);
+
+static bool decimal_integer_digits_for_column(
+    const struct mylite_insert_table_column *column,
+    uint64_t scale,
+    uint64_t *out_digits
+);
+
+static uint64_t uint64_decimal_digit_count(uint64_t value);
+
 static bool decimal_max_abs_for_column(
     const struct mylite_insert_table_column *column,
     uint64_t scale,
@@ -351,6 +375,25 @@ static double decimal_power10(uint64_t exponent);
 
 static int set_decimal_output(
     double value,
+    uint64_t scale,
+    struct mylite_dml_numeric_output *out_output
+);
+
+static int set_decimal_uint64_output(
+    uint64_t value,
+    uint64_t scale,
+    struct mylite_dml_numeric_output *out_output
+);
+
+static int set_decimal_unsigned_endpoint_output(
+    const struct mylite_insert_table_column *column,
+    uint64_t scale,
+    struct mylite_dml_numeric_output *out_output
+);
+
+static int set_decimal_text_output(
+    const char *digits,
+    size_t digits_length,
     uint64_t scale,
     struct mylite_dml_numeric_output *out_output
 );
@@ -506,12 +549,10 @@ static int coerce_update_numeric_value(
             );
             break;
         }
-        status = coerce_numeric_double(
+        status = coerce_decimal_uint64(
             database,
             column,
-            kind,
-            value->uint64_value > (uint64_t)INT64_MAX ? (double)INT64_MAX
-                                                      : (double)value->uint64_value,
+            value->uint64_value,
             MYLITE_DML_NUMERIC_PROBLEM_NONE,
             row_number,
             ignore,
@@ -764,6 +805,19 @@ static int coerce_numeric_text(
                 out_output
             );
         }
+    }
+    if (kind == MYLITE_DML_NUMERIC_DECIMAL && unsigned_integer.saw_digits &&
+        !unsigned_integer.overflow && !unsigned_integer.trailing_garbage &&
+        unsigned_integer.value > (uint64_t)INT64_MAX) {
+        return coerce_decimal_uint64(
+            database,
+            column,
+            unsigned_integer.value,
+            problem,
+            row_number,
+            ignore,
+            out_output
+        );
     }
     return coerce_numeric_double(
         database,
@@ -1310,6 +1364,70 @@ static int coerce_decimal_double(
     return set_decimal_output(rounded, scale, out_output);
 }
 
+static int coerce_decimal_uint64(
+    mylite_db *database,
+    const struct mylite_insert_table_column *column,
+    uint64_t value,
+    enum mylite_dml_numeric_problem problem,
+    uint64_t row_number,
+    bool ignore,
+    struct mylite_dml_numeric_output *out_output
+) {
+    uint64_t scale = decimal_scale_for_column(column);
+    bool out_of_range = decimal_uint64_range_exceeded(column, scale, value);
+    int status = handle_numeric_problem(
+        database,
+        column,
+        out_of_range ? MYLITE_DML_NUMERIC_PROBLEM_OUT_OF_RANGE : problem,
+        row_number,
+        ignore
+    );
+
+    if (status != MYLITE_OK) {
+        return status;
+    }
+    if (out_of_range) {
+        return set_decimal_unsigned_endpoint_output(column, scale, out_output);
+    }
+    return set_decimal_uint64_output(value, scale, out_output);
+}
+
+static bool decimal_uint64_range_exceeded(
+    const struct mylite_insert_table_column *column,
+    uint64_t scale,
+    uint64_t value
+) {
+    uint64_t integer_digits = 0U;
+
+    if (!decimal_integer_digits_for_column(column, scale, &integer_digits)) {
+        return false;
+    }
+    return uint64_decimal_digit_count(value) > integer_digits;
+}
+
+static bool decimal_integer_digits_for_column(
+    const struct mylite_insert_table_column *column,
+    uint64_t scale,
+    uint64_t *out_digits
+) {
+    if (column == NULL || out_digits == NULL || !column->has_numeric_precision ||
+        column->numeric_precision < scale) {
+        return false;
+    }
+    *out_digits = column->numeric_precision - scale;
+    return true;
+}
+
+static uint64_t uint64_decimal_digit_count(uint64_t value) {
+    uint64_t digits = 1U;
+
+    while (value >= (uint64_t)mylite_dml_decimal_base) {
+        value /= (uint64_t)mylite_dml_decimal_base;
+        ++digits;
+    }
+    return digits;
+}
+
 static bool decimal_max_abs_for_column(
     const struct mylite_insert_table_column *column,
     uint64_t scale,
@@ -1661,6 +1779,80 @@ static double decimal_scale_factor(uint64_t scale) {
 
 static uint64_t decimal_scale_for_column(const struct mylite_insert_table_column *column) {
     return column != NULL && column->has_numeric_scale ? column->numeric_scale : 0U;
+}
+
+static int set_decimal_uint64_output(
+    uint64_t value,
+    uint64_t scale,
+    struct mylite_dml_numeric_output *out_output
+) {
+    char buffer[mylite_dml_uint64_text_buffer_size];
+    int length = snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)value);
+
+    if (length < 0 || (size_t)length >= sizeof(buffer)) {
+        return MYLITE_NOMEM;
+    }
+    return set_decimal_text_output(buffer, (size_t)length, scale, out_output);
+}
+
+static int set_decimal_unsigned_endpoint_output(
+    const struct mylite_insert_table_column *column,
+    uint64_t scale,
+    struct mylite_dml_numeric_output *out_output
+) {
+    uint64_t integer_digits = 0U;
+    char *digits = NULL;
+    int status = MYLITE_OK;
+
+    if (!decimal_integer_digits_for_column(column, scale, &integer_digits) ||
+        integer_digits == 0U || integer_digits > (uint64_t)SIZE_MAX) {
+        return MYLITE_NOMEM;
+    }
+    digits = malloc((size_t)integer_digits + 1U);
+    if (digits == NULL) {
+        return MYLITE_NOMEM;
+    }
+    memset(digits, '9', (size_t)integer_digits);
+    digits[(size_t)integer_digits] = '\0';
+    status = set_decimal_text_output(digits, (size_t)integer_digits, scale, out_output);
+    free(digits);
+    return status;
+}
+
+static int set_decimal_text_output(
+    const char *digits,
+    size_t digits_length,
+    uint64_t scale,
+    struct mylite_dml_numeric_output *out_output
+) {
+    uint64_t output_scale = scale > 30U ? 30U : scale;
+    size_t scale_length = (size_t)output_scale;
+    size_t text_length = digits_length;
+    char *text = NULL;
+
+    if (digits == NULL || out_output == NULL || digits_length > SIZE_MAX - 1U ||
+        (output_scale > 0U && digits_length > SIZE_MAX - scale_length - 2U)) {
+        return MYLITE_NOMEM;
+    }
+    if (output_scale > 0U) {
+        text_length += scale_length + 1U;
+    }
+    text = malloc(text_length + 1U);
+    if (text == NULL) {
+        return MYLITE_NOMEM;
+    }
+    memcpy(text, digits, digits_length);
+    if (output_scale > 0U) {
+        text[digits_length] = '.';
+        memset(text + digits_length + 1U, '0', scale_length);
+    }
+    text[text_length] = '\0';
+    out_output->text_value = text;
+    out_output->insert_kind = MYLITE_INSERT_BOUND_TEXT;
+    out_output->expression_kind = MYLITE_EXPRESSION_VALUE_TEXT;
+    out_output->text_length = text_length;
+    out_output->replace = true;
+    return MYLITE_OK;
 }
 
 static int set_decimal_output(

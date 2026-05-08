@@ -125,6 +125,9 @@ static int field_descriptor_preserve_decimal_text(
          descriptor->type != MYLITE_FIELD_TYPE_NEWDECIMAL)) {
         return 0;
     }
+    if (value->kind == MYLITE_EXPRESSION_VALUE_TEXT) {
+        return 0;
+    }
     if (!field_descriptor_decimal_value_to_double(value, &number)) {
         return 0;
     }

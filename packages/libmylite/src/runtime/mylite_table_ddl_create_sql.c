@@ -6,6 +6,7 @@
 #include "mylite_table_ddl.h"
 #include "sqlite3.h"
 
+#include <stdbool.h>
 #include <stdlib.h>
 
 static char *build_create_physical_table_sql(
@@ -16,6 +17,10 @@ static char *build_create_physical_table_sql(
 );
 
 static const char *sqlite_affinity_for_descriptor(
+    const struct mylite_column_type_descriptor *descriptor
+);
+
+static bool decimal_descriptor_needs_text_affinity(
     const struct mylite_column_type_descriptor *descriptor
 );
 
@@ -105,6 +110,9 @@ static const char *sqlite_affinity_for_descriptor(
     if (descriptor->is_approximate_numeric) {
         return "REAL";
     }
+    if (decimal_descriptor_needs_text_affinity(descriptor)) {
+        return "TEXT";
+    }
     if (descriptor->is_exact_numeric) {
         return "NUMERIC";
     }
@@ -115,4 +123,18 @@ static const char *sqlite_affinity_for_descriptor(
         return "BLOB";
     }
     return "TEXT";
+}
+
+static bool decimal_descriptor_needs_text_affinity(
+    const struct mylite_column_type_descriptor *descriptor
+) {
+    unsigned int scale = descriptor->has_numeric_scale ? descriptor->numeric_scale : 0U;
+
+    if (descriptor->numeric_type != MYLITE_COLUMN_NUMERIC_DECIMAL) {
+        return false;
+    }
+    if (descriptor->numeric_precision < scale) {
+        return false;
+    }
+    return descriptor->numeric_precision - scale > 18U;
 }

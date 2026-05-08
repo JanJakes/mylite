@@ -45,6 +45,8 @@ static bool insert_column_uses_numeric_implicit_default(
 
 static bool insert_column_uses_integer_storage(const struct mylite_insert_table_column *column);
 
+static bool insert_column_uses_decimal_storage(const struct mylite_insert_table_column *column);
+
 static int resolve_insert_binary_literal_numeric_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -878,6 +880,11 @@ static bool insert_column_uses_integer_storage(const struct mylite_insert_table_
     return false;
 }
 
+static bool insert_column_uses_decimal_storage(const struct mylite_insert_table_column *column) {
+    return column != NULL && column->data_type != NULL &&
+           mylite_ascii_case_equal(column->data_type, "decimal");
+}
+
 static int resolve_insert_binary_literal_numeric_value(
     mylite_db *database,
     const struct mylite_insert_table_column *column,
@@ -1075,7 +1082,8 @@ static bool insert_text_requires_integer_text_coercion(
     const char *text,
     size_t text_length
 ) {
-    if (!insert_column_uses_integer_storage(column)) {
+    if (!insert_column_uses_integer_storage(column) &&
+        !insert_column_uses_decimal_storage(column)) {
         return false;
     }
     return insert_text_integer_prefix_exceeds_int64(text, text_length);

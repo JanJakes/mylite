@@ -195,6 +195,14 @@ int mylite_sql_ast_node_integer_type_has_display_width(const struct mylite_sql_a
     return node->payload.integer_type.has_display_width;
 }
 
+int mylite_sql_ast_node_integer_type_is_bool_alias(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_INTEGER_TYPE) {
+        return 0;
+    }
+
+    return node->payload.integer_type.is_bool_alias;
+}
+
 struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_span(
     const struct mylite_sql_ast_node *node
 ) {

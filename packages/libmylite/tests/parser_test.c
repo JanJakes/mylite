@@ -9,6 +9,7 @@ enum {
     signed_integer_column_count = 6,
     alias_integer_column_count = 10,
     display_width_column_count = 16,
+    bool_alias_column_count = 3,
     alias_int1_unsigned_column_index = 5,
     alias_int2_signed_column_index = 6,
     alias_int3_unsigned_column_index = 7,
@@ -106,6 +107,7 @@ static int expect_integer_display_width(
     const char *expected_width,
     const char *context
 );
+static int expect_integer_bool_alias(const struct mylite_sql_ast_node *node, const char *context);
 static int expect_nullability(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_nullability expected,
@@ -1618,6 +1620,70 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE bool_aliases (b BOOL, c BOOLEAN, nn BOOL NOT NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, bool_alias_column_count, "bool alias column list");
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "bool alias column type"
+    );
+    failures += expect_integer_display_width(column_type, NULL, "bool alias display width");
+    failures += expect_integer_bool_alias(column_type, "bool alias marker");
+    failures += expect_span_text(column_type, "BOOL", "bool alias span");
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "boolean alias column type"
+    );
+    failures += expect_integer_bool_alias(column_type, "boolean alias marker");
+    failures += expect_span_text(column_type, "BOOLEAN", "boolean alias span");
+    column = child_at(columns, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_bool_alias(column_type, "bool not null alias marker");
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "bool alias not null"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE bool_identifiers (BOOL INT, BOOLEAN TINYINT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "BOOL", "bool identifier column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "bool identifier column type"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_span_text(child_at(column, 0U), "BOOLEAN", "boolean identifier column name");
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "boolean identifier column type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE IF NOT EXISTS app.if_missing (id INT) ENGINE=InnoDB;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2323,6 +2389,24 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD added_bool BOOL NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "bool alias alter add column type"
+    );
+    failures += expect_integer_bool_alias(column_type, "bool alias alter add marker");
+    failures += expect_span_text(column_type, "BOOL", "bool alias alter add span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE simple_lifecycle MODIFY old_col INT UNSIGNED NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2414,6 +2498,24 @@ static int test_table_lifecycle_statements(void) {
     failures += expect_integer_display_width(column_type, "11", "display width alter modify");
     failures +=
         expect_span_text(column_type, "INT(11) UNSIGNED", "display width alter modify span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY old_col BOOLEAN NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "boolean alias alter modify column type"
+    );
+    failures += expect_integer_bool_alias(column_type, "boolean alias alter modify marker");
+    failures += expect_span_text(column_type, "BOOLEAN", "boolean alias alter modify span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -2509,6 +2611,24 @@ static int test_table_lifecycle_statements(void) {
     );
     failures += expect_integer_display_width(column_type, "1", "display width alter change");
     failures += expect_span_text(column_type, "INT1(1)", "display width alter change span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_col new_bool BOOL NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "bool alias alter change column type"
+    );
+    failures += expect_integer_bool_alias(column_type, "bool alias alter change marker");
+    failures += expect_span_text(column_type, "BOOL", "bool alias alter change span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -4448,20 +4568,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_boolean (c BOOLEAN);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "CREATE TABLE unsupported_bool (c BOOL);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
         "CREATE TABLE unsupported_int5 (c INT5);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -4470,6 +4576,48 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "CREATE TABLE unsupported_serial (c SERIAL);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_bool_width (c BOOL(1));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_boolean_width (c BOOLEAN(1));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_bool_signed (c BOOL SIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_bool_unsigned (c BOOL UNSIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_bool_zerofill (c BOOL ZEROFILL);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_bool_signed_unsigned (c BOOL SIGNED UNSIGNED);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -5135,6 +5283,15 @@ static int expect_integer_display_width(
             (int)span.length,
             span.text == NULL ? "" : span.text
         );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_integer_bool_alias(const struct mylite_sql_ast_node *node, const char *context) {
+    if (mylite_sql_ast_node_integer_type_is_bool_alias(node) == 0) {
+        fprintf(stderr, "%s: expected bool alias marker\n", context);
         return 1;
     }
 

@@ -196,6 +196,7 @@ struct mapped_integer_type {
     enum mylite_sql_ast_integer_type type;
     int is_unsigned;
     bool has_display_width;
+    bool is_bool_alias;
     uint64_t display_width;
 };
 
@@ -9374,6 +9375,7 @@ static int map_integer_type(
         .type = type,
         .is_unsigned = is_unsigned,
         .has_display_width = has_display_width,
+        .is_bool_alias = mylite_sql_ast_node_integer_type_is_bool_alias(type_node) != 0,
         .display_width = display_width,
     });
     if (logical_type == NULL) {
@@ -9434,6 +9436,9 @@ static const char *logical_type_for_mapped_integer(struct mapped_integer_type in
     case MYLITE_SQL_AST_INTEGER_TYPE_TINYINT:
         if (integer_type.is_unsigned != 0) {
             return "TINYINT UNSIGNED";
+        }
+        if (integer_type.is_bool_alias) {
+            return "TINYINT(1)";
         }
         if (integer_type.has_display_width && integer_type.display_width == 1U) {
             return "TINYINT(1)";

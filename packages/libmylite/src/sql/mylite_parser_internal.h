@@ -554,7 +554,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
     struct mylite_sql_token display_width_token,
     struct mylite_sql_token display_width_end_token,
     struct mylite_sql_token attribute_token,
-    int is_unsigned
+    int is_unsigned,
+    int is_bool_alias
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_nullability(
     struct mylite_sql_parser_state *state,

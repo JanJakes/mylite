@@ -989,6 +989,12 @@ identifier(A) ::= SESSION_USER(T). {
 identifier(A) ::= SYSTEM_USER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= BOOL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= BOOLEAN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= CONNECTION_ID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -1078,7 +1084,30 @@ integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_si
         W.width_token,
         W.end_token,
         S.attribute_token,
-        S.is_unsigned);
+        S.is_unsigned,
+        0);
+}
+integer_type(A) ::= BOOL(T). {
+    A = mylite_sql_parser_make_integer_type(
+        state,
+        T,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        (struct mylite_sql_token){0},
+        (struct mylite_sql_token){0},
+        (struct mylite_sql_token){0},
+        0,
+        1);
+}
+integer_type(A) ::= BOOLEAN(T). {
+    A = mylite_sql_parser_make_integer_type(
+        state,
+        T,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        (struct mylite_sql_token){0},
+        (struct mylite_sql_token){0},
+        (struct mylite_sql_token){0},
+        0,
+        1);
 }
 
 integer_type_name(A) ::= INT(T). {

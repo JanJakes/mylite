@@ -2058,7 +2058,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
     struct mylite_sql_token display_width_token,
     struct mylite_sql_token display_width_end_token,
     struct mylite_sql_token attribute_token,
-    int is_unsigned
+    int is_unsigned,
+    int is_bool_alias
 ) {
     struct mylite_sql_source_span span = span_from_token(&type_token);
     struct mylite_sql_ast_node *type = NULL;
@@ -2081,6 +2082,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
             .kind = integer_type,
             .is_unsigned = is_unsigned,
             .has_display_width = display_width_token.text != NULL,
+            .is_bool_alias = is_bool_alias,
             .display_width_span = span_from_token(&display_width_token),
         }
     );
@@ -2401,6 +2403,8 @@ static bool map_keyword_token(
         {"MEDIUMINT", MYLITE_SQL_PARSE_MEDIUMINT},
         {"INTEGER", MYLITE_SQL_PARSE_INTEGER_TYPE},
         {"BIGINT", MYLITE_SQL_PARSE_BIGINT},
+        {"BOOL", MYLITE_SQL_PARSE_BOOL},
+        {"BOOLEAN", MYLITE_SQL_PARSE_BOOLEAN},
         {"INT1", MYLITE_SQL_PARSE_INT1},
         {"INT2", MYLITE_SQL_PARSE_INT2},
         {"INT3", MYLITE_SQL_PARSE_INT3},

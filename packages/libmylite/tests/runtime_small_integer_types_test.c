@@ -24,6 +24,8 @@ enum {
     alias_column_count = 12,
     display_width_column_count = 16,
     alter_display_width_column_count = 4,
+    bool_alias_column_count = 3,
+    alter_bool_alias_column_count = 2,
     show_columns_field_count = 6,
     mysql_error_parse = 1064,
     mysql_error_bad_null = 1048,
@@ -56,6 +58,7 @@ static int test_small_integer_success_persistence_and_dml(void);
 static int test_integer_signed_attribute_lifecycle(void);
 static int test_integer_type_alias_lifecycle(void);
 static int test_integer_display_width_lifecycle(void);
+static int test_bool_boolean_alias_lifecycle(void);
 static int test_small_integer_diagnostics_and_rollback(void);
 static int test_small_integer_independent_handles(void);
 static int create_small_integer_table(mylite_db *database, const char *table_name);
@@ -112,6 +115,7 @@ int main(void) {
     failures += test_integer_signed_attribute_lifecycle();
     failures += test_integer_type_alias_lifecycle();
     failures += test_integer_display_width_lifecycle();
+    failures += test_bool_boolean_alias_lifecycle();
     failures += test_small_integer_diagnostics_and_rollback();
     failures += test_small_integer_independent_handles();
 
@@ -1083,7 +1087,7 @@ static int test_integer_type_alias_lifecycle(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE unsupported_bool (c BOOL)",
+        "CREATE TABLE unsupported_bool_width (c BOOL(1))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -1634,6 +1638,372 @@ static int test_integer_display_width_lifecycle(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "display width update persists after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_bool_boolean_alias_lifecycle(void) {
+    static const char *const show_columns_rows[] = {
+        "b",
+        "tinyint(1)",
+        "YES",
+        "",
+        NULL,
+        "",
+        "c",
+        "tinyint(1)",
+        "YES",
+        "",
+        NULL,
+        "",
+        "nn",
+        "tinyint(1)",
+        "NO",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const show_create_rows[] = {
+        "bools",
+        "CREATE TABLE `bools` (\n"
+        "  `b` tinyint(1) DEFAULT NULL,\n"
+        "  `c` tinyint(1) DEFAULT NULL,\n"
+        "  `nn` tinyint(1) NOT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const selected_rows[] = {
+        "-1",
+        "0",
+        "1",
+        "1",
+        "127",
+        "1",
+        "127",
+        NULL,
+        "1",
+    };
+    static const char *const ordered_rows[] = {"127", "1"};
+    static const char *const warning_rows[] = {0};
+    static const char *const alter_show_columns_rows[] = {
+        "flag",
+        "tinyint(1)",
+        "NO",
+        "",
+        NULL,
+        "",
+        "added",
+        "tinyint(1)",
+        "NO",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const alter_selected_rows[] = {"1", "0", "2", "0"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    uint64_t sqlite_schema_generation = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "bool_boolean") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open bool alias file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE bools (b BOOL, c BOOLEAN, nn BOOL NOT NULL)");
+    failures += expect_statement_ok(database, "CREATE TABLE bool_identifiers (BOOL INT)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .values = warning_rows,
+            .column_count = 3U,
+            .row_count = 0U,
+            .context = "bool alias CREATE has no warnings",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM bools",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = bool_alias_column_count,
+            .context = "bool alias SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "DESCRIBE bools",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = bool_alias_column_count,
+            .context = "bool alias DESCRIBE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "EXPLAIN bools",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = bool_alias_column_count,
+            .context = "bool alias EXPLAIN table",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE bools",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "bool alias SHOW CREATE TABLE",
+        }
+    );
+
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read bool alias schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "bools", &table),
+        MYLITE_OK,
+        "read bool alias table"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "b", .logical_type = "TINYINT(1)", .is_nullable = true},
+        "bool descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "c", .logical_type = "TINYINT(1)", .is_nullable = true},
+        "boolean descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "nn", .logical_type = "TINYINT(1)", .is_nullable = false},
+        "bool not null descriptor"
+    );
+
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO bools VALUES (-1, 0, 1), (1, 2, 1), (127, NULL, 1)",
+        3
+    );
+    failures += expect_dml_ok(database, "UPDATE bools SET c = 127 WHERE b = 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT b, c, nn FROM bools ORDER BY b",
+            .values = selected_rows,
+            .column_count = bool_alias_column_count,
+            .row_count = 3U,
+            .context = "bool alias selected values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT b FROM bools WHERE b IS NOT NULL ORDER BY b DESC LIMIT 2",
+            .values = ordered_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "bool alias predicate order limit",
+        }
+    );
+    failures += expect_dml_ok(database, "DELETE FROM bools WHERE b = -1", 1);
+
+    failures += execute_error(
+        database,
+        "INSERT INTO bools VALUES (128, 0, 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'b' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO bools VALUES (-129, 0, 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'b' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO bools VALUES (0, 0, NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'nn' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO bools VALUES (TRUE, 0, 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE bools SET c = FALSE WHERE b = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+
+    failures +=
+        expect_statement_warning_count(database, "CREATE TABLE alter_bools (a TINYINT(1))", 1U);
+    failures += expect_dml_ok(database, "INSERT INTO alter_bools VALUES (1), (2)", 2);
+
+    sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
+    failures += expect_dml_ok(database, "ALTER TABLE alter_bools MODIFY a BOOL", 0);
+    failures += expect_int64(
+        (int64_t)mylite_connection_session_state(database)->sqlite_schema_generation,
+        (int64_t)sqlite_schema_generation,
+        "bool alias metadata ALTER keeps SQLite schema generation"
+    );
+
+    sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
+    failures +=
+        expect_dml_ok(database, "ALTER TABLE alter_bools CHANGE a flag BOOLEAN NOT NULL", 0);
+    failures += expect_true(
+        mylite_connection_session_state(database)->sqlite_schema_generation >
+            sqlite_schema_generation,
+        "bool alias CHANGE rename updates SQLite schema generation"
+    );
+    failures += expect_dml_ok(database, "ALTER TABLE alter_bools ADD added BOOL NOT NULL", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM alter_bools",
+            .values = alter_show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = alter_bool_alias_column_count,
+            .context = "bool alias ALTER SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT flag, added FROM alter_bools ORDER BY flag",
+            .values = alter_selected_rows,
+            .column_count = alter_bool_alias_column_count,
+            .row_count = 2U,
+            .context = "bool alias ALTER values",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_bool_width (c BOOL(1))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_boolean_width (c BOOLEAN(1))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_bool_unsigned (c BOOL UNSIGNED)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_bool_signed (c BOOL SIGNED)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE bad_bool_zerofill (c BOOL ZEROFILL)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "bool alias lifecycle preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen bool alias file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM bools",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = bool_alias_column_count,
+            .context = "bool alias metadata persists after reopen",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT b, c, nn FROM bools ORDER BY b",
+            .values = &selected_rows[bool_alias_column_count],
+            .column_count = bool_alias_column_count,
+            .row_count = 2U,
+            .context = "bool alias DML persists after reopen",
         }
     );
 

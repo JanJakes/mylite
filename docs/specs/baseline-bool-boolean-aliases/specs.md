@@ -45,6 +45,8 @@ Observed MySQL 8.4.9 behavior:
 - `BOOL` and `BOOLEAN` are accepted as column data types in `CREATE TABLE`,
   `ALTER TABLE ... ADD`, `ALTER TABLE ... MODIFY`, and
   `ALTER TABLE ... CHANGE`.
+- `BOOL` and `BOOLEAN` remain available as nonreserved unquoted identifiers in
+  positions where MyLite currently admits nonreserved identifiers.
 - Both aliases render as `tinyint(1)` in `SHOW COLUMNS`, `DESCRIBE`,
   `EXPLAIN table`, and `SHOW CREATE TABLE`.
 - Creating a `BOOL` or `BOOLEAN` column emits no display-width deprecation
@@ -70,6 +72,8 @@ The implementation must add:
 
 - parser support for `BOOL` and `BOOLEAN` in the same supported
   column-definition positions as current integer-family descriptors;
+- preservation of `BOOL` and `BOOLEAN` as unquoted identifiers outside the
+  alias type position where the current parser admits nonreserved identifiers;
 - AST representation that records the aliases as signed `TINYINT(1)`-like
   descriptor inputs without treating the `(1)` as explicit display-width
   syntax;

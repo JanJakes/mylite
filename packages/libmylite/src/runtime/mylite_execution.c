@@ -4722,9 +4722,33 @@ static int show_create_table_type_text(
         *out_type_text = "int";
         return MYLITE_OK;
     }
+    if (strcmp(logical_type, "TINYINT") == 0) {
+        *out_type_text = "tinyint";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "SMALLINT") == 0) {
+        *out_type_text = "smallint";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "MEDIUMINT") == 0) {
+        *out_type_text = "mediumint";
+        return MYLITE_OK;
+    }
     if (strcmp(logical_type, "INT UNSIGNED") == 0 ||
         strcmp(logical_type, "INTEGER UNSIGNED") == 0) {
         *out_type_text = "int unsigned";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "TINYINT UNSIGNED") == 0) {
+        *out_type_text = "tinyint unsigned";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "SMALLINT UNSIGNED") == 0) {
+        *out_type_text = "smallint unsigned";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "MEDIUMINT UNSIGNED") == 0) {
+        *out_type_text = "mediumint unsigned";
         return MYLITE_OK;
     }
     if (strcmp(logical_type, "BIGINT") == 0) {
@@ -9262,6 +9286,30 @@ static int map_integer_type(
     }
 
     *out_physical_type = "INTEGER";
+    if (type == MYLITE_SQL_AST_INTEGER_TYPE_TINYINT && is_unsigned == 0) {
+        *out_logical_type = "TINYINT";
+        return MYLITE_OK;
+    }
+    if (type == MYLITE_SQL_AST_INTEGER_TYPE_TINYINT && is_unsigned != 0) {
+        *out_logical_type = "TINYINT UNSIGNED";
+        return MYLITE_OK;
+    }
+    if (type == MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT && is_unsigned == 0) {
+        *out_logical_type = "SMALLINT";
+        return MYLITE_OK;
+    }
+    if (type == MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT && is_unsigned != 0) {
+        *out_logical_type = "SMALLINT UNSIGNED";
+        return MYLITE_OK;
+    }
+    if (type == MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT && is_unsigned == 0) {
+        *out_logical_type = "MEDIUMINT";
+        return MYLITE_OK;
+    }
+    if (type == MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT && is_unsigned != 0) {
+        *out_logical_type = "MEDIUMINT UNSIGNED";
+        return MYLITE_OK;
+    }
     if (type == MYLITE_SQL_AST_INTEGER_TYPE_INT && is_unsigned == 0) {
         *out_logical_type = "INT";
         return MYLITE_OK;
@@ -10594,9 +10642,60 @@ static int integer_range_for_column(
     const uint64_t int_signed_positive_max = 2147483647ULL;
     const uint64_t int_signed_negative_abs_max = 2147483648ULL;
     const uint64_t int_unsigned_max = 4294967295ULL;
+    const uint64_t mediumint_signed_positive_max = 8388607ULL;
+    const uint64_t mediumint_signed_negative_abs_max = 8388608ULL;
+    const uint64_t mediumint_unsigned_max = 16777215ULL;
+    const uint64_t smallint_signed_positive_max = 32767ULL;
+    const uint64_t smallint_signed_negative_abs_max = 32768ULL;
+    const uint64_t smallint_unsigned_max = 65535ULL;
+    const uint64_t tinyint_signed_positive_max = 127ULL;
+    const uint64_t tinyint_signed_negative_abs_max = 128ULL;
+    const uint64_t tinyint_unsigned_max = 255ULL;
     const uint64_t bigint_signed_positive_max = 9223372036854775807ULL;
     const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
 
+    if (strcmp(column->logical_type, "TINYINT") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = tinyint_signed_positive_max,
+            .negative_abs_max = tinyint_signed_negative_abs_max,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(column->logical_type, "TINYINT UNSIGNED") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = tinyint_unsigned_max,
+            .negative_abs_max = 0U,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(column->logical_type, "SMALLINT") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = smallint_signed_positive_max,
+            .negative_abs_max = smallint_signed_negative_abs_max,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(column->logical_type, "SMALLINT UNSIGNED") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = smallint_unsigned_max,
+            .negative_abs_max = 0U,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(column->logical_type, "MEDIUMINT") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = mediumint_signed_positive_max,
+            .negative_abs_max = mediumint_signed_negative_abs_max,
+        };
+        return MYLITE_OK;
+    }
+    if (strcmp(column->logical_type, "MEDIUMINT UNSIGNED") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = mediumint_unsigned_max,
+            .negative_abs_max = 0U,
+        };
+        return MYLITE_OK;
+    }
     if (strcmp(column->logical_type, "INT") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = int_signed_positive_max,
@@ -10773,9 +10872,33 @@ static int show_column_type_text(
         *out_type_text = "int";
         return MYLITE_OK;
     }
+    if (strcmp(logical_type, "TINYINT") == 0) {
+        *out_type_text = "tinyint";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "SMALLINT") == 0) {
+        *out_type_text = "smallint";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "MEDIUMINT") == 0) {
+        *out_type_text = "mediumint";
+        return MYLITE_OK;
+    }
     if (strcmp(logical_type, "INT UNSIGNED") == 0 ||
         strcmp(logical_type, "INTEGER UNSIGNED") == 0) {
         *out_type_text = "int unsigned";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "TINYINT UNSIGNED") == 0) {
+        *out_type_text = "tinyint unsigned";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "SMALLINT UNSIGNED") == 0) {
+        *out_type_text = "smallint unsigned";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "MEDIUMINT UNSIGNED") == 0) {
+        *out_type_text = "mediumint unsigned";
         return MYLITE_OK;
     }
     if (strcmp(logical_type, "BIGINT") == 0) {

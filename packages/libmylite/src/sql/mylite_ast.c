@@ -480,6 +480,12 @@ const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type in
         return "int";
     case MYLITE_SQL_AST_INTEGER_TYPE_BIGINT:
         return "bigint";
+    case MYLITE_SQL_AST_INTEGER_TYPE_TINYINT:
+        return "tinyint";
+    case MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT:
+        return "smallint";
+    case MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT:
+        return "mediumint";
     }
 
     return "unknown";

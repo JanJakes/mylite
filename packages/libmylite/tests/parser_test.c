@@ -4,6 +4,11 @@
 #include <stdio.h>
 #include <string.h>
 
+enum {
+    small_integer_column_count = 6,
+    mediumint_unsigned_column_index = 5,
+};
+
 static int test_empty_script(void);
 static int test_use_statements(void);
 static int test_select_expression_list(void);
@@ -1317,6 +1322,60 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE small_integer_types (ti TINYINT, tiu TINYINT UNSIGNED, "
+        "si SMALLINT, siu SMALLINT UNSIGNED, mi MEDIUMINT, miu MEDIUMINT UNSIGNED);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures +=
+        expect_child_count(columns, small_integer_column_count, "small integer column list");
+    column = child_at(columns, 0U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "tinyint column type"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        1,
+        "tinyint unsigned column type"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT,
+        0,
+        "smallint column type"
+    );
+    column = child_at(columns, 3U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT,
+        1,
+        "smallint unsigned column type"
+    );
+    column = child_at(columns, 4U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT,
+        0,
+        "mediumint column type"
+    );
+    column = child_at(columns, mediumint_unsigned_column_index);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT,
+        1,
+        "mediumint unsigned column type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE IF NOT EXISTS app.if_missing (id INT) ENGINE=InnoDB;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -1957,6 +2016,21 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD added_small SMALLINT UNSIGNED NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT,
+        1,
+        "smallint unsigned alter add column type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE simple_lifecycle MODIFY old_col INT UNSIGNED NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -1981,6 +2055,21 @@ static int test_table_lifecycle_statements(void) {
         child_at(column, 2U),
         MYLITE_SQL_AST_NULLABILITY_NULL,
         "bare alter modify column nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY old_col TINYINT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "tinyint alter modify column type"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2010,6 +2099,21 @@ static int test_table_lifecycle_statements(void) {
         child_at(column, 2U),
         MYLITE_SQL_AST_NULLABILITY_NULL,
         "bare alter change column nullability"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_col new_col MEDIUMINT UNSIGNED NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT,
+        1,
+        "mediumint unsigned alter change column type"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -3825,6 +3929,34 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name ADD COLUMN added VARCHAR(10);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_width (c TINYINT(1));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_signed (c SMALLINT SIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_zerofill (c MEDIUMINT ZEROFILL);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_bool (c BOOLEAN);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

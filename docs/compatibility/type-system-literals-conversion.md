@@ -4,9 +4,9 @@
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `TINYINT` | ❌ | Ranges, display width, metadata |
-| `SMALLINT` | ❌ | Ranges, display width, metadata |
-| `MEDIUMINT` | ❌ | Ranges, display width, metadata |
+| `TINYINT` | 🟡 | Limited DDL descriptors plus `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]` descriptor replacement, integer/`NULL` `INSERT` and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion with MyLite's current descriptor-range literal check, and single-column sort support; no display width, `ZEROFILL`, aliases, general expression semantics, compact physical storage, or protocol-grade result metadata |
+| `SMALLINT` | 🟡 | Limited DDL descriptors plus `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]` descriptor replacement, integer/`NULL` `INSERT` and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion with MyLite's current descriptor-range literal check, and single-column sort support; no display width, `ZEROFILL`, aliases, general expression semantics, compact physical storage, or protocol-grade result metadata |
+| `MEDIUMINT` | 🟡 | Limited DDL descriptors plus `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]` descriptor replacement, integer/`NULL` `INSERT` and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion with MyLite's current descriptor-range literal check, and single-column sort support; no display width, `ZEROFILL`, aliases, general expression semantics, compact physical storage, or protocol-grade result metadata |
 | `INT` / `INTEGER` | 🟡 | Limited DDL descriptors plus `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]` descriptor replacement, integer/`NULL` `INSERT` and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion, and single-column sort support; no general expression semantics, display width, or protocol-grade result metadata |
 | `BIGINT` | 🟡 | Limited DDL descriptors plus `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]` descriptor replacement, integer/`NULL` `INSERT` and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion, and single-column sort support; `BIGINT UNSIGNED` is capped at the signed 64-bit SQLite integer range in this slice |
 | Integer type aliases | ❌ | Alias rewrites and metadata |

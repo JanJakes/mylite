@@ -1914,6 +1914,14 @@ static int test_bool_boolean_alias_lifecycle(void) {
     );
 
     sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
+    failures += expect_dml_ok(database, "ALTER TABLE alter_bools CHANGE a a BOOLEAN", 0);
+    failures += expect_int64(
+        (int64_t)mylite_connection_session_state(database)->sqlite_schema_generation,
+        (int64_t)sqlite_schema_generation,
+        "boolean alias same-column CHANGE keeps SQLite schema generation"
+    );
+
+    sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
     failures +=
         expect_dml_ok(database, "ALTER TABLE alter_bools CHANGE a flag BOOLEAN NOT NULL", 0);
     failures += expect_true(

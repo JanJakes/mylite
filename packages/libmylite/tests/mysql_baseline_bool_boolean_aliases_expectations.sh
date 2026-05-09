@@ -80,6 +80,16 @@ expect_output \
     "CREATE TABLE bools (b BOOL, c BOOLEAN, nn BOOL NOT NULL); SHOW WARNINGS;" \
     "$DATABASE"
 
+bool_identifier_expected=$(printf '%b' \
+    'BOOL\tint\tYES\t\tNULL\t\n'\
+'BOOLEAN\ttinyint\tYES\t\tNULL\t')
+expect_output \
+    "bool aliases remain nonreserved identifiers" \
+    "$bool_identifier_expected" \
+    "CREATE TABLE bool_identifiers (BOOL INT, BOOLEAN TINYINT); "\
+"SHOW COLUMNS FROM bool_identifiers;" \
+    "$DATABASE"
+
 show_columns_expected=$(printf '%b' \
     'b\ttinyint(1)\tYES\t\tNULL\t\n'\
 'c\ttinyint(1)\tYES\t\tNULL\t\n'\
@@ -196,6 +206,18 @@ expect_output \
     "alter modify bool is metadata-equivalent" \
     "$alter_modify_expected" \
     "ALTER TABLE alter_bools MODIFY a BOOL; SELECT ROW_COUNT(), @@warning_count; "\
+"SHOW COLUMNS FROM alter_bools; SELECT a FROM alter_bools ORDER BY a;" \
+    "$DATABASE"
+
+alter_change_metadata_expected=$(printf '%b' \
+    '0\t0\n'\
+'a\ttinyint(1)\tYES\t\tNULL\t\n'\
+'1\n'\
+'2')
+expect_output \
+    "alter change boolean same column is metadata-equivalent" \
+    "$alter_change_metadata_expected" \
+    "ALTER TABLE alter_bools CHANGE a a BOOLEAN; SELECT ROW_COUNT(), @@warning_count; "\
 "SHOW COLUMNS FROM alter_bools; SELECT a FROM alter_bools ORDER BY a;" \
     "$DATABASE"
 

@@ -101,6 +101,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_TABLE_NAME_LIST = 92,
     MYLITE_SQL_AST_RENAME_TABLE_PAIR = 93,
     MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST = 94,
+    MYLITE_SQL_AST_COLUMN_DEFAULT_NULL = 95,
 };
 
 enum mylite_sql_ast_literal_kind {

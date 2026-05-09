@@ -1659,6 +1659,61 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE explicit_default_nulls (a INT DEFAULT NULL, "
+        "b BIGINT NULL DEFAULT NULL, c BOOL DEFAULT NULL, nn INT NOT NULL DEFAULT NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures += expect_child_count(columns, 4U, "explicit default null column list");
+    column = child_at(columns, 0U);
+    failures += expect_true(
+        first_child_kind(column, MYLITE_SQL_AST_NULLABILITY) == NULL,
+        "default null omitted nullability"
+    );
+    failures += expect_node(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
+        "default null marker"
+    );
+    failures += expect_span_text(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
+        "DEFAULT NULL",
+        "default null span"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NULL,
+        "default null explicit nullability"
+    );
+    failures += expect_node(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
+        "explicit null default marker"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_integer_bool_alias(child_at(column, 1U), "default null bool marker");
+    failures += expect_node(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
+        "bool default null marker"
+    );
+    column = child_at(columns, 3U);
+    failures += expect_nullability(
+        child_at(column, 2U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "not null default null parser marker"
+    );
+    failures += expect_node(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
+        "not null default null marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE bool_identifiers (BOOL INT, BOOLEAN TINYINT);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2407,6 +2462,20 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD added_default INT NULL DEFAULT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_node(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
+        "alter add default null marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE simple_lifecycle MODIFY old_col INT UNSIGNED NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2516,6 +2585,20 @@ static int test_table_lifecycle_statements(void) {
     );
     failures += expect_integer_bool_alias(column_type, "boolean alias alter modify marker");
     failures += expect_span_text(column_type, "BOOLEAN", "boolean alias alter modify span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY old_col BIGINT DEFAULT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_node(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
+        "alter modify default null marker"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -2629,6 +2712,20 @@ static int test_table_lifecycle_statements(void) {
     );
     failures += expect_integer_bool_alias(column_type, "bool alias alter change marker");
     failures += expect_span_text(column_type, "BOOL", "bool alias alter change span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_col new_default BIGINT DEFAULT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    failures += expect_node(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
+        "alter change default null marker"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -4392,6 +4489,42 @@ static int test_syntax_errors(void) {
 
     failures +=
         parse_sql("CREATE TABLE t (id VARCHAR(10));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT DEFAULT 5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT DEFAULT TRUE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE t (id INT DEFAULT (NULL));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE t (id INT DEFAULT NULL NULL);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE t (id INT DEFAULT NULL DEFAULT NULL);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE t (id INT DEFAULT NULL NOT NULL);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE TABLE t (id INT(+1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

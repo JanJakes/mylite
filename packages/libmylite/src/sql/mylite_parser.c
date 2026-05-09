@@ -2027,7 +2027,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *name,
     struct mylite_sql_ast_node *integer_type,
-    struct mylite_sql_ast_node *nullability
+    struct mylite_sql_ast_node *nullability,
+    struct mylite_sql_ast_node *default_null
 ) {
     struct mylite_sql_source_span span =
         name == NULL ? (struct mylite_sql_source_span){0} : name->span;
@@ -2039,6 +2040,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     if (nullability != NULL) {
         span = span_join(span, nullability->span);
     }
+    if (default_null != NULL) {
+        span = span_join(span, default_null->span);
+    }
 
     column = make_node(state, MYLITE_SQL_AST_COLUMN_DEFINITION, span);
     if (column == NULL) {
@@ -2048,7 +2052,19 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_definition(
     mylite_sql_ast_node_append_child(column, name);
     mylite_sql_ast_node_append_child(column, integer_type);
     mylite_sql_ast_node_append_child(column, nullability);
+    mylite_sql_ast_node_append_child(column, default_null);
     return column;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_default_null(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token default_token,
+    struct mylite_sql_token null_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&default_token), span_from_token(&null_token));
+
+    return make_node(state, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL, span);
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(

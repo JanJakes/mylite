@@ -1090,8 +1090,8 @@ column_definition_list(A) ::= column_definition_list(B) COMMA column_definition(
     A = mylite_sql_parser_append_column_definition(state, B, C);
 }
 
-column_definition(A) ::= identifier(N) integer_type(T) nullability_opt(U). {
-    A = mylite_sql_parser_make_column_definition(state, N, T, U);
+column_definition(A) ::= identifier(N) integer_type(T) nullability_opt(U) column_default_null_opt(D). {
+    A = mylite_sql_parser_make_column_definition(state, N, T, U, D);
 }
 
 integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_signedness_opt(S). {
@@ -1231,4 +1231,11 @@ nullability_opt(A) ::= NULL(T). {
 nullability_opt(A) ::= NOT(N) NULL(T). {
     A = mylite_sql_parser_make_nullability(
         state, MYLITE_SQL_AST_NULLABILITY_NOT_NULL, N, T);
+}
+
+column_default_null_opt(A) ::= . {
+    A = NULL;
+}
+column_default_null_opt(A) ::= DEFAULT(D) NULL(N). {
+    A = mylite_sql_parser_make_column_default_null(state, D, N);
 }

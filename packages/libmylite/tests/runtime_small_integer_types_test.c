@@ -30,6 +30,7 @@ enum {
     show_columns_field_count = 6,
     mysql_error_parse = 1064,
     mysql_error_bad_null = 1048,
+    mysql_error_invalid_default = 1067,
     mysql_error_data_out_of_range = 1264,
     mysql_error_display_width_out_of_range = 1439,
     mysql_warning_integer_display_width_deprecated = 1681,
@@ -66,6 +67,7 @@ static int test_integer_type_alias_lifecycle(void);
 static int test_integer_display_width_lifecycle(void);
 static int test_bool_boolean_alias_lifecycle(void);
 static int test_boolean_literal_lifecycle(void);
+static int test_explicit_default_null_lifecycle(void);
 static int test_small_integer_diagnostics_and_rollback(void);
 static int test_small_integer_independent_handles(void);
 static int create_small_integer_table(mylite_db *database, const char *table_name);
@@ -129,6 +131,7 @@ int main(void) {
     failures += test_integer_display_width_lifecycle();
     failures += test_bool_boolean_alias_lifecycle();
     failures += test_boolean_literal_lifecycle();
+    failures += test_explicit_default_null_lifecycle();
     failures += test_small_integer_diagnostics_and_rollback();
     failures += test_small_integer_independent_handles();
 
@@ -2342,6 +2345,267 @@ static int test_boolean_literal_lifecycle(void) {
             .column_count = 2U,
             .row_count = 2U,
             .context = "boolean literal rows persist after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_explicit_default_null_lifecycle(void) {
+    static const char *const show_create_rows[] = {
+        "defaults",
+        "CREATE TABLE `defaults` (\n"
+        "  `a` int DEFAULT NULL,\n"
+        "  `b` bigint unsigned DEFAULT NULL,\n"
+        "  `c` tinyint(1) DEFAULT NULL,\n"
+        "  `nn` int NOT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const initial_rows[] = {NULL, NULL, NULL, "7"};
+    static const char *const added_rows[] = {"1", NULL, "2", NULL};
+    static const char *const omitted_added_rows[] = {"1", NULL, "2", NULL, "3", NULL};
+    static const char *const renamed_column_row[] = {"renamed", "bigint", "YES", "", NULL, ""};
+    static const char *const second_handle_rows[] = {NULL};
+    char path[test_path_capacity];
+    char second_path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_db *second_database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "explicit_default_null") != 0 ||
+        make_test_path(second_path, sizeof(second_path), "explicit_default_null_second") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    remove_related_files(second_path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open default null file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE defaults ("
+        "a INT DEFAULT NULL, b BIGINT UNSIGNED NULL DEFAULT NULL, "
+        "c BOOL DEFAULT NULL, nn INT NOT NULL)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE defaults",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "explicit default null SHOW CREATE",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO defaults (nn) VALUES (7)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c, nn FROM defaults",
+            .values = initial_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "explicit default null omitted nullable values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE create_bad (bad INT NOT NULL DEFAULT NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'bad'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE IF NOT EXISTS defaults (bad INT NOT NULL DEFAULT NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'bad'",
+        }
+    );
+    failures += expect_statement_warning_count(
+        database,
+        "CREATE TABLE IF NOT EXISTS defaults (a INT, a INT)",
+        1U
+    );
+
+    failures += expect_statement_ok(database, "CREATE TABLE alter_target (id INT NOT NULL)");
+    failures += expect_dml_ok(database, "INSERT INTO alter_target VALUES (1), (2)", 2);
+    failures += expect_statement_warning_count_and_affected_rows(
+        database,
+        "ALTER TABLE alter_target ADD COLUMN added INT DEFAULT NULL",
+        (struct expected_statement_result){.warning_count = 0U, .affected_rows = 0}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, added FROM alter_target ORDER BY id",
+            .values = added_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "default null add column backfills null",
+        }
+    );
+    failures += expect_dml_ok(database, "INSERT INTO alter_target (id) VALUES (3)", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, added FROM alter_target ORDER BY id",
+            .values = omitted_added_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "default null added column omitted insert",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_target ADD COLUMN bad_added INT NOT NULL DEFAULT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'bad_added'",
+        }
+    );
+    failures += expect_statement_warning_count_and_affected_rows(
+        database,
+        "ALTER TABLE alter_target MODIFY added BIGINT DEFAULT NULL",
+        (struct expected_statement_result){.warning_count = 0U, .affected_rows = 3}
+    );
+    failures += expect_statement_warning_count_and_affected_rows(
+        database,
+        "ALTER TABLE alter_target CHANGE added renamed BIGINT DEFAULT NULL",
+        (struct expected_statement_result){.warning_count = 0U, .affected_rows = 0}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM alter_target LIKE 'renamed'",
+            .values = renamed_column_row,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "default null change column metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, renamed FROM alter_target ORDER BY id",
+            .values = omitted_added_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "default null modify change preserves rows",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_target MODIFY renamed BIGINT NOT NULL DEFAULT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'renamed'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE unsupported_default (a INT DEFAULT 0)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE unsupported_order (a INT DEFAULT NULL NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO defaults VALUES (DEFAULT, DEFAULT, DEFAULT, 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE defaults SET a = DEFAULT",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+
+    failures += expect_int(
+        mylite_open(second_path, &second_database),
+        MYLITE_OK,
+        "open second default null file"
+    );
+    failures += expect_statement_ok(second_database, "CREATE DATABASE app");
+    failures += expect_statement_ok(second_database, "USE app");
+    failures += expect_statement_ok(second_database, "CREATE TABLE defaults (id INT DEFAULT NULL)");
+    failures += expect_dml_ok(second_database, "INSERT INTO defaults VALUES (NULL)", 1);
+    failures += expect_query_values(
+        second_database,
+        (struct expected_query){
+            .sql = "SELECT id FROM defaults",
+            .values = second_handle_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "second handle default null state",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, renamed FROM alter_target ORDER BY id",
+            .values = omitted_added_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "first handle default null state",
+        }
+    );
+    mylite_close(second_database);
+    second_database = NULL;
+    remove_related_files(second_path);
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "explicit default null lifecycle preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen default null file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, renamed FROM alter_target ORDER BY id",
+            .values = omitted_added_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "default null rows persist after reopen",
         }
     );
 

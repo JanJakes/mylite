@@ -27,9 +27,9 @@ catalog default-expression field, expression evaluation, default use in DML,
 - MySQL 8.4 Reference Manual, `CREATE TABLE`:
   https://dev.mysql.com/doc/refman/8.4/en/create-table.html
 - MySQL 8.4 Reference Manual, data type default values:
-  https://dev.mysql.com/doc/mysql/en/data-type-defaults.html
+  https://dev.mysql.com/doc/refman/8.4/en/data-type-defaults.html
 - MySQL 8.4 Reference Manual, `SHOW COLUMNS`:
-  https://dev.mysql.com/doc/mysql/en/show-columns.html
+  https://dev.mysql.com/doc/refman/8.4/en/show-columns.html
 - SQLite source snapshot notes: `third_party/sqlite/README.md`
 
 This specification is independently authored from project documentation,
@@ -55,6 +55,11 @@ Runtime probes against MySQL 8.4.9 verify:
 - A nullable column with no `DEFAULT` clause also renders as `DEFAULT NULL`.
 - `CREATE TABLE t (a INT NOT NULL DEFAULT NULL)` fails with error `1067`,
   SQLSTATE `42000`, message `Invalid default value for 'a'`.
+- `CREATE TABLE IF NOT EXISTS existing_table (a INT NOT NULL DEFAULT NULL)`
+  fails with the same invalid-default diagnostic even when `existing_table`
+  already exists. A valid duplicate-column definition in the same existing-table
+  no-op shape is ignored after the existing-table note path, so duplicate-name
+  validation is not part of this pre-noop validation.
 - `ALTER TABLE t ADD f INT DEFAULT NULL` succeeds, reports
   `ROW_COUNT() == 0`, warning count `0`, and existing rows read `NULL` for
   the new column.
@@ -122,7 +127,8 @@ This feature must not implement:
 - Lexer/parser/AST own the admitted syntax and source spans for the optional
   `DEFAULT NULL` clause.
 - Analyzer/planner owns validating that explicit `DEFAULT NULL` is compatible
-  with the resolved nullability of the descriptor-backed column definition.
+  with the resolved nullability of the descriptor-backed column definition,
+  including before a `CREATE TABLE IF NOT EXISTS` existing-table no-op returns.
 - Catalog remains the authority for logical schema/table/column descriptors.
   This slice intentionally stores no default-expression descriptor because
   explicit `DEFAULT NULL` is equivalent to the existing nullable no-default
@@ -187,12 +193,20 @@ and relies on the existing nullable descriptor behavior:
 physical SQLite mutation. No result handle is returned for the failing
 statement.
 
+For `CREATE TABLE IF NOT EXISTS`, MyLite validates the target name, table
+options, and each column definition enough to detect invalid type/default
+attributes before checking whether an existing table turns the statement into a
+no-op. Duplicate column-name checks remain part of actual table creation, not
+the existing-table no-op path, matching the MySQL 8.4.9 behavior verified for
+this slice.
+
 ## Diagnostics
 
 | Condition | Result |
 | --- | --- |
 | `DEFAULT NULL` on nullable supported integer-family column | Success, warning count from the surrounding DDL path, no extra warnings |
 | `NOT NULL DEFAULT NULL` | Error `1067`, SQLSTATE `42000`, `Invalid default value for '<column>'` |
+| `CREATE TABLE IF NOT EXISTS existing_table (... NOT NULL DEFAULT NULL ...)` | Same invalid-default error before the existing-table note/no-op path |
 | non-`NULL` default literal or expression | Syntax error or deterministic unsupported diagnostic, depending on parser admission |
 | `DEFAULT` in DML value position | Existing syntax/unsupported behavior preserved |
 | default metadata allocation failure | `MYLITE_NOMEM` with allocation diagnostic |
@@ -214,6 +228,9 @@ Add MySQL-runtime-verified expectations and plain C tests covering:
 - `CREATE TABLE` with explicit `NULL DEFAULT NULL`;
 - existing integer families and aliases, including `BOOL`/`BOOLEAN`;
 - `NOT NULL DEFAULT NULL` diagnostics;
+- `NOT NULL DEFAULT NULL` diagnostics before a `CREATE TABLE IF NOT EXISTS`
+  existing-table no-op, without introducing duplicate-column validation on that
+  no-op path;
 - `ALTER TABLE ... ADD [COLUMN] ... DEFAULT NULL` existing-row backfill,
   later insert behavior, `SHOW CREATE TABLE`, `SHOW COLUMNS`, and reopen
   persistence;

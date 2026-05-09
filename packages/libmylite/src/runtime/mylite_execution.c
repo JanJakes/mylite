@@ -48,6 +48,7 @@ enum {
     mysql_error_unknown_collation = 1273,
     mysql_warning_deprecated_system_variable = 1287,
     mysql_warning_information_schema_processlist_deprecated = 1287,
+    mysql_error_invalid_default = 1067,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
     mysql_error_unknown_storage_engine = 1286,
@@ -1178,6 +1179,7 @@ static int build_show_create_database_sql(const char *schema_name, char **out_sq
 static int maybe_finish_create_if_not_exists_noop(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    const struct planned_create_table *plan,
     bool *out_finished
 );
 static bool create_table_has_if_not_exists(const struct mylite_sql_ast_node *statement);
@@ -1291,6 +1293,11 @@ static int plan_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
     struct planned_column *out_column
+);
+static int validate_column_default(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *default_node,
+    const struct planned_column *column
 );
 static int check_duplicate_column_names(
     struct mylite_db *database,
@@ -1834,6 +1841,7 @@ static void set_data_truncated_error(
     const char *column_name,
     size_t row_number
 );
+static void set_invalid_default_error(struct mylite_db *database, const char *column_name);
 static void set_no_default_error(struct mylite_db *database, const char *column_name);
 static void set_out_of_range_error(
     struct mylite_db *database,
@@ -2105,6 +2113,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
     case MYLITE_SQL_AST_NULLABILITY:
+    case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
     case MYLITE_SQL_AST_IDENTIFIER_LIST:
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
@@ -2226,14 +2235,14 @@ static int execute_create_table_statement(
         return rc;
     }
 
-    rc = maybe_finish_create_if_not_exists_noop(database, statement, &finished);
-    if (rc == MYLITE_OK && finished) {
-        return finish_successful_result(database, result, out_result);
-    }
+    rc = plan_create_table(database, statement, &plan);
     if (rc == MYLITE_OK) {
-        rc = plan_create_table(database, statement, &plan);
+        rc = maybe_finish_create_if_not_exists_noop(database, statement, &plan, &finished);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !finished) {
+        rc = check_duplicate_column_names(database, plan.columns, plan.column_count);
+    }
+    if (rc == MYLITE_OK && !finished) {
         rc = create_table_from_plan(database, &plan);
     }
     planned_create_table_deinit(&plan);
@@ -2573,9 +2582,9 @@ static int execute_drop_table_from_plan(
 static int maybe_finish_create_if_not_exists_noop(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    const struct planned_create_table *plan,
     bool *out_finished
 ) {
-    struct table_name_resolution target = {0};
     struct mylite_catalog_table_descriptor table = {0};
     bool found = false;
     int rc = MYLITE_OK;
@@ -2585,19 +2594,10 @@ static int maybe_finish_create_if_not_exists_noop(
         return MYLITE_OK;
     }
 
-    rc = resolve_table_name(database, child_at(statement, 0U), &target);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(target.table_name)) {
-        set_reserved_name_error(database, "table", target.table_name);
-        rc = MYLITE_ERROR;
-    }
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-
     rc = mylite_catalog_try_read_table_by_name(
         database,
-        target.schema.schema_id,
-        target.table_name,
+        plan->target.schema.schema_id,
+        plan->target.table_name,
         &table,
         &found
     );
@@ -2609,7 +2609,7 @@ static int maybe_finish_create_if_not_exists_noop(
         return MYLITE_OK;
     }
 
-    rc = append_table_exists_note(database, target.table_name);
+    rc = append_table_exists_note(database, plan->target.table_name);
     if (rc == MYLITE_OK) {
         *out_finished = true;
     }
@@ -4902,6 +4902,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COLUMN_DEFINITION:
     case MYLITE_SQL_AST_INTEGER_TYPE:
     case MYLITE_SQL_AST_NULLABILITY:
+    case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
     case MYLITE_SQL_AST_IDENTIFIER_LIST:
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
@@ -5047,10 +5048,6 @@ static int plan_create_table(
     out_plan->column_count = column_count;
 
     rc = plan_columns(database, column_list, out_plan->columns, out_plan->column_count);
-    if (rc == MYLITE_OK) {
-        rc = check_duplicate_column_names(database, out_plan->columns, out_plan->column_count);
-    }
-
     if (rc != MYLITE_OK) {
         planned_create_table_deinit(out_plan);
         return rc;
@@ -9292,10 +9289,38 @@ static int plan_column(
         );
     }
     if (rc == MYLITE_OK) {
-        out_column->is_nullable = column_is_nullable(child_at(column_node, 2U));
+        out_column->is_nullable =
+            column_is_nullable(child_with_kind(column_node, MYLITE_SQL_AST_NULLABILITY));
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_column_default(
+            database,
+            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
+            out_column
+        );
     }
 
     return rc;
+}
+
+static int validate_column_default(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *default_node,
+    const struct planned_column *column
+) {
+    if (default_node == NULL) {
+        return MYLITE_OK;
+    }
+    if (default_node->kind != MYLITE_SQL_AST_COLUMN_DEFAULT_NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (!column->is_nullable) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int check_duplicate_column_names(
@@ -13743,6 +13768,21 @@ static void set_data_truncated_error(
         mylite_connection_diagnostics(database),
         mysql_error_data_truncated,
         "01000",
+        message
+    );
+}
+
+static void set_invalid_default_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Invalid default value for '%s'", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_invalid_default,
+        "42000",
         message
     );
 }

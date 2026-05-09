@@ -115,6 +115,20 @@ expect_error \
     "CREATE TABLE create_bad (bad INT NOT NULL DEFAULT NULL);" \
     "$DATABASE"
 
+expect_error \
+    "not null default null is invalid before existing-table if-not-exists noop" \
+    1067 \
+    42000 \
+    "Invalid default value for 'bad'" \
+    "CREATE TABLE IF NOT EXISTS defaults (bad INT NOT NULL DEFAULT NULL);" \
+    "$DATABASE"
+
+expect_output \
+    "existing-table if-not-exists still skips duplicate column names" \
+    "0	1" \
+    "CREATE TABLE IF NOT EXISTS defaults (a INT, a INT); SELECT ROW_COUNT(), @@warning_count;" \
+    "$DATABASE"
+
 add_expected=$(cat <<'EXPECTED'
 0	0
 1:N,2:N

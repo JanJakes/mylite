@@ -10,6 +10,7 @@ enum {
     alias_integer_column_count = 10,
     display_width_column_count = 16,
     bool_alias_column_count = 3,
+    integer_default_column_count = 5,
     alias_int1_unsigned_column_index = 5,
     alias_int2_signed_column_index = 6,
     alias_int3_unsigned_column_index = 7,
@@ -1710,6 +1711,58 @@ static int test_table_lifecycle_statements(void) {
         first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
         MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
         "not null default null marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE integer_defaults (a INT DEFAULT 5, b INT DEFAULT +9, "
+        "c INT DEFAULT -7, d BOOL DEFAULT TRUE, e BOOLEAN DEFAULT FALSE);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures +=
+        expect_child_count(columns, integer_default_column_count, "integer default column list");
+    column = child_at(columns, 0U);
+    failures += expect_node(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE,
+        "integer default marker"
+    );
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "integer default literal"
+    );
+    failures += expect_span_text(
+        first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE),
+        "DEFAULT 5",
+        "integer default span"
+    );
+    column = child_at(columns, 1U);
+    failures += expect_operator(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "positive default operator"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_operator(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "negative default operator"
+    );
+    column = child_at(columns, 3U);
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "true default literal"
+    );
+    column = child_at(columns, 4U);
+    failures += expect_literal(
+        child_at(first_child_kind(column, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE), 0U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "false default literal"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -4491,19 +4544,27 @@ static int test_syntax_errors(void) {
         parse_sql("CREATE TABLE t (id VARCHAR(10));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("CREATE TABLE t (id INT DEFAULT 5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures +=
-        parse_sql("CREATE TABLE t (id INT DEFAULT TRUE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql(
         "CREATE TABLE t (id INT DEFAULT (NULL));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT DEFAULT '5');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT DEFAULT 1.5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT DEFAULT 0x1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT DEFAULT 1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -4619,13 +4680,6 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name RENAME new_name, RENAME final_name;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "ALTER TABLE old_name ADD COLUMN added INT DEFAULT 5;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -4998,13 +5052,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE old_name MODIFY old_col BIGINT DEFAULT 5;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
         "ALTER TABLE old_name MODIFY old_col BIGINT FIRST;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -5062,13 +5109,6 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name CHANGE old_col new_col;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "ALTER TABLE old_name CHANGE old_col new_col BIGINT DEFAULT 5;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

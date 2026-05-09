@@ -553,6 +553,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_default_null(
     struct mylite_sql_token default_token,
     struct mylite_sql_token null_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_default_value(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token default_token,
+    struct mylite_sql_ast_node *value
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token type_token,

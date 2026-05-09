@@ -1090,7 +1090,7 @@ column_definition_list(A) ::= column_definition_list(B) COMMA column_definition(
     A = mylite_sql_parser_append_column_definition(state, B, C);
 }
 
-column_definition(A) ::= identifier(N) integer_type(T) nullability_opt(U) column_default_null_opt(D). {
+column_definition(A) ::= identifier(N) integer_type(T) nullability_opt(U) column_default_opt(D). {
     A = mylite_sql_parser_make_column_definition(state, N, T, U, D);
 }
 
@@ -1233,9 +1233,32 @@ nullability_opt(A) ::= NOT(N) NULL(T). {
         state, MYLITE_SQL_AST_NULLABILITY_NOT_NULL, N, T);
 }
 
-column_default_null_opt(A) ::= . {
+column_default_opt(A) ::= . {
     A = NULL;
 }
-column_default_null_opt(A) ::= DEFAULT(D) NULL(N). {
+column_default_opt(A) ::= DEFAULT(D) NULL(N). {
     A = mylite_sql_parser_make_column_default_null(state, D, N);
+}
+column_default_opt(A) ::= DEFAULT(D) column_default_value(V). {
+    A = mylite_sql_parser_make_column_default_value(state, D, V);
+}
+
+column_default_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+column_default_value(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+column_default_value(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+column_default_value(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+column_default_value(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }

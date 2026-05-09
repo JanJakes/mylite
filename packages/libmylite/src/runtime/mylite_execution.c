@@ -58,6 +58,7 @@ enum {
     decimal_base = 10,
     table_name_part_capacity = 3,
     integer_text_capacity = 32,
+    show_create_integer_default_text_capacity = integer_text_capacity + sizeof(" DEFAULT ''"),
     system_variable_body_offset = 2,
     show_columns_result_column_count = 6,
     show_index_result_column_count = 15,
@@ -92,6 +93,9 @@ struct planned_column {
     const char *logical_type;
     const char *physical_type;
     bool is_nullable;
+    const struct mylite_sql_ast_node *default_node;
+    enum mylite_catalog_column_default_kind default_kind;
+    int64_t default_integer;
 };
 
 struct planned_create_table {
@@ -1299,6 +1303,21 @@ static int validate_column_default(
     const struct mylite_sql_ast_node *default_node,
     const struct planned_column *column
 );
+static int finalize_planned_column_defaults(
+    struct mylite_db *database,
+    struct planned_column *columns,
+    size_t column_count
+);
+static int finalize_planned_column_default(
+    struct mylite_db *database,
+    struct planned_column *column
+);
+static int convert_column_default_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_column *column,
+    int64_t *out_value
+);
 static int check_duplicate_column_names(
     struct mylite_db *database,
     const struct planned_column *columns,
@@ -2114,6 +2133,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_INTEGER_TYPE:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
+    case MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE:
     case MYLITE_SQL_AST_IDENTIFIER_LIST:
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
@@ -2238,6 +2258,9 @@ static int execute_create_table_statement(
     rc = plan_create_table(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = maybe_finish_create_if_not_exists_noop(database, statement, &plan, &finished);
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = finalize_planned_column_defaults(database, plan.columns, plan.column_count);
     }
     if (rc == MYLITE_OK && !finished) {
         rc = check_duplicate_column_names(database, plan.columns, plan.column_count);
@@ -4730,10 +4753,30 @@ static int append_show_create_table_column_definition(
         rc = dynamic_string_append(string, type_text);
     }
     if (rc == MYLITE_OK) {
-        if (column->is_nullable) {
+        if (!column->is_nullable) {
+            rc = dynamic_string_append(string, " NOT NULL");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+            char default_text[show_create_integer_default_text_capacity];
+            int written = snprintf(
+                default_text,
+                sizeof(default_text),
+                " DEFAULT '%" PRId64 "'",
+                column->default_integer
+            );
+
+            if (written < 0 || (size_t)written >= sizeof(default_text)) {
+                set_runtime_error(database, "failed to format column default");
+                rc = MYLITE_ERROR;
+            } else {
+                rc = dynamic_string_append(string, default_text);
+            }
+        } else if (column->is_nullable) {
             rc = dynamic_string_append(string, " DEFAULT NULL");
         } else {
-            rc = dynamic_string_append(string, " NOT NULL");
+            rc = MYLITE_OK;
         }
     }
     if (rc == MYLITE_OK && !is_last_column) {
@@ -4903,6 +4946,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INTEGER_TYPE:
     case MYLITE_SQL_AST_NULLABILITY:
     case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
+    case MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE:
     case MYLITE_SQL_AST_IDENTIFIER_LIST:
     case MYLITE_SQL_AST_INSERT_ROW_LIST:
     case MYLITE_SQL_AST_INSERT_ROW:
@@ -5453,6 +5497,8 @@ static int insert_create_table_catalog_rows(
             column->logical_type,
             column->physical_type,
             column->is_nullable,
+            column->default_kind,
+            column->default_integer,
             NULL
         );
     }
@@ -5951,6 +5997,9 @@ static int plan_alter_table_add_column(
         rc = plan_column(database, child_at(statement, 1U), &out_plan->column);
     }
     if (rc == MYLITE_OK) {
+        rc = finalize_planned_column_default(database, &out_plan->column);
+    }
+    if (rc == MYLITE_OK) {
         rc = mylite_catalog_read_table_by_name(
             database,
             out_plan->target.schema.schema_id,
@@ -6012,6 +6061,8 @@ static int alter_table_add_column_from_plan(
             plan->column.logical_type,
             plan->column.physical_type,
             plan->column.is_nullable,
+            plan->column.default_kind,
+            plan->column.default_integer,
             NULL
         );
     }
@@ -6381,6 +6432,9 @@ static int plan_alter_table_modify_column(
         rc = plan_column(database, child_at(statement, 1U), &out_plan->column);
     }
     if (rc == MYLITE_OK) {
+        rc = finalize_planned_column_default(database, &out_plan->column);
+    }
+    if (rc == MYLITE_OK) {
         memcpy(
             out_plan->lookup_column_name,
             out_plan->column.name,
@@ -6433,6 +6487,9 @@ static int plan_alter_table_change_column(
     }
     if (rc == MYLITE_OK) {
         rc = plan_column(database, child_at(statement, 2U), &out_plan->column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = finalize_planned_column_default(database, &out_plan->column);
     }
     if (rc == MYLITE_OK) {
         rc = resolve_alter_table_column_replacement_plan(database, out_plan);
@@ -6560,6 +6617,13 @@ static bool modify_column_definition_matches(
     if (original_column->is_nullable != replacement_column->is_nullable) {
         return false;
     }
+    if (original_column->default_kind != replacement_column->default_kind) {
+        return false;
+    }
+    if (original_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
+        original_column->default_integer != replacement_column->default_integer) {
+        return false;
+    }
 
     return true;
 }
@@ -6645,7 +6709,9 @@ static int alter_table_modify_column_from_plan(
             plan->column.name,
             plan->column.logical_type,
             plan->column.physical_type,
-            plan->column.is_nullable
+            plan->column.is_nullable,
+            plan->column.default_kind,
+            plan->column.default_integer
         );
     }
     if (rc == MYLITE_OK && plan->is_metadata_only) {
@@ -6837,6 +6903,8 @@ static void make_modify_target_descriptor(
         plan->column.physical_type
     );
     out_column->is_nullable = plan->column.is_nullable;
+    out_column->default_kind = plan->column.default_kind;
+    out_column->default_integer = plan->column.default_integer;
 }
 
 static int execute_physical_alter_table_modify_column(
@@ -9293,11 +9361,12 @@ static int plan_column(
             column_is_nullable(child_with_kind(column_node, MYLITE_SQL_AST_NULLABILITY));
     }
     if (rc == MYLITE_OK) {
-        rc = validate_column_default(
-            database,
-            child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL),
-            out_column
-        );
+        out_column->default_node = child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL);
+        if (out_column->default_node == NULL) {
+            out_column->default_node =
+                child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE);
+        }
+        rc = validate_column_default(database, out_column->default_node, out_column);
     }
 
     return rc;
@@ -9311,6 +9380,9 @@ static int validate_column_default(
     if (default_node == NULL) {
         return MYLITE_OK;
     }
+    if (default_node->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
     if (default_node->kind != MYLITE_SQL_AST_COLUMN_DEFAULT_NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
@@ -9320,6 +9392,134 @@ static int validate_column_default(
         return MYLITE_ERROR;
     }
 
+    return MYLITE_OK;
+}
+
+static int finalize_planned_column_defaults(
+    struct mylite_db *database,
+    struct planned_column *columns,
+    size_t column_count
+) {
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        int rc = finalize_planned_column_default(database, &columns[column_index]);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int finalize_planned_column_default(
+    struct mylite_db *database,
+    struct planned_column *column
+) {
+    int64_t default_integer = 0;
+    int rc = MYLITE_OK;
+
+    column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_NONE;
+    column->default_integer = 0;
+    if (column->default_node == NULL ||
+        column->default_node->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL) {
+        return MYLITE_OK;
+    }
+    if (column->default_node->kind != MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = convert_column_default_value(
+        database,
+        child_at(column->default_node, 0U),
+        column,
+        &default_integer
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    column->default_kind = MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER;
+    column->default_integer = default_integer;
+
+    return MYLITE_OK;
+}
+
+static int convert_column_default_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_column *column,
+    int64_t *out_value
+) {
+    const uint64_t bigint_signed_negative_abs_max = 9223372036854775808ULL;
+    const struct mylite_sql_ast_node *literal = value_node;
+    struct mylite_catalog_column_descriptor descriptor = {0};
+    struct integer_column_range range = {0};
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || column == NULL || out_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_invalid_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (!boolean_literal_magnitude(literal, &magnitude)) {
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_invalid_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+        if (rc != MYLITE_OK) {
+            set_invalid_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+    }
+
+    snprintf(descriptor.name, sizeof(descriptor.name), "%s", column->name);
+    snprintf(descriptor.logical_type, sizeof(descriptor.logical_type), "%s", column->logical_type);
+    snprintf(
+        descriptor.physical_type,
+        sizeof(descriptor.physical_type),
+        "%s",
+        column->physical_type
+    );
+    descriptor.is_nullable = column->is_nullable;
+    rc = integer_range_for_column(
+        database,
+        &descriptor,
+        "DEFAULT supports only baseline integer columns",
+        &range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_negative) {
+        if ((range.negative_abs_max == 0U && magnitude != 0U) ||
+            magnitude > range.negative_abs_max) {
+            set_invalid_default_error(database, column->name);
+            return MYLITE_ERROR;
+        }
+        *out_value = magnitude == bigint_signed_negative_abs_max ? INT64_MIN : -(int64_t)magnitude;
+        return MYLITE_OK;
+    }
+    if (magnitude > range.positive_max) {
+        set_invalid_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    *out_value = (int64_t)magnitude;
     return MYLITE_OK;
 }
 
@@ -9821,7 +10021,8 @@ static int check_insert_omitted_columns(
                 break;
             }
         }
-        if (!is_assigned && !plan->columns[column_index].is_nullable) {
+        if (!is_assigned && !plan->columns[column_index].is_nullable &&
+            plan->columns[column_index].default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
             set_no_default_error(database, plan->columns[column_index].name);
             return MYLITE_ERROR;
         }
@@ -9973,7 +10174,12 @@ static int allocate_insert_row_values(
         return MYLITE_NOMEM;
     }
     for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
-        out_row->values[column_index].is_null = true;
+        if (plan->columns[column_index].default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+            out_row->values[column_index].is_null = false;
+            out_row->values[column_index].integer = plan->columns[column_index].default_integer;
+        } else {
+            out_row->values[column_index].is_null = true;
+        }
     }
 
     return MYLITE_OK;
@@ -11054,6 +11260,7 @@ static int append_show_column(
 ) {
     struct show_columns_context *context = user_data;
     const char *type_text = NULL;
+    char default_text[integer_text_capacity];
     const char *values[show_columns_result_column_count] = {NULL, NULL, NULL, "", NULL, ""};
     int rc = MYLITE_OK;
 
@@ -11075,6 +11282,16 @@ static int append_show_column(
     values[2] = "NO";
     if (column->is_nullable) {
         values[2] = "YES";
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        int written =
+            snprintf(default_text, sizeof(default_text), "%" PRId64, column->default_integer);
+
+        if (written < 0 || (size_t)written >= sizeof(default_text)) {
+            set_runtime_error(context->database, "failed to format column default");
+            return MYLITE_ERROR;
+        }
+        values[4] = default_text;
     }
 
     return mylite_result_append_text_row(context->result, values);
@@ -11676,7 +11893,26 @@ static int build_alter_table_add_column_sql(
         rc = dynamic_string_append(&string, " INTEGER");
     }
     if (rc == MYLITE_OK && !plan->column.is_nullable) {
-        rc = dynamic_string_append(&string, " NOT NULL DEFAULT 0");
+        rc = dynamic_string_append(&string, " NOT NULL");
+    }
+    if (rc == MYLITE_OK && plan->column.default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        char default_text[integer_text_capacity];
+        int written = snprintf(
+            default_text,
+            sizeof(default_text),
+            " DEFAULT %" PRId64,
+            plan->column.default_integer
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(default_text)) {
+            rc = MYLITE_NOMEM;
+        } else {
+            rc = dynamic_string_append(&string, default_text);
+        }
+    }
+    if (rc == MYLITE_OK && !plan->column.is_nullable &&
+        plan->column.default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        rc = dynamic_string_append(&string, " DEFAULT 0");
     }
     if (rc == MYLITE_OK) {
         *out_sql = dynamic_string_take(&string);

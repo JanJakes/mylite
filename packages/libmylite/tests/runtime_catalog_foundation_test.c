@@ -95,7 +95,7 @@ static int test_catalog_created_in_shifted_payload_without_preamble_changes(void
     failures += expect_true(catalog != NULL, "catalog state exists");
     if (catalog != NULL) {
         failures += expect_bool(catalog->initialized, true, "catalog initialized");
-        failures += expect_uint64(catalog->schema_version, 1U, "catalog schema version");
+        failures += expect_uint64(catalog->schema_version, 2U, "catalog schema version");
         failures += expect_uint64(catalog->generation, 1U, "initial catalog generation");
         failures += expect_bool(
             catalog->descriptor_cache_is_valid,
@@ -183,6 +183,8 @@ static int test_reopen_preserves_catalog_rows_and_generation(void) {
             "BIGINT",
             "INTEGER",
             false,
+            MYLITE_CATALOG_COLUMN_DEFAULT_NONE,
+            0,
             &column
         ),
         MYLITE_OK,
@@ -378,7 +380,7 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open bad-version file");
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
-        failures += execute_sql(sqlite, "UPDATE _mylite_catalog_state SET schema_version = 2");
+        failures += execute_sql(sqlite, "UPDATE _mylite_catalog_state SET schema_version = 3");
     }
     mylite_close(database);
     database = NULL;

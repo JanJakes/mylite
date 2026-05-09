@@ -125,6 +125,9 @@ This feature must not implement:
 - broader MySQL column-attribute ordering, repeated defaults, repeated
   nullability attributes, or `DEFAULT` before nullability;
 - physical SQLite default clauses as the source of MySQL-visible semantics;
+  constant SQLite defaults may be used only as the physical append-column
+  backfill mechanism when SQLite requires them, while MyLite descriptors remain
+  authoritative for future DML and introspection;
 - indexes, constraints, auto-increment, generated columns, invisible columns,
   triggers, privileges, protocol-grade metadata, or SQLite fork patches.
 
@@ -235,8 +238,8 @@ validate out-of-range integer defaults on an existing-table no-op.
 ## DDL Semantics
 
 `CREATE TABLE` stores descriptor default metadata and creates the same physical
-SQLite rowid table shape as before. Generated SQLite DDL must not rely on
-physical `DEFAULT` clauses for MySQL-visible behavior.
+SQLite rowid table shape as before. Generated SQLite `CREATE TABLE` DDL must
+not rely on physical `DEFAULT` clauses for MySQL-visible behavior.
 
 `ALTER TABLE ... ADD [COLUMN]` stores the new descriptor default. Existing rows
 are backfilled as follows:
@@ -245,6 +248,13 @@ are backfilled as follows:
 - effective SQL `NULL` default on a nullable column: write `NULL`;
 - no default on a `NOT NULL` integer column: preserve the current baseline
   MyLite behavior and backfill `0`.
+
+SQLite's public `ALTER TABLE ADD COLUMN` path requires a constant physical
+default for appended `NOT NULL` columns and also uses a constant default to
+populate existing rows. MyLite may emit that constant physical default for the
+append operation, but the logical default remains catalog-owned: all supported
+future inserts bind every physical column from descriptors, and introspection
+renders descriptor metadata rather than SQLite schema text.
 
 `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]` replace the descriptor
 default from the replacement definition. Existing row values are not rewritten
@@ -309,10 +319,10 @@ diagnostic.
 ## SQLite Handling
 
 No SQLite fork patch or optional SQLite syntax is needed. Physical table
-definitions remain descriptor-driven rowid tables with quoted identifiers and
-without SQLite default clauses as semantic dependencies. MyLite binds default
-values in generated `INSERT` and backfill statements, so SQLite executes storage
-work while MyLite retains MySQL default semantics.
+definitions remain descriptor-driven rowid tables with quoted identifiers.
+MyLite binds default values in generated `INSERT` statements and may use
+SQLite's constant add-column default only for append-column backfill, so SQLite
+executes storage work while MyLite retains MySQL default semantics.
 
 ## Tests
 

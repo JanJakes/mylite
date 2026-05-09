@@ -9,16 +9,16 @@
 - [x] Write independently authored feature spec with MyLite Lemon-style grammar
       snippets and exact non-goals.
 - [x] Add MySQL-runtime expectation script for this slice.
-- [ ] Extend AST/parser support from `DEFAULT NULL` to the admitted default
+- [x] Extend AST/parser support from `DEFAULT NULL` to the admitted default
       value subset.
-- [ ] Add durable descriptor default metadata and catalog schema migration.
-- [ ] Convert and validate defaults through MyLite-owned integer/default
+- [x] Add durable descriptor default metadata and catalog schema migration.
+- [x] Convert and validate defaults through MyLite-owned integer/default
       logic, preserving `CREATE TABLE IF NOT EXISTS` diagnostic ordering.
-- [ ] Apply descriptor defaults to supported omitted-column `INSERT` paths.
-- [ ] Preserve descriptor authority for create/add/modify/change and
+- [x] Apply descriptor defaults to supported omitted-column `INSERT` paths.
+- [x] Preserve descriptor authority for create/add/modify/change and
       introspection.
-- [ ] Add parser, catalog, runtime, persistence, migration, and unsupported
+- [x] Add parser, catalog, runtime, persistence, migration, and unsupported
       syntax tests.
-- [ ] Update compatibility docs without overclaiming full defaults.
-- [ ] Run focused parser/runtime/MySQL checks and `cmake --workflow --preset check`.
-- [ ] Review the final diff, fix findings, and commit atomically.
+- [x] Update compatibility docs without overclaiming full defaults.
+- [x] Run focused parser/runtime/MySQL checks and `cmake --workflow --preset check`.
+- [x] Review the final diff, fix findings, and commit atomically.

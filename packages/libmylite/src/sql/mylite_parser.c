@@ -2067,6 +2067,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_default_null(
     return make_node(state, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL, span);
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_default_value(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token default_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&default_token);
+    struct mylite_sql_ast_node *default_value = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    default_value = make_node(state, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE, span);
+    if (default_value == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(default_value, value);
+    return default_value;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token type_token,

@@ -29,7 +29,9 @@ enum catalog_column_insert_bind_index {
     catalog_column_insert_logical_type_bind = 4,
     catalog_column_insert_physical_type_bind = 5,
     catalog_column_insert_is_nullable_bind = 6,
-    catalog_column_insert_generation_bind = 7,
+    catalog_column_insert_default_kind_bind = 7,
+    catalog_column_insert_default_integer_bind = 8,
+    catalog_column_insert_generation_bind = 9,
 };
 
 enum catalog_column_replace_bind_index {
@@ -37,9 +39,11 @@ enum catalog_column_replace_bind_index {
     catalog_column_replace_logical_type_bind = 2,
     catalog_column_replace_physical_type_bind = 3,
     catalog_column_replace_is_nullable_bind = 4,
-    catalog_column_replace_generation_bind = 5,
-    catalog_column_replace_table_id_bind = 6,
-    catalog_column_replace_column_id_bind = 7,
+    catalog_column_replace_default_kind_bind = 5,
+    catalog_column_replace_default_integer_bind = 6,
+    catalog_column_replace_generation_bind = 7,
+    catalog_column_replace_table_id_bind = 8,
+    catalog_column_replace_column_id_bind = 9,
 };
 
 enum catalog_table_select_column_index {
@@ -61,9 +65,11 @@ enum catalog_column_select_column_index {
     catalog_column_select_logical_type_column = 4,
     catalog_column_select_physical_type_column = 5,
     catalog_column_select_is_nullable_column = 6,
-    catalog_column_select_descriptor_version_column = 7,
-    catalog_column_select_created_generation_column = 8,
-    catalog_column_select_updated_generation_column = 9,
+    catalog_column_select_default_kind_column = 7,
+    catalog_column_select_default_integer_column = 8,
+    catalog_column_select_descriptor_version_column = 9,
+    catalog_column_select_created_generation_column = 10,
+    catalog_column_select_updated_generation_column = 11,
 };
 
 enum catalog_next_table_id_column_index {
@@ -84,6 +90,8 @@ struct catalog_generation_change {
 
 static int ensure_catalog_schema(struct mylite_db *database);
 static int load_existing_catalog(struct mylite_db *database);
+static int migrate_catalog_schema(struct mylite_db *database, const struct mylite_catalog *catalog);
+static int migrate_catalog_schema_v1_to_v2(sqlite3 *sqlite);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
 static int validate_select_shape(sqlite3 *sqlite, const char *sql);
 static int initialize_catalog_schema(struct mylite_db *database);
@@ -107,6 +115,7 @@ static int execute_sql(sqlite3 *sqlite, const char *sql);
 static int prepare_statement(sqlite3 *sqlite, const char *sql, sqlite3_stmt **out_statement);
 static int bind_text(sqlite3_stmt *statement, int index, const char *value);
 static int bind_i64(sqlite3_stmt *statement, int index, int64_t value);
+static int bind_nullable_i64(sqlite3_stmt *statement, int index, bool has_value, int64_t value);
 static int bind_u64(sqlite3_stmt *statement, int index, uint64_t value);
 static int step_done(sqlite3_stmt *statement);
 static int require_changed_row(sqlite3 *sqlite);
@@ -166,6 +175,12 @@ static int materialize_column(
 );
 static int checked_column_i64(sqlite3_stmt *statement, int index, int64_t *out_value);
 static int checked_column_u64(sqlite3_stmt *statement, int index, uint64_t *out_value);
+static int checked_nullable_column_i64(
+    sqlite3_stmt *statement,
+    int index,
+    bool *out_has_value,
+    int64_t *out_value
+);
 static int checked_column_text(
     sqlite3_stmt *statement,
     int index,
@@ -177,6 +192,7 @@ static int validate_catalog_ready_database(struct mylite_db *database);
 static int validate_required_name(const char *name, size_t capacity);
 static int validate_logical_object_name(const char *name, size_t capacity);
 static int validate_table_kind(enum mylite_catalog_table_kind kind);
+static int validate_column_default_kind(enum mylite_catalog_column_default_kind kind);
 static int validate_active_mutation(const struct mylite_catalog_mutation *mutation);
 static int validate_positive_id(int64_t id);
 static int validate_positive_ordinal(int64_t ordinal_position);
@@ -478,6 +494,8 @@ int mylite_catalog_insert_column_in_mutation(
     const char *logical_type,
     const char *physical_type,
     bool is_nullable,
+    enum mylite_catalog_column_default_kind default_kind,
+    int64_t default_integer,
     struct mylite_catalog_column_descriptor *out_column
 ) {
     sqlite3_stmt *statement = NULL;
@@ -519,13 +537,18 @@ int mylite_catalog_insert_column_in_mutation(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    rc = validate_column_default_kind(default_kind);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     rc = prepare_statement(
         database->sqlite,
         "INSERT INTO _mylite_catalog_columns "
         "(table_id, ordinal_position, name, logical_type, physical_type, is_nullable, "
-        "descriptor_version, created_catalog_generation, updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
+        "default_kind, default_integer, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?9)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -545,6 +568,17 @@ int mylite_catalog_insert_column_in_mutation(
     }
     if (rc == MYLITE_OK) {
         rc = bind_i64(statement, catalog_column_insert_is_nullable_bind, nullable_value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_insert_default_kind_bind, (int64_t)default_kind);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_nullable_i64(
+            statement,
+            catalog_column_insert_default_integer_bind,
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER,
+            default_integer
+        );
     }
     if (rc == MYLITE_OK) {
         rc = bind_u64(statement, catalog_column_insert_generation_bind, mutation->next_generation);
@@ -762,7 +796,9 @@ int mylite_catalog_replace_column_in_mutation(
     const char *name,
     const char *logical_type,
     const char *physical_type,
-    bool is_nullable
+    bool is_nullable,
+    enum mylite_catalog_column_default_kind default_kind,
+    int64_t default_integer
 ) {
     sqlite3_stmt *statement = NULL;
     int64_t nullable_value = 0;
@@ -798,13 +834,18 @@ int mylite_catalog_replace_column_in_mutation(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    rc = validate_column_default_kind(default_kind);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     rc = prepare_statement(
         database->sqlite,
         "UPDATE _mylite_catalog_columns "
         "SET name = ?1, logical_type = ?2, physical_type = ?3, is_nullable = ?4, "
-        "descriptor_version = descriptor_version + 1, updated_catalog_generation = ?5 "
-        "WHERE table_id = ?6 AND column_id = ?7",
+        "default_kind = ?5, default_integer = ?6, "
+        "descriptor_version = descriptor_version + 1, updated_catalog_generation = ?7 "
+        "WHERE table_id = ?8 AND column_id = ?9",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -818,6 +859,17 @@ int mylite_catalog_replace_column_in_mutation(
     }
     if (rc == MYLITE_OK) {
         rc = bind_i64(statement, catalog_column_replace_is_nullable_bind, nullable_value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_replace_default_kind_bind, (int64_t)default_kind);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_nullable_i64(
+            statement,
+            catalog_column_replace_default_integer_bind,
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER,
+            default_integer
+        );
     }
     if (rc == MYLITE_OK) {
         rc = bind_u64(statement, catalog_column_replace_generation_bind, mutation->next_generation);
@@ -1110,7 +1162,8 @@ int mylite_catalog_for_each_column_in_table(
     rc = prepare_statement(
         database->sqlite,
         "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
-        "is_nullable, descriptor_version, created_catalog_generation, updated_catalog_generation "
+        "is_nullable, default_kind, default_integer, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_columns WHERE table_id = ?1 ORDER BY ordinal_position",
         &statement
     );
@@ -1588,6 +1641,8 @@ int mylite_catalog_create_column(
     const char *logical_type,
     const char *physical_type,
     bool is_nullable,
+    enum mylite_catalog_column_default_kind default_kind,
+    int64_t default_integer,
     struct mylite_catalog_column_descriptor *out_column
 ) {
     struct catalog_generation_change generation = {0};
@@ -1623,6 +1678,10 @@ int mylite_catalog_create_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    rc = validate_column_default_kind(default_kind);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     rc = begin_generation_change(database, &generation);
     if (rc != MYLITE_OK) {
@@ -1641,8 +1700,9 @@ int mylite_catalog_create_column(
         database->sqlite,
         "INSERT INTO _mylite_catalog_columns "
         "(table_id, ordinal_position, name, logical_type, physical_type, is_nullable, "
-        "descriptor_version, created_catalog_generation, updated_catalog_generation) "
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)",
+        "default_kind, default_integer, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation) "
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?9)",
         &statement
     );
     if (rc == MYLITE_OK) {
@@ -1662,6 +1722,17 @@ int mylite_catalog_create_column(
     }
     if (rc == MYLITE_OK) {
         rc = bind_i64(statement, catalog_column_insert_is_nullable_bind, nullable_value);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_i64(statement, catalog_column_insert_default_kind_bind, (int64_t)default_kind);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_nullable_i64(
+            statement,
+            catalog_column_insert_default_integer_bind,
+            default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER,
+            default_integer
+        );
     }
     if (rc == MYLITE_OK) {
         rc = bind_u64(statement, catalog_column_insert_generation_bind, generation.next_generation);
@@ -1785,16 +1856,53 @@ static int ensure_catalog_schema(struct mylite_db *database) {
 
 static int load_existing_catalog(struct mylite_db *database) {
     struct mylite_catalog catalog = {.initialized = false};
-    int rc = validate_catalog_descriptor_tables(database->sqlite);
+    int rc = read_catalog_state(database->sqlite, &catalog);
 
+    if (rc == MYLITE_OK && catalog.schema_version < MYLITE_CATALOG_SCHEMA_VERSION) {
+        rc = migrate_catalog_schema(database, &catalog);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_catalog_descriptor_tables(database->sqlite);
+    }
     if (rc == MYLITE_OK) {
         rc = read_catalog_state(database->sqlite, &catalog);
     }
+
     if (rc != MYLITE_OK) {
         return rc;
     }
 
     return apply_catalog_state(database, &catalog);
+}
+
+static int migrate_catalog_schema(
+    struct mylite_db *database,
+    const struct mylite_catalog *catalog
+) {
+    if (catalog->schema_version == 1U) {
+        return migrate_catalog_schema_v1_to_v2(database->sqlite);
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int migrate_catalog_schema_v1_to_v2(sqlite3 *sqlite) {
+    static const char *sql = "BEGIN IMMEDIATE;"
+                             "ALTER TABLE _mylite_catalog_columns "
+                             "ADD COLUMN default_kind INTEGER NOT NULL DEFAULT 0;"
+                             "ALTER TABLE _mylite_catalog_columns "
+                             "ADD COLUMN default_integer INTEGER;"
+                             "UPDATE _mylite_catalog_state "
+                             "SET schema_version = 2, minimum_reader_schema_version = 2;"
+                             "COMMIT;";
+    int rc = execute_sql(sqlite, sql);
+
+    if (rc != MYLITE_OK) {
+        rollback_catalog_transaction(sqlite);
+        return rc;
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
@@ -1817,7 +1925,8 @@ static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
         rc = validate_select_shape(
             sqlite,
             "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
-            "is_nullable, descriptor_version, created_catalog_generation, "
+            "is_nullable, default_kind, default_integer, descriptor_version, "
+            "created_catalog_generation, "
             "updated_catalog_generation "
             "FROM _mylite_catalog_columns WHERE 0"
         );
@@ -1869,6 +1978,8 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "logical_type TEXT NOT NULL,"
         "physical_type TEXT NOT NULL,"
         "is_nullable INTEGER NOT NULL CHECK(is_nullable IN (0, 1)),"
+        "default_kind INTEGER NOT NULL CHECK(default_kind IN (0, 1)),"
+        "default_integer INTEGER,"
         "descriptor_version INTEGER NOT NULL,"
         "created_catalog_generation INTEGER NOT NULL,"
         "updated_catalog_generation INTEGER NOT NULL,"
@@ -1878,7 +1989,7 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "INSERT INTO _mylite_catalog_state "
         "(singleton_id, schema_version, minimum_reader_schema_version, catalog_generation, "
         "created_with_file_format_version) "
-        "VALUES (1, 1, 1, 1, 1);"
+        "VALUES (1, 2, 2, 1, 1);"
         "COMMIT;";
     struct mylite_catalog catalog = {.initialized = false};
     int rc = execute_sql(database->sqlite, sql);
@@ -1994,7 +2105,8 @@ static int read_catalog_state(sqlite3 *sqlite, struct mylite_catalog *catalog) {
             rc = sqlite_rc == SQLITE_ROW ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    if (rc == MYLITE_OK && (singleton_id != 1 || schema_version != MYLITE_CATALOG_SCHEMA_VERSION ||
+    if (rc == MYLITE_OK && (singleton_id != 1 || schema_version < 1 ||
+                            schema_version > MYLITE_CATALOG_SCHEMA_VERSION ||
                             minimum_reader_schema_version > MYLITE_CATALOG_SCHEMA_VERSION ||
                             minimum_reader_schema_version < 1 ||
                             file_format_version != MYLITE_FILE_FORMAT_VERSION || generation < 1)) {
@@ -2150,6 +2262,18 @@ static int bind_text(sqlite3_stmt *statement, int index, const char *value) {
 
 static int bind_i64(sqlite3_stmt *statement, int index, int64_t value) {
     int sqlite_rc = sqlite3_bind_int64(statement, index, (sqlite3_int64)value);
+
+    return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static int bind_nullable_i64(sqlite3_stmt *statement, int index, bool has_value, int64_t value) {
+    int sqlite_rc = SQLITE_OK;
+
+    if (!has_value) {
+        sqlite_rc = sqlite3_bind_null(statement, index);
+    } else {
+        sqlite_rc = sqlite3_bind_int64(statement, index, (sqlite3_int64)value);
+    }
 
     return mylite_sqlite_status_to_mylite(sqlite_rc);
 }
@@ -2393,7 +2517,8 @@ static int read_column_by_name(
     int rc = prepare_statement(
         sqlite,
         "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
-        "is_nullable, descriptor_version, created_catalog_generation, updated_catalog_generation "
+        "is_nullable, default_kind, default_integer, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
         "FROM _mylite_catalog_columns WHERE table_id = ?1 AND name = ?2",
         &statement
     );
@@ -2534,6 +2659,8 @@ static int materialize_column(
     struct mylite_catalog_column_descriptor *out_column
 ) {
     int64_t nullable = 0;
+    int64_t default_kind = 0;
+    bool has_default_integer = false;
     int rc = checked_column_i64(
         statement,
         catalog_column_select_column_id_column,
@@ -2586,6 +2713,28 @@ static int materialize_column(
     }
     if (rc == MYLITE_OK) {
         out_column->is_nullable = nullable != 0;
+        rc =
+            checked_column_i64(statement, catalog_column_select_default_kind_column, &default_kind);
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_column_default_kind((enum mylite_catalog_column_default_kind)default_kind);
+    }
+    if (rc == MYLITE_OK) {
+        out_column->default_kind = (enum mylite_catalog_column_default_kind)default_kind;
+        rc = checked_nullable_column_i64(
+            statement,
+            catalog_column_select_default_integer_column,
+            &has_default_integer,
+            &out_column->default_integer
+        );
+    }
+    if (rc == MYLITE_OK &&
+        ((out_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER &&
+          !has_default_integer) ||
+         (out_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && has_default_integer))) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
         rc = checked_column_u64(
             statement,
             catalog_column_select_descriptor_version_column,
@@ -2629,6 +2778,29 @@ static int checked_column_u64(sqlite3_stmt *statement, int index, uint64_t *out_
     }
 
     return i64_to_u64(signed_value, out_value);
+}
+
+static int checked_nullable_column_i64(
+    sqlite3_stmt *statement,
+    int index,
+    bool *out_has_value,
+    int64_t *out_value
+) {
+    int column_type = sqlite3_column_type(statement, index);
+
+    *out_has_value = false;
+    *out_value = 0;
+    if (column_type == SQLITE_NULL) {
+        return MYLITE_OK;
+    }
+    if (column_type != SQLITE_INTEGER) {
+        return MYLITE_ERROR;
+    }
+
+    *out_has_value = true;
+    *out_value = (int64_t)sqlite3_column_int64(statement, index);
+
+    return MYLITE_OK;
 }
 
 static int checked_column_text(
@@ -2707,6 +2879,15 @@ static int validate_logical_object_name(const char *name, size_t capacity) {
 
 static int validate_table_kind(enum mylite_catalog_table_kind kind) {
     if (kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        return MYLITE_MISUSE;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_column_default_kind(enum mylite_catalog_column_default_kind kind) {
+    if (kind != MYLITE_CATALOG_COLUMN_DEFAULT_NONE &&
+        kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
         return MYLITE_MISUSE;
     }
 

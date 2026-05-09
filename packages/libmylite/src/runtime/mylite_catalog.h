@@ -8,8 +8,8 @@
 #include <stdint.h>
 
 enum {
-    MYLITE_CATALOG_SCHEMA_VERSION = 1,
-    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 1,
+    MYLITE_CATALOG_SCHEMA_VERSION = 2,
+    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 2,
     MYLITE_CATALOG_IDENTIFIER_CAPACITY = 64,
     MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY = 128,
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 64,
@@ -18,6 +18,11 @@ enum {
 enum mylite_catalog_table_kind {
     MYLITE_CATALOG_TABLE_KIND_INVALID = 0,
     MYLITE_CATALOG_TABLE_KIND_BASE = 1,
+};
+
+enum mylite_catalog_column_default_kind {
+    MYLITE_CATALOG_COLUMN_DEFAULT_NONE = 0,
+    MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER = 1,
 };
 
 struct mylite_db;
@@ -57,6 +62,8 @@ struct mylite_catalog_column_descriptor {
     char logical_type[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
     char physical_type[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
     bool is_nullable;
+    enum mylite_catalog_column_default_kind default_kind;
+    int64_t default_integer;
     uint64_t descriptor_version;
     uint64_t created_catalog_generation;
     uint64_t updated_catalog_generation;
@@ -126,6 +133,8 @@ int mylite_catalog_insert_column_in_mutation(
     const char *logical_type,
     const char *physical_type,
     bool is_nullable,
+    enum mylite_catalog_column_default_kind default_kind,
+    int64_t default_integer,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_delete_table_in_mutation(
@@ -155,7 +164,9 @@ int mylite_catalog_replace_column_in_mutation(
     const char *name,
     const char *logical_type,
     const char *physical_type,
-    bool is_nullable
+    bool is_nullable,
+    enum mylite_catalog_column_default_kind default_kind,
+    int64_t default_integer
 );
 int mylite_catalog_delete_schema_in_mutation(
     struct mylite_db *database,
@@ -242,6 +253,8 @@ int mylite_catalog_create_column(
     const char *logical_type,
     const char *physical_type,
     bool is_nullable,
+    enum mylite_catalog_column_default_kind default_kind,
+    int64_t default_integer,
     struct mylite_catalog_column_descriptor *out_column
 );
 int mylite_catalog_read_column_by_name(

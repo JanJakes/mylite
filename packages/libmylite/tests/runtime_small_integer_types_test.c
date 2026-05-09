@@ -20,6 +20,7 @@ enum {
     test_path_capacity = 1024,
     small_integer_sql_capacity = 512,
     small_integer_column_count = 8,
+    signed_attribute_column_count = 8,
     show_columns_field_count = 6,
     mysql_error_parse = 1064,
     mysql_error_bad_null = 1048,
@@ -47,6 +48,7 @@ struct expected_column_descriptor {
 };
 
 static int test_small_integer_success_persistence_and_dml(void);
+static int test_integer_signed_attribute_lifecycle(void);
 static int test_small_integer_diagnostics_and_rollback(void);
 static int test_small_integer_independent_handles(void);
 static int create_small_integer_table(mylite_db *database, const char *table_name);
@@ -90,6 +92,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_small_integer_success_persistence_and_dml();
+    failures += test_integer_signed_attribute_lifecycle();
     failures += test_small_integer_diagnostics_and_rollback();
     failures += test_small_integer_independent_handles();
 
@@ -361,6 +364,383 @@ static int test_small_integer_success_persistence_and_dml(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "small integer updates persist after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_integer_signed_attribute_lifecycle(void) {
+    static const char *const show_columns_rows[] = {
+        "id", "int",      "NO",  "", NULL, "", "ti", "tinyint",   "YES", "", NULL, "",
+        "si", "smallint", "YES", "", NULL, "", "mi", "mediumint", "YES", "", NULL, "",
+        "i",  "int",      "YES", "", NULL, "", "ii", "int",       "YES", "", NULL, "",
+        "b",  "bigint",   "YES", "", NULL, "", "nn", "tinyint",   "NO",  "", NULL, "",
+    };
+    static const char *const show_create_rows[] = {
+        "ints",
+        "CREATE TABLE `ints` (\n"
+        "  `id` int NOT NULL,\n"
+        "  `ti` tinyint DEFAULT NULL,\n"
+        "  `si` smallint DEFAULT NULL,\n"
+        "  `mi` mediumint DEFAULT NULL,\n"
+        "  `i` int DEFAULT NULL,\n"
+        "  `ii` int DEFAULT NULL,\n"
+        "  `b` bigint DEFAULT NULL,\n"
+        "  `nn` tinyint NOT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const ordered_rows[] = {
+        "1",
+        "-127",
+        "-32768",
+        "-9223372036854775808",
+        "2",
+        "127",
+        NULL,
+        "-7",
+    };
+    static const char *const changed_column_row[] = {
+        "changed",
+        "mediumint",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
+    static const char *const added_column_row[] = {"added", "tinyint", "YES", "", NULL, ""};
+    static const char *const persisted_row[] = {"2", "-7", "7"};
+    static const char *const alter_bad_column[] = {"c", "int", "NO", "", NULL, ""};
+    static const char *const alter_bad_value[] = {"128"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "signed_attribute") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open signed file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE ints (id INT SIGNED NOT NULL, ti TINYINT SIGNED, "
+        "si SMALLINT SIGNED, mi MEDIUMINT SIGNED, i INT SIGNED, "
+        "ii INTEGER SIGNED, b BIGINT SIGNED, nn TINYINT SIGNED NOT NULL)"
+    );
+
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM ints",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = signed_attribute_column_count,
+            .context = "signed attribute SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "DESCRIBE ints",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = signed_attribute_column_count,
+            .context = "signed attribute DESCRIBE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "EXPLAIN ints",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = signed_attribute_column_count,
+            .context = "signed attribute EXPLAIN table",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE ints",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "signed attribute SHOW CREATE TABLE",
+        }
+    );
+
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read signed schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "ints", &table),
+        MYLITE_OK,
+        "read signed table"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "ti", .logical_type = "TINYINT", .is_nullable = true},
+        "signed tinyint descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "si", .logical_type = "SMALLINT", .is_nullable = true},
+        "signed smallint descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "mi", .logical_type = "MEDIUMINT", .is_nullable = true},
+        "signed mediumint descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "ii", .logical_type = "INT", .is_nullable = true},
+        "signed integer descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "b", .logical_type = "BIGINT", .is_nullable = true},
+        "signed bigint descriptor"
+    );
+
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO ints VALUES "
+        "(1, -128, -32768, -8388608, -2147483648, -2147483648, "
+        "-9223372036854775808, -1), "
+        "(2, 127, 32767, 8388607, 2147483647, 2147483647, 9223372036854775807, 1)",
+        2
+    );
+    failures += expect_dml_ok(database, "UPDATE ints SET ti = -127 WHERE ti = -128", 1);
+    failures += expect_dml_ok(database, "UPDATE ints SET si = NULL WHERE ti <=> 127", 1);
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO ints SET id = 3, ti = NULL, si = 0, mi = 0, i = 0, ii = 0, b = 0, nn = 3",
+        1
+    );
+    failures += expect_dml_ok(database, "DELETE FROM ints WHERE ti IS NULL", 1);
+    failures +=
+        expect_dml_ok(database, "UPDATE ints SET b = -7 WHERE id > 0 ORDER BY ti DESC LIMIT 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, ti, si, b FROM ints ORDER BY ti",
+            .values = ordered_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "signed attribute DML values",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "INSERT INTO ints VALUES (4, 128, 0, 0, 0, 0, 0, 0)",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'ti' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO ints VALUES (4, 0, -32769, 0, 0, 0, 0, 0)",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'si' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO ints VALUES (4, 0, 0, 8388608, 0, 0, 0, 0)",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'mi' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO ints VALUES (4, 0, 0, 0, 2147483648, 0, 0, 0)",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO ints VALUES (4, 0, 0, 0, 0, 0, 9223372036854775808, 0)",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'b' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO ints VALUES (4, 0, 0, 0, 0, 0, 0, NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'nn' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE ints SET ti = 128",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'ti' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE unsupported_signed_unsigned (c INT SIGNED UNSIGNED)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+
+    failures += expect_statement_ok(database, "ALTER TABLE ints ADD added TINYINT SIGNED");
+    failures += expect_statement_ok(database, "ALTER TABLE ints MODIFY si INT SIGNED");
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE ints CHANGE mi changed MEDIUMINT SIGNED");
+    failures += expect_statement_ok(database, "ALTER TABLE ints MODIFY i INT SIGNED");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM ints LIKE 'changed'",
+            .values = changed_column_row,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "signed changed column",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM ints LIKE 'added'",
+            .values = added_column_row,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "signed added column",
+        }
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "changed", .logical_type = "MEDIUMINT", .is_nullable = true},
+        "changed signed descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "added", .logical_type = "TINYINT", .is_nullable = true},
+        "added signed descriptor"
+    );
+    failures += expect_dml_ok(database, "UPDATE ints SET added = 7 WHERE id = 2", 1);
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE alter_bad (id INT NOT NULL, c INT SIGNED NOT NULL)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO alter_bad VALUES (1, 128)", 1);
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_bad MODIFY c TINYINT SIGNED NOT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'c' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE alter_bad CHANGE c changed TINYINT SIGNED NOT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'changed' at row 1",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM alter_bad LIKE 'c'",
+            .values = alter_bad_column,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "failed signed ALTER preserves descriptor",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT c FROM alter_bad WHERE id = 1",
+            .values = alter_bad_value,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "failed signed ALTER preserves rows",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "signed attribute lifecycle preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen signed file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, b, added FROM ints WHERE id = 2",
+            .values = persisted_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "signed attribute updates persist after reopen",
         }
     );
 

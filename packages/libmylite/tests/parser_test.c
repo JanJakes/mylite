@@ -6,7 +6,10 @@
 
 enum {
     small_integer_column_count = 6,
+    signed_integer_column_count = 6,
     mediumint_unsigned_column_index = 5,
+    signed_integer_column_index = 4,
+    signed_bigint_column_index = 5,
 };
 
 static int test_empty_script(void);
@@ -1376,6 +1379,62 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "CREATE TABLE signed_integer_types (ti TINYINT SIGNED, si SMALLINT SIGNED, "
+        "mi MEDIUMINT SIGNED, i INT SIGNED, ii INTEGER SIGNED, b BIGINT SIGNED);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures +=
+        expect_child_count(columns, signed_integer_column_count, "signed integer column list");
+    column = child_at(columns, 0U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "tinyint signed column type"
+    );
+    failures += expect_span_text(child_at(column, 1U), "TINYINT SIGNED", "tinyint signed span");
+    column = child_at(columns, 1U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT,
+        0,
+        "smallint signed column type"
+    );
+    column = child_at(columns, 2U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT,
+        0,
+        "mediumint signed column type"
+    );
+    column = child_at(columns, 3U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "int signed column type"
+    );
+    column = child_at(columns, signed_integer_column_index);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "integer signed column type"
+    );
+    failures += expect_span_text(child_at(column, 1U), "INTEGER SIGNED", "integer signed span");
+    column = child_at(columns, signed_bigint_column_index);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_BIGINT,
+        0,
+        "bigint signed column type"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "CREATE TABLE IF NOT EXISTS app.if_missing (id INT) ENGINE=InnoDB;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2031,6 +2090,22 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD added_signed TINYINT SIGNED NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "tinyint signed alter add column type"
+    );
+    failures += expect_span_text(child_at(column, 1U), "TINYINT SIGNED", "signed alter add span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE simple_lifecycle MODIFY old_col INT UNSIGNED NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2071,6 +2146,22 @@ static int test_table_lifecycle_statements(void) {
         0,
         "tinyint alter modify column type"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY old_col INT SIGNED NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        0,
+        "int signed alter modify column type"
+    );
+    failures += expect_span_text(child_at(column, 1U), "INT SIGNED", "signed alter modify span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -2115,6 +2206,23 @@ static int test_table_lifecycle_statements(void) {
         1,
         "mediumint unsigned alter change column type"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_col new_col MEDIUMINT SIGNED NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    failures += expect_integer_type(
+        child_at(column, 1U),
+        MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT,
+        0,
+        "mediumint signed alter change column type"
+    );
+    failures +=
+        expect_span_text(child_at(column, 1U), "MEDIUMINT SIGNED", "signed alter change span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -3942,7 +4050,42 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_signed (c SMALLINT SIGNED);",
+        "CREATE TABLE unsupported_width_signed (c TINYINT(1) SIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_signed_unsigned (c INT SIGNED UNSIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_unsigned_signed (c INT UNSIGNED SIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_repeated_signed (c INT SIGNED SIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_repeated_unsigned (c INT UNSIGNED UNSIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_decimal_signed (c DECIMAL SIGNED);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -3956,7 +4099,56 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_bool (c BOOLEAN);",
+        "CREATE TABLE unsupported_boolean (c BOOLEAN);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_bool (c BOOL);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_int1 (c INT1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_int2 (c INT2);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_int3 (c INT3);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_int4 (c INT4);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_int8 (c INT8);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_serial (c SERIAL);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

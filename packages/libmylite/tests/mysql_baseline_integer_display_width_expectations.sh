@@ -181,6 +181,15 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count; SELECT * FROM widths;" \
     "$DATABASE"
 
+width_255_expected=$(printf '%b' \
+    'Warning\t1681\tInteger display width is deprecated and will be removed in a future release.\n'\
+'c\tint\tYES\t\tNULL\t')
+expect_output \
+    "display width 255 upper boundary normalizes with warning" \
+    "$width_255_expected" \
+    "CREATE TABLE width_255 (c INT(255)); SHOW WARNINGS; SHOW COLUMNS FROM width_255;" \
+    "$DATABASE"
+
 expect_error \
     "display width high out of range" \
     1439 \
@@ -276,4 +285,3 @@ expect_upstream_accepts \
     "$DATABASE"
 
 printf '%s\n' "baseline-integer-display-width MySQL 8.4.9 expectations verified"
-

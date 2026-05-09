@@ -48,6 +48,11 @@ struct expected_query {
     const char *context;
 };
 
+struct expected_statement_result {
+    size_t warning_count;
+    int64_t affected_rows;
+};
+
 struct expected_column_descriptor {
     const char *name;
     const char *logical_type;
@@ -69,6 +74,11 @@ static int expect_statement_warning_count(
     mylite_db *database,
     const char *sql,
     size_t warning_count
+);
+static int expect_statement_warning_count_and_affected_rows(
+    mylite_db *database,
+    const char *sql,
+    struct expected_statement_result expected
 );
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query_values(mylite_db *database, struct expected_query query);
@@ -1557,10 +1567,10 @@ static int test_integer_display_width_lifecycle(void) {
     failures += expect_dml_ok(database, "INSERT INTO alter_widths VALUES (1, 1, 5), (2, 0, 6)", 2);
 
     sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
-    failures += expect_statement_warning_count(
+    failures += expect_statement_warning_count_and_affected_rows(
         database,
         "ALTER TABLE alter_widths MODIFY a TINYINT(1)",
-        1U
+        (struct expected_statement_result){.warning_count = 1U, .affected_rows = 0}
     );
     failures += expect_int64(
         (int64_t)mylite_connection_session_state(database)->sqlite_schema_generation,
@@ -1569,7 +1579,7 @@ static int test_integer_display_width_lifecycle(void) {
     );
 
     sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
-    failures += expect_statement_ok(database, "ALTER TABLE alter_widths MODIFY b TINYINT");
+    failures += expect_dml_ok(database, "ALTER TABLE alter_widths MODIFY b TINYINT", 0);
     failures += expect_int64(
         (int64_t)mylite_connection_session_state(database)->sqlite_schema_generation,
         (int64_t)sqlite_schema_generation,
@@ -1577,15 +1587,21 @@ static int test_integer_display_width_lifecycle(void) {
     );
 
     sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
-    failures +=
-        expect_statement_warning_count(database, "ALTER TABLE alter_widths CHANGE c c2 INT(1)", 1U);
+    failures += expect_statement_warning_count_and_affected_rows(
+        database,
+        "ALTER TABLE alter_widths CHANGE c c2 INT(1)",
+        (struct expected_statement_result){.warning_count = 1U, .affected_rows = 0}
+    );
     failures += expect_true(
         mylite_connection_session_state(database)->sqlite_schema_generation >
             sqlite_schema_generation,
         "display width CHANGE rename updates SQLite schema generation"
     );
-    failures +=
-        expect_statement_warning_count(database, "ALTER TABLE alter_widths ADD d INT(1)", 1U);
+    failures += expect_statement_warning_count_and_affected_rows(
+        database,
+        "ALTER TABLE alter_widths ADD d INT(1)",
+        (struct expected_statement_result){.warning_count = 1U, .affected_rows = 0}
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -2399,6 +2415,23 @@ static int expect_statement_warning_count(
     failures += expect_size(mylite_result_column_count(result), 0U, sql);
     failures += expect_size(mylite_result_row_count(result), 0U, sql);
     failures += expect_size(mylite_result_warning_count(result), warning_count, sql);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int expect_statement_warning_count_and_affected_rows(
+    mylite_db *database,
+    const char *sql,
+    struct expected_statement_result expected
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += expect_int64(mylite_result_affected_rows(result), expected.affected_rows, sql);
+    failures += expect_size(mylite_result_warning_count(result), expected.warning_count, sql);
     mylite_result_free(result);
 
     return failures;

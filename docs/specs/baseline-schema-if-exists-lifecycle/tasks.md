@@ -63,8 +63,8 @@ and diagnostics behavior.
    - Avoid arbitrary SQLite pass-through and SQLite fork patches.
 
 7. Tests
-   - Add a fast C test under `packages/libmylite/tests/` and register it with a
-     dotted CTest name.
+   - Add or extend fast C tests under `packages/libmylite/tests/`; register a
+     dotted CTest name if a new binary is needed.
    - Cover create missing, create existing, drop existing, drop missing,
      reserved names, diagnostics/warnings, generation invariants, selected
      schema behavior, reopen persistence, preamble safety, independent handles,
@@ -72,7 +72,8 @@ and diagnostics behavior.
    - Keep tests deterministic and avoid a new test framework.
 
 8. Build integration
-   - Add new tests to `packages/libmylite/CMakeLists.txt`.
+   - Add new tests to `packages/libmylite/CMakeLists.txt` if a new test binary
+     is needed.
    - Keep first-party warning and clang-tidy policy enabled.
    - Keep vendored SQLite warning policy unchanged.
 

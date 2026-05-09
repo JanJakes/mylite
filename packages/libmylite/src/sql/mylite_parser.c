@@ -475,11 +475,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_collation_option(
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *if_not_exists_clause,
     struct mylite_sql_ast_node *schema_name
 ) {
     struct mylite_sql_source_span span = span_from_token(&create_token);
     struct mylite_sql_ast_node *statement = NULL;
 
+    if (if_not_exists_clause != NULL) {
+        span = span_join(span, if_not_exists_clause->span);
+    }
     if (schema_name != NULL) {
         span = span_join(span, schema_name->span);
     }
@@ -490,7 +494,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     }
 
     mylite_sql_ast_node_append_child(statement, schema_name);
+    if (if_not_exists_clause != NULL) {
+        mylite_sql_ast_node_append_child(statement, if_not_exists_clause);
+    }
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_if_not_exists_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token if_token,
+    struct mylite_sql_token exists_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&if_token), span_from_token(&exists_token));
+
+    return make_node(state, MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE, span);
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
@@ -532,11 +550,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_if_exists_clause(
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists_clause,
     struct mylite_sql_ast_node *schema_name
 ) {
     struct mylite_sql_source_span span = span_from_token(&drop_token);
     struct mylite_sql_ast_node *statement = NULL;
 
+    if (if_exists_clause != NULL) {
+        span = span_join(span, if_exists_clause->span);
+    }
     if (schema_name != NULL) {
         span = span_join(span, schema_name->span);
     }
@@ -547,7 +569,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
     }
 
     mylite_sql_ast_node_append_child(statement, schema_name);
+    if (if_exists_clause != NULL) {
+        mylite_sql_ast_node_append_child(statement, if_exists_clause);
+    }
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_if_exists_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token if_token,
+    struct mylite_sql_token exists_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&if_token), span_from_token(&exists_token));
+
+    return make_node(state, MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE, span);
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_truncate_table_statement(

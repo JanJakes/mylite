@@ -219,11 +219,18 @@ option_name(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
-create_schema_statement(A) ::= CREATE(C) DATABASE identifier(S). {
-    A = mylite_sql_parser_make_create_schema_statement(state, C, S);
+create_schema_statement(A) ::= CREATE(C) DATABASE create_schema_if_not_exists_opt(E) identifier(S). {
+    A = mylite_sql_parser_make_create_schema_statement(state, C, E, S);
 }
-create_schema_statement(A) ::= CREATE(C) SCHEMA identifier(S). {
-    A = mylite_sql_parser_make_create_schema_statement(state, C, S);
+create_schema_statement(A) ::= CREATE(C) SCHEMA create_schema_if_not_exists_opt(E) identifier(S). {
+    A = mylite_sql_parser_make_create_schema_statement(state, C, E, S);
+}
+
+create_schema_if_not_exists_opt(A) ::= . {
+    A = NULL;
+}
+create_schema_if_not_exists_opt(A) ::= IF(I) NOT EXISTS(E). {
+    A = mylite_sql_parser_make_create_schema_if_not_exists_clause(state, I, E);
 }
 
 drop_table_statement(A) ::= DROP(D) TABLE drop_if_exists_opt(E) table_name(T). {
@@ -237,11 +244,18 @@ drop_if_exists_opt(A) ::= IF(I) EXISTS(E). {
     A = mylite_sql_parser_make_drop_if_exists_clause(state, I, E);
 }
 
-drop_schema_statement(A) ::= DROP(D) DATABASE identifier(S). {
-    A = mylite_sql_parser_make_drop_schema_statement(state, D, S);
+drop_schema_statement(A) ::= DROP(D) DATABASE drop_schema_if_exists_opt(E) identifier(S). {
+    A = mylite_sql_parser_make_drop_schema_statement(state, D, E, S);
 }
-drop_schema_statement(A) ::= DROP(D) SCHEMA identifier(S). {
-    A = mylite_sql_parser_make_drop_schema_statement(state, D, S);
+drop_schema_statement(A) ::= DROP(D) SCHEMA drop_schema_if_exists_opt(E) identifier(S). {
+    A = mylite_sql_parser_make_drop_schema_statement(state, D, E, S);
+}
+
+drop_schema_if_exists_opt(A) ::= . {
+    A = NULL;
+}
+drop_schema_if_exists_opt(A) ::= IF(I) EXISTS(E). {
+    A = mylite_sql_parser_make_drop_schema_if_exists_clause(state, I, E);
 }
 
 truncate_table_statement(A) ::= TRUNCATE(T) table_name(N). {

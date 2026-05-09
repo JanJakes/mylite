@@ -18,6 +18,8 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
+    show_warnings_column_count = 3,
+    show_count_warnings_column_count = 1,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_database_exists = 1007,
@@ -33,8 +35,37 @@ struct expected_sql_error {
     const char *message_part;
 };
 
+struct expected_show_warnings {
+    const char *sql;
+    size_t row_count;
+    const char *level;
+    const char *code;
+    const char *message_part;
+    const char *context;
+};
+
+struct expected_single_value {
+    const char *sql;
+    const char *expected;
+    const char *context;
+};
+
+struct expected_empty_statement_result {
+    int64_t affected_rows;
+    size_t warning_count;
+    const char *context;
+};
+
+static const char *const show_warnings_names[show_warnings_column_count] = {
+    "Level",
+    "Code",
+    "Message",
+};
+
 static int test_schema_success_persistence_and_cleanup(void);
+static int test_schema_if_exists_noops_and_diagnostics(void);
 static int test_schema_diagnostics_and_unsupported_syntax(void);
+static int test_schema_if_exists_catalog_lookup_failures_are_not_noops(void);
 static int test_drop_schema_physical_failure_preserves_catalog(void);
 static int test_same_file_schema_handles(void);
 static int test_independent_schema_handles(void);
@@ -44,6 +75,23 @@ static int expect_empty_result(
     const mylite_result *result,
     int64_t expected_affected_rows,
     const char *context
+);
+static int expect_empty_result_with_warnings(
+    const mylite_result *result,
+    struct expected_empty_statement_result expectation
+);
+static int expect_show_warnings_result(
+    mylite_db *database,
+    struct expected_show_warnings expectation
+);
+static int expect_show_count_warnings(
+    mylite_db *database,
+    const char *expected,
+    const char *context
+);
+static int expect_select_single_value(
+    mylite_db *database,
+    struct expected_single_value expectation
 );
 static int expect_show_databases(
     mylite_db *database,
@@ -90,7 +138,9 @@ int main(void) {
     int failures = 0;
 
     failures += test_schema_success_persistence_and_cleanup();
+    failures += test_schema_if_exists_noops_and_diagnostics();
     failures += test_schema_diagnostics_and_unsupported_syntax();
+    failures += test_schema_if_exists_catalog_lookup_failures_are_not_noops();
     failures += test_drop_schema_physical_failure_preserves_catalog();
     failures += test_same_file_schema_handles();
     failures += test_independent_schema_handles();
@@ -315,6 +365,250 @@ static int test_schema_success_persistence_and_cleanup(void) {
     return failures;
 }
 
+static int test_schema_if_exists_noops_and_diagnostics(void) {
+    static const char *const app_schema[] = {"app"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    const struct mylite_catalog *catalog = NULL;
+    const struct mylite_session_state *session = NULL;
+    uint64_t catalog_generation = 0U;
+    uint64_t sqlite_schema_generation = 0U;
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "if_exists") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open schema if exists file");
+
+    failures += execute_ok(database, "CREATE DATABASE IF NOT EXISTS app", &result);
+    failures += expect_empty_result_with_warnings(
+        result,
+        (struct expected_empty_statement_result){
+            .affected_rows = 1,
+            .warning_count = 0U,
+            .context = "create database if not exists missing",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT ROW_COUNT()",
+            .expected = "1",
+            .context = "create database if not exists row count",
+        }
+    );
+    failures += expect_show_databases(database, app_schema, 1U, "created IF NOT EXISTS schema");
+
+    catalog = mylite_connection_catalog_for_test(database);
+    session = mylite_connection_session_state(database);
+    if (catalog != NULL) {
+        catalog_generation = catalog->generation;
+    }
+    if (session != NULL) {
+        sqlite_schema_generation = session->sqlite_schema_generation;
+    }
+
+    failures += execute_ok(database, "CREATE SCHEMA IF NOT EXISTS app", &result);
+    failures += expect_empty_result_with_warnings(
+        result,
+        (struct expected_empty_statement_result){
+            .affected_rows = 1,
+            .warning_count = 1U,
+            .context = "create schema if not exists existing",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    catalog = mylite_connection_catalog_for_test(database);
+    session = mylite_connection_session_state(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            catalog_generation,
+            "existing schema create keeps catalog generation"
+        );
+    }
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_schema_generation,
+            "existing schema create keeps sqlite generation"
+        );
+    }
+    failures += expect_show_count_warnings(database, "1", "existing schema create warning count");
+    failures += expect_show_warnings_result(
+        database,
+        (struct expected_show_warnings){
+            .sql = "SHOW WARNINGS",
+            .row_count = 1U,
+            .level = "Note",
+            .code = "1007",
+            .message_part = "Can't create database 'app'; database exists",
+            .context = "existing schema create warning row",
+        }
+    );
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT @@warning_count",
+            .expected = "1",
+            .context = "existing schema create warning variable",
+        }
+    );
+
+    failures += execute_ok(database, "USE app", &result);
+    failures += expect_empty_result(result, 0, "use app before drop");
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE TABLE first_table (id INT)", &result);
+    failures += expect_empty_result(result, 0, "create first table before schema drop");
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE TABLE second_table (id INT)", &result);
+    failures += expect_empty_result(result, 0, "create second table before schema drop");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "DROP DATABASE IF EXISTS app", &result);
+    failures += expect_empty_result(result, 2, "drop schema if exists existing");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT ROW_COUNT()",
+            .expected = "-1",
+            .context = "existing schema drop row count",
+        }
+    );
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        failures +=
+            expect_bool(session->has_selected_schema, false, "drop if exists clears schema");
+        failures +=
+            expect_text(session->selected_schema, "", "drop if exists selected schema text");
+    }
+    catalog = mylite_connection_catalog_for_test(database);
+    session = mylite_connection_session_state(database);
+    if (catalog != NULL) {
+        catalog_generation = catalog->generation;
+    }
+    if (session != NULL) {
+        sqlite_schema_generation = session->sqlite_schema_generation;
+    }
+
+    failures += execute_ok(database, "DROP SCHEMA IF EXISTS app", &result);
+    failures += expect_empty_result_with_warnings(
+        result,
+        (struct expected_empty_statement_result){
+            .affected_rows = 0,
+            .warning_count = 1U,
+            .context = "drop schema if exists missing",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT ROW_COUNT()",
+            .expected = "-1",
+            .context = "missing schema drop row count",
+        }
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    session = mylite_connection_session_state(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            catalog_generation,
+            "missing schema drop keeps catalog generation"
+        );
+    }
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_schema_generation,
+            "missing schema drop keeps sqlite generation"
+        );
+    }
+    failures += expect_show_count_warnings(database, "0", "missing schema drop stored warnings");
+    failures += expect_show_warnings_result(
+        database,
+        (struct expected_show_warnings){
+            .sql = "SHOW WARNINGS",
+            .row_count = 0U,
+            .level = NULL,
+            .code = NULL,
+            .message_part = NULL,
+            .context = "missing schema drop leaves no warning row",
+        }
+    );
+    failures += expect_select_single_value(
+        database,
+        (struct expected_single_value){
+            .sql = "SELECT @@warning_count",
+            .expected = "0",
+            .context = "missing schema drop warning variable",
+        }
+    );
+
+    failures += expect_int(
+        read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
+        0,
+        "read schema if exists preamble"
+    );
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "schema if exists preamble unchanged"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen schema if exists file");
+    failures += execute_ok(database, "CREATE DATABASE IF NOT EXISTS app", &result);
+    failures += expect_empty_result_with_warnings(
+        result,
+        (struct expected_empty_statement_result){
+            .affected_rows = 1,
+            .warning_count = 0U,
+            .context = "recreate schema after reopen",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE DATABASE IF NOT EXISTS app", &result);
+    failures += expect_empty_result_with_warnings(
+        result,
+        (struct expected_empty_statement_result){
+            .affected_rows = 1,
+            .warning_count = 1U,
+            .context = "existing schema after reopen",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "DROP DATABASE IF EXISTS app", &result);
+    failures += expect_empty_result(result, 0, "drop empty schema after reopen");
+    mylite_result_free(result);
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_schema_diagnostics_and_unsupported_syntax(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -396,7 +690,7 @@ static int test_schema_diagnostics_and_unsupported_syntax(void) {
     );
     failures += execute_error(
         database,
-        "CREATE DATABASE IF NOT EXISTS app",
+        "CREATE DATABASE IF EXISTS app",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -405,11 +699,29 @@ static int test_schema_diagnostics_and_unsupported_syntax(void) {
     );
     failures += execute_error(
         database,
-        "DROP DATABASE IF EXISTS app",
+        "DROP DATABASE IF NOT EXISTS app",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE DATABASE IF NOT EXISTS _mylite_reserved",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name '_mylite_reserved'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DROP DATABASE IF EXISTS _mylite_reserved",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name '_mylite_reserved'",
         }
     );
     failures += execute_error(
@@ -437,6 +749,61 @@ static int test_schema_diagnostics_and_unsupported_syntax(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "syntax",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_schema_if_exists_catalog_lookup_failures_are_not_noops(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "if_exists_create_catalog_failure") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open create catalog failure");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_schemas");
+    }
+    failures += execute_error(
+        database,
+        "CREATE DATABASE IF NOT EXISTS app",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown,
+            .sqlstate = "HY000",
+            .message_part = "failed to read schema descriptor",
+        }
+    );
+    mylite_close(database);
+    database = NULL;
+    remove_related_files(path);
+
+    if (make_test_path(path, sizeof(path), "if_exists_drop_catalog_failure") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open drop catalog failure");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += execute_sql(sqlite, "DROP TABLE _mylite_catalog_schemas");
+    }
+    failures += execute_error(
+        database,
+        "DROP DATABASE IF EXISTS missing_app",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown,
+            .sqlstate = "HY000",
+            .message_part = "failed to read schema descriptor",
         }
     );
 
@@ -704,6 +1071,111 @@ static int expect_empty_result(
     failures += expect_int64(mylite_result_affected_rows(result), expected_affected_rows, context);
     failures += expect_size(mylite_result_warning_count(result), 0U, context);
 
+    return failures;
+}
+
+static int expect_empty_result_with_warnings(
+    const mylite_result *result,
+    struct expected_empty_statement_result expectation
+) {
+    int failures = 0;
+
+    failures += expect_size(mylite_result_column_count(result), 0U, expectation.context);
+    failures += expect_size(mylite_result_row_count(result), 0U, expectation.context);
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        expectation.affected_rows,
+        expectation.context
+    );
+    failures += expect_size(
+        mylite_result_warning_count(result),
+        expectation.warning_count,
+        expectation.context
+    );
+
+    return failures;
+}
+
+static int expect_show_warnings_result(
+    mylite_db *database,
+    struct expected_show_warnings expectation
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, expectation.sql, &result);
+
+    failures += expect_size(
+        mylite_result_column_count(result),
+        show_warnings_column_count,
+        expectation.context
+    );
+    for (size_t column_index = 0U; column_index < show_warnings_column_count; ++column_index) {
+        failures += expect_text(
+            mylite_result_column_name(result, column_index),
+            show_warnings_names[column_index],
+            expectation.context
+        );
+    }
+    failures +=
+        expect_size(mylite_result_row_count(result), expectation.row_count, expectation.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, expectation.context);
+    if (expectation.row_count > 0U) {
+        failures += expect_text(
+            mylite_result_value_text(result, 0U, 0U),
+            expectation.level,
+            expectation.context
+        );
+        failures += expect_text(
+            mylite_result_value_text(result, 0U, 1U),
+            expectation.code,
+            expectation.context
+        );
+        failures += expect_contains(
+            mylite_result_value_text(result, 0U, 2U),
+            expectation.message_part,
+            expectation.context
+        );
+    }
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_show_count_warnings(
+    mylite_db *database,
+    const char *expected,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SHOW COUNT(*) WARNINGS", &result);
+
+    failures +=
+        expect_size(mylite_result_column_count(result), show_count_warnings_column_count, context);
+    failures +=
+        expect_text(mylite_result_column_name(result, 0U), "@@session.warning_count", context);
+    failures += expect_size(mylite_result_row_count(result), 1U, context);
+    failures += expect_text(mylite_result_value_text(result, 0U, 0U), expected, context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_select_single_value(
+    mylite_db *database,
+    struct expected_single_value expectation
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, expectation.sql, &result);
+
+    failures += expect_size(mylite_result_row_count(result), 1U, expectation.context);
+    failures += expect_size(mylite_result_column_count(result), 1U, expectation.context);
+    failures += expect_text(
+        mylite_result_value_text(result, 0U, 0U),
+        expectation.expected,
+        expectation.context
+    );
+
+    mylite_result_free(result);
     return failures;
 }
 

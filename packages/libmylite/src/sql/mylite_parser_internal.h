@@ -104,7 +104,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_collation_option(
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *if_not_exists_clause,
     struct mylite_sql_ast_node *schema_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_schema_if_not_exists_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token if_token,
+    struct mylite_sql_token exists_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
     struct mylite_sql_parser_state *state,
@@ -120,7 +126,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_if_exists_clause(
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token drop_token,
+    struct mylite_sql_ast_node *if_exists_clause,
     struct mylite_sql_ast_node *schema_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_drop_schema_if_exists_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token if_token,
+    struct mylite_sql_token exists_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_truncate_table_statement(
     struct mylite_sql_parser_state *state,

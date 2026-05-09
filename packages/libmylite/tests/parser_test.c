@@ -2092,24 +2092,51 @@ static int test_schema_lifecycle_statements(void) {
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, "create database");
     failures += expect_span_text(child_at(statement, 0U), "app", "create database name");
+    failures += expect_child_count(statement, 1U, "create database child count");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE SCHEMA `select`;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, "create schema");
     failures += expect_span_text(child_at(statement, 0U), "`select`", "create schema name");
+    failures += expect_child_count(statement, 1U, "create schema child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE DATABASE IF NOT EXISTS app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT, "create database if");
+    failures += expect_span_text(child_at(statement, 0U), "app", "create database if name");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE,
+        "create database if marker"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DROP DATABASE app;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT, "drop database");
     failures += expect_span_text(child_at(statement, 0U), "app", "drop database name");
+    failures += expect_child_count(statement, 1U, "drop database child count");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DROP SCHEMA app;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT, "drop schema");
     failures += expect_span_text(child_at(statement, 0U), "app", "drop schema name");
+    failures += expect_child_count(statement, 1U, "drop schema child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DROP SCHEMA IF EXISTS app;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT, "drop schema if");
+    failures += expect_span_text(child_at(statement, 0U), "app", "drop schema if name");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE,
+        "drop schema if marker"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW DATABASES;", MYLITE_SQL_PARSE_OK, &result);
@@ -3358,8 +3385,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("SELECT CURRENT_USER LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("CREATE DATABASE IF NOT EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("CREATE DATABASE IF EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -3372,7 +3398,8 @@ static int test_syntax_errors(void) {
     failures += parse_sql("CREATE DATABASE a.b;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("DROP DATABASE IF EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures +=
+        parse_sql("DROP DATABASE IF NOT EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SHOW DATABASES LIKE 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

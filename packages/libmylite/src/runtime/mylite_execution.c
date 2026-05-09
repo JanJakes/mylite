@@ -402,6 +402,13 @@ static int execute_create_schema_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int maybe_finish_create_schema_if_not_exists_noop(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result *result,
+    bool *out_finished
+);
+static bool create_schema_has_if_not_exists(const struct mylite_sql_ast_node *statement);
 static int execute_drop_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -412,6 +419,12 @@ static int execute_drop_schema_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int maybe_finish_drop_schema_if_exists_noop(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_finished
+);
+static bool drop_schema_has_if_exists(const struct mylite_sql_ast_node *statement);
 static int execute_truncate_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -588,6 +601,11 @@ static int snapshot_current_diagnostics(struct mylite_db *database);
 static int finish_successful_result(
     struct mylite_db *database,
     mylite_result *result,
+    mylite_result **out_result
+);
+static int finish_successful_result_with_warning_count(
+    mylite_result *result,
+    size_t warning_count,
     mylite_result **out_result
 );
 
@@ -1677,6 +1695,7 @@ static void set_native_function_parameter_count_error(
 );
 static void set_no_database_error(struct mylite_db *database);
 static void set_database_exists_error(struct mylite_db *database, const char *schema_name);
+static int append_database_exists_note(struct mylite_db *database, const char *schema_name);
 static void set_cant_drop_database_error(struct mylite_db *database, const char *schema_name);
 static void set_unknown_database_error(struct mylite_db *database, const char *schema_name);
 static void set_table_exists_error(struct mylite_db *database, const char *table_name);
@@ -2005,6 +2024,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
     case MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE:
+    case MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE:
+    case MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -2126,6 +2147,7 @@ static int execute_create_schema_statement(
     mylite_result **out_result
 ) {
     mylite_result *result = NULL;
+    bool finished = false;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -2133,13 +2155,62 @@ static int execute_create_schema_statement(
         return rc;
     }
 
-    rc = create_schema_from_statement(database, statement, result);
+    rc = maybe_finish_create_schema_if_not_exists_noop(database, statement, result, &finished);
+    if (rc == MYLITE_OK && finished) {
+        return finish_successful_result(database, result, out_result);
+    }
+    if (rc == MYLITE_OK) {
+        rc = create_schema_from_statement(database, statement, result);
+    }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int maybe_finish_create_schema_if_not_exists_noop(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result *result,
+    bool *out_finished
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct mylite_catalog_schema_descriptor schema = {0};
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    *out_finished = false;
+    if (!create_schema_has_if_not_exists(statement)) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
+        set_reserved_name_error(database, "database", schema_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_try_read_schema_by_name(database, schema_name, &schema, &found);
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(database, rc, "failed to read schema descriptor");
+        }
+    }
+    if (rc != MYLITE_OK || !found) {
+        return rc;
+    }
+
+    rc = append_database_exists_note(database, schema_name);
+    if (rc == MYLITE_OK) {
+        mylite_result_set_affected_rows(result, 1);
+        *out_finished = true;
+    }
+    return rc;
+}
+
+static bool create_schema_has_if_not_exists(const struct mylite_sql_ast_node *statement) {
+    return child_with_kind(statement, MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE) != NULL;
 }
 
 static int execute_drop_table_statement(
@@ -2325,6 +2396,7 @@ static int execute_drop_schema_statement(
     struct planned_drop_schema plan = {0};
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
     mylite_result *result = NULL;
+    bool finished = false;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -2332,7 +2404,13 @@ static int execute_drop_schema_statement(
         return rc;
     }
 
-    rc = plan_drop_schema(database, statement, &mutation, &plan);
+    rc = maybe_finish_drop_schema_if_exists_noop(database, statement, &finished);
+    if (rc == MYLITE_OK && finished) {
+        return finish_successful_result_with_warning_count(result, 1U, out_result);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_drop_schema(database, statement, &mutation, &plan);
+    }
     if (rc == MYLITE_OK) {
         rc = drop_schema_from_plan(database, &mutation, &plan, result);
     }
@@ -2346,6 +2424,44 @@ static int execute_drop_schema_statement(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int maybe_finish_drop_schema_if_exists_noop(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool *out_finished
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct mylite_catalog_schema_descriptor schema = {0};
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    *out_finished = false;
+    if (!drop_schema_has_if_exists(statement)) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_identifier_text(child_at(statement, 0U), schema_name, sizeof(schema_name), database);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(schema_name)) {
+        set_reserved_name_error(database, "database", schema_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_try_read_schema_by_name(database, schema_name, &schema, &found);
+        if (rc != MYLITE_OK) {
+            set_internal_error_if_clear(database, rc, "failed to read schema descriptor");
+        }
+    }
+    if (rc != MYLITE_OK || found) {
+        return rc;
+    }
+
+    *out_finished = true;
+    return MYLITE_OK;
+}
+
+static bool drop_schema_has_if_exists(const struct mylite_sql_ast_node *statement) {
+    return child_with_kind(statement, MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE) != NULL;
 }
 
 static int execute_truncate_table_statement(
@@ -4535,6 +4651,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_TABLE_COLLATION_OPTION:
     case MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE:
+    case MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE:
+    case MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -4599,6 +4717,17 @@ static int finish_successful_result(
         result,
         mylite_diagnostics_warning_count(mylite_connection_diagnostics(database))
     );
+    *out_result = result;
+
+    return MYLITE_OK;
+}
+
+static int finish_successful_result_with_warning_count(
+    mylite_result *result,
+    size_t warning_count,
+    mylite_result **out_result
+) {
+    mylite_result_set_warning_count(result, warning_count);
     *out_result = result;
 
     return MYLITE_OK;
@@ -12503,6 +12632,26 @@ static void set_database_exists_error(struct mylite_db *database, const char *sc
         message[0] = '\0';
     }
     mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_database_exists,
+        "HY000",
+        message
+    );
+}
+
+static int append_database_exists_note(struct mylite_db *database, const char *schema_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Can't create database '%s'; database exists",
+        schema_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    return mylite_diagnostics_append_note(
         mylite_connection_diagnostics(database),
         mysql_error_database_exists,
         "HY000",

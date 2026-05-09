@@ -156,6 +156,9 @@ statement(A) ::= alter_table_change_column_statement(B). {
 statement(A) ::= alter_table_set_default_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_drop_default_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -553,6 +556,11 @@ alter_table_set_default_statement(A) ::=
     column_default_value(V). {
     A = mylite_sql_parser_make_alter_table_set_default_statement(
         state, A1, T, C, mylite_sql_parser_make_column_default_value(state, D, V));
+}
+
+alter_table_drop_default_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ALTER column_keyword_opt identifier(C) DROP DEFAULT(D). {
+    A = mylite_sql_parser_make_alter_table_drop_default_statement(state, A1, T, C, D);
 }
 
 column_keyword_opt(A) ::= . {

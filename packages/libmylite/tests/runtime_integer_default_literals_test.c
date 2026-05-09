@@ -31,6 +31,7 @@ enum {
     alter_set_default_projection_column_count = 7,
     alter_set_default_boundary_column_count = 10,
     alter_removed_default_row_count = 5,
+    drop_default_description_row_count = 8,
     show_columns_column_count = 6,
 };
 
@@ -62,8 +63,10 @@ struct expected_contains_query {
 static int test_create_insert_metadata_and_persistence(void);
 static int test_alter_defaults(void);
 static int test_alter_column_set_default(void);
+static int test_alter_column_drop_default(void);
 static int test_default_diagnostics_and_if_not_exists(void);
 static int test_catalog_v1_migration(void);
+static int test_catalog_v2_migration(void);
 static int test_independent_default_handles(void);
 static int seed_schema(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -83,7 +86,12 @@ static int expect_result_value(
     const char *context
 );
 static int expect_single_value_contains(mylite_db *database, struct expected_contains_query query);
+static int expect_single_value_not_contains(
+    mylite_db *database,
+    struct expected_contains_query query
+);
 static int make_catalog_look_like_v1(sqlite3 *sqlite);
+static int make_catalog_look_like_v2(sqlite3 *sqlite);
 static int execute_sql(sqlite3 *connection, const char *sql);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
@@ -96,6 +104,7 @@ static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_true(int condition, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
+static int expect_not_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -109,8 +118,10 @@ int main(void) {
     failures += test_create_insert_metadata_and_persistence();
     failures += test_alter_defaults();
     failures += test_alter_column_set_default();
+    failures += test_alter_column_drop_default();
     failures += test_default_diagnostics_and_if_not_exists();
     failures += test_catalog_v1_migration();
+    failures += test_catalog_v2_migration();
     failures += test_independent_default_handles();
 
     return failures == 0 ? 0 : 1;
@@ -718,6 +729,328 @@ static int test_alter_column_set_default(void) {
     return failures;
 }
 
+static int test_alter_column_drop_default(void) {
+    static const char *const qualified_row[] = {"2", "5"};
+    static const char *const show_v[] = {"v", "int", "YES", "", NULL, ""};
+    static const char *const described_numbers[] = {
+        "id",         "int",
+        "NO",         "",
+        NULL,         "",
+        "v",          "int",
+        "YES",        "",
+        NULL,         "",
+        "implicit_i", "int",
+        "YES",        "",
+        NULL,         "",
+        "nullable_i", "int",
+        "YES",        "",
+        NULL,         "",
+        "nn",         "int",
+        "NO",         "",
+        NULL,         "",
+        "u",          "int unsigned",
+        "YES",        "",
+        NULL,         "",
+        "bu",         "bigint unsigned",
+        "YES",        "",
+        NULL,         "",
+        "b",          "tinyint(1)",
+        "YES",        "",
+        NULL,         "",
+    };
+    static const char *const original_row[] = {"1", "1", NULL, "2", "4", "5", "0"};
+    static const char *const restored_row[] = {"2", "9", NULL, "7", "40", "50", "1"};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    const struct mylite_session_state *session = NULL;
+    uint64_t sqlite_schema_generation = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "alter_drop_default") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open alter drop default");
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER v DROP DEFAULT",
+        (struct expected_sql_error){
+            mysql_error_no_database_selected,
+            "3D000",
+            "No database selected",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_schema.numbers ALTER v DROP DEFAULT",
+        (struct expected_sql_error){mysql_error_unknown_database, "42000", "Unknown database"}
+    );
+    failures += expect_statement_result(
+        database,
+        "CREATE DATABASE app",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE app.qualified_numbers (id INT NOT NULL, n INT DEFAULT 2)"
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE app.qualified_numbers ALTER COLUMN n DROP DEFAULT",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO app.qualified_numbers (id) VALUES (1)",
+        (struct expected_sql_error){
+            mysql_error_field_no_default,
+            "HY000",
+            "doesn't have a default value",
+        }
+    );
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE app.qualified_numbers ALTER n SET DEFAULT 5");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO app.qualified_numbers (id) VALUES (2)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n FROM qualified_numbers",
+            .values = qualified_row,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "schema-qualified DROP DEFAULT restores with SET DEFAULT",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_numbers ALTER n DROP DEFAULT",
+        (struct expected_sql_error){
+            mysql_error_table_does_not_exist,
+            "42S02",
+            "doesn't exist",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE numbers ("
+        "id INT NOT NULL, "
+        "v INT DEFAULT 1, "
+        "implicit_i INT, "
+        "nullable_i INT DEFAULT NULL, "
+        "nn INT NOT NULL DEFAULT 2, "
+        "u INT UNSIGNED DEFAULT 4, "
+        "bu BIGINT UNSIGNED DEFAULT 5, "
+        "b BOOL DEFAULT FALSE)"
+    );
+    session = mylite_connection_session_state(database);
+    failures += expect_true(session != NULL, "alter drop default session state exists");
+    if (session != NULL) {
+        sqlite_schema_generation = session->sqlite_schema_generation;
+    }
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO numbers (id) VALUES (1)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER v DROP DEFAULT");
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER nullable_i DROP DEFAULT");
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER COLUMN nn DROP DEFAULT");
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER u DROP DEFAULT");
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER bu DROP DEFAULT");
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER b DROP DEFAULT");
+    session = mylite_connection_session_state(database);
+    failures += expect_true(
+        session != NULL && session->sqlite_schema_generation == sqlite_schema_generation,
+        "ALTER DROP DEFAULT preserves SQLite schema generation"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM numbers LIKE 'v'",
+            .values = show_v,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "SHOW COLUMNS after ALTER DROP DEFAULT",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "DESCRIBE numbers",
+            .values = described_numbers,
+            .column_count = show_columns_column_count,
+            .row_count = drop_default_description_row_count,
+            .context = "DESCRIBE after ALTER DROP DEFAULT",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "EXPLAIN numbers",
+            .values = described_numbers,
+            .column_count = show_columns_column_count,
+            .row_count = drop_default_description_row_count,
+            .context = "EXPLAIN table after ALTER DROP DEFAULT",
+        }
+    );
+    failures += expect_single_value_contains(
+        database,
+        (struct expected_contains_query){
+            .sql = "SHOW CREATE TABLE numbers",
+            .needle = "`implicit_i` int DEFAULT NULL",
+            .context = "SHOW CREATE keeps implicit nullable default",
+        }
+    );
+    failures += expect_single_value_not_contains(
+        database,
+        (struct expected_contains_query){
+            .sql = "SHOW CREATE TABLE numbers",
+            .needle = "`v` int DEFAULT",
+            .context = "SHOW CREATE omits dropped nullable default",
+        }
+    );
+    failures += expect_single_value_not_contains(
+        database,
+        (struct expected_contains_query){
+            .sql = "SHOW CREATE TABLE numbers",
+            .needle = "`nullable_i` int DEFAULT",
+            .context = "SHOW CREATE omits dropped DEFAULT NULL",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, nullable_i, nn, u, bu, b FROM numbers WHERE id = 1",
+            .values = original_row,
+            .column_count = alter_set_default_projection_column_count,
+            .row_count = 1U,
+            .context = "ALTER DROP DEFAULT preserves existing rows",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO numbers (id) VALUES (2)",
+        (struct expected_sql_error){
+            mysql_error_field_no_default,
+            "HY000",
+            "Field 'v' doesn't have a default value",
+        }
+    );
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER v SET DEFAULT 9");
+    failures += execute_error(
+        database,
+        "INSERT INTO numbers (id) VALUES (2)",
+        (struct expected_sql_error){
+            mysql_error_field_no_default,
+            "HY000",
+            "Field 'nullable_i' doesn't have a default value",
+        }
+    );
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE numbers ALTER nullable_i SET DEFAULT NULL");
+    failures += execute_error(
+        database,
+        "INSERT INTO numbers (id) VALUES (2)",
+        (struct expected_sql_error){
+            mysql_error_field_no_default,
+            "HY000",
+            "Field 'nn' doesn't have a default value",
+        }
+    );
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER nn SET DEFAULT 7");
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER u SET DEFAULT 40");
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER bu SET DEFAULT 50");
+    failures += execute_statement_ok(database, "ALTER TABLE numbers ALTER b SET DEFAULT TRUE");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO numbers (id) VALUES (2)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, nullable_i, nn, u, bu, b FROM numbers WHERE id = 2",
+            .values = restored_row,
+            .column_count = alter_set_default_projection_column_count,
+            .row_count = 1U,
+            .context = "ALTER SET DEFAULT after DROP DEFAULT restores future rows",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER missing DROP DEFAULT",
+        (struct expected_sql_error){mysql_error_unknown_column, "42S22", "Unknown column"}
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE _mylite_private ALTER v DROP DEFAULT",
+        (struct expected_sql_error){
+            mysql_error_incorrect_table_name,
+            "42000",
+            "Incorrect table name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER _mylite_private DROP DEFAULT",
+        (struct expected_sql_error){
+            mysql_error_incorrect_column_name,
+            "42000",
+            "Incorrect column name",
+        }
+    );
+
+    failures += execute_statement_ok(database, "ALTER TABLE numbers RENAME TO renamed_numbers");
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "ALTER DROP DEFAULT preserves MyLite preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen alter drop default");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, nullable_i, nn, u, bu, b "
+                   "FROM renamed_numbers WHERE id = 2",
+            .values = restored_row,
+            .column_count = alter_set_default_projection_column_count,
+            .row_count = 1U,
+            .context = "reopened ALTER DROP DEFAULT values persist after rename",
+        }
+    );
+    failures += execute_statement_ok(database, "DROP TABLE renamed_numbers");
+    failures += execute_error(
+        database,
+        "ALTER TABLE renamed_numbers ALTER v DROP DEFAULT",
+        (struct expected_sql_error){
+            mysql_error_table_does_not_exist,
+            "42S02",
+            "doesn't exist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_default_diagnostics_and_if_not_exists(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -820,9 +1153,67 @@ static int test_catalog_v1_migration(void) {
     return failures;
 }
 
+static int test_catalog_v2_migration(void) {
+    static const char *const restored_row[] = {"2", "7", NULL};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "migration_v2") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open v2 migration source");
+    failures += seed_schema(database);
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE migrated (id INT NOT NULL, v INT DEFAULT 7, n INT DEFAULT NULL)"
+    );
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += make_catalog_look_like_v2(sqlite);
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open v2 migrated catalog");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(database, "ALTER TABLE migrated ALTER n DROP DEFAULT");
+    failures += execute_error(
+        database,
+        "INSERT INTO migrated (id) VALUES (1)",
+        (struct expected_sql_error){
+            mysql_error_field_no_default,
+            "HY000",
+            "Field 'n' doesn't have a default value",
+        }
+    );
+    failures += execute_statement_ok(database, "ALTER TABLE migrated ALTER n SET DEFAULT NULL");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO migrated (id) VALUES (2)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, n FROM migrated",
+            .values = restored_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "v2 catalog migration admits dropped default state",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_independent_default_handles(void) {
     static const char *const first_values[] = {"1", "3"};
-    static const char *const second_values[] = {"2", "2"};
+    static const char *const second_values[] = {"2", "2", "2"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -863,6 +1254,21 @@ static int test_independent_default_handles(void) {
         "INSERT INTO t (id) VALUES (2)",
         (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
     );
+    failures += execute_statement_ok(first, "ALTER TABLE t ALTER v DROP DEFAULT");
+    failures += execute_error(
+        first,
+        "INSERT INTO t (id) VALUES (3)",
+        (struct expected_sql_error){
+            mysql_error_field_no_default,
+            "HY000",
+            "doesn't have a default value",
+        }
+    );
+    failures += expect_statement_result(
+        second,
+        "INSERT INTO t (id) VALUES (3)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
     failures += expect_query_values(
         first,
         (struct expected_query){
@@ -879,8 +1285,8 @@ static int test_independent_default_handles(void) {
             .sql = "SELECT v FROM t ORDER BY id",
             .values = second_values,
             .column_count = 1U,
-            .row_count = 2U,
-            .context = "second handle independent default value",
+            .row_count = 3U,
+            .context = "second handle independent dropped default state",
         }
     );
 
@@ -1022,6 +1428,22 @@ static int expect_single_value_contains(mylite_db *database, struct expected_con
     return failures;
 }
 
+static int expect_single_value_not_contains(
+    mylite_db *database,
+    struct expected_contains_query query
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, query.sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 2U, query.context);
+    failures += expect_size(mylite_result_row_count(result), 1U, query.context);
+    failures +=
+        expect_not_contains(mylite_result_value_text(result, 0U, 1U), query.needle, query.context);
+    mylite_result_free(result);
+
+    return failures;
+}
+
 static int make_catalog_look_like_v1(sqlite3 *sqlite) {
     int failures = 0;
 
@@ -1032,6 +1454,44 @@ static int make_catalog_look_like_v1(sqlite3 *sqlite) {
         sqlite,
         "UPDATE _mylite_catalog_state "
         "SET schema_version = 1, minimum_reader_schema_version = 1"
+    );
+
+    return failures;
+}
+
+static int make_catalog_look_like_v2(sqlite3 *sqlite) {
+    int failures = 0;
+
+    failures += execute_sql(
+        sqlite,
+        "ALTER TABLE _mylite_catalog_columns RENAME TO _mylite_catalog_columns_v3;"
+        "CREATE TABLE _mylite_catalog_columns ("
+        "column_id INTEGER PRIMARY KEY,"
+        "table_id INTEGER NOT NULL,"
+        "ordinal_position INTEGER NOT NULL CHECK(ordinal_position > 0),"
+        "name TEXT NOT NULL,"
+        "logical_type TEXT NOT NULL,"
+        "physical_type TEXT NOT NULL,"
+        "is_nullable INTEGER NOT NULL CHECK(is_nullable IN (0, 1)),"
+        "default_kind INTEGER NOT NULL CHECK(default_kind IN (0, 1)),"
+        "default_integer INTEGER,"
+        "descriptor_version INTEGER NOT NULL,"
+        "created_catalog_generation INTEGER NOT NULL,"
+        "updated_catalog_generation INTEGER NOT NULL,"
+        "UNIQUE(table_id, ordinal_position),"
+        "UNIQUE(table_id, name)"
+        ");"
+        "INSERT INTO _mylite_catalog_columns "
+        "(column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, default_kind, default_integer, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation) "
+        "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
+        "is_nullable, default_kind, default_integer, descriptor_version, "
+        "created_catalog_generation, updated_catalog_generation "
+        "FROM _mylite_catalog_columns_v3;"
+        "DROP TABLE _mylite_catalog_columns_v3;"
+        "UPDATE _mylite_catalog_state "
+        "SET schema_version = 2, minimum_reader_schema_version = 2;"
     );
 
     return failures;
@@ -1188,6 +1648,21 @@ static int expect_contains(const char *actual, const char *needle, const char *c
         fprintf(
             stderr,
             "%s: expected '%s' to contain '%s'\n",
+            context,
+            actual == NULL ? "(null)" : actual,
+            needle == NULL ? "(null)" : needle
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_not_contains(const char *actual, const char *needle, const char *context) {
+    if (actual == NULL || needle == NULL || strstr(actual, needle) != NULL) {
+        fprintf(
+            stderr,
+            "%s: expected '%s' not to contain '%s'\n",
             context,
             actual == NULL ? "(null)" : actual,
             needle == NULL ? "(null)" : needle

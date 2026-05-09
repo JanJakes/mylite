@@ -2830,6 +2830,39 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle ALTER COLUMN old_col DROP DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT,
+        "alter table drop default statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter drop default child count");
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.simple_lifecycle",
+        "alter drop default target"
+    );
+    failures += expect_span_text(child_at(statement, 1U), "old_col", "alter drop default column");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ALTER old_col DROP DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT,
+        "alter table bare drop default statement"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "INSERT INTO app.simple_lifecycle (amount, id) VALUES (+1, -2), (NULL, 3);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -5226,7 +5259,14 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "ALTER TABLE old_name ALTER old_col DROP DEFAULT;",
+        "ALTER TABLE old_name ALTER COLUMN old_name.old_col DROP DEFAULT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ALTER old_col DROP DEFAULT, ALTER other DROP DEFAULT;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

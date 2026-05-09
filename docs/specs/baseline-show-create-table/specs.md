@@ -86,7 +86,9 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
   `bigint unsigned`.
 - Nullable integer-family columns with no explicit default display
   `DEFAULT NULL`, including both implicit nullable columns and columns declared
-  `NULL`.
+  `NULL`. Columns after `ALTER COLUMN DROP DEFAULT` display no `DEFAULT`
+  clause; that later behavior is specified in
+  `baseline-alter-column-drop-default`.
 - Non-null integer-family columns with no explicit default display
   `NOT NULL`.
 - The observed table option suffix for default InnoDB tables is
@@ -231,7 +233,8 @@ Rendering rules:
 - `INT UNSIGNED` and `INTEGER UNSIGNED` render as `int unsigned`;
 - `BIGINT` renders as `bigint`;
 - `BIGINT UNSIGNED` renders as `bigint unsigned`;
-- nullable columns render `DEFAULT NULL`;
+- nullable columns without a dropped-default descriptor state render
+  `DEFAULT NULL`;
 - non-null columns render `NOT NULL`;
 - a comma follows every column line except the last one;
 - the table suffix is the fixed baseline default

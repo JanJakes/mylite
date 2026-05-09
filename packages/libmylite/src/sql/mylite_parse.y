@@ -233,7 +233,7 @@ create_schema_if_not_exists_opt(A) ::= IF(I) NOT EXISTS(E). {
     A = mylite_sql_parser_make_create_schema_if_not_exists_clause(state, I, E);
 }
 
-drop_table_statement(A) ::= DROP(D) TABLE drop_if_exists_opt(E) table_name(T). {
+drop_table_statement(A) ::= DROP(D) TABLE drop_if_exists_opt(E) table_name_list(T). {
     A = mylite_sql_parser_make_drop_table_statement(state, D, E, T);
 }
 
@@ -242,6 +242,13 @@ drop_if_exists_opt(A) ::= . {
 }
 drop_if_exists_opt(A) ::= IF(I) EXISTS(E). {
     A = mylite_sql_parser_make_drop_if_exists_clause(state, I, E);
+}
+
+table_name_list(A) ::= table_name(T). {
+    A = mylite_sql_parser_make_table_name_list(state, T);
+}
+table_name_list(A) ::= table_name_list(L) COMMA table_name(T). {
+    A = mylite_sql_parser_append_table_name(state, L, T);
 }
 
 drop_schema_statement(A) ::= DROP(D) DATABASE drop_schema_if_exists_opt(E) identifier(S). {

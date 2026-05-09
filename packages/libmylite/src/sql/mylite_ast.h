@@ -98,6 +98,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE = 89,
     MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE = 90,
     MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE = 91,
+    MYLITE_SQL_AST_TABLE_NAME_LIST = 92,
 };
 
 enum mylite_sql_ast_literal_kind {

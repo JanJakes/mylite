@@ -25,6 +25,7 @@ enum {
     mysql_error_cant_drop_database = 1008,
     mysql_error_unknown_database = 1049,
     mysql_error_table_exists = 1050,
+    mysql_error_not_unique_table_alias = 1066,
     mysql_error_unknown_column = 1054,
     mysql_error_incorrect_parameter_count = 1582,
     mysql_error_unknown_table = 1051,
@@ -94,6 +95,19 @@ struct planned_create_table {
     struct table_name_resolution target;
     struct planned_column *columns;
     size_t column_count;
+};
+
+struct planned_drop_table_target {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    bool missing;
+};
+
+struct planned_drop_table {
+    struct planned_drop_table_target *targets;
+    size_t target_count;
+    size_t missing_count;
+    size_t existing_count;
 };
 
 struct planned_rename_table {
@@ -413,6 +427,39 @@ static int execute_drop_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
+);
+static int plan_drop_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_drop_table *out_plan
+);
+static int plan_drop_table_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target_node,
+    struct planned_drop_table *out_plan,
+    size_t target_index
+);
+static int check_drop_table_duplicate_targets(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan,
+    size_t target_index
+);
+static bool drop_table_targets_match(
+    const struct planned_drop_table_target *left,
+    const struct planned_drop_table_target *right
+);
+static int finish_drop_table_missing_targets(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+);
+static int append_drop_table_missing_notes(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+);
+static void planned_drop_table_deinit(struct planned_drop_table *plan);
+static int execute_drop_table_from_plan(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
 );
 static int execute_drop_schema_statement(
     struct mylite_db *database,
@@ -1105,12 +1152,6 @@ static bool create_table_has_if_not_exists(const struct mylite_sql_ast_node *sta
 static const struct mylite_sql_ast_node *create_table_options_node(
     const struct mylite_sql_ast_node *statement
 );
-static int maybe_finish_drop_if_exists_noop(
-    struct mylite_db *database,
-    const struct table_name_resolution *target,
-    bool missing_schema,
-    bool *out_finished
-);
 static bool drop_table_has_if_exists(const struct mylite_sql_ast_node *statement);
 
 static int plan_delete(
@@ -1708,6 +1749,10 @@ static void set_unknown_table_error(
     const char *schema_name,
     const char *table_name
 );
+static int set_unknown_drop_tables_error(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+);
 static int append_unknown_table_note(
     struct mylite_db *database,
     const char *schema_name,
@@ -1722,6 +1767,7 @@ static void set_table_does_not_exist_error(
     const char *table_name
 );
 static void set_duplicate_column_error(struct mylite_db *database, const char *column_name);
+static void set_duplicate_table_alias_error(struct mylite_db *database, const char *table_name);
 static void set_cant_drop_field_or_key_error(struct mylite_db *database, const char *column_name);
 static void set_cant_remove_all_fields_error(struct mylite_db *database);
 static void set_unknown_column_in_table_error(
@@ -2026,6 +2072,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE:
+    case MYLITE_SQL_AST_TABLE_NAME_LIST:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -2218,13 +2265,8 @@ static int execute_drop_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    struct table_name_resolution target = {0};
-    struct mylite_catalog_table_descriptor table = {0};
-    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    struct planned_drop_table plan = {0};
     mylite_result *result = NULL;
-    bool drop_if_exists = drop_table_has_if_exists(statement);
-    bool finished = false;
-    bool missing_schema = false;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -2232,59 +2274,243 @@ static int execute_drop_table_statement(
         return rc;
     }
 
-    if (drop_if_exists) {
-        rc = resolve_drop_if_exists_table_name(
-            database,
-            child_at(statement, 0U),
-            &target,
-            &missing_schema
-        );
-    } else {
-        rc = resolve_table_name(database, child_at(statement, 0U), &target);
+    rc = plan_drop_table(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = append_drop_table_missing_notes(database, &plan);
     }
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(target.table_name)) {
-        set_reserved_name_error(database, "table", target.table_name);
+    if (rc == MYLITE_OK) {
+        rc = execute_drop_table_from_plan(database, &plan);
+    }
+    planned_drop_table_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int plan_drop_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_drop_table *out_plan
+) {
+    const struct mylite_sql_ast_node *target_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *target_node = NULL;
+    bool drop_if_exists = drop_table_has_if_exists(statement);
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_drop_table){0};
+    if (target_list == NULL || target_list->kind != MYLITE_SQL_AST_TABLE_NAME_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    out_plan->target_count = mylite_sql_ast_node_child_count(target_list);
+    if (out_plan->target_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (out_plan->target_count > SIZE_MAX / sizeof(*out_plan->targets)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_plan->targets = calloc(out_plan->target_count, sizeof(*out_plan->targets));
+    if (out_plan->targets == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    target_node = child_at(target_list, 0U);
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < out_plan->target_count;
+         ++target_index) {
+        rc = plan_drop_table_target(database, target_node, out_plan, target_index);
+        if (target_node != NULL) {
+            target_node = target_node->next_sibling;
+        }
+    }
+    if (rc == MYLITE_OK && !drop_if_exists && out_plan->missing_count != 0U) {
+        rc = finish_drop_table_missing_targets(database, out_plan);
+    }
+    if (rc != MYLITE_OK) {
+        planned_drop_table_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int plan_drop_table_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target_node,
+    struct planned_drop_table *out_plan,
+    size_t target_index
+) {
+    struct planned_drop_table_target *target = &out_plan->targets[target_index];
+    bool missing_schema = false;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    rc = resolve_drop_if_exists_table_name(database, target_node, &target->target, &missing_schema);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(target->target.table_name)) {
+        set_reserved_name_error(database, "table", target->target.table_name);
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && drop_if_exists) {
-        rc = maybe_finish_drop_if_exists_noop(database, &target, missing_schema, &finished);
-        if (rc == MYLITE_OK && finished) {
-            return finish_successful_result(database, result, out_result);
+    if (rc == MYLITE_OK) {
+        rc = check_drop_table_duplicate_targets(database, out_plan, target_index);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (missing_schema) {
+        target->missing = true;
+        ++out_plan->missing_count;
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_try_read_table_by_name(
+        database,
+        target->target.schema.schema_id,
+        target->target.table_name,
+        &target->table,
+        &found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read table descriptor");
+        return rc;
+    }
+    if (!found) {
+        target->missing = true;
+        ++out_plan->missing_count;
+        return MYLITE_OK;
+    }
+
+    ++out_plan->existing_count;
+    return MYLITE_OK;
+}
+
+static int check_drop_table_duplicate_targets(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan,
+    size_t target_index
+) {
+    const struct planned_drop_table_target *target = &plan->targets[target_index];
+
+    for (size_t previous_index = 0U; previous_index < target_index; ++previous_index) {
+        if (drop_table_targets_match(&plan->targets[previous_index], target)) {
+            set_duplicate_table_alias_error(database, target->target.table_name);
+            return MYLITE_ERROR;
         }
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_read_table_by_name(
-            database,
-            target.schema.schema_id,
-            target.table_name,
-            &table
-        );
-        if (rc != MYLITE_OK) {
-            set_unknown_table_error(database, target.schema.name, target.table_name);
-            rc = MYLITE_ERROR;
+
+    return MYLITE_OK;
+}
+
+static bool drop_table_targets_match(
+    const struct planned_drop_table_target *left,
+    const struct planned_drop_table_target *right
+) {
+    if (strcmp(left->target.schema.name, right->target.schema.name) != 0) {
+        return false;
+    }
+    return strcmp(left->target.table_name, right->target.table_name) == 0;
+}
+
+static int finish_drop_table_missing_targets(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+) {
+    if (plan->missing_count == 1U) {
+        for (size_t target_index = 0U; target_index < plan->target_count; ++target_index) {
+            const struct planned_drop_table_target *target = &plan->targets[target_index];
+
+            if (target->missing) {
+                set_unknown_table_error(
+                    database,
+                    target->target.schema.name,
+                    target->target.table_name
+                );
+                return MYLITE_ERROR;
+            }
         }
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_begin_mutation(database, &mutation);
+
+    return set_unknown_drop_tables_error(database, plan);
+}
+
+static int append_drop_table_missing_notes(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
+         ++target_index) {
+        const struct planned_drop_table_target *target = &plan->targets[target_index];
+
+        if (target->missing) {
+            rc = append_unknown_table_note(
+                database,
+                target->target.schema.name,
+                target->target.table_name
+            );
+        }
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_delete_table_in_mutation(database, &mutation, table.table_id);
+
+    return rc;
+}
+
+static void planned_drop_table_deinit(struct planned_drop_table *plan) {
+    if (plan == NULL) {
+        return;
     }
-    if (rc == MYLITE_OK) {
-        rc = execute_physical_drop_table(database, table.physical_name);
+
+    free(plan->targets);
+    *plan = (struct planned_drop_table){0};
+}
+
+static int execute_drop_table_from_plan(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = MYLITE_OK;
+
+    if (plan->existing_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
+         ++target_index) {
+        const struct planned_drop_table_target *target = &plan->targets[target_index];
+
+        if (!target->missing) {
+            rc = mylite_catalog_delete_table_in_mutation(
+                database,
+                &mutation,
+                target->table.table_id
+            );
+        }
+    }
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
+         ++target_index) {
+        const struct planned_drop_table_target *target = &plan->targets[target_index];
+
+        if (!target->missing) {
+            rc = execute_physical_drop_table(database, target->table.physical_name);
+        }
     }
     if (rc == MYLITE_OK) {
         rc = mylite_catalog_commit_mutation(database, &mutation);
     }
     if (rc != MYLITE_OK) {
         mylite_catalog_rollback_mutation(database, &mutation);
-        mylite_result_free(result);
         return rc;
     }
 
     ++database->session.sqlite_schema_generation;
 
-    return finish_successful_result(database, result, out_result);
+    return MYLITE_OK;
 }
 
 static int maybe_finish_create_if_not_exists_noop(
@@ -2341,47 +2567,6 @@ static const struct mylite_sql_ast_node *create_table_options_node(
     const struct mylite_sql_ast_node *statement
 ) {
     return child_with_kind(statement, MYLITE_SQL_AST_TABLE_OPTION_LIST);
-}
-
-static int maybe_finish_drop_if_exists_noop(
-    struct mylite_db *database,
-    const struct table_name_resolution *target,
-    bool missing_schema,
-    bool *out_finished
-) {
-    struct mylite_catalog_table_descriptor table = {0};
-    bool found = false;
-    int rc = MYLITE_OK;
-
-    *out_finished = false;
-    if (missing_schema) {
-        rc = append_unknown_table_note(database, target->schema.name, target->table_name);
-        if (rc == MYLITE_OK) {
-            *out_finished = true;
-        }
-        return rc;
-    }
-
-    rc = mylite_catalog_try_read_table_by_name(
-        database,
-        target->schema.schema_id,
-        target->table_name,
-        &table,
-        &found
-    );
-    if (rc != MYLITE_OK) {
-        set_internal_error_if_clear(database, rc, "failed to read table descriptor");
-        return rc;
-    }
-    if (found) {
-        return MYLITE_OK;
-    }
-
-    rc = append_unknown_table_note(database, target->schema.name, target->table_name);
-    if (rc == MYLITE_OK) {
-        *out_finished = true;
-    }
-    return rc;
 }
 
 static bool drop_table_has_if_exists(const struct mylite_sql_ast_node *statement) {
@@ -4653,6 +4838,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE:
+    case MYLITE_SQL_AST_TABLE_NAME_LIST:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -12744,6 +12930,64 @@ static void set_unknown_table_error(
     );
 }
 
+static int set_unknown_drop_tables_error(
+    struct mylite_db *database,
+    const struct planned_drop_table *plan
+) {
+    struct dynamic_string message;
+    char *owned_message = NULL;
+    size_t missing_index = 0U;
+    int rc = MYLITE_OK;
+
+    dynamic_string_init(&message);
+    rc = dynamic_string_append(&message, "Unknown table '");
+    for (size_t target_index = 0U; rc == MYLITE_OK && target_index < plan->target_count;
+         ++target_index) {
+        const struct planned_drop_table_target *target = &plan->targets[target_index];
+
+        if (!target->missing) {
+            continue;
+        }
+        if (missing_index != 0U) {
+            rc = dynamic_string_append_char(&message, ',');
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&message, target->target.schema.name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(&message, '.');
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(&message, target->target.table_name);
+        }
+        ++missing_index;
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&message, '\'');
+    }
+    if (rc == MYLITE_OK) {
+        owned_message = dynamic_string_take(&message);
+        if (owned_message == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc != MYLITE_OK) {
+        dynamic_string_deinit(&message);
+        set_nomem_error(database);
+        return rc;
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_table,
+        "42S02",
+        owned_message
+    );
+    free(owned_message);
+
+    return MYLITE_ERROR;
+}
+
 static int append_unknown_table_note(
     struct mylite_db *database,
     const char *schema_name,
@@ -12840,6 +13084,21 @@ static void set_duplicate_column_error(struct mylite_db *database, const char *c
         mylite_connection_diagnostics(database),
         mysql_error_duplicate_column,
         "42S21",
+        message
+    );
+}
+
+static void set_duplicate_table_alias_error(struct mylite_db *database, const char *table_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(message, sizeof(message), "Not unique table/alias: '%s'", table_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_not_unique_table_alias,
+        "42000",
         message
     );
 }

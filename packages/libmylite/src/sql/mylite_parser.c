@@ -515,13 +515,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token drop_token,
     struct mylite_sql_ast_node *if_exists_clause,
-    struct mylite_sql_ast_node *table_name
+    struct mylite_sql_ast_node *table_names
 ) {
     struct mylite_sql_source_span span = span_from_token(&drop_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (table_name != NULL) {
-        span = span_join(span, table_name->span);
+    if (table_names != NULL) {
+        span = span_join(span, table_names->span);
     }
 
     statement = make_node(state, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, span);
@@ -529,11 +529,42 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
         return NULL;
     }
 
-    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, table_names);
     if (if_exists_clause != NULL) {
         mylite_sql_ast_node_append_child(statement, if_exists_clause);
     }
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_name_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name
+) {
+    struct mylite_sql_source_span span =
+        table_name == NULL ? (struct mylite_sql_source_span){0} : table_name->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_TABLE_NAME_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, table_name);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_table_name(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *table_name
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, table_name);
+    if (table_name != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, table_name->span));
+    }
+    return list;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_if_exists_clause(

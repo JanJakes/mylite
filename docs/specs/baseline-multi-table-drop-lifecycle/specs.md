@@ -268,6 +268,10 @@ records these MySQL 8.4.9 observations:
 - Repeating the same logical table target, including `a, a` and `a, db.a` when
   `db` is selected, fails with `1066` before mutation. `IF EXISTS` does not
   change this duplicate-target behavior.
+- Repeating the same missing logical target, such as `missing, missing`, also
+  fails with `1066`.
+- On the verified runtime, `@@lower_case_table_names` is `0`; case-distinct
+  names such as `A` and `a` are distinct targets and are not duplicate aliases.
 - If any target is unqualified and no default schema is selected, MySQL returns
   `1046` before mutation, even when other targets are schema-qualified and even
   with `IF EXISTS`.

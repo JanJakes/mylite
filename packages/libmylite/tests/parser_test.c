@@ -1244,6 +1244,7 @@ static int test_qualified_identifier_keyword_part(void) {
 static int test_table_lifecycle_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_names = NULL;
     const struct mylite_sql_ast_node *table_name = NULL;
     const struct mylite_sql_ast_node *columns = NULL;
     const struct mylite_sql_ast_node *column = NULL;
@@ -1337,10 +1338,13 @@ static int test_table_lifecycle_statements(void) {
 
     failures += parse_sql("DROP TABLE IF EXISTS app.if_missing;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
-    table_name = child_at(statement, 0U);
+    table_names = child_at(statement, 0U);
+    table_name = child_at(table_names, 0U);
     if_exists = child_at(statement, 1U);
     failures += expect_child_count(statement, 2U, "drop if exists child count");
     failures += expect_node(statement, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, "drop table statement");
+    failures += expect_node(table_names, MYLITE_SQL_AST_TABLE_NAME_LIST, "drop table name list");
+    failures += expect_child_count(table_names, 1U, "drop if exists table name count");
     failures +=
         expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "drop qualified table");
     failures +=
@@ -1493,8 +1497,42 @@ static int test_table_lifecycle_statements(void) {
 
     failures += parse_sql("DROP TABLE app.simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    table_name = child_at(table_names, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, "drop table statement");
-    failures += expect_span_text(child_at(statement, 0U), "app.simple_lifecycle", "drop target");
+    failures +=
+        expect_node(table_names, MYLITE_SQL_AST_TABLE_NAME_LIST, "single drop table name list");
+    failures += expect_child_count(table_names, 1U, "single drop table name count");
+    failures += expect_span_text(table_name, "app.simple_lifecycle", "drop target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("DROP TABLE first_table, app.second_table;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    table_name = child_at(table_names, 0U);
+    failures += expect_child_count(statement, 1U, "multi drop child count");
+    failures += expect_node(statement, MYLITE_SQL_AST_DROP_TABLE_STATEMENT, "multi drop statement");
+    failures +=
+        expect_node(table_names, MYLITE_SQL_AST_TABLE_NAME_LIST, "multi drop table name list");
+    failures += expect_child_count(table_names, 2U, "multi drop table name count");
+    failures += expect_span_text(table_name, "first_table", "first multi drop target");
+    failures +=
+        expect_span_text(child_at(table_names, 1U), "app.second_table", "second multi drop target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DROP TABLE IF EXISTS first_table, app.second_table;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_names = child_at(statement, 0U);
+    if_exists = child_at(statement, 1U);
+    failures += expect_child_count(statement, 2U, "multi drop if exists child count");
+    failures += expect_child_count(table_names, 2U, "multi drop if exists table name count");
+    failures +=
+        expect_node(if_exists, MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE, "multi drop if exists clause");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("TRUNCATE TABLE app.simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
@@ -3671,9 +3709,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("DROP TABLE IF NOT EXISTS t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql("DROP TABLE a, b;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("TRUNCATE TABLE IF EXISTS t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

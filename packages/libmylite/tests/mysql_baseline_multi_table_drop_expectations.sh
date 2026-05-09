@@ -83,6 +83,11 @@ case "$version" in
     *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
 esac
 
+expect_output \
+    "drop table case expectations require case-sensitive identifiers" \
+    "0" \
+    "SELECT @@lower_case_table_names;"
+
 cleanup
 
 expect_output \
@@ -109,6 +114,31 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count; "\
 "SHOW TABLES FROM ${DATABASE}; "\
 "SHOW TABLES FROM ${OTHER_DATABASE};"
+
+cleanup
+
+expect_output \
+    "drop table list treats case-distinct targets as distinct" \
+    "0	0" \
+    "CREATE DATABASE ${DATABASE}; "\
+"USE ${DATABASE}; "\
+"CREATE TABLE A (id INT); "\
+"CREATE TABLE a (id INT); "\
+"DROP TABLE A, a; "\
+"SELECT ROW_COUNT(), @@warning_count; "\
+"SHOW TABLES;"
+
+cleanup
+
+expect_output \
+    "drop table if exists treats case-distinct targets as distinct" \
+    "Note	1051	Unknown table '${DATABASE}.A'" \
+    "CREATE DATABASE ${DATABASE}; "\
+"USE ${DATABASE}; "\
+"CREATE TABLE a (id INT); "\
+"DROP TABLE IF EXISTS A, a; "\
+"SHOW WARNINGS; "\
+"SHOW TABLES;"
 
 cleanup
 
@@ -226,6 +256,17 @@ expect_output \
     "drop table list duplicate target leaves table" \
     "a" \
     "SHOW TABLES FROM ${DATABASE};"
+
+cleanup
+
+expect_error \
+    "drop table list duplicate missing target" \
+    1066 \
+    42000 \
+    "Not unique table/alias: 'missing'" \
+    "CREATE DATABASE ${DATABASE}; "\
+"USE ${DATABASE}; "\
+"DROP TABLE missing, missing;"
 
 cleanup
 

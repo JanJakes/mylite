@@ -24,6 +24,8 @@ enum {
     row_count_text_capacity = 32,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
+    mysql_error_unknown_table = 1051,
+    mysql_error_not_unique_table_alias = 1066,
     mysql_error_unknown_database = 1049,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
@@ -58,6 +60,7 @@ static const char *const show_warnings_names[show_warnings_column_count] = {
 };
 
 static int test_create_drop_if_exists_noops_and_diagnostics(void);
+static int test_multi_table_drop_lifecycle(void);
 static int test_errors_and_unsupported_forms(void);
 static int test_catalog_lookup_failures_are_not_noops(void);
 static int test_reopen_persistence(void);
@@ -67,12 +70,26 @@ static int expect_show_warnings_result(
     mylite_db *database,
     struct expected_show_warnings expectation
 );
+static int expect_show_warnings_two_notes(
+    mylite_db *database,
+    const char *first_message_part,
+    const char *second_message_part,
+    const char *context
+);
 static int expect_show_count_warnings(
     mylite_db *database,
     const char *expected,
     const char *context
 );
 static int expect_row_count(mylite_db *database, int64_t expected, const char *context);
+static int expect_show_tables(
+    mylite_db *database,
+    const char *sql,
+    size_t expected_row_count,
+    const char *first_table,
+    const char *second_table,
+    const char *context
+);
 static int expect_show_columns_numbers(mylite_db *database, const char *context);
 static int expect_select_single_value(
     mylite_db *database,
@@ -102,6 +119,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_create_drop_if_exists_noops_and_diagnostics();
+    failures += test_multi_table_drop_lifecycle();
     failures += test_errors_and_unsupported_forms();
     failures += test_catalog_lookup_failures_are_not_noops();
     failures += test_reopen_persistence();
@@ -262,6 +280,247 @@ static int test_create_drop_if_exists_noops_and_diagnostics(void) {
     return failures;
 }
 
+static int test_multi_table_drop_lifecycle(void) {
+    char path[test_path_capacity];
+    const struct mylite_session_state *session = NULL;
+    uint64_t catalog_generation = 0U;
+    uint64_t sqlite_schema_generation = 0U;
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "multi_drop") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open multi drop file");
+    failures += execute_empty_ok(database, "CREATE DATABASE app", 0U);
+    failures += execute_empty_ok(database, "CREATE DATABASE other", 0U);
+    failures += execute_empty_ok(database, "USE app", 0U);
+    failures += execute_empty_ok(database, "CREATE TABLE a (id INT)", 0U);
+    failures += execute_empty_ok(database, "CREATE TABLE b (id INT)", 0U);
+    failures += execute_empty_ok(database, "CREATE TABLE c (id INT)", 0U);
+    failures += execute_empty_ok(database, "CREATE TABLE other.q (id INT)", 0U);
+
+    failures += execute_empty_ok(database, "DROP TABLE a, b", 0U);
+    failures += expect_row_count(database, 0, "multi drop row count");
+    failures += expect_show_tables(database, "SHOW TABLES", 1U, "c", NULL, "multi drop leaves c");
+
+    failures += execute_empty_ok(database, "CREATE TABLE a (id INT)", 0U);
+    failures += execute_empty_ok(database, "CREATE TABLE b (id INT)", 0U);
+    failures += execute_error(
+        database,
+        "DROP TABLE a, missing_table, b",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_table,
+            .sqlstate = "42S02",
+            .message_part = "Unknown table 'app.missing_table'",
+        }
+    );
+    failures += expect_show_tables(
+        database,
+        "SHOW TABLES",
+        3U,
+        "a",
+        "b",
+        "missing multi drop leaves existing tables"
+    );
+    failures += execute_error(
+        database,
+        "DROP TABLE missing_one, missing_two",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_table,
+            .sqlstate = "42S02",
+            .message_part = "Unknown table 'app.missing_one,app.missing_two'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DROP TABLE app.a, missing_schema.nope",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_table,
+            .sqlstate = "42S02",
+            .message_part = "Unknown table 'missing_schema.nope'",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "DROP TABLE a, a",
+        (struct expected_sql_error){
+            .code = mysql_error_not_unique_table_alias,
+            .sqlstate = "42000",
+            .message_part = "Not unique table/alias: 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DROP TABLE missing, missing",
+        (struct expected_sql_error){
+            .code = mysql_error_not_unique_table_alias,
+            .sqlstate = "42000",
+            .message_part = "Not unique table/alias: 'missing'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DROP TABLE IF EXISTS a, app.a",
+        (struct expected_sql_error){
+            .code = mysql_error_not_unique_table_alias,
+            .sqlstate = "42000",
+            .message_part = "Not unique table/alias: 'a'",
+        }
+    );
+
+    failures += execute_empty_ok(database, "DROP TABLE IF EXISTS a, missing_one, missing_two", 2U);
+    failures += expect_row_count(database, 0, "mixed if exists row count");
+    failures += expect_show_tables(
+        database,
+        "SHOW TABLES",
+        2U,
+        "b",
+        "c",
+        "mixed if exists drops existing target"
+    );
+
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        catalog_generation = session->catalog_generation;
+        sqlite_schema_generation = session->sqlite_schema_generation;
+    }
+    failures += execute_empty_ok(database, "DROP TABLE IF EXISTS missing_one, missing_two", 2U);
+    failures += expect_row_count(database, 0, "all missing if exists row count");
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->catalog_generation,
+            catalog_generation,
+            "all missing if exists keeps catalog generation"
+        );
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_schema_generation,
+            "all missing if exists keeps sqlite generation"
+        );
+    }
+    failures += execute_empty_ok(database, "DROP TABLE IF EXISTS missing_one, missing_two", 2U);
+    failures += expect_show_warnings_two_notes(
+        database,
+        "Unknown table 'app.missing_one'",
+        "Unknown table 'app.missing_two'",
+        "all missing if exists warnings"
+    );
+
+    failures += execute_empty_ok(database, "DROP TABLE IF EXISTS b, missing_schema.nope", 1U);
+    failures += expect_show_warnings_result(
+        database,
+        (struct expected_show_warnings){
+            .sql = "SHOW WARNINGS",
+            .row_count = 1U,
+            .level = "Note",
+            .code = "1051",
+            .message_part = "Unknown table 'missing_schema.nope'",
+            .context = "mixed explicit missing schema warning",
+        }
+    );
+    failures += expect_show_tables(
+        database,
+        "SHOW TABLES",
+        1U,
+        "c",
+        NULL,
+        "explicit missing schema drops existing target"
+    );
+
+    failures += execute_empty_ok(database, "CREATE DATABASE case_db", 0U);
+    failures += execute_empty_ok(database, "USE case_db", 0U);
+    failures += execute_empty_ok(database, "CREATE TABLE A (id INT)", 0U);
+    failures += execute_empty_ok(database, "CREATE TABLE a (id INT)", 0U);
+    failures += execute_empty_ok(database, "DROP TABLE A, a", 0U);
+    failures += expect_show_tables(
+        database,
+        "SHOW TABLES",
+        0U,
+        NULL,
+        NULL,
+        "case-distinct multi drop clears both tables"
+    );
+    failures += execute_empty_ok(database, "CREATE TABLE a (id INT)", 0U);
+    failures += execute_empty_ok(database, "DROP TABLE IF EXISTS A, a", 1U);
+    failures += expect_show_warnings_result(
+        database,
+        (struct expected_show_warnings){
+            .sql = "SHOW WARNINGS",
+            .row_count = 1U,
+            .level = "Note",
+            .code = "1051",
+            .message_part = "Unknown table 'case_db.A'",
+            .context = "case-distinct missing if exists warning",
+        }
+    );
+    failures += expect_show_tables(
+        database,
+        "SHOW TABLES",
+        0U,
+        NULL,
+        NULL,
+        "case-distinct if exists drops existing table"
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen multi drop file");
+    failures += execute_error(
+        database,
+        "DROP TABLE app.c, no_default",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += expect_show_tables(
+        database,
+        "SHOW TABLES FROM app",
+        1U,
+        "c",
+        NULL,
+        "no default schema leaves qualified table"
+    );
+
+    failures += execute_error(
+        database,
+        "DROP TABLE IF EXISTS app.c, no_default",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += execute_empty_ok(database, "DROP TABLE app.c, other.q", 0U);
+    failures += expect_show_tables(
+        database,
+        "SHOW TABLES FROM app",
+        0U,
+        NULL,
+        NULL,
+        "qualified multi drop clears app"
+    );
+    failures += expect_show_tables(
+        database,
+        "SHOW TABLES FROM other",
+        0U,
+        NULL,
+        NULL,
+        "qualified multi drop clears other"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_errors_and_unsupported_forms(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -342,7 +601,25 @@ static int test_errors_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "DROP TABLE IF EXISTS a, b",
+        "DROP TEMPORARY TABLE IF EXISTS temp_table",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DROP TABLE IF EXISTS a RESTRICT",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DROP TABLE IF EXISTS a, b CASCADE",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -567,6 +844,37 @@ static int expect_show_warnings_result(
     return failures;
 }
 
+static int expect_show_warnings_two_notes(
+    mylite_db *database,
+    const char *first_message_part,
+    const char *second_message_part,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SHOW WARNINGS", &result);
+
+    failures +=
+        expect_size(mylite_result_column_count(result), show_warnings_column_count, context);
+    failures += expect_size(mylite_result_row_count(result), 2U, context);
+    for (size_t row_index = 0U; row_index < 2U; ++row_index) {
+        failures +=
+            expect_text_or_null(mylite_result_value_text(result, row_index, 0U), "Note", context);
+        failures +=
+            expect_text_or_null(mylite_result_value_text(result, row_index, 1U), "1051", context);
+    }
+    failures +=
+        expect_text_contains(mylite_result_value_text(result, 0U, 2U), first_message_part, context);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 1U, 2U),
+        second_message_part,
+        context
+    );
+    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+
+    mylite_result_free(result);
+    return failures;
+}
+
 static int expect_show_count_warnings(
     mylite_db *database,
     const char *expected,
@@ -607,6 +915,33 @@ static int expect_row_count(mylite_db *database, int64_t expected, const char *c
     failures += expect_text_or_null(value, expected_text, context);
     mylite_result_free(result);
 
+    return failures;
+}
+
+static int expect_show_tables(
+    mylite_db *database,
+    const char *sql,
+    size_t expected_row_count,
+    const char *first_table,
+    const char *second_table,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 1U, context);
+    failures += expect_size(mylite_result_row_count(result), expected_row_count, context);
+    if (first_table != NULL) {
+        failures +=
+            expect_text_or_null(mylite_result_value_text(result, 0U, 0U), first_table, context);
+    }
+    if (second_table != NULL) {
+        failures +=
+            expect_text_or_null(mylite_result_value_text(result, 1U, 0U), second_table, context);
+    }
+    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+
+    mylite_result_free(result);
     return failures;
 }
 

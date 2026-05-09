@@ -116,6 +116,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_drop_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token drop_token,
     struct mylite_sql_ast_node *if_exists_clause,
+    struct mylite_sql_ast_node *table_names
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_name_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *table_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_table_name(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
     struct mylite_sql_ast_node *table_name
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_drop_if_exists_clause(

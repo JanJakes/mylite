@@ -153,6 +153,9 @@ statement(A) ::= alter_table_modify_column_statement(B). {
 statement(A) ::= alter_table_change_column_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_set_default_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -538,6 +541,18 @@ alter_table_modify_column_statement(A) ::=
 alter_table_change_column_statement(A) ::=
     ALTER(A1) TABLE table_name(T) CHANGE column_keyword_opt identifier(O) column_definition(C). {
     A = mylite_sql_parser_make_alter_table_change_column_statement(state, A1, T, O, C);
+}
+
+alter_table_set_default_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ALTER column_keyword_opt identifier(C) SET DEFAULT(D) NULL(N). {
+    A = mylite_sql_parser_make_alter_table_set_default_statement(
+        state, A1, T, C, mylite_sql_parser_make_column_default_null(state, D, N));
+}
+alter_table_set_default_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ALTER column_keyword_opt identifier(C) SET DEFAULT(D)
+    column_default_value(V). {
+    A = mylite_sql_parser_make_alter_table_set_default_statement(
+        state, A1, T, C, mylite_sql_parser_make_column_default_value(state, D, V));
 }
 
 column_keyword_opt(A) ::= . {

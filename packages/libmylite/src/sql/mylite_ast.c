@@ -415,6 +415,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "alter_table_modify_column_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
         return "alter_table_change_column_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
+        return "alter_table_set_default_statement";
     case MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE:
         return "create_if_not_exists_clause";
     case MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE:

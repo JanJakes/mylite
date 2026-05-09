@@ -19,9 +19,17 @@
 enum {
     test_path_capacity = 1024,
     mysql_error_invalid_default = 1067,
+    mysql_error_no_database_selected = 1046,
+    mysql_error_unknown_database = 1049,
+    mysql_error_unknown_column = 1054,
+    mysql_error_incorrect_table_name = 1103,
+    mysql_error_table_does_not_exist = 1146,
+    mysql_error_incorrect_column_name = 1166,
     mysql_error_field_no_default = 1364,
     default_projection_column_count = 14,
     alter_add_projection_column_count = 5,
+    alter_set_default_projection_column_count = 7,
+    alter_set_default_boundary_column_count = 10,
     alter_removed_default_row_count = 5,
     show_columns_column_count = 6,
 };
@@ -53,6 +61,7 @@ struct expected_contains_query {
 
 static int test_create_insert_metadata_and_persistence(void);
 static int test_alter_defaults(void);
+static int test_alter_column_set_default(void);
 static int test_default_diagnostics_and_if_not_exists(void);
 static int test_catalog_v1_migration(void);
 static int test_independent_default_handles(void);
@@ -99,6 +108,7 @@ int main(void) {
 
     failures += test_create_insert_metadata_and_persistence();
     failures += test_alter_defaults();
+    failures += test_alter_column_set_default();
     failures += test_default_diagnostics_and_if_not_exists();
     failures += test_catalog_v1_migration();
     failures += test_independent_default_handles();
@@ -428,6 +438,286 @@ static int test_alter_defaults(void) {
     return failures;
 }
 
+static int test_alter_column_set_default(void) {
+    static const char *const final_rows[] = {
+        "1", "1", "3", "2", "4", "5",  "0", "2", "8", "3", "2",
+        "4", "5", "0", "3", "8", NULL, "7", "4", "5", "1",
+    };
+    static const char *const reopened_row[] = {"4", "8", NULL, "7", "4", "5", "1"};
+    static const char *const show_v[] = {"v", "int", "YES", "", "8", ""};
+    static const char *const show_nullable[] = {"nullable_i", "int", "YES", "", NULL, ""};
+    static const char *const show_nn[] = {"nn", "int", "NO", "", "7", ""};
+    static const char *const boundary_row[] = {
+        "-128",
+        "255",
+        "-32768",
+        "65535",
+        "-8388608",
+        "16777215",
+        "-2147483648",
+        "4294967295",
+        "-9223372036854775808",
+        "9223372036854775807",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "alter_set_default") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open alter set default");
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER v SET DEFAULT 1",
+        (struct expected_sql_error){
+            mysql_error_no_database_selected,
+            "3D000",
+            "No database selected",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE missing_schema.numbers ALTER v SET DEFAULT 1",
+        (struct expected_sql_error){mysql_error_unknown_database, "42000", "Unknown database"}
+    );
+    failures += seed_schema(database);
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE numbers ("
+        "id INT NOT NULL, "
+        "v INT DEFAULT 1, "
+        "nullable_i INT DEFAULT 3, "
+        "nn INT NOT NULL DEFAULT 2, "
+        "u INT UNSIGNED DEFAULT 4, "
+        "bu BIGINT UNSIGNED DEFAULT 5, "
+        "b BOOL DEFAULT FALSE)"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO numbers (id) VALUES (1)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE numbers ALTER v SET DEFAULT +8",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM numbers LIKE 'v'",
+            .values = show_v,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "SHOW COLUMNS after ALTER SET DEFAULT integer",
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO numbers (id) VALUES (2)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE numbers ALTER nullable_i SET DEFAULT NULL",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE numbers ALTER COLUMN nn SET DEFAULT 7",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "ALTER TABLE numbers ALTER COLUMN b SET DEFAULT TRUE",
+        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO numbers (id) VALUES (3)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, nullable_i, nn, u, bu, b FROM numbers ORDER BY id",
+            .values = final_rows,
+            .column_count = alter_set_default_projection_column_count,
+            .row_count = 3U,
+            .context = "ALTER SET DEFAULT preserves existing rows and affects future rows",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM numbers LIKE 'nullable_i'",
+            .values = show_nullable,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "SHOW COLUMNS after ALTER SET DEFAULT NULL",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM numbers LIKE 'nn'",
+            .values = show_nn,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "SHOW COLUMNS after ALTER SET DEFAULT not null",
+        }
+    );
+    failures += expect_single_value_contains(
+        database,
+        (struct expected_contains_query){
+            .sql = "SHOW CREATE TABLE numbers",
+            .needle = "`nn` int NOT NULL DEFAULT '7'",
+            .context = "SHOW CREATE after ALTER SET DEFAULT",
+        }
+    );
+
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE boundaries ("
+        "id INT NOT NULL, ti TINYINT, tiu TINYINT UNSIGNED, si SMALLINT, "
+        "siu SMALLINT UNSIGNED, mi MEDIUMINT, miu MEDIUMINT UNSIGNED, "
+        "i INT, iu INT UNSIGNED, bi BIGINT, bu BIGINT UNSIGNED)"
+    );
+    failures += execute_statement_ok(database, "ALTER TABLE boundaries ALTER ti SET DEFAULT -128");
+    failures += execute_statement_ok(database, "ALTER TABLE boundaries ALTER tiu SET DEFAULT 255");
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE boundaries ALTER si SET DEFAULT -32768");
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE boundaries ALTER siu SET DEFAULT 65535");
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE boundaries ALTER mi SET DEFAULT -8388608");
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE boundaries ALTER miu SET DEFAULT 16777215");
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE boundaries ALTER i SET DEFAULT -2147483648");
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE boundaries ALTER iu SET DEFAULT 4294967295");
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE boundaries ALTER bi SET DEFAULT -9223372036854775808"
+    );
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE boundaries ALTER bu SET DEFAULT 9223372036854775807"
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO boundaries (id) VALUES (1)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ti, tiu, si, siu, mi, miu, i, iu, bi, bu FROM boundaries",
+            .values = boundary_row,
+            .column_count = alter_set_default_boundary_column_count,
+            .row_count = 1U,
+            .context = "ALTER SET DEFAULT integer boundary values",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER missing SET DEFAULT 1",
+        (struct expected_sql_error){mysql_error_unknown_column, "42S22", "Unknown column"}
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER nn SET DEFAULT NULL",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER u SET DEFAULT -1",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER v SET DEFAULT 2147483648",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER bu SET DEFAULT 9223372036854775808",
+        (struct expected_sql_error){mysql_error_invalid_default, "42000", "Invalid default value"}
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE _mylite_private ALTER v SET DEFAULT 1",
+        (struct expected_sql_error){
+            mysql_error_incorrect_table_name,
+            "42000",
+            "Incorrect table name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "ALTER TABLE numbers ALTER _mylite_private SET DEFAULT 1",
+        (struct expected_sql_error){
+            mysql_error_incorrect_column_name,
+            "42000",
+            "Incorrect column name",
+        }
+    );
+
+    failures += execute_statement_ok(database, "ALTER TABLE numbers RENAME TO renamed_numbers");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO renamed_numbers (id) VALUES (4)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "ALTER SET DEFAULT preserves MyLite preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen alter set default");
+    failures += execute_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, nullable_i, nn, u, bu, b "
+                   "FROM renamed_numbers WHERE id = 4",
+            .values = reopened_row,
+            .column_count = alter_set_default_projection_column_count,
+            .row_count = 1U,
+            .context = "reopened ALTER SET DEFAULT values persist after rename",
+        }
+    );
+    failures += execute_statement_ok(database, "DROP TABLE renamed_numbers");
+    failures += execute_error(
+        database,
+        "ALTER TABLE renamed_numbers ALTER v SET DEFAULT 1",
+        (struct expected_sql_error){
+            mysql_error_table_does_not_exist,
+            "42S02",
+            "doesn't exist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_default_diagnostics_and_if_not_exists(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -531,8 +821,8 @@ static int test_catalog_v1_migration(void) {
 }
 
 static int test_independent_default_handles(void) {
-    static const char *const first_value[] = {"1"};
-    static const char *const second_value[] = {"2"};
+    static const char *const first_values[] = {"1", "3"};
+    static const char *const second_values[] = {"2", "2"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -562,24 +852,35 @@ static int test_independent_default_handles(void) {
         "INSERT INTO t (id) VALUES (1)",
         (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
     );
+    failures += execute_statement_ok(first, "ALTER TABLE t ALTER v SET DEFAULT 3");
+    failures += expect_statement_result(
+        first,
+        "INSERT INTO t (id) VALUES (2)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        second,
+        "INSERT INTO t (id) VALUES (2)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
     failures += expect_query_values(
         first,
         (struct expected_query){
-            .sql = "SELECT v FROM t",
-            .values = first_value,
+            .sql = "SELECT v FROM t ORDER BY id",
+            .values = first_values,
             .column_count = 1U,
-            .row_count = 1U,
-            .context = "first handle default value",
+            .row_count = 2U,
+            .context = "first handle altered default value",
         }
     );
     failures += expect_query_values(
         second,
         (struct expected_query){
-            .sql = "SELECT v FROM t",
-            .values = second_value,
+            .sql = "SELECT v FROM t ORDER BY id",
+            .values = second_values,
             .column_count = 1U,
-            .row_count = 1U,
-            .context = "second handle default value",
+            .row_count = 2U,
+            .context = "second handle independent default value",
         }
     );
 

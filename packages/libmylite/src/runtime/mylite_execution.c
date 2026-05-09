@@ -171,6 +171,13 @@ struct planned_alter_table_modify_column {
     int64_t affected_rows;
 };
 
+struct planned_alter_table_set_default {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor original_column;
+    struct planned_column column;
+};
+
 struct planned_truncate_table {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -532,6 +539,11 @@ static int execute_alter_table_change_column_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_set_default_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_insert_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -852,6 +864,20 @@ static int plan_alter_table_change_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_alter_table_modify_column *out_plan
+);
+static int plan_alter_table_set_default(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_set_default *out_plan
+);
+static int alter_table_set_default_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_set_default *plan
+);
+static void planned_column_from_catalog_descriptor(
+    const struct mylite_catalog_column_descriptor *descriptor,
+    const struct mylite_sql_ast_node *default_node,
+    struct planned_column *out_column
 );
 static int resolve_alter_table_column_replacement_plan(
     struct mylite_db *database,
@@ -2067,6 +2093,8 @@ static int execute_parsed_statement(
         return execute_alter_table_modify_column_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
         return execute_alter_table_change_column_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
+        return execute_alter_table_set_default_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_STATEMENT:
         return execute_insert_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
@@ -2941,6 +2969,33 @@ static int execute_alter_table_change_column_statement(
 
     mylite_result_set_affected_rows(result, plan.affected_rows);
     planned_alter_table_modify_column_deinit(&plan);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_set_default_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_set_default plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_set_default(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_set_default_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -4906,6 +4961,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
         return 0;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -6499,6 +6555,144 @@ static int plan_alter_table_change_column(
     }
 
     return rc;
+}
+
+static int plan_alter_table_set_default(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_set_default *out_plan
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_count = 0U;
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_set_default){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(
+            child_at(statement, 1U),
+            column_name,
+            sizeof(column_name),
+            database
+        );
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(column_name)) {
+        set_reserved_name_error(database, "column", column_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ALTER COLUMN SET DEFAULT supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(columns, column_count, column_name, &column_index);
+        if (rc != MYLITE_OK) {
+            set_unknown_column_in_table_error(database, column_name, out_plan->table.name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->original_column = columns[column_index];
+        planned_column_from_catalog_descriptor(
+            &out_plan->original_column,
+            child_at(statement, 2U),
+            &out_plan->column
+        );
+        rc = validate_column_default(database, out_plan->column.default_node, &out_plan->column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = finalize_planned_column_default(database, &out_plan->column);
+    }
+
+    free(columns);
+
+    return rc;
+}
+
+static int alter_table_set_default_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_set_default *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = mylite_catalog_begin_mutation(database, &mutation);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_replace_column_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->original_column.column_id,
+            plan->original_column.name,
+            plan->original_column.logical_type,
+            plan->original_column.physical_type,
+            plan->original_column.is_nullable,
+            plan->column.default_kind,
+            plan->column.default_integer
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to set column default");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static void planned_column_from_catalog_descriptor(
+    const struct mylite_catalog_column_descriptor *descriptor,
+    const struct mylite_sql_ast_node *default_node,
+    struct planned_column *out_column
+) {
+    *out_column = (struct planned_column){0};
+    snprintf(out_column->name, sizeof(out_column->name), "%s", descriptor->name);
+    out_column->logical_type = descriptor->logical_type;
+    out_column->physical_type = descriptor->physical_type;
+    out_column->is_nullable = descriptor->is_nullable;
+    out_column->default_node = default_node;
+    out_column->default_kind = descriptor->default_kind;
+    out_column->default_integer = descriptor->default_integer;
 }
 
 static int resolve_alter_table_column_replacement_plan(

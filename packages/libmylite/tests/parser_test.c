@@ -2782,6 +2782,54 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle ALTER COLUMN old_col SET DEFAULT +8;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT,
+        "alter table set default statement"
+    );
+    failures += expect_child_count(statement, 3U, "alter set default child count");
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.simple_lifecycle",
+        "alter set default target"
+    );
+    failures += expect_span_text(child_at(statement, 1U), "old_col", "alter set default column");
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE,
+        "alter set default value node"
+    );
+    failures += expect_operator(
+        child_at(child_at(statement, 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "alter set default positive value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ALTER old_col SET DEFAULT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT,
+        "alter table bare set default statement"
+    );
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_NULL,
+        "alter set default null node"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "INSERT INTO app.simple_lifecycle (amount, id) VALUES (+1, -2), (NULL, 3);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -5151,6 +5199,41 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "ALTER TABLE old_name CHANGE old_col new_col BIGINT, LOCK=DEFAULT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ALTER COLUMN old_name.old_col SET DEFAULT 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ALTER old_col SET DEFAULT (1 + 1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ALTER old_col SET DEFAULT '1';",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ALTER old_col DROP DEFAULT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ALTER old_col SET DEFAULT 1, ALTER other SET DEFAULT 2;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

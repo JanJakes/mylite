@@ -1415,6 +1415,10 @@ static int parse_unsigned_integer_literal(
     const struct mylite_sql_source_span *span,
     uint64_t *out_value
 );
+static bool boolean_literal_magnitude(
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_value
+);
 static int convert_integer_for_column(
     struct mylite_db *database,
     uint64_t magnitude,
@@ -9998,16 +10002,21 @@ static int convert_integer_literal(
         }
         literal = child_at(value_node, 0U);
     }
-    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        set_unsupported_error(database, "INSERT supports only integer and NULL values");
-        return MYLITE_ERROR;
-    }
+    if (!boolean_literal_magnitude(literal, &magnitude)) {
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(
+                database,
+                "INSERT supports only integer, boolean, and NULL values"
+            );
+            return MYLITE_ERROR;
+        }
 
-    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
-    if (rc != MYLITE_OK) {
-        set_out_of_range_error(database, column->name, row_number);
-        return MYLITE_ERROR;
+        rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+        if (rc != MYLITE_OK) {
+            set_out_of_range_error(database, column->name, row_number);
+            return MYLITE_ERROR;
+        }
     }
 
     out_value->is_null = false;
@@ -10024,6 +10033,29 @@ static int convert_integer_literal(
     }
 
     return MYLITE_OK;
+}
+
+static bool boolean_literal_magnitude(
+    const struct mylite_sql_ast_node *literal,
+    uint64_t *out_value
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL || out_value == NULL) {
+        return false;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_value = 1U;
+        return true;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_value = 0U;
+        return true;
+    }
+
+    return false;
 }
 
 static int parse_unsigned_integer_literal(
@@ -10385,16 +10417,21 @@ static int convert_predicate_integer_literal(
         }
         literal = child_at(value_node, 0U);
     }
-    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        set_unsupported_error(database, "WHERE supports only integer predicate literals");
-        return MYLITE_ERROR;
-    }
+    if (!boolean_literal_magnitude(literal, &magnitude)) {
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(
+                database,
+                "WHERE supports only integer or boolean predicate literals"
+            );
+            return MYLITE_ERROR;
+        }
 
-    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
-    if (rc != MYLITE_OK) {
-        set_predicate_out_of_range_error(database, column->name);
-        return MYLITE_ERROR;
+        rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+        if (rc != MYLITE_OK) {
+            set_predicate_out_of_range_error(database, column->name);
+            return MYLITE_ERROR;
+        }
     }
 
     rc = convert_integer_for_predicate(
@@ -10695,16 +10732,21 @@ static int convert_update_integer_literal(
         }
         literal = child_at(value_node, 0U);
     }
-    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        set_unsupported_error(database, "UPDATE supports only integer and NULL assignment values");
-        return MYLITE_ERROR;
-    }
+    if (!boolean_literal_magnitude(literal, &magnitude)) {
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(
+                database,
+                "UPDATE supports only integer, boolean, and NULL assignment values"
+            );
+            return MYLITE_ERROR;
+        }
 
-    rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
-    if (rc != MYLITE_OK) {
-        set_out_of_range_error(database, column->name, 1U);
-        return MYLITE_ERROR;
+        rc = parse_unsigned_integer_literal(&literal->span, &magnitude);
+        if (rc != MYLITE_OK) {
+            set_out_of_range_error(database, column->name, 1U);
+            return MYLITE_ERROR;
+        }
     }
 
     out_value->is_null = false;

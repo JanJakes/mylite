@@ -652,6 +652,12 @@ insert_value(A) ::= MINUS(M) INTEGER(T). {
 insert_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
+insert_value(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+insert_value(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
 
 update_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
@@ -668,6 +674,12 @@ update_value(A) ::= MINUS(M) INTEGER(T). {
 }
 update_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+update_value(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+update_value(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
@@ -763,6 +775,12 @@ predicate_integer_value(A) ::= MINUS(M) INTEGER(T). {
     A = mylite_sql_parser_make_unary_expression(
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+predicate_integer_value(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+predicate_integer_value(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
 
 order_clause_opt(A) ::= . {

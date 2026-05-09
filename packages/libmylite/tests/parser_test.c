@@ -2681,6 +2681,24 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "INSERT INTO simple_lifecycle VALUES (TRUE, false);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "true insert value"
+    );
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 2U), 0U), 1U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "false insert value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "INSERT INTO app.simple_lifecycle SET id = +1, amount = NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2715,6 +2733,24 @@ static int test_table_lifecycle_statements(void) {
         child_at(child_at(child_at(statement, 1U), 1U), 1U),
         MYLITE_SQL_AST_LITERAL_NULL,
         "insert set second value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle SET id = TRUE, amount = false;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 1U), 0U), 1U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "insert set true value"
+    );
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 1U), 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "insert set false value"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -3690,6 +3726,16 @@ static int test_select_where_predicates(void) {
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
         },
         {
+            "SELECT id FROM simple_lifecycle WHERE id = TRUE;",
+            MYLITE_SQL_AST_OPERATOR_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id <=> false;",
+            MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+            MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        },
+        {
             "SELECT id FROM simple_lifecycle WHERE id IS NULL;",
             MYLITE_SQL_AST_OPERATOR_IS_NULL,
             MYLITE_SQL_AST_IS_NULL_PREDICATE,
@@ -3737,6 +3783,15 @@ static int test_select_where_predicates(void) {
         child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
         MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
         "qualified predicate column"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM simple_lifecycle WHERE id = TRUE;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_literal(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "true predicate right operand"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -3852,6 +3907,20 @@ static int test_delete_statement(void) {
     failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "delete limit");
     failures += expect_span_text(child_at(limit_clause, 0U), "2", "delete limit row count");
     failures += expect_true(child_at(limit_clause, 1U) == NULL, "delete limit has no offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "DELETE FROM simple_lifecycle WHERE id = FALSE LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    where_clause = child_at(statement, 1U);
+    failures += expect_literal(
+        child_at(child_at(where_clause, 0U), 1U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "delete false predicate"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -3979,6 +4048,26 @@ static int test_update_statement(void) {
     limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
     failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "update simple limit");
     failures += expect_span_text(child_at(limit_clause, 0U), "0", "update simple limit row count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "UPDATE simple_lifecycle SET amount = FALSE WHERE id = TRUE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    where_clause = child_at(statement, 2U);
+    failures += expect_literal(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "update false assignment value"
+    );
+    failures += expect_literal(
+        child_at(child_at(where_clause, 0U), 1U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "update true predicate value"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -4900,6 +4989,9 @@ static int test_syntax_errors(void) {
     failures += parse_sql("INSERT INTO t VALUES (1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("INSERT INTO t VALUES (+TRUE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("INSERT INTO t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -4916,6 +5008,13 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT id FROM t WHERE 1 = id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT id FROM t WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE id IS TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -4969,7 +5068,13 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT id FROM t LIMIT TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("DELETE FROM t LIMIT +1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("DELETE FROM t LIMIT FALSE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -4991,6 +5096,12 @@ static int test_syntax_errors(void) {
     failures += parse_sql("UPDATE t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("UPDATE t SET id = -FALSE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("UPDATE t SET id = TRUE + 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("UPDATE t SET id = other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -4998,6 +5109,10 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("UPDATE t SET id = 1 LIMIT +1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("UPDATE t SET id = 1 LIMIT FALSE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

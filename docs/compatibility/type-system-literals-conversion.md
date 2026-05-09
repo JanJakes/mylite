@@ -16,7 +16,7 @@
 | `DOUBLE` / `REAL` | ❌ | Approximate numeric metadata |
 | `FLOAT4` / `FLOAT8` | ❌ | Alias rewrites and metadata |
 | `BIT` | ❌ | Bit storage and conversion |
-| `BOOL` / `BOOLEAN` | 🟡 | Bare column-type aliases normalize to signed `TINYINT(1)` descriptors with integer/`NULL` DDL/DML/conversion/introspection coverage and no display-width warning; no `BOOL(1)`, `BOOLEAN(1)`, `SIGNED`, `UNSIGNED`, `ZEROFILL`, expression truth semantics, `TRUE`/`FALSE` row-value assignment support, casts, or protocol-grade metadata |
+| `BOOL` / `BOOLEAN` | 🟡 | Bare column-type aliases normalize to signed `TINYINT(1)` descriptors with integer/`NULL` plus limited `TRUE`/`FALSE` DDL/DML/conversion/introspection coverage and no display-width warning; no `BOOL(1)`, `BOOLEAN(1)`, `SIGNED`, `UNSIGNED`, `ZEROFILL`, general expression truth semantics, casts, or protocol-grade metadata |
 | `SERIAL` | ❌ | BIGINT AUTO_INCREMENT alias |
 
 ## Temporal types
@@ -83,6 +83,7 @@
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES`, `INSERT ... SET`, and single-table `UPDATE` assignment inputs plus supported filtered `SELECT`/`DELETE`/`UPDATE` predicate right operands; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE`/`UPDATE LIMIT`; no expression-level numeric semantics, non-decimal formats, decimals, floats, hex, or bit literals |
+| Boolean literals | 🟡 | `TRUE` and `FALSE` are accepted as `1` and `0` only in supported integer row-value, `INSERT ... SET`, single-table `UPDATE` assignment, and filtered `SELECT`/`DELETE`/`UPDATE` predicate right-operand positions; no `WHERE TRUE`, `IS TRUE`, boolean operators, unary boolean expressions, scalar truth metadata, or `LIMIT TRUE` / `LIMIT FALSE` |
 | String literals | ❌ | Escapes, introducers, sql_mode |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP literal syntax and coercion |
 | JSON path literals | ❌ | Path grammar, quoting, wildcards, ranges, and errors |
@@ -93,7 +94,7 @@
 | --- | --- | --- |
 | User variables | ❌ | Retention, coercion, metadata |
 | Local variables | ❌ | Stored-program variable typing, scope, and diagnostics |
-| Type conversion | 🟡 | Limited strict assignment conversion for inserted and updated integer/`NULL` values, descriptor-driven existing-row validation for supported `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]`, descriptor-driven integer predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only |
+| Type conversion | 🟡 | Limited strict assignment conversion for inserted and updated integer/`NULL`/`TRUE`/`FALSE` values, descriptor-driven existing-row validation for supported `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]`, descriptor-driven integer and boolean-literal predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only |
 | Collation coercibility | ❌ | Coercibility and diagnostics |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

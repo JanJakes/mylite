@@ -26,6 +26,7 @@ enum {
     alter_display_width_column_count = 4,
     bool_alias_column_count = 3,
     alter_bool_alias_column_count = 2,
+    boolean_literal_column_count = 5,
     show_columns_field_count = 6,
     mysql_error_parse = 1064,
     mysql_error_bad_null = 1048,
@@ -64,6 +65,7 @@ static int test_integer_signed_attribute_lifecycle(void);
 static int test_integer_type_alias_lifecycle(void);
 static int test_integer_display_width_lifecycle(void);
 static int test_bool_boolean_alias_lifecycle(void);
+static int test_boolean_literal_lifecycle(void);
 static int test_small_integer_diagnostics_and_rollback(void);
 static int test_small_integer_independent_handles(void);
 static int create_small_integer_table(mylite_db *database, const char *table_name);
@@ -126,6 +128,7 @@ int main(void) {
     failures += test_integer_type_alias_lifecycle();
     failures += test_integer_display_width_lifecycle();
     failures += test_bool_boolean_alias_lifecycle();
+    failures += test_boolean_literal_lifecycle();
     failures += test_small_integer_diagnostics_and_rollback();
     failures += test_small_integer_independent_handles();
 
@@ -1882,25 +1885,6 @@ static int test_bool_boolean_alias_lifecycle(void) {
             .message_part = "Column 'nn' cannot be null",
         }
     );
-    failures += execute_error(
-        database,
-        "INSERT INTO bools VALUES (TRUE, 0, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "UPDATE bools SET c = FALSE WHERE b = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-
     failures +=
         expect_statement_warning_count(database, "CREATE TABLE alter_bools (a TINYINT(1))", 1U);
     failures += expect_dml_ok(database, "INSERT INTO alter_bools VALUES (1), (2)", 2);
@@ -2028,6 +2012,336 @@ static int test_bool_boolean_alias_lifecycle(void) {
             .column_count = bool_alias_column_count,
             .row_count = 2U,
             .context = "bool alias DML persists after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_boolean_literal_lifecycle(void) {
+    static const char *const after_insert_rows[] = {
+        "1",
+        "1",
+        "0",
+        "1",
+        "0",
+        "2",
+        "0",
+        "1",
+        "0",
+        "1",
+        "3",
+        "1",
+        "0",
+        "0",
+        "1",
+    };
+    static const char *const updated_i_rows[] = {"1", "1", "2", "1", "3", "1"};
+    static const char *const updated_c_rows[] = {"1", "0", "2", "0", "3", "0"};
+    static const char *const noop_b_rows[] = {"1", "1", "2", "0", "3", "1"};
+    static const char *const true_predicate_rows[] = {"1", "3"};
+    static const char *const false_predicate_rows[] = {"2"};
+    static const char *const greater_false_predicate_rows[] = {"2", "3"};
+    static const char *const all_id_rows[] = {"1", "2", "3"};
+    static const char *const remaining_id_rows[] = {"1", "3"};
+    static const char *const final_rows[] = {"1", "1", "3", "0"};
+    static const char *const second_handle_rows[] = {"1", "0"};
+    char path[test_path_capacity];
+    char second_path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_db *second_database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "boolean_literals") != 0 ||
+        make_test_path(second_path, sizeof(second_path), "boolean_literals_second") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    remove_related_files(second_path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open boolean literal file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE flags ("
+        "id INT NOT NULL, b BOOL NULL, c BOOLEAN NOT NULL, i INT NULL, u INT UNSIGNED NULL)"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO flags VALUES (1, TRUE, FALSE, TRUE, FALSE), "
+        "(2, false, true, false, true)",
+        2
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO flags SET id = 3, b = TRUE, c = FALSE, i = false, u = true",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, b, c, i, u FROM flags ORDER BY id",
+            .values = after_insert_rows,
+            .column_count = boolean_literal_column_count,
+            .row_count = 3U,
+            .context = "boolean literal insert values",
+        }
+    );
+
+    failures += expect_dml_ok(database, "UPDATE flags SET i = TRUE WHERE i = FALSE", 2);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i FROM flags ORDER BY id",
+            .values = updated_i_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "boolean literal update true",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE flags SET c = FALSE WHERE b = FALSE", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, c FROM flags ORDER BY id",
+            .values = updated_c_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "boolean literal update false into not null",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE flags SET b = TRUE WHERE b = TRUE", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, b FROM flags ORDER BY id",
+            .values = noop_b_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "boolean literal no-op changed rows",
+        }
+    );
+
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM flags WHERE b = TRUE ORDER BY id",
+            .values = true_predicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "boolean literal equal true predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM flags WHERE b <=> TRUE ORDER BY id",
+            .values = true_predicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "boolean literal null-safe true predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM flags WHERE b <> TRUE ORDER BY id",
+            .values = false_predicate_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "boolean literal not-equal predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM flags WHERE b != TRUE ORDER BY id",
+            .values = false_predicate_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "boolean literal bang-not-equal predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM flags WHERE b < TRUE ORDER BY id",
+            .values = false_predicate_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "boolean literal less-than predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM flags WHERE u > FALSE ORDER BY id",
+            .values = greater_false_predicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "boolean literal greater-than predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM flags WHERE c <= FALSE ORDER BY id",
+            .values = all_id_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "boolean literal range predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM flags WHERE u >= FALSE ORDER BY id",
+            .values = all_id_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "boolean literal unsigned predicate",
+        }
+    );
+
+    failures += expect_dml_ok(database, "DELETE FROM flags WHERE b = FALSE", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM flags ORDER BY id",
+            .values = remaining_id_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "boolean literal delete predicate",
+        }
+    );
+    failures += expect_dml_ok(database, "UPDATE flags SET b = FALSE ORDER BY id DESC LIMIT 1", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, b FROM flags ORDER BY id",
+            .values = final_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "boolean literal ordered limited update",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "SELECT id FROM flags LIMIT TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO flags VALUES (+TRUE, FALSE, FALSE, FALSE, FALSE)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE flags SET i = -FALSE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE flags SET i = TRUE + 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM flags WHERE TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM flags WHERE b IS TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+
+    failures += expect_int(
+        mylite_open(second_path, &second_database),
+        MYLITE_OK,
+        "open second boolean file"
+    );
+    failures += expect_statement_ok(second_database, "CREATE DATABASE app");
+    failures += expect_statement_ok(second_database, "USE app");
+    failures += expect_statement_ok(second_database, "CREATE TABLE flags (id INT, b BOOL)");
+    failures += expect_dml_ok(second_database, "INSERT INTO flags VALUES (1, FALSE)", 1);
+    failures += expect_query_values(
+        second_database,
+        (struct expected_query){
+            .sql = "SELECT id, b FROM flags",
+            .values = second_handle_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "second handle boolean literal state",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, b FROM flags ORDER BY id",
+            .values = final_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "first handle boolean literal state",
+        }
+    );
+    mylite_close(second_database);
+    second_database = NULL;
+    remove_related_files(second_path);
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "boolean literal lifecycle preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen boolean literal file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, b FROM flags ORDER BY id",
+            .values = final_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "boolean literal rows persist after reopen",
         }
     );
 

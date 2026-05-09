@@ -151,9 +151,12 @@ expect_output \
     "$DATABASE"
 
 predicate_expected=$(cat <<'EXPECTED'
-2
 1,3
-1
+1,3
+2
+2
+2
+2,3
 1,2,3
 1,2,3
 EXPECTED
@@ -161,9 +164,12 @@ EXPECTED
 expect_output \
     "predicates compare boolean literals as integers" \
     "$predicate_expected" \
-    "SELECT COUNT(*) FROM flags WHERE b = TRUE; "\
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM flags WHERE b = TRUE; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM flags WHERE b <=> TRUE; "\
-"SELECT COUNT(*) FROM flags WHERE b <> TRUE; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM flags WHERE b <> TRUE; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM flags WHERE b != TRUE; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM flags WHERE b < TRUE; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM flags WHERE u > FALSE; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM flags WHERE c <= FALSE; "\
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM flags WHERE u >= FALSE;" \
     "$DATABASE"

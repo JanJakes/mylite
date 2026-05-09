@@ -5,14 +5,14 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | Function or operator | Status | Notes |
 | --- | --- | --- |
 | `&` | ❌ | Bitwise AND |
-| `>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support |
+| `>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
 | `>>` | ❌ | Right shift |
-| `>=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support |
-| `<` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support |
-| `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support |
+| `>=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
+| `<` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
+| `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
 | `<<` | ❌ | Left shift |
-| `<=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support |
-| `<=>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` integer right operands only |
+| `<=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
+| `<=>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
 | `%, MOD` | ❌ | Modulo operator |
 | `*` | ❌ | Multiplication operator |
 | `+` | ❌ | Addition operator |
@@ -20,8 +20,8 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `-` (unary) | ❌ | Change the sign of the argument |
 | `/` | ❌ | Division operator |
 | `:=` | ❌ | Assign a value |
-| `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal or `NULL`; `SET` statements and expression assignments remain unsupported |
-| `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` integer right operands only |
+| `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, or `NULL`; `SET` statements and expression assignments remain unsupported |
+| `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
 | `^` | ❌ | Bitwise XOR |
 | `AND, &&` | ❌ | Logical AND |
 | `BETWEEN ... AND ...` | ❌ | Whether a value is within a range of values |

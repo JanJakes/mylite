@@ -159,7 +159,7 @@ tests.
 | `DOUBLE` / `REAL` | ❌ | Approximate numeric metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `FLOAT4` / `FLOAT8` | ❌ | Alias rewrites and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `BIT` | ❌ | Bit storage and conversion. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
-| `BOOL` / `BOOLEAN` | 🟡 | Bare column-type aliases normalize to signed `TINYINT(1)` descriptors with integer/`NULL` DDL/DML/conversion/introspection coverage and no display-width warning; no `BOOL(1)`, `BOOLEAN(1)`, `SIGNED`, `UNSIGNED`, `ZEROFILL`, expression truth semantics, `TRUE`/`FALSE` row-value assignment support, casts, or protocol-grade metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| `BOOL` / `BOOLEAN` | 🟡 | Bare column-type aliases normalize to signed `TINYINT(1)` descriptors with integer/`NULL` plus limited `TRUE`/`FALSE` DDL/DML/conversion/introspection coverage and no display-width warning; no `BOOL(1)`, `BOOLEAN(1)`, `SIGNED`, `UNSIGNED`, `ZEROFILL`, general expression truth semantics, casts, or protocol-grade metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `SERIAL` | ❌ | BIGINT AUTO_INCREMENT alias. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `DATE` | ❌ | Date range and formatting. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `TIME` | ❌ | Time range and formatting. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
@@ -188,10 +188,11 @@ tests.
 | `SET` | ❌ | Bitmap membership metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | `JSON` | ❌ | Validation and metadata. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
 | Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported `INSERT ... VALUES`, `INSERT ... SET`, and single-table `UPDATE` assignment inputs plus supported filtered `SELECT`/`DELETE`/`UPDATE` predicate right operands; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE`/`UPDATE LIMIT`; no expression-level numeric semantics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Boolean literals | 🟡 | `TRUE` and `FALSE` are accepted as `1` and `0` only in supported integer row-value, `INSERT ... SET`, single-table `UPDATE` assignment, and filtered `SELECT`/`DELETE`/`UPDATE` predicate right-operand positions; no `WHERE TRUE`, `IS TRUE`, boolean operators, unary boolean expressions, scalar truth metadata, or `LIMIT TRUE` / `LIMIT FALSE`. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md), [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | String literals | ❌ | Escapes, introducers, SQL modes. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP syntax. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | JSON path literals | ❌ | Path grammar and errors. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [JSON functions and operators](docs/compatibility/functions-json.md) |
-| Type conversion | 🟡 | Limited strict assignment conversion for inserted and updated integer/`NULL` values, descriptor-driven integer predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
+| Type conversion | 🟡 | Limited strict assignment conversion for inserted and updated integer/`NULL`/`TRUE`/`FALSE` values, descriptor-driven integer and boolean-literal predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md) |
 | Collation coercibility | ❌ | Coercibility and diagnostics. | [type system, literals, and conversion](docs/compatibility/type-system-literals-conversion.md), [collations](docs/compatibility/collations.md) |
 
 ### Character Sets, Collations, and SET
@@ -235,14 +236,14 @@ tests.
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
 | `&` | ❌ | Bitwise AND. | [operators](docs/compatibility/operators.md) |
-| `>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
 | `>>` | ❌ | Right shift. | [operators](docs/compatibility/operators.md) |
-| `>=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
-| `<` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
-| `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `>=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `<` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
 | `<<` | ❌ | Left shift. | [operators](docs/compatibility/operators.md) |
-| `<=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
-| `<=>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` integer right operands only. | [operators](docs/compatibility/operators.md) |
+| `<=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support. | [operators](docs/compatibility/operators.md) |
+| `<=>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only. | [operators](docs/compatibility/operators.md) |
 | `%, MOD` | ❌ | Modulo. | [operators](docs/compatibility/operators.md), [numeric and math functions](docs/compatibility/functions-numeric-math.md) |
 | `*` | ❌ | Multiplication. | [operators](docs/compatibility/operators.md) |
 | `+` | ❌ | Addition. | [operators](docs/compatibility/operators.md) |
@@ -250,8 +251,8 @@ tests.
 | `-` (unary) | ❌ | Sign negation. | [operators](docs/compatibility/operators.md) |
 | `/` | ❌ | Division. | [operators](docs/compatibility/operators.md) |
 | `:=` | ❌ | Assignment expression. | [operators](docs/compatibility/operators.md), [SQL SET statements](docs/compatibility/sql-set-statements.md) |
-| `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal or `NULL`; `SET` statements and expression assignments remain unsupported. | [operators](docs/compatibility/operators.md), [SQL SET statements](docs/compatibility/sql-set-statements.md), [SQL table DML](docs/compatibility/sql-table-dml.md) |
-| `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` integer right operands only. | [operators](docs/compatibility/operators.md) |
+| `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, or `NULL`; `SET` statements and expression assignments remain unsupported. | [operators](docs/compatibility/operators.md), [SQL SET statements](docs/compatibility/sql-set-statements.md), [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only. | [operators](docs/compatibility/operators.md) |
 | `^` | ❌ | Bitwise XOR. | [operators](docs/compatibility/operators.md) |
 | `AND`, `&&` | ❌ | Logical AND. | [operators](docs/compatibility/operators.md) |
 | `BETWEEN ... AND ...` | ❌ | Range test. | [operators](docs/compatibility/operators.md) |
@@ -284,7 +285,7 @@ tests.
 | --- | :-: | --- | --- |
 | `SELECT` | 🟡 | Descriptor-driven single persistent base-table `SELECT *` or unqualified column-list reads with optional limited `WHERE`, single-column `ORDER BY`, and `LIMIT`/`OFFSET`, plus limited one-item `COUNT(*)`; no joins, grouping, aliases, general expression projection, or locking clauses. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | Projection list | 🟡 | Wildcard uses catalog ordinal order; explicit projections resolve unqualified descriptor column names only; limited one-item `COUNT(*)` is supported; duplicate projected columns are allowed, with no aliases or table-qualified references. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
-| `WHERE` | 🟡 | One unqualified descriptor column predicate on supported integer/`NULL` columns for filtered table `SELECT`, `DELETE`, and `UPDATE`; no boolean composition, literal-left comparisons, table-qualified columns, or general expression predicates. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
+| `WHERE` | 🟡 | One unqualified descriptor column predicate on supported integer/`NULL` columns for filtered table `SELECT`, `DELETE`, and `UPDATE`, with decimal integer or `TRUE`/`FALSE` comparison right operands; no `WHERE TRUE`, boolean composition, literal-left comparisons, table-qualified columns, `IS TRUE`, or general expression predicates. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `ORDER BY` | 🟡 | One unqualified descriptor column for supported base-table `SELECT`, `DELETE`, and `UPDATE`; optional `ASC`/`DESC`, MySQL-compatible `NULL` placement, and no tie-order guarantee without additional keys. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `LIMIT` / `OFFSET` | 🟡 | Supported base-table `SELECT` forms are `LIMIT row_count`, `LIMIT row_count OFFSET offset`, and `LIMIT offset, row_count`; supported single-table `DELETE`/`UPDATE` admits `LIMIT row_count` only, with unsigned decimal literals in signed 64-bit range. | [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 
@@ -295,15 +296,15 @@ tests.
 | `DELETE` (single-table) | 🟡 | Limited persistent base-table `DELETE FROM table` with optional baseline `WHERE`, one unqualified descriptor `ORDER BY` column, and signed-64-range `LIMIT row_count`; no aliases, partitions, modifiers, joined deletes, full ordering, or offset forms. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `DELETE` (multi-table) | ❌ | Multi-table forms. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `DELETE` with joins | ❌ | Joined delete target semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md), [SQL joins](docs/compatibility/sql-joins.md) |
-| `INSERT ... VALUES` | 🟡 | Limited single- and multi-row inserts into persistent base tables with integer/`NULL` values, descriptor column resolution, strict range checks, affected rows, and statement atomicity; no defaults, keys, generated values, or insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
-| `INSERT ... SET` | 🟡 | Limited one-row `INSERT [INTO] table SET column = integer_or_NULL[, ...]` into persistent base tables with descriptor assignment resolution, omitted nullable columns stored as `NULL`, strict required-column/range/nullability diagnostics, affected rows, and statement atomicity; no modifiers, qualified assignment targets, expressions, defaults, generated values, or insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `INSERT ... VALUES` | 🟡 | Limited single- and multi-row inserts into persistent base tables with integer/`NULL`/`TRUE`/`FALSE` values, descriptor column resolution, strict range checks, affected rows, and statement atomicity; no defaults, keys, generated values, or insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `INSERT ... SET` | 🟡 | Limited one-row `INSERT [INTO] table SET column = integer_or_NULL_or_boolean[, ...]` into persistent base tables with descriptor assignment resolution, omitted nullable columns stored as `NULL`, strict required-column/range/nullability diagnostics, affected rows, and statement atomicity; no modifiers, qualified assignment targets, expressions, defaults, generated values, or insert ids. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `INSERT ... SELECT` | ❌ | Query insert and metadata inference. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `INSERT ... ON DUPLICATE KEY UPDATE` | ❌ | Duplicate-key update semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `INSERT IGNORE` | ❌ | Warning demotion rules. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `REPLACE ... VALUES` | ❌ | Delete-insert semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `REPLACE ... SET` | ❌ | SET-form replace. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `REPLACE ... SELECT` | ❌ | Replace from query expression. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
-| `UPDATE` (single-table) | 🟡 | Limited persistent base-table `UPDATE table SET column = integer_or_NULL` with optional baseline `WHERE`, one unqualified descriptor `ORDER BY` column, and signed-64-range `LIMIT row_count`; changed-row affected counts; no aliases, partitions, modifiers, joins, multiple assignments, expression assignments, full ordering, or offset forms. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
+| `UPDATE` (single-table) | 🟡 | Limited persistent base-table `UPDATE table SET column = integer_or_NULL_or_boolean` with optional baseline `WHERE`, one unqualified descriptor `ORDER BY` column, and signed-64-range `LIMIT row_count`; changed-row affected counts; no aliases, partitions, modifiers, joins, multiple assignments, expression assignments, full ordering, or offset forms. | [SQL table DML](docs/compatibility/sql-table-dml.md) |
 | `UPDATE` (multi-table) | ❌ | Joined update semantics. | [SQL table DML](docs/compatibility/sql-table-dml.md), [SQL joins](docs/compatibility/sql-joins.md) |
 | `UPDATE` with joins | ❌ | Joined target and assignment behavior. | [SQL table DML](docs/compatibility/sql-table-dml.md), [SQL joins](docs/compatibility/sql-joins.md) |
 

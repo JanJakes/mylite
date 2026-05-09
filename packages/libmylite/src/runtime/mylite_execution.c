@@ -51,6 +51,8 @@ enum {
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
     mysql_error_unknown_storage_engine = 1286,
+    mysql_error_display_width_out_of_range = 1439,
+    mysql_warning_integer_display_width_deprecated = 1681,
     sqlite_use_nul_terminated_string = -1,
     decimal_base = 10,
     table_name_part_capacity = 3,
@@ -188,6 +190,13 @@ struct planned_value {
 struct integer_column_range {
     uint64_t positive_max;
     uint64_t negative_abs_max;
+};
+
+struct mapped_integer_type {
+    enum mylite_sql_ast_integer_type type;
+    int is_unsigned;
+    bool has_display_width;
+    uint64_t display_width;
 };
 
 struct planned_insert_row {
@@ -855,6 +864,10 @@ static bool modify_column_type_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
 );
+static bool modify_column_metadata_only_replacement(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+);
 static bool modify_column_name_matches(
     const struct mylite_catalog_column_descriptor *original_column,
     const struct planned_column *replacement_column
@@ -1286,9 +1299,24 @@ static int check_duplicate_column_names(
 static bool text_equals_ascii_case_insensitive(const char *left, const char *right);
 static char ascii_lower(unsigned char byte);
 static int map_integer_type(
+    struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
     const char **out_logical_type,
     const char **out_physical_type
+);
+static int map_integer_display_width(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    bool *out_has_display_width,
+    uint64_t *out_display_width
+);
+static int append_integer_display_width_warning(struct mylite_db *database);
+static const char *logical_type_for_mapped_integer(struct mapped_integer_type integer_type);
+static bool modify_column_integer_value_domain_matches(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
 );
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node);
 
@@ -1806,6 +1834,10 @@ static void set_out_of_range_error(
     struct mylite_db *database,
     const char *column_name,
     size_t row_number
+);
+static void set_display_width_out_of_range_error(
+    struct mylite_db *database,
+    const char *column_name
 );
 static void set_predicate_out_of_range_error(struct mylite_db *database, const char *column_name);
 static void set_limit_out_of_range_error(struct mylite_db *database);
@@ -4726,6 +4758,10 @@ static int show_create_table_type_text(
         *out_type_text = "tinyint";
         return MYLITE_OK;
     }
+    if (strcmp(logical_type, "TINYINT(1)") == 0) {
+        *out_type_text = "tinyint(1)";
+        return MYLITE_OK;
+    }
     if (strcmp(logical_type, "SMALLINT") == 0) {
         *out_type_text = "smallint";
         return MYLITE_OK;
@@ -6482,6 +6518,10 @@ static int complete_alter_table_modify_column_plan(
         out_plan->is_metadata_only = true;
         return MYLITE_OK;
     }
+    if (modify_column_metadata_only_replacement(&out_plan->original_column, &out_plan->column)) {
+        out_plan->is_metadata_only = true;
+        return MYLITE_OK;
+    }
 
     if (!modify_column_type_matches(&out_plan->original_column, &out_plan->column)) {
         out_plan->reports_rebuild_row_count = true;
@@ -6530,6 +6570,23 @@ static bool modify_column_type_matches(
         return false;
     }
     if (strcmp(original_column->physical_type, replacement_column->physical_type) != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool modify_column_metadata_only_replacement(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    if (strcmp(original_column->physical_type, replacement_column->physical_type) != 0) {
+        return false;
+    }
+    if (original_column->is_nullable != replacement_column->is_nullable) {
+        return false;
+    }
+    if (!modify_column_integer_value_domain_matches(original_column, replacement_column)) {
         return false;
     }
 
@@ -6590,15 +6647,21 @@ static int alter_table_modify_column_from_plan(
         );
     }
     if (rc == MYLITE_OK && plan->is_metadata_only) {
-        struct planned_alter_table_rename_column rename_plan = {
-            .target = plan->target,
-            .table = plan->table,
-            .column = plan->original_column,
-            .is_noop = false,
-        };
+        if (!modify_column_name_matches(&plan->original_column, &plan->column)) {
+            struct planned_alter_table_rename_column rename_plan = {
+                .target = plan->target,
+                .table = plan->table,
+                .column = plan->original_column,
+                .is_noop = false,
+            };
 
-        memcpy(rename_plan.new_column_name, plan->column.name, sizeof(rename_plan.new_column_name));
-        rc = execute_physical_alter_table_rename_column(database, &rename_plan);
+            memcpy(
+                rename_plan.new_column_name,
+                plan->column.name,
+                sizeof(rename_plan.new_column_name)
+            );
+            rc = execute_physical_alter_table_rename_column(database, &rename_plan);
+        }
     } else if (rc == MYLITE_OK) {
         rc = execute_physical_alter_table_modify_column(database, plan, &mutation);
     }
@@ -6621,7 +6684,10 @@ static int alter_table_modify_column_from_plan(
         return rc;
     }
 
-    ++database->session.sqlite_schema_generation;
+    if (!plan->is_metadata_only ||
+        !modify_column_name_matches(&plan->original_column, &plan->column)) {
+        ++database->session.sqlite_schema_generation;
+    }
 
     return MYLITE_OK;
 }
@@ -9213,7 +9279,9 @@ static int plan_column(
     }
     if (rc == MYLITE_OK) {
         rc = map_integer_type(
+            database,
             child_at(column_node, 1U),
+            out_column->name,
             &out_column->logical_type,
             &out_column->physical_type
         );
@@ -9274,60 +9342,134 @@ static char ascii_lower(unsigned char byte) {
 }
 
 static int map_integer_type(
+    struct mylite_db *database,
     const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
     const char **out_logical_type,
     const char **out_physical_type
 ) {
     enum mylite_sql_ast_integer_type type = mylite_sql_ast_node_integer_type(type_node);
     int is_unsigned = mylite_sql_ast_node_integer_type_is_unsigned(type_node);
+    bool has_display_width = false;
+    uint64_t display_width = 0U;
+    const char *logical_type = NULL;
+    int rc = MYLITE_OK;
 
     if (out_logical_type == NULL || out_physical_type == NULL) {
         return MYLITE_MISUSE;
     }
 
+    rc = map_integer_display_width(
+        database,
+        type_node,
+        column_name,
+        &has_display_width,
+        &display_width
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    logical_type = logical_type_for_mapped_integer((struct mapped_integer_type){
+        .type = type,
+        .is_unsigned = is_unsigned,
+        .has_display_width = has_display_width,
+        .display_width = display_width,
+    });
+    if (logical_type == NULL) {
+        return MYLITE_ERROR;
+    }
+    *out_logical_type = logical_type;
     *out_physical_type = "INTEGER";
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_TINYINT && is_unsigned == 0) {
-        *out_logical_type = "TINYINT";
-        return MYLITE_OK;
-    }
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_TINYINT && is_unsigned != 0) {
-        *out_logical_type = "TINYINT UNSIGNED";
-        return MYLITE_OK;
-    }
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT && is_unsigned == 0) {
-        *out_logical_type = "SMALLINT";
-        return MYLITE_OK;
-    }
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT && is_unsigned != 0) {
-        *out_logical_type = "SMALLINT UNSIGNED";
-        return MYLITE_OK;
-    }
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT && is_unsigned == 0) {
-        *out_logical_type = "MEDIUMINT";
-        return MYLITE_OK;
-    }
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT && is_unsigned != 0) {
-        *out_logical_type = "MEDIUMINT UNSIGNED";
-        return MYLITE_OK;
-    }
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_INT && is_unsigned == 0) {
-        *out_logical_type = "INT";
-        return MYLITE_OK;
-    }
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_INT && is_unsigned != 0) {
-        *out_logical_type = "INT UNSIGNED";
-        return MYLITE_OK;
-    }
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_BIGINT && is_unsigned == 0) {
-        *out_logical_type = "BIGINT";
-        return MYLITE_OK;
-    }
-    if (type == MYLITE_SQL_AST_INTEGER_TYPE_BIGINT && is_unsigned != 0) {
-        *out_logical_type = "BIGINT UNSIGNED";
+
+    return MYLITE_OK;
+}
+
+static int map_integer_display_width(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *type_node,
+    const char *column_name,
+    bool *out_has_display_width,
+    uint64_t *out_display_width
+) {
+    enum { max_integer_display_width = 255 };
+
+    struct mylite_sql_source_span display_width_span = {0};
+    int rc = MYLITE_OK;
+
+    *out_has_display_width = mylite_sql_ast_node_integer_type_has_display_width(type_node) != 0;
+    *out_display_width = 0U;
+    if (!*out_has_display_width) {
         return MYLITE_OK;
     }
 
-    return MYLITE_ERROR;
+    display_width_span = mylite_sql_ast_node_integer_type_display_width_span(type_node);
+    rc = parse_unsigned_integer_literal(&display_width_span, out_display_width);
+    if (rc != MYLITE_OK || *out_display_width > max_integer_display_width) {
+        set_display_width_out_of_range_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = append_integer_display_width_warning(database);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+
+    return rc;
+}
+
+static int append_integer_display_width_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_integer_display_width_deprecated,
+        "HY000",
+        "Integer display width is deprecated and will be removed in a future release."
+    );
+}
+
+static const char *logical_type_for_mapped_integer(struct mapped_integer_type integer_type) {
+    switch (integer_type.type) {
+    case MYLITE_SQL_AST_INTEGER_TYPE_NONE:
+        return NULL;
+    case MYLITE_SQL_AST_INTEGER_TYPE_TINYINT:
+        if (integer_type.is_unsigned != 0) {
+            return "TINYINT UNSIGNED";
+        }
+        if (integer_type.has_display_width && integer_type.display_width == 1U) {
+            return "TINYINT(1)";
+        }
+        return "TINYINT";
+    case MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT:
+        return integer_type.is_unsigned == 0 ? "SMALLINT" : "SMALLINT UNSIGNED";
+    case MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT:
+        return integer_type.is_unsigned == 0 ? "MEDIUMINT" : "MEDIUMINT UNSIGNED";
+    case MYLITE_SQL_AST_INTEGER_TYPE_INT:
+        return integer_type.is_unsigned == 0 ? "INT" : "INT UNSIGNED";
+    case MYLITE_SQL_AST_INTEGER_TYPE_BIGINT:
+        return integer_type.is_unsigned == 0 ? "BIGINT" : "BIGINT UNSIGNED";
+    }
+
+    return NULL;
+}
+
+static bool modify_column_integer_value_domain_matches(
+    const struct mylite_catalog_column_descriptor *original_column,
+    const struct planned_column *replacement_column
+) {
+    const char *original_logical_type = original_column->logical_type;
+    const char *replacement_logical_type = replacement_column->logical_type;
+
+    if (original_logical_type == NULL || replacement_logical_type == NULL) {
+        return false;
+    }
+    if (strcmp(original_logical_type, "TINYINT(1)") == 0) {
+        original_logical_type = "TINYINT";
+    }
+    if (strcmp(replacement_logical_type, "TINYINT(1)") == 0) {
+        replacement_logical_type = "TINYINT";
+    }
+
+    return strcmp(original_logical_type, replacement_logical_type) == 0;
 }
 
 static bool column_is_nullable(const struct mylite_sql_ast_node *nullability_node) {
@@ -10661,6 +10803,13 @@ static int integer_range_for_column(
         };
         return MYLITE_OK;
     }
+    if (strcmp(column->logical_type, "TINYINT(1)") == 0) {
+        *out_range = (struct integer_column_range){
+            .positive_max = tinyint_signed_positive_max,
+            .negative_abs_max = tinyint_signed_negative_abs_max,
+        };
+        return MYLITE_OK;
+    }
     if (strcmp(column->logical_type, "TINYINT UNSIGNED") == 0) {
         *out_range = (struct integer_column_range){
             .positive_max = tinyint_unsigned_max,
@@ -10874,6 +11023,10 @@ static int show_column_type_text(
     }
     if (strcmp(logical_type, "TINYINT") == 0) {
         *out_type_text = "tinyint";
+        return MYLITE_OK;
+    }
+    if (strcmp(logical_type, "TINYINT(1)") == 0) {
+        *out_type_text = "tinyint(1)";
         return MYLITE_OK;
     }
     if (strcmp(logical_type, "SMALLINT") == 0) {
@@ -13584,6 +13737,29 @@ static void set_out_of_range_error(
         mylite_connection_diagnostics(database),
         mysql_error_data_out_of_range,
         "22003",
+        message
+    );
+}
+
+static void set_display_width_out_of_range_error(
+    struct mylite_db *database,
+    const char *column_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Display width out of range for column '%s' (max = 255)",
+        column_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_display_width_out_of_range,
+        "42000",
         message
     );
 }

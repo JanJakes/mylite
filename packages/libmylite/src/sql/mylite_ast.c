@@ -187,6 +187,24 @@ int mylite_sql_ast_node_integer_type_is_unsigned(const struct mylite_sql_ast_nod
     return node->payload.integer_type.is_unsigned;
 }
 
+int mylite_sql_ast_node_integer_type_has_display_width(const struct mylite_sql_ast_node *node) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_INTEGER_TYPE) {
+        return 0;
+    }
+
+    return node->payload.integer_type.has_display_width;
+}
+
+struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_span(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_INTEGER_TYPE) {
+        return (struct mylite_sql_source_span){0};
+    }
+
+    return node->payload.integer_type.display_width_span;
+}
+
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 ) {

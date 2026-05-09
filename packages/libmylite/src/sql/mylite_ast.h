@@ -168,6 +168,8 @@ struct mylite_sql_ast_expression_payload {
 struct mylite_sql_ast_integer_type_payload {
     enum mylite_sql_ast_integer_type kind;
     int is_unsigned;
+    int has_display_width;
+    struct mylite_sql_source_span display_width_span;
 };
 
 struct mylite_sql_ast_nullability_payload {
@@ -247,6 +249,10 @@ enum mylite_sql_ast_integer_type mylite_sql_ast_node_integer_type(
     const struct mylite_sql_ast_node *node
 );
 int mylite_sql_ast_node_integer_type_is_unsigned(const struct mylite_sql_ast_node *node);
+int mylite_sql_ast_node_integer_type_has_display_width(const struct mylite_sql_ast_node *node);
+struct mylite_sql_source_span mylite_sql_ast_node_integer_type_display_width_span(
+    const struct mylite_sql_ast_node *node
+);
 enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 );

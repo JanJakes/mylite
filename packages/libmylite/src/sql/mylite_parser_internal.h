@@ -12,6 +12,21 @@ struct mylite_sql_parser_state {
     bool accepted;
 };
 
+struct mylite_sql_integer_type_name_tokens {
+    struct mylite_sql_token type_token;
+    enum mylite_sql_ast_integer_type integer_type;
+};
+
+struct mylite_sql_integer_display_width_tokens {
+    struct mylite_sql_token width_token;
+    struct mylite_sql_token end_token;
+};
+
+struct mylite_sql_integer_signedness_tokens {
+    struct mylite_sql_token attribute_token;
+    int is_unsigned;
+};
+
 struct mylite_sql_show_count_warnings_tokens {
     struct mylite_sql_token show;
     struct mylite_sql_token count;
@@ -536,6 +551,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token type_token,
     enum mylite_sql_ast_integer_type integer_type,
+    struct mylite_sql_token display_width_token,
+    struct mylite_sql_token display_width_end_token,
     struct mylite_sql_token attribute_token,
     int is_unsigned
 );

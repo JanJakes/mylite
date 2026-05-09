@@ -8,11 +8,17 @@ enum {
     small_integer_column_count = 6,
     signed_integer_column_count = 6,
     alias_integer_column_count = 10,
+    display_width_column_count = 16,
     alias_int1_unsigned_column_index = 5,
     alias_int2_signed_column_index = 6,
     alias_int3_unsigned_column_index = 7,
     alias_int4_unsigned_column_index = 8,
     alias_int8_unsigned_column_index = 9,
+    display_width_int_unsigned_column_index = 8,
+    display_width_tinyint_signed_column_index = 9,
+    display_width_tinyint_unsigned_column_index = 10,
+    display_width_int1_column_index = 11,
+    display_width_int8_column_index = 15,
     mediumint_unsigned_column_index = 5,
     signed_integer_column_index = 4,
     signed_bigint_column_index = 5,
@@ -93,6 +99,11 @@ static int expect_integer_type(
     const struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_integer_type expected_type,
     int expected_unsigned,
+    const char *context
+);
+static int expect_integer_display_width(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_width,
     const char *context
 );
 static int expect_nullability(
@@ -1270,6 +1281,7 @@ static int test_table_lifecycle_statements(void) {
     const struct mylite_sql_ast_node *collation_option = NULL;
     const struct mylite_sql_ast_node *if_not_exists = NULL;
     const struct mylite_sql_ast_node *if_exists = NULL;
+    const struct mylite_sql_ast_node *column_type = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -1298,6 +1310,7 @@ static int test_table_lifecycle_statements(void) {
         0,
         "first column type"
     );
+    failures += expect_integer_display_width(child_at(column, 1U), NULL, "first column width");
     failures += expect_true(child_at(column, 2U) == NULL, "first column default nullability");
 
     column = child_at(columns, 1U);
@@ -1525,6 +1538,83 @@ static int test_table_lifecycle_statements(void) {
         "int8 unsigned alias column type"
     );
     failures += expect_span_text(child_at(column, 1U), "INT8 UNSIGNED", "int8 unsigned span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE display_widths (ti0 TINYINT(0), ti1 TINYINT(1), "
+        "ti2 TINYINT(2), si SMALLINT(5), mi MEDIUMINT(9), i INT(11), "
+        "ii INTEGER(10), bi BIGINT(20), iu INT(10) UNSIGNED, "
+        "tis TINYINT(1) SIGNED, tiu TINYINT(1) UNSIGNED, i1 INT1(1), "
+        "i2 INT2(5), i3 INT3(7), i4 INT4(9), i8 INT8(20));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    columns = child_at(statement, 1U);
+    failures +=
+        expect_child_count(columns, display_width_column_count, "display width column list");
+
+    column = child_at(columns, 0U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "tinyint zero display width type"
+    );
+    failures += expect_integer_display_width(column_type, "0", "tinyint zero display width");
+    failures += expect_span_text(column_type, "TINYINT(0)", "tinyint zero display width span");
+
+    column = child_at(columns, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "tinyint one display width type"
+    );
+    failures += expect_integer_display_width(column_type, "1", "tinyint one display width");
+
+    column = child_at(columns, display_width_int_unsigned_column_index);
+    column_type = child_at(column, 1U);
+    failures +=
+        expect_integer_type(column_type, MYLITE_SQL_AST_INTEGER_TYPE_INT, 1, "int width unsigned");
+    failures += expect_integer_display_width(column_type, "10", "int unsigned display width");
+    failures += expect_span_text(column_type, "INT(10) UNSIGNED", "int unsigned width span");
+
+    column = child_at(columns, display_width_tinyint_signed_column_index);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "tinyint width signed"
+    );
+    failures += expect_integer_display_width(column_type, "1", "tinyint signed display width");
+    failures += expect_span_text(column_type, "TINYINT(1) SIGNED", "tinyint signed width span");
+
+    column = child_at(columns, display_width_tinyint_unsigned_column_index);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        1,
+        "tinyint width unsigned"
+    );
+    failures += expect_integer_display_width(column_type, "1", "tinyint unsigned display width");
+    failures += expect_span_text(column_type, "TINYINT(1) UNSIGNED", "tinyint unsigned width span");
+
+    column = child_at(columns, display_width_int1_column_index);
+    column_type = child_at(column, 1U);
+    failures +=
+        expect_integer_type(column_type, MYLITE_SQL_AST_INTEGER_TYPE_TINYINT, 0, "int1 width");
+    failures += expect_integer_display_width(column_type, "1", "int1 display width");
+
+    column = child_at(columns, display_width_int8_column_index);
+    column_type = child_at(column, 1U);
+    failures +=
+        expect_integer_type(column_type, MYLITE_SQL_AST_INTEGER_TYPE_BIGINT, 0, "int8 width");
+    failures += expect_integer_display_width(column_type, "20", "int8 display width");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -2215,6 +2305,24 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ADD added_width TINYINT(1) NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "display width alter add column type"
+    );
+    failures += expect_integer_display_width(column_type, "1", "display width alter add");
+    failures += expect_span_text(column_type, "TINYINT(1)", "display width alter add span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE simple_lifecycle MODIFY old_col INT UNSIGNED NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2287,6 +2395,25 @@ static int test_table_lifecycle_statements(void) {
         "int4 signed alter modify column type"
     );
     failures += expect_span_text(child_at(column, 1U), "INT4 SIGNED", "alias alter modify span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle MODIFY old_col INT(11) UNSIGNED NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 1U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_INT,
+        1,
+        "display width alter modify column type"
+    );
+    failures += expect_integer_display_width(column_type, "11", "display width alter modify");
+    failures +=
+        expect_span_text(column_type, "INT(11) UNSIGNED", "display width alter modify span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -2364,6 +2491,24 @@ static int test_table_lifecycle_statements(void) {
         "int3 alias alter change column type"
     );
     failures += expect_span_text(child_at(column, 1U), "INT3", "alias alter change span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle CHANGE old_col new_width INT1(1) NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    column = child_at(statement, 2U);
+    column_type = child_at(column, 1U);
+    failures += expect_integer_type(
+        column_type,
+        MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+        0,
+        "display width alter change column type"
+    );
+    failures += expect_integer_display_width(column_type, "1", "display width alter change");
+    failures += expect_span_text(column_type, "INT1(1)", "display width alter change span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -4040,7 +4185,7 @@ static int test_syntax_errors(void) {
         parse_sql("CREATE TABLE t (id VARCHAR(10));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("CREATE TABLE t (id INT(11));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("CREATE TABLE t (id INT(+1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -4184,20 +4329,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "CREATE TABLE unsupported_width (c TINYINT(1));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "CREATE TABLE unsupported_width_signed (c TINYINT(1) SIGNED);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
         "CREATE TABLE unsupported_signed_unsigned (c INT SIGNED UNSIGNED);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -4220,13 +4351,6 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "CREATE TABLE unsupported_repeated_unsigned (c INT UNSIGNED UNSIGNED);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "CREATE TABLE unsupported_alias_width (c INT1(1));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -4269,6 +4393,48 @@ static int test_syntax_errors(void) {
 
     failures += parse_sql(
         "CREATE TABLE unsupported_decimal_signed (c DECIMAL SIGNED);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_width_minus (c INT(-1));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_width_empty (c INT());",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_width_decimal (c INT(1.0));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_width_string (c INT('1'));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_width_after_unsigned (c INT UNSIGNED(1));",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE unsupported_alias_width_signed (c INT1(+1));",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -4927,6 +5093,47 @@ static int expect_integer_type(
             expected_unsigned,
             mylite_sql_ast_integer_type_name(actual_type),
             actual_unsigned
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_integer_display_width(
+    const struct mylite_sql_ast_node *node,
+    const char *expected_width,
+    const char *context
+) {
+    int has_width = mylite_sql_ast_node_integer_type_has_display_width(node);
+    struct mylite_sql_source_span span = mylite_sql_ast_node_integer_type_display_width_span(node);
+
+    if (expected_width == NULL) {
+        if (has_width) {
+            fprintf(stderr, "%s: expected no display width\n", context);
+            return 1;
+        }
+        return 0;
+    }
+
+    if (!has_width) {
+        fprintf(
+            stderr,
+            "%s: expected display width %s, got no display width\n",
+            context,
+            expected_width
+        );
+        return 1;
+    }
+    if (span.text == NULL || span.length != strlen(expected_width) ||
+        strncmp(span.text, expected_width, span.length) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected display width %s, got %.*s\n",
+            context,
+            expected_width,
+            (int)span.length,
+            span.text == NULL ? "" : span.text
         );
         return 1;
     }

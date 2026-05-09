@@ -12,65 +12,65 @@
 
 ## Parser And AST
 
-- [ ] Extend `integer_type` grammar to accept `(<unsigned decimal width>)`
+- [x] Extend `integer_type` grammar to accept `(<unsigned decimal width>)`
       before optional `SIGNED` or `UNSIGNED`.
-- [ ] Capture display-width source spans in the AST.
-- [ ] Preserve deterministic rejection for signed, empty, decimal, string, hex,
+- [x] Capture display-width source spans in the AST.
+- [x] Preserve deterministic rejection for signed, empty, decimal, string, hex,
       bit, parameter, expression, and post-signedness width forms.
-- [ ] Preserve deterministic rejection for `ZEROFILL`.
-- [ ] Add parser tests for `CREATE TABLE`, `ALTER TABLE ADD`, `MODIFY`, and
+- [x] Preserve deterministic rejection for `ZEROFILL`.
+- [x] Add parser tests for `CREATE TABLE`, `ALTER TABLE ADD`, `MODIFY`, and
       `CHANGE` display-width forms.
 
 ## Runtime And Catalog
 
-- [ ] Validate width values in `0..255` and emit MySQL-compatible error 1439
+- [x] Validate width values in `0..255` and emit MySQL-compatible error 1439
       for out-of-range width.
-- [ ] Append one warning 1681 per accepted display width clause.
-- [ ] Store signed `TINYINT(1)` / `INT1(1)` as durable `TINYINT(1)`
+- [x] Append one warning 1681 per accepted display width clause.
+- [x] Store signed `TINYINT(1)` / `INT1(1)` as durable `TINYINT(1)`
       descriptor text.
-- [ ] Normalize all other admitted integer display widths to existing no-width
+- [x] Normalize all other admitted integer display widths to existing no-width
       descriptors.
-- [ ] Treat `TINYINT(1)` as the same integer range and physical SQLite
+- [x] Treat `TINYINT(1)` as the same integer range and physical SQLite
       `INTEGER` storage as `TINYINT`.
-- [ ] Keep display-width-only `ALTER TABLE ... MODIFY` / `CHANGE` changes
+- [x] Keep display-width-only `ALTER TABLE ... MODIFY` / `CHANGE` changes
       metadata-only when name, nullability, physical type, and integer range
       are unchanged.
 
 ## Introspection
 
-- [ ] Render `SHOW COLUMNS`, `DESCRIBE`, and `EXPLAIN table` with
+- [x] Render `SHOW COLUMNS`, `DESCRIBE`, and `EXPLAIN table` with
       `tinyint(1)` only for persisted `TINYINT(1)` descriptors.
-- [ ] Render `SHOW CREATE TABLE` with `tinyint(1)` only for persisted
+- [x] Render `SHOW CREATE TABLE` with `tinyint(1)` only for persisted
       `TINYINT(1)` descriptors.
-- [ ] Preserve unknown future descriptor diagnostics.
+- [x] Preserve unknown future descriptor diagnostics.
 
 ## Tests
 
-- [ ] Add focused runtime coverage for create/alter display-width descriptors,
+- [x] Add focused runtime coverage for create/alter display-width descriptors,
       warnings, physical storage, introspection, DML, predicates, persistence,
       and preamble preservation.
-- [ ] Cover width `0`, width `1`, width `255`, and width `256` diagnostics.
-- [ ] Cover `TINYINT(1)`, `TINYINT(1) SIGNED`, `TINYINT(1) UNSIGNED`, and
+- [x] Cover width `0`, width `1`, width `255`, and width `256` diagnostics.
+- [x] Cover `TINYINT(1)`, `TINYINT(1) SIGNED`, `TINYINT(1) UNSIGNED`, and
       `INT1(1)` normalization differences.
-- [ ] Cover deferred `ZEROFILL` as unsupported in MyLite even though MySQL
+- [x] Cover deferred `ZEROFILL` as unsupported in MyLite even though MySQL
       accepts it.
-- [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt` if a
+- [x] Register any new test binary in `packages/libmylite/CMakeLists.txt` if a
       new binary is needed.
 
 ## Compatibility Docs
 
-- [ ] Update `COMPATIBILITY.md`.
-- [ ] Update `docs/compatibility/sql-table-ddl.md`.
-- [ ] Update `docs/compatibility/type-system-literals-conversion.md`.
-- [ ] Avoid claiming `ZEROFILL`, padding, protocol metadata, casts, expression
+- [x] Update `COMPATIBILITY.md`.
+- [x] Update `docs/compatibility/sql-table-ddl.md`.
+- [x] Update `docs/compatibility/type-system-literals-conversion.md`.
+- [x] Avoid claiming `ZEROFILL`, padding, protocol metadata, casts, expression
       type syntax, non-integer widths, compact storage, or changed ranges.
 
 ## Verification
 
-- [ ] `cmake --build --preset dev`
-- [ ] Focused parser/runtime CTest entries touched by this feature.
-- [ ] `./packages/libmylite/tests/mysql_baseline_integer_display_width_expectations.sh`
-- [ ] `cmake --workflow --preset check`
-- [ ] Final architecture/self-review for warning semantics, descriptor
+- [x] `cmake --build --preset dev`
+- [x] Focused parser/runtime CTest entries touched by this feature.
+- [x] `./packages/libmylite/tests/mysql_baseline_integer_display_width_expectations.sh`
+- [x] `cmake --workflow --preset check`
+- [x] Final architecture/self-review for warning semantics, descriptor
       authority, metadata-only alter behavior, docs accuracy, and test
       relevance.

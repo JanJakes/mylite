@@ -2055,12 +2055,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token type_token,
     enum mylite_sql_ast_integer_type integer_type,
+    struct mylite_sql_token display_width_token,
+    struct mylite_sql_token display_width_end_token,
     struct mylite_sql_token attribute_token,
     int is_unsigned
 ) {
     struct mylite_sql_source_span span = span_from_token(&type_token);
     struct mylite_sql_ast_node *type = NULL;
 
+    if (display_width_end_token.text != NULL) {
+        span = span_join(span, span_from_token(&display_width_end_token));
+    }
     if (attribute_token.text != NULL) {
         span = span_join(span, span_from_token(&attribute_token));
     }
@@ -2075,6 +2080,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_integer_type(
         (struct mylite_sql_ast_integer_type_payload){
             .kind = integer_type,
             .is_unsigned = is_unsigned,
+            .has_display_width = display_width_token.text != NULL,
+            .display_width_span = span_from_token(&display_width_token),
         }
     );
     return type;

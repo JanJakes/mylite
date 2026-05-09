@@ -22,10 +22,14 @@ enum {
     small_integer_column_count = 8,
     signed_attribute_column_count = 8,
     alias_column_count = 12,
+    display_width_column_count = 16,
+    alter_display_width_column_count = 4,
     show_columns_field_count = 6,
     mysql_error_parse = 1064,
     mysql_error_bad_null = 1048,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_display_width_out_of_range = 1439,
+    mysql_warning_integer_display_width_deprecated = 1681,
 };
 
 struct expected_sql_error {
@@ -51,14 +55,25 @@ struct expected_column_descriptor {
 static int test_small_integer_success_persistence_and_dml(void);
 static int test_integer_signed_attribute_lifecycle(void);
 static int test_integer_type_alias_lifecycle(void);
+static int test_integer_display_width_lifecycle(void);
 static int test_small_integer_diagnostics_and_rollback(void);
 static int test_small_integer_independent_handles(void);
 static int create_small_integer_table(mylite_db *database, const char *table_name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_statement_ok(mylite_db *database, const char *sql);
+static int expect_statement_warning_count(
+    mylite_db *database,
+    const char *sql,
+    size_t warning_count
+);
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query_values(mylite_db *database, struct expected_query query);
+static int expect_display_width_warnings(
+    mylite_db *database,
+    size_t expected_count,
+    const char *context
+);
 static int expect_result_value(
     const mylite_result *result,
     size_t row,
@@ -96,6 +111,7 @@ int main(void) {
     failures += test_small_integer_success_persistence_and_dml();
     failures += test_integer_signed_attribute_lifecycle();
     failures += test_integer_type_alias_lifecycle();
+    failures += test_integer_display_width_lifecycle();
     failures += test_small_integer_diagnostics_and_rollback();
     failures += test_small_integer_independent_handles();
 
@@ -1058,7 +1074,7 @@ static int test_integer_type_alias_lifecycle(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE unsupported_alias_width (c INT1(1))",
+        "CREATE TABLE unsupported_alias_width (c INT1(+1))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -1193,6 +1209,431 @@ static int test_integer_type_alias_lifecycle(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "integer alias updates persist after reopen",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_integer_display_width_lifecycle(void) {
+    static const char *const show_columns_rows[] = {
+        "ti0", "tinyint",
+        "YES", "",
+        NULL,  "",
+        "ti1", "tinyint(1)",
+        "YES", "",
+        NULL,  "",
+        "ti2", "tinyint",
+        "YES", "",
+        NULL,  "",
+        "si",  "smallint",
+        "YES", "",
+        NULL,  "",
+        "mi",  "mediumint",
+        "YES", "",
+        NULL,  "",
+        "i",   "int",
+        "YES", "",
+        NULL,  "",
+        "ii",  "int",
+        "YES", "",
+        NULL,  "",
+        "bi",  "bigint",
+        "YES", "",
+        NULL,  "",
+        "iu",  "int unsigned",
+        "YES", "",
+        NULL,  "",
+        "tis", "tinyint(1)",
+        "YES", "",
+        NULL,  "",
+        "tiu", "tinyint unsigned",
+        "YES", "",
+        NULL,  "",
+        "i1",  "tinyint(1)",
+        "YES", "",
+        NULL,  "",
+        "i2",  "smallint",
+        "YES", "",
+        NULL,  "",
+        "i3",  "mediumint",
+        "YES", "",
+        NULL,  "",
+        "i4",  "int",
+        "YES", "",
+        NULL,  "",
+        "i8",  "bigint",
+        "YES", "",
+        NULL,  "",
+    };
+    static const char *const show_create_rows[] = {
+        "widths",
+        "CREATE TABLE `widths` (\n"
+        "  `ti0` tinyint DEFAULT NULL,\n"
+        "  `ti1` tinyint(1) DEFAULT NULL,\n"
+        "  `ti2` tinyint DEFAULT NULL,\n"
+        "  `si` smallint DEFAULT NULL,\n"
+        "  `mi` mediumint DEFAULT NULL,\n"
+        "  `i` int DEFAULT NULL,\n"
+        "  `ii` int DEFAULT NULL,\n"
+        "  `bi` bigint DEFAULT NULL,\n"
+        "  `iu` int unsigned DEFAULT NULL,\n"
+        "  `tis` tinyint(1) DEFAULT NULL,\n"
+        "  `tiu` tinyint unsigned DEFAULT NULL,\n"
+        "  `i1` tinyint(1) DEFAULT NULL,\n"
+        "  `i2` smallint DEFAULT NULL,\n"
+        "  `i3` mediumint DEFAULT NULL,\n"
+        "  `i4` int DEFAULT NULL,\n"
+        "  `i8` bigint DEFAULT NULL\n"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
+    };
+    static const char *const selected_rows[] = {
+        "-1",
+        "127",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+    };
+    static const char *const tinyint_one_row[] = {"127"};
+    static const char *const width_255_columns[] = {"c", "int", "YES", "", NULL, ""};
+    static const char *const alter_show_columns_rows[] = {
+        "a",  "tinyint(1)", "YES", "", NULL, "", "b", "tinyint", "YES", "", NULL, "",
+        "c2", "int",        "YES", "", NULL, "", "d", "int",     "YES", "", NULL, "",
+    };
+    static const char *const alter_selected_rows[] = {"1", "1", "5", NULL, "2", "0", "6", NULL};
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    uint64_t sqlite_schema_generation = 0U;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "display_width") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open display width file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_warning_count(
+        database,
+        "CREATE TABLE widths (ti0 TINYINT(0), ti1 TINYINT(1), ti2 TINYINT(2), "
+        "si SMALLINT(5), mi MEDIUMINT(9), i INT(11), ii INTEGER(10), "
+        "bi BIGINT(20), iu INT(10) UNSIGNED, tis TINYINT(1) SIGNED, "
+        "tiu TINYINT(1) UNSIGNED, i1 INT1(1), i2 INT2(5), i3 INT3(7), "
+        "i4 INT4(9), i8 INT8(20))",
+        display_width_column_count
+    );
+    failures += expect_display_width_warnings(
+        database,
+        display_width_column_count,
+        "display width CREATE warnings"
+    );
+
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM widths",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = display_width_column_count,
+            .context = "display width SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "DESCRIBE widths",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = display_width_column_count,
+            .context = "display width DESCRIBE",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "EXPLAIN widths",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = display_width_column_count,
+            .context = "display width EXPLAIN table",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW CREATE TABLE widths",
+            .values = show_create_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "display width SHOW CREATE TABLE",
+        }
+    );
+
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read display width schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "widths", &table),
+        MYLITE_OK,
+        "read display width table"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "ti0", .logical_type = "TINYINT", .is_nullable = true},
+        "ti0 display width descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "ti1", .logical_type = "TINYINT(1)", .is_nullable = true},
+        "ti1 display width descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "tis", .logical_type = "TINYINT(1)", .is_nullable = true},
+        "tis display width descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "tiu", .logical_type = "TINYINT UNSIGNED", .is_nullable = true},
+        "tiu display width descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "i1", .logical_type = "TINYINT(1)", .is_nullable = true},
+        "int1 display width descriptor"
+    );
+    failures += expect_column_descriptor(
+        database,
+        table.table_id,
+        (
+            struct expected_column_descriptor
+        ){.name = "i2", .logical_type = "SMALLINT", .is_nullable = true},
+        "int2 display width descriptor"
+    );
+
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO widths VALUES (-1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "
+        "11, 12, 13, 14, 15)",
+        1
+    );
+    failures += expect_dml_ok(database, "UPDATE widths SET ti1 = 127 WHERE i1 <=> 11", 1);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ti1 FROM widths WHERE ti1 = 127",
+            .values = tinyint_one_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "display width updated value",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ti0, ti1, ti2, si, mi, i, ii, bi, iu, tis, tiu, i1, i2, i3, i4, i8 "
+                   "FROM widths",
+            .values = selected_rows,
+            .column_count = display_width_column_count,
+            .row_count = 1U,
+            .context = "display width selected values",
+        }
+    );
+
+    failures += expect_statement_warning_count(database, "CREATE TABLE width_255 (c INT(255))", 1U);
+    failures += expect_display_width_warnings(database, 1U, "display width 255 warning");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM width_255",
+            .values = width_255_columns,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "display width 255 SHOW COLUMNS",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "CREATE TABLE width_256 (c INT(256))",
+        (struct expected_sql_error){
+            .code = mysql_error_display_width_out_of_range,
+            .sqlstate = "42000",
+            .message_part = "Display width out of range for column 'c' (max = 255)",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE width_plus (c INT(+1))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE width_minus (c INT(-1))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE width_empty (c INT())",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE width_after_unsigned (c INT UNSIGNED(1))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE width_zerofill (c INT(1) ZEROFILL)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+
+    failures += expect_statement_warning_count(
+        database,
+        "CREATE TABLE alter_widths (a TINYINT, b TINYINT(1), c INT)",
+        1U
+    );
+    failures += expect_dml_ok(database, "INSERT INTO alter_widths VALUES (1, 1, 5), (2, 0, 6)", 2);
+
+    sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
+    failures += expect_statement_warning_count(
+        database,
+        "ALTER TABLE alter_widths MODIFY a TINYINT(1)",
+        1U
+    );
+    failures += expect_int64(
+        (int64_t)mylite_connection_session_state(database)->sqlite_schema_generation,
+        (int64_t)sqlite_schema_generation,
+        "display width metadata ALTER keeps SQLite schema generation"
+    );
+
+    sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
+    failures += expect_statement_ok(database, "ALTER TABLE alter_widths MODIFY b TINYINT");
+    failures += expect_int64(
+        (int64_t)mylite_connection_session_state(database)->sqlite_schema_generation,
+        (int64_t)sqlite_schema_generation,
+        "display width removal ALTER keeps SQLite schema generation"
+    );
+
+    sqlite_schema_generation = mylite_connection_session_state(database)->sqlite_schema_generation;
+    failures +=
+        expect_statement_warning_count(database, "ALTER TABLE alter_widths CHANGE c c2 INT(1)", 1U);
+    failures += expect_true(
+        mylite_connection_session_state(database)->sqlite_schema_generation >
+            sqlite_schema_generation,
+        "display width CHANGE rename updates SQLite schema generation"
+    );
+    failures +=
+        expect_statement_warning_count(database, "ALTER TABLE alter_widths ADD d INT(1)", 1U);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM alter_widths",
+            .values = alter_show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = alter_display_width_column_count,
+            .context = "display width ALTER SHOW COLUMNS",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a, b, c2, d FROM alter_widths ORDER BY c2",
+            .values = alter_selected_rows,
+            .column_count = alter_display_width_column_count,
+            .row_count = 2U,
+            .context = "display width ALTER values",
+        }
+    );
+
+    mylite_close(database);
+    database = NULL;
+
+    failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
+    failures += expect_bytes(
+        actual_preamble,
+        expected_preamble,
+        sizeof(expected_preamble),
+        "display width lifecycle preserves preamble"
+    );
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen display width file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM widths",
+            .values = show_columns_rows,
+            .column_count = show_columns_field_count,
+            .row_count = display_width_column_count,
+            .context = "display width metadata persists after reopen",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ti1 FROM widths WHERE i1 <=> 11",
+            .values = tinyint_one_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "display width update persists after reopen",
         }
     );
 
@@ -1380,7 +1821,7 @@ static int test_small_integer_diagnostics_and_rollback(void) {
     );
     failures += execute_error(
         database,
-        "CREATE TABLE unsupported_width (c TINYINT(1))",
+        "CREATE TABLE unsupported_width (c TINYINT(+1))",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -1577,6 +2018,22 @@ static int expect_statement_ok(mylite_db *database, const char *sql) {
     return failures;
 }
 
+static int expect_statement_warning_count(
+    mylite_db *database,
+    const char *sql,
+    size_t warning_count
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    failures += expect_size(mylite_result_column_count(result), 0U, sql);
+    failures += expect_size(mylite_result_row_count(result), 0U, sql);
+    failures += expect_size(mylite_result_warning_count(result), warning_count, sql);
+    mylite_result_free(result);
+
+    return failures;
+}
+
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
@@ -1608,6 +2065,33 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
     mylite_result_free(result);
 
+    return failures;
+}
+
+static int expect_display_width_warnings(
+    mylite_db *database,
+    size_t expected_count,
+    const char *context
+) {
+    static const char *const display_width_warning_message =
+        "Integer display width is deprecated and will be removed in a future release.";
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SHOW WARNINGS", &result);
+
+    failures += expect_size(mylite_result_column_count(result), 3U, context);
+    failures += expect_size(mylite_result_row_count(result), expected_count, context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+    for (size_t row = 0U; row < expected_count; ++row) {
+        failures += expect_text(mylite_result_value_text(result, row, 0U), "Warning", context);
+        failures += expect_text(mylite_result_value_text(result, row, 1U), "1681", context);
+        failures += expect_text(
+            mylite_result_value_text(result, row, 2U),
+            display_width_warning_message,
+            context
+        );
+    }
+
+    mylite_result_free(result);
     return failures;
 }
 

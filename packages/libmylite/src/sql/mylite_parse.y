@@ -29,6 +29,10 @@
 %left STAR SLASH.
 %right UPLUS UMINUS.
 
+%type integer_type_name { struct mylite_sql_integer_type_name_tokens }
+%type integer_display_width_opt { struct mylite_sql_integer_display_width_tokens }
+%type integer_signedness_opt { struct mylite_sql_integer_signedness_tokens }
+
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
 }
@@ -1066,137 +1070,108 @@ column_definition(A) ::= identifier(N) integer_type(T) nullability_opt(U). {
     A = mylite_sql_parser_make_column_definition(state, N, T, U);
 }
 
-integer_type(A) ::= INT(T). {
+integer_type(A) ::= integer_type_name(T) integer_display_width_opt(W) integer_signedness_opt(S). {
     A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, (struct mylite_sql_token){0}, 0);
+        state,
+        T.type_token,
+        T.integer_type,
+        W.width_token,
+        W.end_token,
+        S.attribute_token,
+        S.is_unsigned);
 }
-integer_type(A) ::= TINYINT(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_TINYINT, (struct mylite_sql_token){0}, 0);
+
+integer_type_name(A) ::= INT(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_INT,
+    };
 }
-integer_type(A) ::= SMALLINT(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT, (struct mylite_sql_token){0}, 0);
+integer_type_name(A) ::= TINYINT(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+    };
 }
-integer_type(A) ::= MEDIUMINT(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT, (struct mylite_sql_token){0}, 0);
+integer_type_name(A) ::= SMALLINT(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT,
+    };
 }
-integer_type(A) ::= INTEGER_TYPE(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, (struct mylite_sql_token){0}, 0);
+integer_type_name(A) ::= MEDIUMINT(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT,
+    };
 }
-integer_type(A) ::= BIGINT(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_BIGINT, (struct mylite_sql_token){0}, 0);
+integer_type_name(A) ::= INTEGER_TYPE(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_INT,
+    };
 }
-integer_type(A) ::= INT1(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_TINYINT, (struct mylite_sql_token){0}, 0);
+integer_type_name(A) ::= BIGINT(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_BIGINT,
+    };
 }
-integer_type(A) ::= INT2(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT, (struct mylite_sql_token){0}, 0);
+integer_type_name(A) ::= INT1(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_TINYINT,
+    };
 }
-integer_type(A) ::= INT3(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT, (struct mylite_sql_token){0}, 0);
+integer_type_name(A) ::= INT2(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT,
+    };
 }
-integer_type(A) ::= INT4(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, (struct mylite_sql_token){0}, 0);
+integer_type_name(A) ::= INT3(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT,
+    };
 }
-integer_type(A) ::= INT8(T). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_BIGINT, (struct mylite_sql_token){0}, 0);
+integer_type_name(A) ::= INT4(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_INT,
+    };
 }
-integer_type(A) ::= INT(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, S, 0);
+integer_type_name(A) ::= INT8(T). {
+    A = (struct mylite_sql_integer_type_name_tokens){
+        .type_token = T,
+        .integer_type = MYLITE_SQL_AST_INTEGER_TYPE_BIGINT,
+    };
 }
-integer_type(A) ::= TINYINT(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_TINYINT, S, 0);
+
+integer_display_width_opt(A) ::= . {
+    A = (struct mylite_sql_integer_display_width_tokens){0};
 }
-integer_type(A) ::= SMALLINT(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT, S, 0);
+integer_display_width_opt(A) ::= LPAREN INTEGER(W) RPAREN(R). {
+    A = (struct mylite_sql_integer_display_width_tokens){
+        .width_token = W,
+        .end_token = R,
+    };
 }
-integer_type(A) ::= MEDIUMINT(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT, S, 0);
+
+integer_signedness_opt(A) ::= . {
+    A = (struct mylite_sql_integer_signedness_tokens){0};
 }
-integer_type(A) ::= INTEGER_TYPE(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, S, 0);
+integer_signedness_opt(A) ::= SIGNED(S). {
+    A = (struct mylite_sql_integer_signedness_tokens){
+        .attribute_token = S,
+        .is_unsigned = 0,
+    };
 }
-integer_type(A) ::= BIGINT(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_BIGINT, S, 0);
-}
-integer_type(A) ::= INT1(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_TINYINT, S, 0);
-}
-integer_type(A) ::= INT2(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT, S, 0);
-}
-integer_type(A) ::= INT3(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT, S, 0);
-}
-integer_type(A) ::= INT4(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, S, 0);
-}
-integer_type(A) ::= INT8(T) SIGNED(S). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_BIGINT, S, 0);
-}
-integer_type(A) ::= INT(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, U, 1);
-}
-integer_type(A) ::= TINYINT(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_TINYINT, U, 1);
-}
-integer_type(A) ::= SMALLINT(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT, U, 1);
-}
-integer_type(A) ::= MEDIUMINT(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT, U, 1);
-}
-integer_type(A) ::= INTEGER_TYPE(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, U, 1);
-}
-integer_type(A) ::= BIGINT(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_BIGINT, U, 1);
-}
-integer_type(A) ::= INT1(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_TINYINT, U, 1);
-}
-integer_type(A) ::= INT2(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_SMALLINT, U, 1);
-}
-integer_type(A) ::= INT3(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_MEDIUMINT, U, 1);
-}
-integer_type(A) ::= INT4(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_INT, U, 1);
-}
-integer_type(A) ::= INT8(T) UNSIGNED(U). {
-    A = mylite_sql_parser_make_integer_type(
-        state, T, MYLITE_SQL_AST_INTEGER_TYPE_BIGINT, U, 1);
+integer_signedness_opt(A) ::= UNSIGNED(U). {
+    A = (struct mylite_sql_integer_signedness_tokens){
+        .attribute_token = U,
+        .is_unsigned = 1,
+    };
 }
 
 nullability_opt(A) ::= . {

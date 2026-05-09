@@ -296,6 +296,16 @@ expect_upstream_accepts \
     "$DATABASE"
 
 expect_upstream_accepts \
+    "mysql accepts signed unsigned alias attribute list" \
+    "CREATE TABLE signed_unsigned_alias_attr (c INT1 SIGNED UNSIGNED);" \
+    "$DATABASE"
+
+expect_upstream_accepts \
+    "mysql accepts unsigned signed alias attribute list" \
+    "CREATE TABLE unsigned_signed_alias_attr (c INT1 UNSIGNED SIGNED);" \
+    "$DATABASE"
+
+expect_upstream_accepts \
     "mysql accepts repeated alias attribute" \
     "CREATE TABLE repeated_alias_attr (c INT1 UNSIGNED UNSIGNED);" \
     "$DATABASE"

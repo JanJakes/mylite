@@ -1246,6 +1246,8 @@ static int test_table_lifecycle_statements(void) {
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *table_names = NULL;
     const struct mylite_sql_ast_node *table_name = NULL;
+    const struct mylite_sql_ast_node *rename_pairs = NULL;
+    const struct mylite_sql_ast_node *rename_pair = NULL;
     const struct mylite_sql_ast_node *columns = NULL;
     const struct mylite_sql_ast_node *column = NULL;
     const struct mylite_sql_ast_node *table_options = NULL;
@@ -1693,10 +1695,37 @@ static int test_table_lifecycle_statements(void) {
     statement = child_at(result.root, 0U);
     failures +=
         expect_node(statement, MYLITE_SQL_AST_RENAME_TABLE_STATEMENT, "rename table statement");
-    failures += expect_child_count(statement, 2U, "rename table statement");
-    failures += expect_span_text(child_at(statement, 0U), "app.simple_lifecycle", "rename source");
+    rename_pairs = child_at(statement, 0U);
+    rename_pair = child_at(rename_pairs, 0U);
+    failures += expect_child_count(statement, 1U, "rename table statement");
     failures +=
-        expect_span_text(child_at(statement, 1U), "archive.renamed_lifecycle", "rename target");
+        expect_node(rename_pairs, MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST, "rename pair list");
+    failures += expect_child_count(rename_pairs, 1U, "rename pair list child count");
+    failures += expect_node(rename_pair, MYLITE_SQL_AST_RENAME_TABLE_PAIR, "rename pair");
+    failures +=
+        expect_span_text(child_at(rename_pair, 0U), "app.simple_lifecycle", "rename source");
+    failures +=
+        expect_span_text(child_at(rename_pair, 1U), "archive.renamed_lifecycle", "rename target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "RENAME TABLE first_old TO first_new, app.second_old TO archive.second_new;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    rename_pairs = child_at(statement, 0U);
+    rename_pair = child_at(rename_pairs, 0U);
+    failures += expect_child_count(statement, 1U, "multi rename statement");
+    failures += expect_child_count(rename_pairs, 2U, "multi rename pair count");
+    failures += expect_node(rename_pair, MYLITE_SQL_AST_RENAME_TABLE_PAIR, "first rename pair");
+    failures += expect_span_text(child_at(rename_pair, 0U), "first_old", "first rename source");
+    failures += expect_span_text(child_at(rename_pair, 1U), "first_new", "first rename target");
+    rename_pair = child_at(rename_pairs, 1U);
+    failures +=
+        expect_span_text(child_at(rename_pair, 0U), "app.second_old", "second rename source");
+    failures +=
+        expect_span_text(child_at(rename_pair, 1U), "archive.second_new", "second rename target");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -3730,11 +3759,8 @@ static int test_syntax_errors(void) {
         parse_sql("RENAME TABLE old_name new_name;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "RENAME TABLE old_name TO new_name, other TO target;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parse_sql("RENAME TABLE old_name TO new_name,;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

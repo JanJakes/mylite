@@ -81,7 +81,8 @@ The implementation must add:
 
 This feature must not implement:
 
-- multi-table `RENAME TABLE` execution;
+- multi-table `RENAME TABLE` execution, which is specified separately by
+  `docs/specs/baseline-multi-table-rename-lifecycle/specs.md`;
 - `ALTER TABLE ... RENAME TO`, `ALTER TABLE ... RENAME COLUMN`, `RENAME
   COLUMN`, or any other `ALTER TABLE` form;
 - temporary tables, view rename execution, triggers, privileges, locks, foreign

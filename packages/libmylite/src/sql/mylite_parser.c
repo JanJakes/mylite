@@ -1065,16 +1065,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token rename_token,
-    struct mylite_sql_ast_node *source_name,
-    struct mylite_sql_ast_node *target_name
+    struct mylite_sql_ast_node *pairs
 ) {
     struct mylite_sql_source_span span = span_from_token(&rename_token);
     struct mylite_sql_ast_node *statement = NULL;
 
-    if (target_name != NULL) {
-        span = span_join(span, target_name->span);
-    } else if (source_name != NULL) {
-        span = span_join(span, source_name->span);
+    if (pairs != NULL) {
+        span = span_join(span, pairs->span);
     }
 
     statement = make_node(state, MYLITE_SQL_AST_RENAME_TABLE_STATEMENT, span);
@@ -1082,9 +1079,64 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
         return NULL;
     }
 
-    mylite_sql_ast_node_append_child(statement, source_name);
-    mylite_sql_ast_node_append_child(statement, target_name);
+    mylite_sql_ast_node_append_child(statement, pairs);
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_pair_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *pair
+) {
+    struct mylite_sql_source_span span =
+        pair == NULL ? (struct mylite_sql_source_span){0} : pair->span;
+    struct mylite_sql_ast_node *list =
+        make_node(state, MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, pair);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_rename_table_pair(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *pair
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, pair);
+    if (pair != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, pair->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_pair(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *source_name,
+    struct mylite_sql_token to_token,
+    struct mylite_sql_ast_node *target_name
+) {
+    struct mylite_sql_source_span span =
+        source_name == NULL ? span_from_token(&to_token) : source_name->span;
+    struct mylite_sql_ast_node *pair = NULL;
+
+    if (target_name != NULL) {
+        span = span_join(span, target_name->span);
+    }
+
+    pair = make_node(state, MYLITE_SQL_AST_RENAME_TABLE_PAIR, span);
+    if (pair == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(pair, source_name);
+    mylite_sql_ast_node_append_child(pair, target_name);
+    return pair;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_statement(

@@ -491,8 +491,19 @@ show_like_clause_opt(A) ::= LIKE STRING(P). {
     A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
-rename_table_statement(A) ::= RENAME(R) TABLE table_name(S) TO table_name(T). {
-    A = mylite_sql_parser_make_rename_table_statement(state, R, S, T);
+rename_table_statement(A) ::= RENAME(R) TABLE rename_table_pair_list(L). {
+    A = mylite_sql_parser_make_rename_table_statement(state, R, L);
+}
+
+rename_table_pair_list(A) ::= rename_table_pair(P). {
+    A = mylite_sql_parser_make_rename_table_pair_list(state, P);
+}
+rename_table_pair_list(A) ::= rename_table_pair_list(L) COMMA rename_table_pair(P). {
+    A = mylite_sql_parser_append_rename_table_pair(state, L, P);
+}
+
+rename_table_pair(A) ::= table_name(S) TO(T) table_name(N). {
+    A = mylite_sql_parser_make_rename_table_pair(state, S, T, N);
 }
 
 alter_table_rename_statement(A) ::=

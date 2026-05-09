@@ -265,7 +265,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token rename_token,
+    struct mylite_sql_ast_node *pairs
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_pair_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *pair
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_rename_table_pair(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *pair
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_rename_table_pair(
+    struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *source_name,
+    struct mylite_sql_token to_token,
     struct mylite_sql_ast_node *target_name
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_rename_statement(

@@ -115,6 +115,11 @@ struct planned_rename_table {
     struct table_name_resolution target;
 };
 
+struct planned_rename_table_statement {
+    struct planned_rename_table *pairs;
+    size_t pair_count;
+};
+
 struct planned_alter_table_add_column {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -772,14 +777,20 @@ static int execute_truncate_from_plan(
     mylite_result *result
 );
 
-static int plan_rename_table(
+static int plan_rename_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    struct planned_rename_table *out_plan
+    struct planned_rename_table_statement *out_plan
 );
-static int rename_table_from_plan(
+static int plan_rename_table_pair(
     struct mylite_db *database,
-    const struct planned_rename_table *plan
+    const struct mylite_sql_ast_node *pair_node,
+    struct planned_rename_table *out_pair
+);
+static void planned_rename_table_statement_deinit(struct planned_rename_table_statement *plan);
+static int rename_table_statement_from_plan(
+    struct mylite_db *database,
+    const struct planned_rename_table_statement *plan
 );
 static int plan_alter_table_rename(
     struct mylite_db *database,
@@ -879,6 +890,13 @@ static void make_modify_target_descriptor(
 );
 static int rename_table_from_plan_with_policy(
     struct mylite_db *database,
+    const struct planned_rename_table *plan,
+    bool allow_same_object_noop,
+    const char *unsupported_object_message
+);
+static int rename_table_pair_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
     const struct planned_rename_table *plan,
     bool allow_same_object_noop,
     const char *unsupported_object_message
@@ -2073,6 +2091,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_TABLE_NAME_LIST:
+    case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
+    case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -2680,7 +2700,7 @@ static int execute_rename_table_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    struct planned_rename_table plan = {0};
+    struct planned_rename_table_statement plan = {0};
     mylite_result *result = NULL;
     int rc = mylite_result_create(&result);
 
@@ -2689,10 +2709,11 @@ static int execute_rename_table_statement(
         return rc;
     }
 
-    rc = plan_rename_table(database, statement, &plan);
+    rc = plan_rename_table_statement(database, statement, &plan);
     if (rc == MYLITE_OK) {
-        rc = rename_table_from_plan(database, &plan);
+        rc = rename_table_statement_from_plan(database, &plan);
     }
+    planned_rename_table_statement_deinit(&plan);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -4839,6 +4860,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CREATE_SCHEMA_IF_NOT_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_DROP_SCHEMA_IF_EXISTS_CLAUSE:
     case MYLITE_SQL_AST_TABLE_NAME_LIST:
+    case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
+    case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -5695,40 +5718,116 @@ static int execute_truncate_from_plan(
     return MYLITE_OK;
 }
 
-static int plan_rename_table(
+static int plan_rename_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    struct planned_rename_table *out_plan
+    struct planned_rename_table_statement *out_plan
+) {
+    const struct mylite_sql_ast_node *pair_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *pair_node = NULL;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_rename_table_statement){0};
+    if (pair_list == NULL || pair_list->kind != MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    out_plan->pair_count = mylite_sql_ast_node_child_count(pair_list);
+    if (out_plan->pair_count == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (out_plan->pair_count > SIZE_MAX / sizeof(*out_plan->pairs)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_plan->pairs = calloc(out_plan->pair_count, sizeof(*out_plan->pairs));
+    if (out_plan->pairs == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    pair_node = child_at(pair_list, 0U);
+    for (size_t pair_index = 0U; rc == MYLITE_OK && pair_index < out_plan->pair_count;
+         ++pair_index) {
+        rc = plan_rename_table_pair(database, pair_node, &out_plan->pairs[pair_index]);
+        if (pair_node != NULL) {
+            pair_node = pair_node->next_sibling;
+        }
+    }
+    if (rc != MYLITE_OK) {
+        planned_rename_table_statement_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static int plan_rename_table_pair(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *pair_node,
+    struct planned_rename_table *out_pair
 ) {
     int rc = MYLITE_OK;
 
-    *out_plan = (struct planned_rename_table){0};
-    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->source);
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->source.table_name);
+    *out_pair = (struct planned_rename_table){0};
+    if (pair_node == NULL || pair_node->kind != MYLITE_SQL_AST_RENAME_TABLE_PAIR) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_table_name(database, child_at(pair_node, 0U), &out_pair->source);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_pair->source.table_name)) {
+        set_reserved_name_error(database, "table", out_pair->source.table_name);
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
-        rc = resolve_table_name(database, child_at(statement, 1U), &out_plan->target);
+        rc = resolve_table_name(database, child_at(pair_node, 1U), &out_pair->target);
     }
-    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
-        set_reserved_name_error(database, "table", out_plan->target.table_name);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_pair->target.table_name)) {
+        set_reserved_name_error(database, "table", out_pair->target.table_name);
         rc = MYLITE_ERROR;
     }
 
     return rc;
 }
 
-static int rename_table_from_plan(
+static void planned_rename_table_statement_deinit(struct planned_rename_table_statement *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    free(plan->pairs);
+    *plan = (struct planned_rename_table_statement){0};
+}
+
+static int rename_table_statement_from_plan(
     struct mylite_db *database,
-    const struct planned_rename_table *plan
+    const struct planned_rename_table_statement *plan
 ) {
-    return rename_table_from_plan_with_policy(
-        database,
-        plan,
-        false,
-        "RENAME TABLE supports only persistent base tables"
-    );
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = mylite_catalog_begin_mutation(database, &mutation);
+
+    for (size_t pair_index = 0U; rc == MYLITE_OK && pair_index < plan->pair_count; ++pair_index) {
+        rc = rename_table_pair_in_mutation(
+            database,
+            &mutation,
+            &plan->pairs[pair_index],
+            false,
+            "RENAME TABLE supports only persistent base tables"
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to rename table descriptor");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
 }
 
 static int plan_alter_table_rename(
@@ -6704,9 +6803,67 @@ static int rename_table_from_plan_with_policy(
     bool allow_same_object_noop,
     const char *unsupported_object_message
 ) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    struct mylite_catalog_table_descriptor source = {0};
+    int rc = MYLITE_OK;
+
+    if (allow_same_object_noop) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            plan->source.schema.schema_id,
+            plan->source.table_name,
+            &source
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                plan->source.schema.name,
+                plan->source.table_name
+            );
+            return MYLITE_ERROR;
+        }
+        if (source.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+            set_unsupported_error(database, unsupported_object_message);
+            return MYLITE_ERROR;
+        }
+        if (source.schema_id == plan->target.schema.schema_id &&
+            text_equals_ascii_case_insensitive(source.name, plan->target.table_name)) {
+            return MYLITE_OK;
+        }
+    }
+
+    rc = mylite_catalog_begin_mutation(database, &mutation);
+    if (rc == MYLITE_OK) {
+        rc = rename_table_pair_in_mutation(
+            database,
+            &mutation,
+            plan,
+            allow_same_object_noop,
+            unsupported_object_message
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to rename table descriptor");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int rename_table_pair_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    const struct planned_rename_table *plan,
+    bool allow_same_object_noop,
+    const char *unsupported_object_message
+) {
     struct mylite_catalog_table_descriptor source = {0};
     struct mylite_catalog_table_descriptor target = {0};
-    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    bool found = false;
     int rc = mylite_catalog_read_table_by_name(
         database,
         plan->source.schema.schema_id,
@@ -6727,38 +6884,30 @@ static int rename_table_from_plan_with_policy(
         return MYLITE_OK;
     }
 
-    rc = mylite_catalog_read_table_by_name(
+    rc = mylite_catalog_try_read_table_by_name(
         database,
         plan->target.schema.schema_id,
         plan->target.table_name,
-        &target
+        &target,
+        &found
     );
-    if (rc == MYLITE_OK) {
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read target table descriptor");
+        return rc;
+    }
+    if (found) {
         set_table_exists_error(database, plan->target.table_name);
         return MYLITE_ERROR;
     }
 
-    rc = mylite_catalog_begin_mutation(database, &mutation);
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_update_table_identity_in_mutation(
-            database,
-            &mutation,
-            source.table_id,
-            plan->target.schema.schema_id,
-            plan->target.table_name,
-            NULL
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_catalog_commit_mutation(database, &mutation);
-    }
-    if (rc != MYLITE_OK) {
-        set_internal_error_if_clear(database, rc, "failed to rename table descriptor");
-        mylite_catalog_rollback_mutation(database, &mutation);
-        return rc;
-    }
-
-    return MYLITE_OK;
+    return mylite_catalog_update_table_identity_in_mutation(
+        database,
+        mutation,
+        source.table_id,
+        plan->target.schema.schema_id,
+        plan->target.table_name,
+        NULL
+    );
 }
 
 static int plan_insert(

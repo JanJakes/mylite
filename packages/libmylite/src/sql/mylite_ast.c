@@ -395,6 +395,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "drop_schema_if_exists_clause";
     case MYLITE_SQL_AST_TABLE_NAME_LIST:
         return "table_name_list";
+    case MYLITE_SQL_AST_RENAME_TABLE_PAIR:
+        return "rename_table_pair";
+    case MYLITE_SQL_AST_RENAME_TABLE_PAIR_LIST:
+        return "rename_table_pair_list";
     }
 
     return "unknown";

@@ -27,7 +27,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `BETWEEN ... AND ...` | 🟡 | Limited descriptor-backed `WHERE` range predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and two decimal integer or `TRUE`/`FALSE` bounds; no expression operands, string/temporal ranges, row ranges, or full expression-level operator support |
 | `BINARY` | ❌ | Cast a string to a binary string |
 | `CASE` | ❌ | Case operator |
-| `DIV` | ❌ | Integer division |
+| `DIV` | 🟡 | Specified for upcoming limited no-source/`DUAL` signed-64 scalar integer division projection; not implemented yet, and no table-backed expression support |
 | `EXISTS()` | ❌ | Whether the result of a query contains any rows |
 | `IN()` | 🟡 | Limited descriptor-backed `WHERE` membership predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and a nonempty list of decimal integer, `TRUE`/`FALSE`, or `NULL` values; no expression operands, subqueries, row constructors, strings, temporals, or full expression-level operator support |
 | `IS` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates for `IS NULL`, `IS TRUE`, `IS FALSE`, and `IS UNKNOWN` only; no literal-left or general expression truth tests |

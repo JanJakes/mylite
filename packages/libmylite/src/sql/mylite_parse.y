@@ -180,6 +180,9 @@ statement(A) ::= alter_table_force_statement(B). {
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
+statement(A) ::= insert_select_statement(B). {
+    A = B;
+}
 statement(A) ::= replace_values_statement(B). {
     A = B;
 }
@@ -712,6 +715,15 @@ table_rename_connector_opt(A) ::= AS. {
 insert_values_statement(A) ::=
     INSERT(I) INTO table_name(T) insert_column_list_opt(C) VALUES insert_row_list(R). {
     A = mylite_sql_parser_make_insert_statement(state, I, T, C, R);
+}
+
+insert_select_statement(A) ::=
+    INSERT(I) INTO table_name(T) insert_column_list_opt(C) select_statement(S). {
+    A = mylite_sql_parser_make_insert_select_statement(state, I, T, C, S);
+}
+insert_select_statement(A) ::=
+    INSERT(I) table_name(T) insert_column_list_opt(C) select_statement(S). {
+    A = mylite_sql_parser_make_insert_select_statement(state, I, T, C, S);
 }
 
 replace_values_statement(A) ::=

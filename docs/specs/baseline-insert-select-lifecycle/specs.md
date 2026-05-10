@@ -126,12 +126,13 @@ The implementation must add:
 - MyLite-owned validation for selected `NULL` into `NOT NULL` target columns;
 - MyLite-owned integer range validation for each selected source value against
   the target descriptor before physical insertion;
-- generated SQLite physical `INSERT INTO ... SELECT ...` built only from
-  descriptors and stable physical table names;
+- generated SQLite physical statements built only from descriptors and stable
+  physical table names;
 - prepared-statement parameter binding for source predicates, limits, and
   inserted descriptor default integer values;
-- SQLite-side scan/filter/sort/limit/insert execution after validation, without
-  buffering the selected row set in MyLite memory;
+- SQLite-side scan/filter/sort/limit execution into an internal temporary
+  table, followed by MyLite streaming validation and SQLite-side insertion from
+  that same temporary table, without buffering the selected row set in C memory;
 - affected-row and warning-count behavior matching MySQL for supported
   in-range statements;
 - tests and MySQL 8.4.9 expectation artifacts for supported behavior and
@@ -148,7 +149,7 @@ This feature must not implement:
   unions, intersections, excepts, joins, grouping, `HAVING`, windows, locking
   clauses, or arbitrary SQLite pass-through;
 - target aliases, table-qualified target column-list names, duplicate target
-  tables, temporary tables, views, or unsupported object kinds;
+  tables, user-visible temporary tables, views, or unsupported object kinds;
 - source literal projection, `FROM DUAL` source projection, expression
   projection, arithmetic, functions, variables, parameters, subqueries,
   string/decimal/float/hex/bit/date/time/json selected values, or general
@@ -172,16 +173,18 @@ This feature must not implement:
   catalog descriptors; rejects unsupported shapes; and builds a
   descriptor-driven physical plan.
 - MyLite runtime owns conversion and validation semantics for target
-  nullability and integer range. Validation is streaming: MyLite may step a
-  generated SQLite validation query to the first invalid row, but it must not
-  copy the full selected row set into a C-side buffer.
+  nullability and integer range. Validation is streaming over an internal
+  SQLite temporary table that materializes the selected source values once, so
+  validation and insertion consume the same selected row set even when `LIMIT`
+  is unordered or `ORDER BY` has ties. MyLite must not copy the full selected
+  row set into a C-side buffer.
 - The catalog module owns `_mylite_catalog_*` rows, descriptor versions,
   catalog generation, and descriptor-cache invalidation. `INSERT ... SELECT`
   must not mutate catalog rows, descriptor versions, catalog generation, or
   `sqlite_schema_generation`.
 - SQLite owns physical b-tree row storage, source scans, filtering, sorting,
-  limiting, and the final physical insert. SQLite schema text and PRAGMA output
-  are not metadata authority.
+  limiting, internal temporary storage, and the final physical insert. SQLite
+  schema text and PRAGMA output are not metadata authority.
 - Storage/VFS owns the `.mylite` preamble and shifted SQLite payload boundary.
   Row writes occur only inside the shifted SQLite payload and must not touch
   byte range `[0, 4096)`.
@@ -318,15 +321,21 @@ patch is required.
 
 Planning creates:
 
-- a validation `SELECT` over the source physical table for selected target
-  columns, using the same `WHERE`, `ORDER BY`, and `LIMIT` as the source;
+- a `CREATE TEMP TABLE <internal_temp> AS SELECT ...` statement over the source
+  physical table, using the same `WHERE`, `ORDER BY`, and `LIMIT` as the
+  source and descriptor-generated aliases for selected values;
+- a validation `SELECT` over the internal temporary table for selected target
+  values;
 - a final `INSERT INTO <target_physical>(all descriptor columns) SELECT ...`
-  statement whose selected expressions are descriptor source columns, bound
-  integer default values, or `NULL`.
+  statement over the same internal temporary table, whose selected expressions
+  are temporary value columns, bound integer default values, or `NULL`;
+- a `DROP TABLE IF EXISTS temp.<internal_temp>` cleanup statement.
 
-Every SQLite identifier is quoted. Predicate values, limits, and descriptor
-integer defaults are bound parameters. User SQL literals are never interpolated
-into generated SQLite SQL.
+The internal temporary table name is generated from MyLite's reserved internal
+namespace and is never exposed through catalog descriptors. Every SQLite
+identifier is quoted. Predicate values, limits, and descriptor integer defaults
+are bound parameters. User SQL literals are never interpolated into generated
+SQLite SQL.
 
 The statement executes inside a transaction. If validation or physical
 insertion fails, the transaction rolls back and no target rows remain from the

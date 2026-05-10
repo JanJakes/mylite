@@ -63,6 +63,7 @@ static int test_select_distinct_clause(void);
 static int test_select_all_clause(void);
 static int test_select_table_alias_clause(void);
 static int test_select_item_alias_clause(void);
+static int test_insert_select_statement(void);
 static int test_delete_statement(void);
 static int test_update_statement(void);
 static int test_comments_are_skipped(void);
@@ -175,6 +176,7 @@ int main(void) {
     failures += test_select_all_clause();
     failures += test_select_table_alias_clause();
     failures += test_select_item_alias_clause();
+    failures += test_insert_select_statement();
     failures += test_delete_statement();
     failures += test_update_statement();
     failures += test_comments_are_skipped();
@@ -5782,6 +5784,59 @@ static int test_select_item_alias_clause(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_insert_select_statement(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, amount) "
+        "SELECT id, amount FROM app.source_lifecycle WHERE id >= 1 ORDER BY amount DESC LIMIT 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_SELECT_STATEMENT, "insert select statement");
+    failures += expect_child_count(statement, 3U, "insert select statement child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app.simple_lifecycle", "insert select target");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_IDENTIFIER_LIST,
+        "insert select target columns"
+    );
+    failures += expect_child_count(child_at(statement, 1U), 2U, "insert select target count");
+    failures +=
+        expect_node(child_at(statement, 2U), MYLITE_SQL_AST_SELECT_STATEMENT, "insert source");
+    failures += expect_node(
+        first_child_kind(child_at(statement, 2U), MYLITE_SQL_AST_ORDER_BY_CLAUSE),
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "insert select order clause"
+    );
+    failures += expect_node(
+        first_child_kind(child_at(statement, 2U), MYLITE_SQL_AST_LIMIT_CLAUSE),
+        MYLITE_SQL_AST_LIMIT_CLAUSE,
+        "insert select limit clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT simple_lifecycle SELECT * FROM source_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_SELECT_STATEMENT, "insert select no into");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "simple_lifecycle", "insert select target");
+    failures += expect_child_count(child_at(statement, 1U), 0U, "insert select implicit columns");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

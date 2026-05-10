@@ -44,6 +44,7 @@ static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_alter_table_default_charset_collation_statements(void);
 static int test_show_columns_introspection_statements(void);
 static int test_show_triggers_empty_introspection_statements(void);
 static int test_show_events_empty_introspection_statements(void);
@@ -152,6 +153,7 @@ int main(void) {
     failures += test_qualified_identifier_keyword_part();
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_alter_table_default_charset_collation_statements();
     failures += test_show_columns_introspection_statements();
     failures += test_show_triggers_empty_introspection_statements();
     failures += test_show_events_empty_introspection_statements();
@@ -3873,6 +3875,160 @@ static int test_table_lifecycle_statements(void) {
         "amount",
         "second projection"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_default_charset_collation_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_options = NULL;
+    const struct mylite_sql_ast_node *charset_option = NULL;
+    const struct mylite_sql_ast_node *collation_option = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle DEFAULT CHARSET=utf8mb4 "
+        "COLLATE='utf8mb4_0900_ai_ci';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_options = child_at(statement, 1U);
+    charset_option = child_at(table_options, 0U);
+    collation_option = child_at(table_options, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT,
+        "alter table default charset collation statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter charset collation child count");
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.simple_lifecycle",
+        "alter charset collation target"
+    );
+    failures += expect_node(
+        table_options,
+        MYLITE_SQL_AST_TABLE_OPTION_LIST,
+        "alter charset collation option list"
+    );
+    failures += expect_child_count(table_options, 2U, "alter charset collation option count");
+    failures +=
+        expect_node(charset_option, MYLITE_SQL_AST_TABLE_CHARSET_OPTION, "alter charset option");
+    failures += expect_span_text(child_at(charset_option, 0U), "utf8mb4", "alter charset name");
+    failures += expect_node(
+        collation_option,
+        MYLITE_SQL_AST_TABLE_COLLATION_OPTION,
+        "alter collation option"
+    );
+    failures += expect_literal(
+        child_at(collation_option, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "alter string collation"
+    );
+    failures += expect_span_text(
+        child_at(collation_option, 0U),
+        "'utf8mb4_0900_ai_ci'",
+        "alter collation name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle DEFAULT CHARACTER SET utf8mb4;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle DEFAULT CHARACTER SET=utf8mb4;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE simple_lifecycle CHARSET `utf8mb4`;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle DEFAULT COLLATE utf8mb4_0900_ai_ci;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle DEFAULT CHARSET=utf8mb4 CHARSET=utf8mb4;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_options = child_at(statement, 1U);
+    failures += expect_child_count(table_options, 2U, "duplicate alter charset options");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name DEFAULT CHARSET=DEFAULT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CHARACTER SET DEFAULT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name COLLATE=DEFAULT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name DEFAULT CHARACTER SET;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name DEFAULT CHARSET=utf8mb4, COLLATE=utf8mb4_0900_ai_ci;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name ENGINE=InnoDB;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name CONVERT TO CHARACTER SET utf8mb4;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE old_name FORCE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name ORDER BY id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ALGORITHM=INSTANT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name LOCK=DEFAULT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

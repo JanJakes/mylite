@@ -335,6 +335,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "set_character_set_statement";
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
         return "set_character_set_default_target";
+    case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
+        return "alter_table_default_charset_collation_statement";
     case MYLITE_SQL_AST_IDENTIFIER_LIST:
         return "identifier_list";
     case MYLITE_SQL_AST_INSERT_ROW_LIST:

@@ -381,6 +381,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_column_visibility
     struct mylite_sql_token visibility_token,
     enum mylite_sql_ast_column_visibility visibility
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_default_charset_collation_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *table_options
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token insert_token,

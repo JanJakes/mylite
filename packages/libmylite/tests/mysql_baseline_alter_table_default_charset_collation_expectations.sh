@@ -93,6 +93,7 @@ run_mysql \
      USE ${DATABASE};
      CREATE TABLE default_charset(id INT);
      CREATE TABLE default_character_set(id INT);
+     CREATE TABLE default_character_set_equal(id INT);
      CREATE TABLE character_set_equal(id INT);
      CREATE TABLE charset_no_default(id INT);
      CREATE TABLE collate_only(id INT);
@@ -105,6 +106,7 @@ run_mysql \
      INSERT INTO default_charset VALUES (1), (2);
      ALTER TABLE default_charset DEFAULT CHARSET=utf8mb4;
      ALTER TABLE default_character_set DEFAULT CHARACTER SET utf8mb4;
+     ALTER TABLE default_character_set_equal DEFAULT CHARACTER SET=utf8mb4;
      ALTER TABLE character_set_equal CHARACTER SET=utf8mb4;
      ALTER TABLE charset_no_default CHARSET utf8mb4;
      ALTER TABLE collate_only COLLATE=utf8mb4_0900_ai_ci;
@@ -126,6 +128,10 @@ expected_default_charset="CREATE TABLE \`default_charset\` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
 
 expected_default_character_set="CREATE TABLE \`default_character_set\` (
+  \`id\` int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+
+expected_default_character_set_equal="CREATE TABLE \`default_character_set_equal\` (
   \`id\` int DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
 
@@ -163,6 +169,10 @@ expected_duplicate_same="CREATE TABLE \`duplicate_same\` (
 
 expect_show_create "default charset" "default_charset" "$expected_default_charset"
 expect_show_create "default character set" "default_character_set" "$expected_default_character_set"
+expect_show_create \
+    "default character set equal" \
+    "default_character_set_equal" \
+    "$expected_default_character_set_equal"
 expect_show_create "character set equal" "character_set_equal" "$expected_character_set_equal"
 expect_show_create "charset no default" "charset_no_default" "$expected_charset_no_default"
 expect_show_create "collate only" "collate_only" "$expected_collate_only"

@@ -706,6 +706,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_table_charset_collation_surface_test)
 
+  add_executable(mylite_runtime_alter_table_default_charset_collation_test
+    tests/runtime_alter_table_default_charset_collation_test.c
+  )
+  target_link_libraries(mylite_runtime_alter_table_default_charset_collation_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_alter_table_default_charset_collation_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_alter_table_default_charset_collation_test)
+
   add_executable(mylite_runtime_explain_table_introspection_test
     tests/runtime_explain_table_introspection_test.c
   )
@@ -1220,6 +1231,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.table_charset_collation_surface
     COMMAND mylite_runtime_table_charset_collation_surface_test
+  )
+  add_test(
+    NAME libmylite.runtime.alter_table_default_charset_collation
+    COMMAND mylite_runtime_alter_table_default_charset_collation_test
   )
   add_test(
     NAME libmylite.runtime.explain_table_introspection

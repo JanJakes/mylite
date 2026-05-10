@@ -210,6 +210,11 @@ struct planned_alter_table_column_visibility {
     bool is_visible;
 };
 
+struct planned_alter_table_default_charset_collation {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+};
+
 struct planned_truncate_table {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -652,6 +657,11 @@ static int execute_alter_table_column_visibility_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_default_charset_collation_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_insert_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -841,6 +851,10 @@ static int validate_create_table_collation_option(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *collation_option
 );
+static int validate_alter_table_default_charset_collation_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options
+);
 static int copy_table_option_name_text(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *option_name_node,
@@ -1019,6 +1033,11 @@ static int plan_alter_table_column_visibility(
 static int alter_table_column_visibility_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_column_visibility *plan
+);
+static int plan_alter_table_default_charset_collation(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_default_charset_collation *out_plan
 );
 static void planned_column_from_catalog_descriptor(
     const struct mylite_catalog_column_descriptor *descriptor,
@@ -2460,6 +2479,12 @@ static int execute_parsed_statement(
         return execute_alter_table_drop_default_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
         return execute_alter_table_column_visibility_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
+        return execute_alter_table_default_charset_collation_statement(
+            database,
+            statement,
+            out_result
+        );
     case MYLITE_SQL_AST_INSERT_STATEMENT:
         return execute_insert_statement(database, statement, out_result);
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
@@ -3551,6 +3576,30 @@ static int execute_alter_table_column_visibility_statement(
     if (rc == MYLITE_OK) {
         rc = alter_table_column_visibility_from_plan(database, &plan);
     }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_default_charset_collation_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_default_charset_collation plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_default_charset_collation(database, statement, &plan);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -5603,6 +5652,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_DEFAULT_CHARSET_COLLATION_STATEMENT:
         return 0;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -5822,6 +5872,38 @@ static int validate_create_table_options(
     while (table_option != NULL) {
         int rc = validate_create_table_option(database, table_option);
 
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        table_option = table_option->next_sibling;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_alter_table_default_charset_collation_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *table_options
+) {
+    const struct mylite_sql_ast_node *table_option = NULL;
+
+    if (table_options == NULL || table_options->kind != MYLITE_SQL_AST_TABLE_OPTION_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    table_option = child_at(table_options, 0U);
+    while (table_option != NULL) {
+        int rc = MYLITE_OK;
+
+        if (table_option->kind == MYLITE_SQL_AST_TABLE_CHARSET_OPTION) {
+            rc = validate_create_table_charset_option(database, table_option);
+        } else if (table_option->kind == MYLITE_SQL_AST_TABLE_COLLATION_OPTION) {
+            rc = validate_create_table_collation_option(database, table_option);
+        } else {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
         if (rc != MYLITE_OK) {
             return rc;
         }
@@ -7566,6 +7648,52 @@ static int alter_table_column_visibility_from_plan(
     }
 
     return MYLITE_OK;
+}
+
+static int plan_alter_table_default_charset_collation(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_default_charset_collation *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_default_charset_collation){0};
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE DEFAULT CHARSET/COLLATE supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_alter_table_default_charset_collation_options(
+            database,
+            child_at(statement, 1U)
+        );
+    }
+
+    return rc;
 }
 
 static void planned_column_from_catalog_descriptor(

@@ -165,6 +165,9 @@ statement(A) ::= alter_table_drop_default_statement(B). {
 statement(A) ::= alter_table_column_visibility_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_default_charset_collation_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -620,6 +623,35 @@ alter_table_column_visibility_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ALTER column_keyword_opt identifier(C) SET INVISIBLE(V). {
     A = mylite_sql_parser_make_alter_table_column_visibility_statement(
         state, A1, T, C, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE);
+}
+
+alter_table_default_charset_collation_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) alter_table_default_charset_collation_option_list(O). {
+    A = mylite_sql_parser_make_alter_table_default_charset_collation_statement(
+        state, A1, T, O);
+}
+
+alter_table_default_charset_collation_option_list(A) ::=
+    alter_table_default_charset_collation_option(B). {
+    A = mylite_sql_parser_make_table_option_list(state, B);
+}
+alter_table_default_charset_collation_option_list(A) ::=
+    alter_table_default_charset_collation_option_list(B)
+    alter_table_default_charset_collation_option(C). {
+    A = mylite_sql_parser_append_table_option(state, B, C);
+}
+
+alter_table_default_charset_collation_option(A) ::=
+    default_opt CHARSET(C) equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_charset_option(state, C, N);
+}
+alter_table_default_charset_collation_option(A) ::=
+    default_opt CHARACTER(C) SET equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_charset_option(state, C, N);
+}
+alter_table_default_charset_collation_option(A) ::=
+    default_opt COLLATE(C) equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_collation_option(state, C, N);
 }
 
 column_keyword_opt(A) ::= . {

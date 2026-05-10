@@ -1239,6 +1239,15 @@ predicate_atom(A) ::= qualified_identifier(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
 }
+predicate_atom(A) ::= qualified_identifier(C) BETWEEN(B) predicate_integer_value(L) AND
+        predicate_integer_value(U). {
+    A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) BETWEEN(B) predicate_integer_value(L) AND
+        predicate_integer_value(U). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
+}
 
 predicate_integer_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);

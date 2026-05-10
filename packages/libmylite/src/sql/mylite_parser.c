@@ -2224,6 +2224,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_between_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token between_token,
+    struct mylite_sql_ast_node *lower,
+    struct mylite_sql_ast_node *upper
+) {
+    struct mylite_sql_source_span span =
+        left == NULL ? span_from_token(&between_token) : left->span;
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    if (upper != NULL) {
+        span = span_join(span, upper->span);
+    }
+
+    predicate = make_node(state, MYLITE_SQL_AST_BETWEEN_PREDICATE, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(predicate, left);
+    mylite_sql_ast_node_append_child(predicate, lower);
+    mylite_sql_ast_node_append_child(predicate, upper);
+    return predicate;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_and_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,
@@ -3070,6 +3096,7 @@ static bool map_keyword_token(
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"AND", MYLITE_SQL_PARSE_AND},
+        {"BETWEEN", MYLITE_SQL_PARSE_BETWEEN},
         {"OR", MYLITE_SQL_PARSE_OR},
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"HAVING", MYLITE_SQL_PARSE_HAVING},

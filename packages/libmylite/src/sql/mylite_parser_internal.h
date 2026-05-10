@@ -593,6 +593,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
     enum mylite_sql_ast_operator operator_kind,
     struct mylite_sql_token null_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_between_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token between_token,
+    struct mylite_sql_ast_node *lower,
+    struct mylite_sql_ast_node *upper
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_and_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,

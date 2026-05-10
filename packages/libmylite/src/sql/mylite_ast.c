@@ -388,6 +388,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "or_predicate";
     case MYLITE_SQL_AST_NOT_PREDICATE:
         return "not_predicate";
+    case MYLITE_SQL_AST_BETWEEN_PREDICATE:
+        return "between_predicate";
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
         return "order_by_clause";
     case MYLITE_SQL_AST_ORDER_DIRECTION:

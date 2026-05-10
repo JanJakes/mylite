@@ -5633,6 +5633,103 @@ static int test_select_where_predicates(void) {
         mylite_sql_parse_result_deinit(&result);
     }
 
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id BETWEEN -2 AND 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_BETWEEN_PREDICATE,
+        "between predicate"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        "id",
+        "between predicate column"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U),
+        "-2",
+        "between lower bound"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 2U),
+        "1",
+        "between upper bound"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id NOT BETWEEN -2 AND 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not between predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_BETWEEN_PREDICATE,
+        "not between child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE NOT id BETWEEN -2 AND 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "prefix not between predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_BETWEEN_PREDICATE,
+        "prefix not between child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id BETWEEN -2 AND 1 AND nn = 5 OR id = 3;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OR_PREDICATE,
+        "between and or precedence root"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "between binds before later and"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_BETWEEN_PREDICATE,
+        "between precedence child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id BETWEEN NULL AND 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id BETWEEN nn AND 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT * FROM simple_lifecycle WHERE (id = +1);", MYLITE_SQL_PARSE_OK, &result);
     failures += expect_node(

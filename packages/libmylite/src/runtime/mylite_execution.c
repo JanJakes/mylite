@@ -317,6 +317,7 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_AND = 3,
     PLANNED_SELECT_PREDICATE_OR = 4,
     PLANNED_SELECT_PREDICATE_NOT = 5,
+    PLANNED_SELECT_PREDICATE_BETWEEN = 6,
 };
 
 struct planned_select_predicate_node {
@@ -324,6 +325,7 @@ struct planned_select_predicate_node {
     enum mylite_sql_ast_operator operator_kind;
     struct mylite_catalog_column_descriptor column;
     struct planned_value value;
+    struct planned_value upper_value;
     size_t left_index;
     size_t right_index;
 };
@@ -2508,6 +2510,15 @@ static int plan_is_null_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static int plan_between_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
 static int append_planned_select_predicate_node(
     struct mylite_db *database,
     struct planned_select_predicate *predicate,
@@ -2939,6 +2950,10 @@ static int append_select_comparison_predicate_term_sql(
 static int append_select_is_null_predicate_term_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate_node *node
+);
+static int append_select_between_predicate_term_sql(
+    struct dynamic_string *string,
+    size_t *next_parameter
 );
 static int append_predicate_sql_work_node(
     struct predicate_sql_work_item **items,
@@ -3514,6 +3529,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_AND_PREDICATE:
     case MYLITE_SQL_AST_OR_PREDICATE:
     case MYLITE_SQL_AST_NOT_PREDICATE:
+    case MYLITE_SQL_AST_BETWEEN_PREDICATE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
@@ -6936,6 +6952,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_AND_PREDICATE:
     case MYLITE_SQL_AST_OR_PREDICATE:
     case MYLITE_SQL_AST_NOT_PREDICATE:
+    case MYLITE_SQL_AST_BETWEEN_PREDICATE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
@@ -17523,7 +17540,8 @@ static int plan_select_predicate_ast_node(
         return append_select_predicate_logical_work(database, current, items, item_count);
     }
     if (current != NULL && (current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
-                            current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE)) {
+                            current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE ||
+                            current->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE)) {
         return plan_select_predicate_leaf_node(
             database,
             current,
@@ -17647,8 +17665,18 @@ static int plan_select_predicate_leaf_node(
             out_predicate,
             &node_index
         );
-    } else {
+    } else if (predicate_node->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
         rc = plan_is_null_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else {
+        rc = plan_between_predicate(
             database,
             predicate_node,
             source_context,
@@ -17765,6 +17793,52 @@ static int plan_is_null_predicate(
         &node.column
     );
 
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int plan_between_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_BETWEEN,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = resolve_predicate_column(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node.column
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = convert_predicate_integer_literal(
+            database,
+            child_at(predicate_node, 1U),
+            &node.column,
+            &node.value
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = convert_predicate_integer_literal(
+            database,
+            child_at(predicate_node, 2U),
+            &node.column,
+            &node.upper_value
+        );
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -21022,6 +21096,10 @@ static int append_select_predicate_node_sql(
         rc = append_select_comparison_predicate_term_sql(string, node, next_parameter);
     } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
         rc = append_select_is_null_predicate_term_sql(string, node);
+    } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
+        rc = append_select_between_predicate_term_sql(string, next_parameter);
+    } else if (rc == MYLITE_OK) {
+        rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
@@ -21062,6 +21140,31 @@ static int append_select_is_null_predicate_term_sql(
     }
 
     return dynamic_string_append(string, " IS NULL");
+}
+
+static int append_select_between_predicate_term_sql(
+    struct dynamic_string *string,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append(string, " BETWEEN ");
+
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " AND ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+
+    return rc;
 }
 
 static int append_predicate_sql_work_node(
@@ -21601,12 +21704,19 @@ static int bind_select_predicate_parameters(
             rc = append_predicate_sql_work_node(&items, &item_count, node->left_index);
             continue;
         }
-        if (node->kind != PLANNED_SELECT_PREDICATE_COMPARISON) {
+        if (node->kind != PLANNED_SELECT_PREDICATE_COMPARISON &&
+            node->kind != PLANNED_SELECT_PREDICATE_BETWEEN) {
             continue;
         }
         rc = bind_int64_parameter(statement, *parameter_index, node->value.integer);
         if (rc == MYLITE_OK) {
             ++(*parameter_index);
+        }
+        if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
+            rc = bind_int64_parameter(statement, *parameter_index, node->upper_value.integer);
+            if (rc == MYLITE_OK) {
+                ++(*parameter_index);
+            }
         }
     }
 

@@ -190,6 +190,45 @@ static int test_where_and_predicates(void) {
     static const char *const not_delete_rows[] = {"1", "2", "3"};
     static const char *const not_delete_limited_rows[] = {"1", "3", "4"};
     static const char *const not_persisted_rows[] = {"44"};
+    static const char *const between_rows[] = {"1", "2", "4"};
+    static const char *const between_nullable_rows[] = {"2", "4"};
+    static const char *const between_not_rows[] = {"3"};
+    static const char *const between_precedence_rows[] = {"1", "3"};
+    static const char *const between_bool_rows[] = {"2", "4"};
+    static const char *const between_unsigned_rows[] = {"1", "2"};
+    static const char *const between_all_rows[] = {"1", "2", "3", "4"};
+    static const char *const between_distinct_rows[] = {NULL, "9"};
+    static const char *const between_count_row[] = {"3"};
+    static const char *const between_max_row[] = {"1"};
+    static const char *const between_grouped_rows[] = {"1", "2", "2", "1"};
+    static const char *const between_copy_rows[] = {
+        "1",
+        "-2",
+        NULL,
+        "2",
+        "1",
+        "9",
+        "4",
+        "0",
+        "9",
+    };
+    static const char *const between_inserted_rows[] = {"1", "-2", "2", "1", "4", "0"};
+    static const char *const between_replaced_rows[] = {"1", "-2", "2", "1", "4", "0"};
+    static const char *const between_update_rows[] = {"1", "11", "2", "11", "3", NULL, "4", "11"};
+    static const char *const between_update_limited_rows[] = {
+        "1",
+        NULL,
+        "2",
+        "9",
+        "3",
+        NULL,
+        "4",
+        NULL,
+    };
+    static const char *const between_delete_rows[] = {"3"};
+    static const char *const between_delete_limited_rows[] = {"1", "2", "3"};
+    static const char *const between_warning_rows[] = {"1"};
+    static const char *const between_persisted_rows[] = {"7", "7", "7"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -429,6 +468,178 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN -2 AND 1 ORDER BY id",
+            .values = between_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "inclusive between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN 1 AND -2 ORDER BY id",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "reversed between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n BETWEEN 1 AND 9 ORDER BY id",
+            .values = between_nullable_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "nullable between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n NOT BETWEEN 1 AND 9 ORDER BY id",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not between unknown predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i NOT BETWEEN -2 AND 1 ORDER BY id",
+            .values = between_not_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT i BETWEEN -2 AND 1 ORDER BY id",
+            .values = between_not_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "prefix not between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN -2 AND 1 AND nn = 5 OR id = 3 "
+                   "ORDER BY id",
+            .values = between_precedence_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "between and or precedence predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN FALSE AND TRUE ORDER BY id",
+            .values = between_bool_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "boolean bound between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE iu BETWEEN 0 AND 2 ORDER BY id",
+            .values = between_unsigned_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "unsigned int between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE iu BETWEEN 0 AND 4294967295 ORDER BY id",
+            .values = between_all_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "unsigned int boundary between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE b BETWEEN -9223372036854775808 AND 8 "
+                   "ORDER BY id",
+            .values = between_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "bigint boundary between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE bu BETWEEN 0 AND 9223372036854775807 "
+                   "ORDER BY id",
+            .values = between_all_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "unsigned bigint boundary between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN -2 AND 1 && nn = 5",
+            .values = between_warning_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .affected_rows = 0,
+            .context = "deprecated symbolic and between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SHOW WARNINGS",
+            .values = warning_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "deprecated symbolic and between warning",
+        }
+    );
+
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT DISTINCT n FROM numbers WHERE n IS NOT NULL AND tie = 1",
             .values = distinct_row,
             .column_count = 1U,
@@ -575,6 +786,56 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT DISTINCT n FROM numbers WHERE i BETWEEN -2 AND 1 ORDER BY n",
+            .values = between_distinct_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "distinct source between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE i BETWEEN -2 AND 1",
+            .values = between_count_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "count source between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT MAX(i) FROM numbers WHERE i BETWEEN -2 AND 1",
+            .values = between_max_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "aggregate source between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT tie, COUNT(*) FROM numbers WHERE i BETWEEN -2 AND 1 GROUP BY tie "
+                   "ORDER BY tie",
+            .values = between_grouped_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped aggregate source between predicate",
+        }
+    );
+
     failures += execute_ok(
         database,
         "CREATE TABLE copy_numbers SELECT id, i, n FROM numbers WHERE i = 1 AND n IS NOT NULL",
@@ -644,6 +905,31 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "create table select not copied rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE copy_between_numbers SELECT id, i, n FROM numbers WHERE i BETWEEN -2 AND 1",
+        &result
+    );
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "create table select between affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i, n FROM copy_between_numbers ORDER BY id",
+            .values = between_copy_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "create table select between copied rows",
         }
     );
 
@@ -728,6 +1014,36 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += execute_ok(
+        database,
+        "CREATE TABLE between_inserted_numbers (id INT NOT NULL, i INT)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO between_inserted_numbers SELECT id, i FROM numbers "
+        "WHERE i BETWEEN -2 AND 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "insert select between affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM between_inserted_numbers ORDER BY id",
+            .values = between_inserted_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "insert select source between predicate",
+        }
+    );
+
     failures +=
         execute_ok(database, "CREATE TABLE replaced_numbers (id INT NOT NULL, i INT)", &result);
     mylite_result_free(result);
@@ -803,6 +1119,39 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "replace select source not predicate",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE between_replaced_numbers (id INT NOT NULL, i INT)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "REPLACE INTO between_replaced_numbers SELECT id, i FROM numbers "
+        "WHERE i BETWEEN -2 AND 1",
+        &result
+    );
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "replace select between affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM between_replaced_numbers ORDER BY id",
+            .values = between_replaced_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "replace select source between predicate",
         }
     );
 
@@ -946,6 +1295,47 @@ static int test_where_and_predicates(void) {
     );
 
     failures += reset_numbers(database);
+    failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE i BETWEEN -2 AND 1", &result);
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "update between affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = between_update_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update between row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "UPDATE numbers SET n = NULL WHERE i BETWEEN -2 AND 1 ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "update between limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = between_update_limited_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update between limit row state",
+        }
+    );
+
+    failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i > 1 AND n IS NULL", &result);
     failures += expect_int64(mylite_result_affected_rows(result), 1, "delete and affected rows");
     mylite_result_free(result);
@@ -1066,6 +1456,47 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += reset_numbers(database);
+    failures += execute_ok(database, "DELETE FROM numbers WHERE i BETWEEN -2 AND 1", &result);
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "delete between affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = between_delete_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete between row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "DELETE FROM numbers WHERE i BETWEEN -2 AND 1 ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "delete between limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = between_delete_limited_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete between limit row state",
+        }
+    );
+
     failures += execute_error(
         database,
         "SELECT id FROM numbers WHERE id = 1 AND missing = 1",
@@ -1131,6 +1562,87 @@ static int test_where_and_predicates(void) {
     );
     failures += execute_error(
         database,
+        "SELECT id FROM numbers WHERE missing BETWEEN 1 AND 2",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i BETWEEN -2 AND 2147483648",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' in WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE iu BETWEEN -1 AND 2",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'iu' in WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i BETWEEN NULL AND 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i BETWEEN nn AND 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i BETWEEN '1' AND 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE 1 BETWEEN 1 AND 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM numbers WHERE numbers.i BETWEEN -2 AND 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE supports only unqualified predicate columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE numbers SET n = 1 WHERE numbers.i BETWEEN -2 AND 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE supports only unqualified predicate columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT id FROM numbers WHERE ! (id = 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -1169,6 +1681,10 @@ static int test_where_and_predicates(void) {
         "UPDATE numbers SET n = 44 WHERE NOT (id = 1 OR id = 2 OR id = 4)",
         &result
     );
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "UPDATE numbers SET tie = 7 WHERE i BETWEEN -2 AND 1", &result);
     mylite_result_free(result);
     result = NULL;
 
@@ -1221,6 +1737,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "reopened not updated rows",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT tie FROM numbers WHERE i BETWEEN -2 AND 1 ORDER BY id",
+            .values = between_persisted_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "reopened between updated rows",
         }
     );
 
@@ -1304,6 +1832,30 @@ static int test_independent_where_and_handles(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "second independent handle not predicate",
+        }
+    );
+    failures += expect_result(
+        first,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE i BETWEEN 1 AND 1",
+            .values = first_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "first independent handle between predicate",
+        }
+    );
+    failures += expect_result(
+        second,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE i BETWEEN 1 AND 1",
+            .values = second_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "second independent handle between predicate",
         }
     );
 

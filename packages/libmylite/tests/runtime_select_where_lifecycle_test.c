@@ -648,7 +648,7 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i BETWEEN 1 AND 2",
+        "SELECT i FROM numbers WHERE i BETWEEN NULL AND 2",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

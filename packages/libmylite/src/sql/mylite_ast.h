@@ -142,6 +142,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_AND_PREDICATE = 133,
     MYLITE_SQL_AST_OR_PREDICATE = 134,
     MYLITE_SQL_AST_NOT_PREDICATE = 135,
+    MYLITE_SQL_AST_BETWEEN_PREDICATE = 136,
 };
 
 enum mylite_sql_ast_literal_kind {

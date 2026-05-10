@@ -32,7 +32,13 @@ function expect_same(mixed $expected, mixed $actual, string $context): void
 
 function open_mylite_mysqli(): mysqli
 {
-    $mysqli = new mysqli('mylite::memory:');
+    $path = tempnam(sys_get_temp_dir(), 'mylite_php_ext_');
+    if ($path === false) {
+        throw new RuntimeException('create temporary database path');
+    }
+    unlink($path);
+
+    $mysqli = new mysqli('localhost', '', '', null, 0, $path);
     expect_same(0, $mysqli->connect_errno, 'connect errno');
     expect_true($mysqli->query('CREATE DATABASE app'), 'create database');
     expect_true($mysqli->select_db('app'), 'select database');

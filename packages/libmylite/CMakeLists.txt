@@ -755,6 +755,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_update_lifecycle_test)
 
+  add_executable(mylite_runtime_alter_column_visibility_test
+    tests/runtime_alter_column_visibility_test.c
+  )
+  target_link_libraries(mylite_runtime_alter_column_visibility_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_alter_column_visibility_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_alter_column_visibility_test)
+
   add_executable(mylite_runtime_small_integer_types_test
     tests/runtime_small_integer_types_test.c
   )
@@ -1136,6 +1148,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.update_lifecycle
     COMMAND mylite_runtime_update_lifecycle_test
+  )
+  add_test(
+    NAME libmylite.runtime.alter_column_visibility
+    COMMAND mylite_runtime_alter_column_visibility_test
   )
   add_test(
     NAME libmylite.runtime.small_integer_types

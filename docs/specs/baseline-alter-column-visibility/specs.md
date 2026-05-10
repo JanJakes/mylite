@@ -9,7 +9,9 @@ persistent base tables with existing MyLite integer-family descriptors.
 
 This is not general invisible-column support. It does not add `INVISIBLE` or
 `VISIBLE` to `CREATE TABLE`, `ADD COLUMN`, `MODIFY COLUMN`, or `CHANGE COLUMN`
-column definitions; it only toggles visibility for existing descriptor columns.
+column definitions. Supported `MODIFY COLUMN` and `CHANGE COLUMN` definitions
+without a visibility attribute still follow MySQL by making the target
+descriptor visible.
 
 ## Sources
 
@@ -65,6 +67,11 @@ MySQL 8.4.9 verify the following baseline behavior:
 - MySQL rejects making the last visible column invisible with error `4028`,
   SQLSTATE `HY000`, message
   `A table must have at least one visible column.`
+- MySQL rejects dropping the last visible column with the same `4028` diagnostic
+  when other descriptor columns remain invisible.
+- MySQL makes an invisible target column visible when `MODIFY COLUMN` or
+  `CHANGE COLUMN` supplies a replacement definition without an explicit
+  `INVISIBLE` attribute.
 - Missing default schema, unknown schema, unknown table, and unknown column use
   the existing MySQL diagnostics for those name-resolution failures.
 - MySQL accepts broader forms outside this slice, including multi-action
@@ -88,6 +95,10 @@ The implementation must add:
 - catalog-only descriptor mutation that preserves row storage and physical
   SQLite schema;
 - enforcement that at least one descriptor column remains visible;
+- preservation of that invariant when a supported `DROP COLUMN` targets the
+  last visible descriptor column;
+- MySQL-compatible visibility reset to visible for supported `MODIFY COLUMN`
+  and `CHANGE COLUMN` replacement definitions;
 - `SELECT *` projection filtering based on descriptor visibility;
 - implicit `INSERT ... VALUES` column mapping based on visible descriptor
   columns when no explicit column list is provided;
@@ -117,7 +128,8 @@ This feature must not implement:
 - Public API remains unchanged.
 - Lexer/parser/AST own only the admitted syntax and source spans.
 - Analyzer/planner owns table and column resolution, reserved-name checks,
-  unsupported-object rejection, and last-visible-column validation.
+  unsupported-object rejection, last-visible-column validation, and visibility
+  interactions with supported column replacement/drop actions.
 - Catalog owns durable logical visibility metadata. SQLite schema text remains
   non-authoritative.
 - Result builder reports a normal non-row DDL result with `affected_rows == 0`
@@ -223,6 +235,20 @@ Changing an already invisible column to invisible is a no-op and does not need
 to re-count as a last-visible removal. Changing an invisible column to visible
 is always allowed.
 
+Supported `DROP COLUMN` must also preserve at least one visible descriptor
+column. Dropping a visible column from a multi-column table is rejected with the
+same `4028` diagnostic when all remaining descriptor columns are invisible.
+Dropping an invisible column is allowed as long as the existing drop-column
+rules are otherwise satisfied.
+
+## Column Replacement Interactions
+
+This slice does not admit `VISIBLE` or `INVISIBLE` attributes in `MODIFY COLUMN`
+or `CHANGE COLUMN` replacement definitions. When the supported replacement
+definition omits a visibility attribute, MySQL makes the target column visible.
+MyLite follows that behavior for both metadata-only and rebuild replacement
+paths, including same-definition replacements of an invisible column.
+
 ## DML Semantics
 
 `SELECT *` from a descriptor-backed table expands only visible descriptor
@@ -290,6 +316,8 @@ The implementation must cover deterministic diagnostics for:
 | existing row values | unchanged | unchanged |
 | row count and warnings | `0`, `0` | `0`, `0` |
 | last visible column made invisible | error 4028 | error 4028 |
+| last visible column dropped while other columns are invisible | error 4028 | error 4028 |
+| `MODIFY`/`CHANGE` omitted visibility attribute | target becomes visible | target becomes visible |
 | `SHOW COLUMNS` extra | `INVISIBLE` | `INVISIBLE` |
 | `SHOW CREATE TABLE` visibility | version comment | version comment |
 | `SELECT *` | visible columns only | visible columns only |
@@ -322,6 +350,9 @@ Tests must cover:
   `BOOLEAN` descriptor columns;
 - no-op visible->visible and invisible->invisible changes;
 - last-visible-column rejection;
+- drop-column rejection when it would leave only invisible descriptor columns;
+- supported `MODIFY COLUMN` and `CHANGE COLUMN` replacement definitions making
+  invisible targets visible;
 - `SHOW COLUMNS`, `DESCRIBE`, `EXPLAIN table`, and `SHOW CREATE TABLE`
   visibility metadata;
 - `SELECT *` omitting invisible columns while explicit select, predicate, and

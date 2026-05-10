@@ -105,6 +105,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE = 96,
     MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT = 97,
     MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT = 98,
+    MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT = 99,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -161,6 +162,11 @@ enum mylite_sql_ast_order_direction {
     MYLITE_SQL_AST_ORDER_DIRECTION_DESC = 2,
 };
 
+enum mylite_sql_ast_column_visibility {
+    MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE = 0,
+    MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE = 1,
+};
+
 struct mylite_sql_ast_literal_payload {
     enum mylite_sql_ast_literal_kind kind;
 };
@@ -185,12 +191,17 @@ struct mylite_sql_ast_order_direction_payload {
     enum mylite_sql_ast_order_direction kind;
 };
 
+struct mylite_sql_ast_column_visibility_payload {
+    enum mylite_sql_ast_column_visibility kind;
+};
+
 union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_literal_payload literal;
     struct mylite_sql_ast_expression_payload expression;
     struct mylite_sql_ast_integer_type_payload integer_type;
     struct mylite_sql_ast_nullability_payload nullability;
     struct mylite_sql_ast_order_direction_payload order_direction;
+    struct mylite_sql_ast_column_visibility_payload column_visibility;
 };
 
 struct mylite_sql_ast_node {
@@ -244,6 +255,10 @@ void mylite_sql_ast_node_set_order_direction(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_order_direction direction
 );
+void mylite_sql_ast_node_set_column_visibility(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_visibility visibility
+);
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
@@ -265,6 +280,9 @@ enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
 enum mylite_sql_ast_order_direction mylite_sql_ast_node_order_direction(
     const struct mylite_sql_ast_node *node
 );
+enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(
+    const struct mylite_sql_ast_node *node
+);
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind);
 const char *mylite_sql_ast_literal_kind_name(enum mylite_sql_ast_literal_kind kind);
@@ -272,5 +290,6 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
 const char *mylite_sql_ast_integer_type_name(enum mylite_sql_ast_integer_type integer_type);
 const char *mylite_sql_ast_nullability_name(enum mylite_sql_ast_nullability nullability);
 const char *mylite_sql_ast_order_direction_name(enum mylite_sql_ast_order_direction direction);
+const char *mylite_sql_ast_column_visibility_name(enum mylite_sql_ast_column_visibility visibility);
 
 #endif

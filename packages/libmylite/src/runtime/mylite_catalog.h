@@ -8,8 +8,8 @@
 #include <stdint.h>
 
 enum {
-    MYLITE_CATALOG_SCHEMA_VERSION = 3,
-    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 3,
+    MYLITE_CATALOG_SCHEMA_VERSION = 4,
+    MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION = 4,
     MYLITE_CATALOG_IDENTIFIER_CAPACITY = 64,
     MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY = 128,
     MYLITE_CATALOG_TYPE_NAME_CAPACITY = 64,
@@ -63,6 +63,7 @@ struct mylite_catalog_column_descriptor {
     char logical_type[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
     char physical_type[MYLITE_CATALOG_TYPE_NAME_CAPACITY];
     bool is_nullable;
+    bool is_visible;
     enum mylite_catalog_column_default_kind default_kind;
     int64_t default_integer;
     uint64_t descriptor_version;
@@ -166,8 +167,16 @@ int mylite_catalog_replace_column_in_mutation(
     const char *logical_type,
     const char *physical_type,
     bool is_nullable,
+    bool is_visible,
     enum mylite_catalog_column_default_kind default_kind,
     int64_t default_integer
+);
+int mylite_catalog_set_column_visibility_in_mutation(
+    struct mylite_db *database,
+    const struct mylite_catalog_mutation *mutation,
+    int64_t table_id,
+    int64_t column_id,
+    bool is_visible
 );
 int mylite_catalog_delete_schema_in_mutation(
     struct mylite_db *database,

@@ -132,6 +132,17 @@ void mylite_sql_ast_node_set_order_direction(
     node->payload.order_direction.kind = direction;
 }
 
+void mylite_sql_ast_node_set_column_visibility(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_visibility visibility
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.column_visibility.kind = visibility;
+}
+
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node) {
     const struct mylite_sql_ast_node *child = NULL;
     size_t count = 0U;
@@ -231,6 +242,16 @@ enum mylite_sql_ast_order_direction mylite_sql_ast_node_order_direction(
     }
 
     return node->payload.order_direction.kind;
+}
+
+enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT) {
+        return MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE;
+    }
+
+    return node->payload.column_visibility.kind;
 }
 
 const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
@@ -419,6 +440,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "alter_table_set_default_statement";
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT:
         return "alter_table_drop_default_statement";
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
+        return "alter_table_column_visibility_statement";
     case MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE:
         return "create_if_not_exists_clause";
     case MYLITE_SQL_AST_DROP_IF_EXISTS_CLAUSE:
@@ -546,6 +569,19 @@ const char *mylite_sql_ast_order_direction_name(enum mylite_sql_ast_order_direct
         return "asc";
     case MYLITE_SQL_AST_ORDER_DIRECTION_DESC:
         return "desc";
+    }
+
+    return "unknown";
+}
+
+const char *mylite_sql_ast_column_visibility_name(
+    enum mylite_sql_ast_column_visibility visibility
+) {
+    switch (visibility) {
+    case MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE:
+        return "visible";
+    case MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE:
+        return "invisible";
     }
 
     return "unknown";

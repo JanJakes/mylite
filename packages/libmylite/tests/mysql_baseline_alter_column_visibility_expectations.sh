@@ -247,6 +247,29 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "last visible column cannot be dropped when other columns are invisible" \
+    4028 \
+    HY000 \
+    "A table must have at least one visible column." \
+    "CREATE TABLE drop_visible_guard (id INT, hidden INT); "\
+"ALTER TABLE drop_visible_guard ALTER hidden SET INVISIBLE; "\
+"ALTER TABLE drop_visible_guard DROP COLUMN id;" \
+    "$DATABASE"
+
+expect_output \
+    "modify and change without visibility attribute make columns visible" \
+    "modify_col	int	YES		7
+changed_col	int	YES		8" \
+    "CREATE TABLE redefine_visibility (id INT, modify_col INT DEFAULT 7, change_col INT DEFAULT 8); "\
+"ALTER TABLE redefine_visibility ALTER modify_col SET INVISIBLE; "\
+"ALTER TABLE redefine_visibility ALTER change_col SET INVISIBLE; "\
+"ALTER TABLE redefine_visibility MODIFY modify_col INT DEFAULT 7; "\
+"ALTER TABLE redefine_visibility CHANGE change_col changed_col INT DEFAULT 8; "\
+"SHOW COLUMNS FROM redefine_visibility LIKE 'modify_col'; "\
+"SHOW COLUMNS FROM redefine_visibility LIKE 'changed_col';" \
+    "$DATABASE"
+
+expect_error \
     "invisible not-null no-default omitted insert" \
     1364 \
     HY000 \

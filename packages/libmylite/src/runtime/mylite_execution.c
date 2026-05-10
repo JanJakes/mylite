@@ -54,6 +54,7 @@ enum {
     mysql_error_unknown_storage_engine = 1286,
     mysql_error_display_width_out_of_range = 1439,
     mysql_warning_integer_display_width_deprecated = 1681,
+    mysql_error_must_have_visible_column = 4028,
     sqlite_use_nul_terminated_string = -1,
     decimal_base = 10,
     table_name_part_capacity = 3,
@@ -61,6 +62,7 @@ enum {
     show_create_integer_default_text_capacity = integer_text_capacity + sizeof(" DEFAULT ''"),
     system_variable_body_offset = 2,
     show_columns_result_column_count = 6,
+    show_columns_extra_column = 5,
     show_index_result_column_count = 15,
     show_create_table_result_column_count = 2,
     show_create_database_result_column_count = 2,
@@ -182,6 +184,13 @@ struct planned_alter_table_drop_default {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor column;
+};
+
+struct planned_alter_table_column_visibility {
+    struct table_name_resolution target;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor column;
+    bool is_visible;
 };
 
 struct planned_truncate_table {
@@ -555,6 +564,11 @@ static int execute_alter_table_drop_default_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_alter_table_column_visibility_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_insert_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -894,6 +908,15 @@ static int alter_table_drop_default_from_plan(
     struct mylite_db *database,
     const struct planned_alter_table_drop_default *plan
 );
+static int plan_alter_table_column_visibility(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_column_visibility *out_plan
+);
+static int alter_table_column_visibility_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_column_visibility *plan
+);
 static void planned_column_from_catalog_descriptor(
     const struct mylite_catalog_column_descriptor *descriptor,
     const struct mylite_sql_ast_node *default_node,
@@ -1219,6 +1242,16 @@ static int append_show_create_table_column_definition(
     const struct mylite_catalog_column_descriptor *column,
     bool is_last_column
 );
+static int append_show_create_table_column_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int append_show_create_table_column_suffix(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_last_column
+);
 static int show_create_table_type_text(
     struct mylite_db *database,
     const char *logical_type,
@@ -1415,12 +1448,28 @@ static int find_column_index(
     const char *name,
     size_t *out_index
 );
+static size_t count_visible_columns(
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
 static int collect_insert_target_indexes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_list,
     const struct planned_insert *plan,
     size_t **out_indexes,
     size_t *out_index_count
+);
+static size_t count_visible_insert_target_columns(const struct planned_insert *plan);
+static void collect_visible_insert_target_indexes(
+    const struct planned_insert *plan,
+    size_t *indexes
+);
+static int collect_explicit_insert_target_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_list,
+    const struct planned_insert *plan,
+    size_t *indexes,
+    size_t column_count
 );
 static int collect_insert_set_target_indexes(
     struct mylite_db *database,
@@ -1893,6 +1942,7 @@ static void set_duplicate_column_error(struct mylite_db *database, const char *c
 static void set_duplicate_table_alias_error(struct mylite_db *database, const char *table_name);
 static void set_cant_drop_field_or_key_error(struct mylite_db *database, const char *column_name);
 static void set_cant_remove_all_fields_error(struct mylite_db *database);
+static void set_must_have_visible_column_error(struct mylite_db *database);
 static void set_unknown_column_in_table_error(
     struct mylite_db *database,
     const char *column_name,
@@ -2117,6 +2167,8 @@ static int execute_parsed_statement(
         return execute_alter_table_set_default_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT:
         return execute_alter_table_drop_default_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
+        return execute_alter_table_column_visibility_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_STATEMENT:
         return execute_insert_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
@@ -3038,6 +3090,33 @@ static int execute_alter_table_drop_default_statement(
     rc = plan_alter_table_drop_default(database, statement, &plan);
     if (rc == MYLITE_OK) {
         rc = alter_table_drop_default_from_plan(database, &plan);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_alter_table_column_visibility_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_alter_table_column_visibility plan = {0};
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_alter_table_column_visibility(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = alter_table_column_visibility_from_plan(database, &plan);
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -4856,34 +4935,57 @@ static int append_show_create_table_column_definition(
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append(string, type_text);
     }
-    if (rc == MYLITE_OK) {
-        if (!column->is_nullable) {
-            rc = dynamic_string_append(string, " NOT NULL");
-        }
+    if (rc == MYLITE_OK && !column->is_nullable) {
+        rc = dynamic_string_append(string, " NOT NULL");
     }
     if (rc == MYLITE_OK) {
-        if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
-            char default_text[show_create_integer_default_text_capacity];
-            int written = snprintf(
-                default_text,
-                sizeof(default_text),
-                " DEFAULT '%" PRId64 "'",
-                column->default_integer
-            );
+        rc = append_show_create_table_column_default(database, string, column);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_create_table_column_suffix(string, column, is_last_column);
+    }
 
-            if (written < 0 || (size_t)written >= sizeof(default_text)) {
-                set_runtime_error(database, "failed to format column default");
-                rc = MYLITE_ERROR;
-            } else {
-                rc = dynamic_string_append(string, default_text);
-            }
-        } else if (
-            column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable
-        ) {
-            rc = dynamic_string_append(string, " DEFAULT NULL");
-        } else {
-            rc = MYLITE_OK;
-        }
+    return rc;
+}
+
+static int append_show_create_table_column_default(
+    struct mylite_db *database,
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    char default_text[show_create_integer_default_text_capacity];
+    int written = 0;
+
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable) {
+        return dynamic_string_append(string, " DEFAULT NULL");
+    }
+    if (column->default_kind != MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        return MYLITE_OK;
+    }
+
+    written = snprintf(
+        default_text,
+        sizeof(default_text),
+        " DEFAULT '%" PRId64 "'",
+        column->default_integer
+    );
+    if (written < 0 || (size_t)written >= sizeof(default_text)) {
+        set_runtime_error(database, "failed to format column default");
+        return MYLITE_ERROR;
+    }
+
+    return dynamic_string_append(string, default_text);
+}
+
+static int append_show_create_table_column_suffix(
+    struct dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    bool is_last_column
+) {
+    int rc = MYLITE_OK;
+
+    if (!column->is_visible) {
+        rc = dynamic_string_append(string, " /*!80023 INVISIBLE */");
     }
     if (rc == MYLITE_OK && !is_last_column) {
         rc = dynamic_string_append_char(string, ',');
@@ -5014,6 +5116,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_SET_DEFAULT_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_DEFAULT_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT:
         return 0;
     case MYLITE_SQL_AST_SELECT_STATEMENT:
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:
@@ -6286,6 +6389,11 @@ static int plan_alter_table_drop_column(
         set_cant_remove_all_fields_error(database);
         rc = MYLITE_ERROR;
     }
+    if (rc == MYLITE_OK && columns[column_index].is_visible &&
+        count_visible_columns(columns, out_plan->column_count) <= 1U) {
+        set_must_have_visible_column_error(database);
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         out_plan->column = columns[column_index];
     }
@@ -6706,6 +6814,7 @@ static int alter_table_set_default_from_plan(
             plan->original_column.logical_type,
             plan->original_column.physical_type,
             plan->original_column.is_nullable,
+            plan->original_column.is_visible,
             plan->column.default_kind,
             plan->column.default_integer
         );
@@ -6820,6 +6929,7 @@ static int alter_table_drop_default_from_plan(
             plan->column.logical_type,
             plan->column.physical_type,
             plan->column.is_nullable,
+            plan->column.is_visible,
             MYLITE_CATALOG_COLUMN_DEFAULT_NO_EXPLICIT,
             0
         );
@@ -6839,6 +6949,125 @@ static int alter_table_drop_default_from_plan(
     }
     if (rc != MYLITE_OK) {
         set_internal_error_if_clear(database, rc, "failed to drop column default");
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_alter_table_column_visibility(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_alter_table_column_visibility *out_plan
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_count = 0U;
+    size_t column_index = 0U;
+    size_t visible_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_alter_table_column_visibility){0};
+    out_plan->is_visible = mylite_sql_ast_node_column_visibility(statement) ==
+                           MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE;
+    rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->target);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_identifier_text(
+            child_at(statement, 1U),
+            column_name,
+            sizeof(column_name),
+            database
+        );
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(column_name)) {
+        set_reserved_name_error(database, "column", column_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_read_table_by_name(
+            database,
+            out_plan->target.schema.schema_id,
+            out_plan->target.table_name,
+            &out_plan->table
+        );
+        if (rc != MYLITE_OK) {
+            set_table_does_not_exist_error(
+                database,
+                out_plan->target.schema.name,
+                out_plan->target.table_name
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && out_plan->table.kind != MYLITE_CATALOG_TABLE_KIND_BASE) {
+        set_unsupported_error(
+            database,
+            "ALTER TABLE ALTER COLUMN SET VISIBLE/INVISIBLE supports only persistent base tables"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(database, out_plan->table.table_id, &columns, &column_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(columns, column_count, column_name, &column_index);
+        if (rc != MYLITE_OK) {
+            set_unknown_column_in_table_error(database, column_name, out_plan->table.name);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        visible_count = count_visible_columns(columns, column_count);
+        if (!out_plan->is_visible && columns[column_index].is_visible && visible_count <= 1U) {
+            set_must_have_visible_column_error(database);
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->column = columns[column_index];
+    }
+
+    free(columns);
+
+    return rc;
+}
+
+static int alter_table_column_visibility_from_plan(
+    struct mylite_db *database,
+    const struct planned_alter_table_column_visibility *plan
+) {
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    int rc = mylite_catalog_begin_mutation(database, &mutation);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_set_column_visibility_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->column.column_id,
+            plan->is_visible
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_update_table_identity_in_mutation(
+            database,
+            &mutation,
+            plan->table.table_id,
+            plan->table.schema_id,
+            plan->table.name,
+            NULL
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to set column visibility");
         mylite_catalog_rollback_mutation(database, &mutation);
         return rc;
     }
@@ -6931,7 +7160,11 @@ static int complete_alter_table_modify_column_plan(
 
     if (modify_column_definition_matches(&out_plan->original_column, &out_plan->column)) {
         if (modify_column_name_matches(&out_plan->original_column, &out_plan->column)) {
-            out_plan->is_noop = true;
+            if (out_plan->original_column.is_visible) {
+                out_plan->is_noop = true;
+            } else {
+                out_plan->is_metadata_only = true;
+            }
             return MYLITE_OK;
         }
         out_plan->is_metadata_only = true;
@@ -7070,6 +7303,7 @@ static int alter_table_modify_column_from_plan(
             plan->column.logical_type,
             plan->column.physical_type,
             plan->column.is_nullable,
+            true,
             plan->column.default_kind,
             plan->column.default_integer
         );
@@ -10199,6 +10433,21 @@ static int find_column_index(
     return MYLITE_ERROR;
 }
 
+static size_t count_visible_columns(
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    size_t visible_count = 0U;
+
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        if (columns[column_index].is_visible) {
+            ++visible_count;
+        }
+    }
+
+    return visible_count;
+}
+
 static int collect_insert_target_indexes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_list,
@@ -10206,7 +10455,8 @@ static int collect_insert_target_indexes(
     size_t **out_indexes,
     size_t *out_index_count
 ) {
-    size_t column_count = mylite_sql_ast_node_child_count(column_list);
+    size_t explicit_column_count = mylite_sql_ast_node_child_count(column_list);
+    size_t column_count = explicit_column_count;
     size_t *indexes = NULL;
 
     *out_indexes = NULL;
@@ -10215,8 +10465,8 @@ static int collect_insert_target_indexes(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (column_count == 0U) {
-        column_count = plan->column_count;
+    if (explicit_column_count == 0U) {
+        column_count = count_visible_insert_target_columns(plan);
     }
     if (column_count > SIZE_MAX / sizeof(*indexes)) {
         set_nomem_error(database);
@@ -10229,39 +10479,83 @@ static int collect_insert_target_indexes(
         return MYLITE_NOMEM;
     }
 
-    if (mylite_sql_ast_node_child_count(column_list) == 0U) {
-        for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
-            indexes[column_index] = column_index;
-        }
+    if (explicit_column_count == 0U) {
+        collect_visible_insert_target_indexes(plan, indexes);
     } else {
-        const struct mylite_sql_ast_node *column_node = child_at(column_list, 0U);
+        int rc = collect_explicit_insert_target_indexes(
+            database,
+            column_list,
+            plan,
+            indexes,
+            column_count
+        );
 
-        for (size_t column_index = 0U; column_index < column_count; ++column_index) {
-            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-            int rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
-
-            if (rc == MYLITE_OK) {
-                rc = find_column_index(
-                    plan->columns,
-                    plan->column_count,
-                    column_name,
-                    &indexes[column_index]
-                );
-                if (rc != MYLITE_OK) {
-                    set_unknown_column_error(database, column_name);
-                    free(indexes);
-                    return MYLITE_ERROR;
-                }
-            } else {
-                free(indexes);
-                return rc;
-            }
-            column_node = column_node == NULL ? NULL : column_node->next_sibling;
+        if (rc != MYLITE_OK) {
+            free(indexes);
+            return rc;
         }
     }
 
     *out_indexes = indexes;
     *out_index_count = column_count;
+
+    return MYLITE_OK;
+}
+
+static size_t count_visible_insert_target_columns(const struct planned_insert *plan) {
+    size_t column_count = 0U;
+
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (plan->columns[column_index].is_visible) {
+            ++column_count;
+        }
+    }
+
+    return column_count;
+}
+
+static void collect_visible_insert_target_indexes(
+    const struct planned_insert *plan,
+    size_t *indexes
+) {
+    size_t target_index = 0U;
+
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (plan->columns[column_index].is_visible) {
+            indexes[target_index] = column_index;
+            ++target_index;
+        }
+    }
+}
+
+static int collect_explicit_insert_target_indexes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_list,
+    const struct planned_insert *plan,
+    size_t *indexes,
+    size_t column_count
+) {
+    const struct mylite_sql_ast_node *column_node = child_at(column_list, 0U);
+
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        int rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        rc = find_column_index(
+            plan->columns,
+            plan->column_count,
+            column_name,
+            &indexes[column_index]
+        );
+        if (rc != MYLITE_OK) {
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        column_node = column_node->next_sibling;
+    }
 
     return MYLITE_OK;
 }
@@ -10739,6 +11033,9 @@ static int plan_select_columns(
     }
     if (select_list_is_wildcard(select_list)) {
         for (size_t column_index = 0U; column_index < table_column_count; ++column_index) {
+            if (!table_columns[column_index].is_visible) {
+                continue;
+            }
             int rc = append_select_column(out_plan, &table_columns[column_index]);
 
             if (rc != MYLITE_OK) {
@@ -11655,6 +11952,9 @@ static int append_show_column(
             return MYLITE_ERROR;
         }
         values[4] = default_text;
+    }
+    if (!column->is_visible) {
+        values[show_columns_extra_column] = "INVISIBLE";
     }
 
     return mylite_result_append_text_row(context->result, values);
@@ -14225,6 +14525,15 @@ static void set_cant_remove_all_fields_error(struct mylite_db *database) {
         mysql_error_cant_remove_all_fields,
         "42000",
         "You can't delete all columns with ALTER TABLE; use DROP TABLE instead"
+    );
+}
+
+static void set_must_have_visible_column_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_must_have_visible_column,
+        "HY000",
+        "A table must have at least one visible column."
     );
 }
 

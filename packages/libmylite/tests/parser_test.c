@@ -119,6 +119,11 @@ static int expect_order_direction(
     enum mylite_sql_ast_order_direction expected,
     const char *context
 );
+static int expect_column_visibility(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_visibility expected,
+    const char *context
+);
 
 int main(void) {
     int failures = 0;
@@ -2863,6 +2868,57 @@ static int test_table_lifecycle_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE app.simple_lifecycle ALTER COLUMN old_col SET INVISIBLE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT,
+        "alter table column invisible statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter column invisible child count");
+    failures += expect_span_text(
+        child_at(statement, 0U),
+        "app.simple_lifecycle",
+        "alter column invisible target"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 1U), "old_col", "alter column invisible column");
+    failures += expect_column_visibility(
+        statement,
+        MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE,
+        "alter column invisible payload"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE simple_lifecycle ALTER old_col SET VISIBLE;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT,
+        "alter table column visible statement"
+    );
+    failures += expect_column_visibility(
+        statement,
+        MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE,
+        "alter column visible payload"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE visibility_names (visible INT, invisible INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "INSERT INTO app.simple_lifecycle (amount, id) VALUES (+1, -2), (NULL, 3);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -5273,6 +5329,38 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "ALTER TABLE old_name ALTER COLUMN old_name.old_col SET INVISIBLE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ALTER old_col SET INVISIBLE, ALTER other SET VISIBLE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ALTER old_col SET HIDDEN;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("CREATE TABLE t (id INT INVISIBLE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE t ADD COLUMN v INT INVISIBLE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "ALTER TABLE old_name ALTER old_col SET DEFAULT 1, ALTER other SET DEFAULT 2;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -5772,6 +5860,27 @@ static int expect_order_direction(
             context,
             mylite_sql_ast_order_direction_name(expected),
             mylite_sql_ast_order_direction_name(actual)
+        );
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_column_visibility(
+    const struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_column_visibility expected,
+    const char *context
+) {
+    enum mylite_sql_ast_column_visibility actual = mylite_sql_ast_node_column_visibility(node);
+
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected column visibility %s, got %s\n",
+            context,
+            mylite_sql_ast_column_visibility_name(expected),
+            mylite_sql_ast_column_visibility_name(actual)
         );
         return 1;
     }

@@ -159,6 +159,9 @@ statement(A) ::= alter_table_set_default_statement(B). {
 statement(A) ::= alter_table_drop_default_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_column_visibility_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -561,6 +564,17 @@ alter_table_set_default_statement(A) ::=
 alter_table_drop_default_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ALTER column_keyword_opt identifier(C) DROP DEFAULT(D). {
     A = mylite_sql_parser_make_alter_table_drop_default_statement(state, A1, T, C, D);
+}
+
+alter_table_column_visibility_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ALTER column_keyword_opt identifier(C) SET VISIBLE(V). {
+    A = mylite_sql_parser_make_alter_table_column_visibility_statement(
+        state, A1, T, C, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE);
+}
+alter_table_column_visibility_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ALTER column_keyword_opt identifier(C) SET INVISIBLE(V). {
+    A = mylite_sql_parser_make_alter_table_column_visibility_statement(
+        state, A1, T, C, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE);
 }
 
 column_keyword_opt(A) ::= . {
@@ -1103,6 +1117,12 @@ identifier(A) ::= COLLATE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COLLATION(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= VISIBLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= INVISIBLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 

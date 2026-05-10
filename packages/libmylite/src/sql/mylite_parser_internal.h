@@ -73,6 +73,15 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_ast_node *order_clause,
     struct mylite_sql_ast_node *limit_clause
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_ast_node *select_list,
+    struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *limit_clause
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token use_token,

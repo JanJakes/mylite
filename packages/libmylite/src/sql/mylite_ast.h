@@ -173,6 +173,15 @@ enum mylite_sql_ast_column_visibility {
     MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE = 1,
 };
 
+enum mylite_sql_ast_select_modifier {
+    MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT = 0,
+    MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT = 1,
+};
+
+struct mylite_sql_ast_select_payload {
+    enum mylite_sql_ast_select_modifier modifier;
+};
+
 struct mylite_sql_ast_literal_payload {
     enum mylite_sql_ast_literal_kind kind;
 };
@@ -202,6 +211,7 @@ struct mylite_sql_ast_column_visibility_payload {
 };
 
 union mylite_sql_ast_node_payload {
+    struct mylite_sql_ast_select_payload select;
     struct mylite_sql_ast_literal_payload literal;
     struct mylite_sql_ast_expression_payload expression;
     struct mylite_sql_ast_integer_type_payload integer_type;
@@ -241,6 +251,10 @@ void mylite_sql_ast_node_set_span(
     struct mylite_sql_ast_node *node,
     struct mylite_sql_source_span span
 );
+void mylite_sql_ast_node_set_select_modifier(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_select_modifier modifier
+);
 void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_literal_kind literal_kind
@@ -267,6 +281,9 @@ void mylite_sql_ast_node_set_column_visibility(
 );
 
 size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node);
+enum mylite_sql_ast_select_modifier mylite_sql_ast_node_select_modifier(
+    const struct mylite_sql_ast_node *node
+);
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(
     const struct mylite_sql_ast_node *node
 );

@@ -77,6 +77,17 @@ void mylite_sql_ast_node_set_span(
     node->span = span;
 }
 
+void mylite_sql_ast_node_set_select_modifier(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_select_modifier modifier
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.select.modifier = modifier;
+}
+
 void mylite_sql_ast_node_set_literal_kind(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_literal_kind literal_kind
@@ -157,6 +168,16 @@ size_t mylite_sql_ast_node_child_count(const struct mylite_sql_ast_node *node) {
         child = child->next_sibling;
     }
     return count;
+}
+
+enum mylite_sql_ast_select_modifier mylite_sql_ast_node_select_modifier(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT;
+    }
+
+    return node->payload.select.modifier;
 }
 
 enum mylite_sql_ast_literal_kind mylite_sql_ast_node_literal_kind(

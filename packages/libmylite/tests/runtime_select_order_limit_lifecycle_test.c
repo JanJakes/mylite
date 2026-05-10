@@ -18,7 +18,7 @@
 enum {
     test_path_capacity = 1024,
     sqlite_sql_capacity = 512,
-    ordered_numbers_column_count = 7,
+    ordered_numbers_column_count = 9,
     ordered_numbers_nullable_column_index = 5,
     ordered_numbers_not_null_column_index = 6,
     mysql_error_parse = 1064,
@@ -94,6 +94,22 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     static const char *const desc_i[] = {"2147483647", "1", "0", "-2"};
     static const char *const ordered_n[] = {NULL, NULL, "9", "9"};
     static const char *const desc_n[] = {"9", "9", NULL, NULL};
+    static const char *const distinct_n[] = {NULL, "9"};
+    static const char *const distinct_n_desc[] = {"9", NULL};
+    static const char *const distinct_i[] = {"-2", "0", "1", "2147483647"};
+    static const char *const distinct_ii[] = {"-2147483648", "0", "2147483647"};
+    static const char *const distinct_iu[] = {"0", "2", "8", "4294967295"};
+    static const char *const distinct_b[] = {
+        "-9223372036854775808",
+        "3",
+        "8",
+        "9223372036854775807",
+    };
+    static const char *const distinct_bu[] = {"0", "4", "8", "9223372036854775807"};
+    static const char *const distinct_bool[] = {NULL, "0", "1"};
+    static const char *const distinct_nn[] = {"5", "6", "7", "8"};
+    static const char *const distinct_limit_one[] = {NULL};
+    static const char *const distinct_offset_one[] = {"9"};
     static const char *const ordered_iu[] = {"0", "2", "8", "4294967295"};
     static const char *const ordered_b[] = {
         "-9223372036854775808",
@@ -189,10 +205,55 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY n",
+            .values = distinct_n,
+            .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
+            .context = "distinct nullable ascending",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY n DESC",
+            .values = distinct_n_desc,
+            .value_count = sizeof(distinct_n_desc) / sizeof(distinct_n_desc[0]),
+            .context = "distinct nullable descending",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT i FROM ordered_numbers ORDER BY i",
+            .values = distinct_i,
+            .value_count = sizeof(distinct_i) / sizeof(distinct_i[0]),
+            .context = "distinct int values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT ii FROM ordered_numbers ORDER BY ii",
+            .values = distinct_ii,
+            .value_count = sizeof(distinct_ii) / sizeof(distinct_ii[0]),
+            .context = "distinct integer alias values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT iu FROM ordered_numbers ORDER BY iu",
             .values = ordered_iu,
             .value_count = sizeof(ordered_iu) / sizeof(ordered_iu[0]),
             .context = "unsigned int ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT iu FROM ordered_numbers ORDER BY iu",
+            .values = distinct_iu,
+            .value_count = sizeof(distinct_iu) / sizeof(distinct_iu[0]),
+            .context = "distinct unsigned int values",
         }
     );
     failures += expect_query_values(
@@ -207,10 +268,109 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT DISTINCT b FROM ordered_numbers ORDER BY b",
+            .values = distinct_b,
+            .value_count = sizeof(distinct_b) / sizeof(distinct_b[0]),
+            .context = "distinct signed bigint values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT bu FROM ordered_numbers ORDER BY bu",
             .values = ordered_bu,
             .value_count = sizeof(ordered_bu) / sizeof(ordered_bu[0]),
             .context = "bigint unsigned signed64 ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT bu FROM ordered_numbers ORDER BY bu",
+            .values = distinct_bu,
+            .value_count = sizeof(distinct_bu) / sizeof(distinct_bu[0]),
+            .context = "distinct unsigned bigint values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT bool_col FROM ordered_numbers ORDER BY bool_col",
+            .values = distinct_bool,
+            .value_count = sizeof(distinct_bool) / sizeof(distinct_bool[0]),
+            .context = "distinct bool alias values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers WHERE n IS NULL ORDER BY n",
+            .values = distinct_limit_one,
+            .value_count = sizeof(distinct_limit_one) / sizeof(distinct_limit_one[0]),
+            .context = "distinct where is null",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers WHERE n IS NOT NULL ORDER BY n",
+            .values = distinct_offset_one,
+            .value_count = sizeof(distinct_offset_one) / sizeof(distinct_offset_one[0]),
+            .context = "distinct where is not null",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers WHERE n <=> 9 ORDER BY n",
+            .values = distinct_offset_one,
+            .value_count = sizeof(distinct_offset_one) / sizeof(distinct_offset_one[0]),
+            .context = "distinct null-safe equal",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers WHERE nn >= 6 ORDER BY n",
+            .values = distinct_n,
+            .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
+            .context = "distinct comparison predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY n LIMIT 1",
+            .values = distinct_limit_one,
+            .value_count = sizeof(distinct_limit_one) / sizeof(distinct_limit_one[0]),
+            .context = "distinct limit one",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY n LIMIT 1 OFFSET 1",
+            .values = distinct_offset_one,
+            .value_count = sizeof(distinct_offset_one) / sizeof(distinct_offset_one[0]),
+            .context = "distinct limit offset",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY n LIMIT 1, 1",
+            .values = distinct_offset_one,
+            .value_count = sizeof(distinct_offset_one) / sizeof(distinct_offset_one[0]),
+            .context = "distinct limit comma offset",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY n LIMIT 10",
+            .values = distinct_n,
+            .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
+            .context = "distinct limit larger than result",
         }
     );
     failures += expect_query_values(
@@ -275,6 +435,30 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += expect_size(mylite_result_row_count(result), 0U, "limit zero row count");
     failures += expect_int64(mylite_result_affected_rows(result), 0, "limit zero affected rows");
     failures += expect_size(mylite_result_warning_count(result), 0U, "limit zero warnings");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_ok(database, "SELECT DISTINCT n FROM ordered_numbers ORDER BY n LIMIT 0", &result);
+    failures +=
+        expect_size(mylite_result_column_count(result), 1U, "distinct limit zero column count");
+    failures += expect_text(mylite_result_column_name(result, 0U), "n", "distinct column name");
+    failures += expect_size(mylite_result_row_count(result), 0U, "distinct limit zero row count");
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 0, "distinct limit zero affected rows");
+    failures +=
+        expect_size(mylite_result_warning_count(result), 0U, "distinct limit zero warnings");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT DISTINCT n FROM ordered_numbers ORDER BY n", &result);
+    failures += expect_size(mylite_result_column_count(result), 1U, "distinct row count column");
+    failures += expect_size(mylite_result_row_count(result), 2U, "distinct row count rows");
+    failures += expect_size(mylite_result_warning_count(result), 0U, "distinct select warnings");
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT ROW_COUNT()", &result);
+    failures += expect_result_value(result, 0U, 0U, "-1", "distinct select following row count");
     mylite_result_free(result);
     result = NULL;
 
@@ -368,6 +552,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .context = "schema-qualified ordered limited select",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM app.ordered_numbers ORDER BY n",
+            .values = distinct_n,
+            .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
+            .context = "schema-qualified distinct select",
+        }
+    );
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
@@ -385,6 +578,20 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             "ordered select leaves SQLite schema generation"
         );
     }
+
+    failures +=
+        execute_ok(database, "ALTER TABLE ordered_numbers ALTER COLUMN nn SET INVISIBLE", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT nn FROM ordered_numbers ORDER BY nn",
+            .values = distinct_nn,
+            .value_count = sizeof(distinct_nn) / sizeof(distinct_nn[0]),
+            .context = "distinct explicit invisible column",
+        }
+    );
 
     mylite_close(database);
     database = NULL;
@@ -410,6 +617,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .context = "reopened ordered limited row",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY n",
+            .values = distinct_n,
+            .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
+            .context = "reopened distinct values",
+        }
+    );
 
     failures +=
         execute_ok(database, "RENAME TABLE ordered_numbers TO renamed_ordered_numbers", &result);
@@ -418,6 +634,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += execute_error(
         database,
         "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.ordered_numbers' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT n FROM ordered_numbers ORDER BY n",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -433,6 +658,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .context = "renamed ordered limited row",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM renamed_ordered_numbers ORDER BY n",
+            .values = distinct_n,
+            .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
+            .context = "renamed distinct values",
+        }
+    );
 
     failures += execute_ok(database, "DROP TABLE renamed_ordered_numbers", &result);
     mylite_result_free(result);
@@ -440,6 +674,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += execute_error(
         database,
         "SELECT id FROM renamed_ordered_numbers ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.renamed_ordered_numbers' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT n FROM renamed_ordered_numbers ORDER BY n",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -481,6 +724,15 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT DISTINCT n FROM ordered_numbers ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT * FROM missing_schema.ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
@@ -490,7 +742,25 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT DISTINCT n FROM missing_schema.ordered_numbers ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT * FROM _mylite_reserved.ordered_numbers ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT n FROM _mylite_reserved.ordered_numbers ORDER BY n",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
             .sqlstate = "42000",
@@ -514,7 +784,25 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT DISTINCT n FROM missing_table ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing_table' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT * FROM _mylite_reserved ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_table_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect table name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT n FROM _mylite_reserved ORDER BY n",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
             .sqlstate = "42000",
@@ -555,6 +843,78 @@ static int test_order_limit_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "ORDER BY supports only unqualified descriptor columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT missing FROM ordered_numbers ORDER BY missing",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT n FROM ordered_numbers WHERE missing = 1 ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT n FROM ordered_numbers ORDER BY missing",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'order clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT n FROM ordered_numbers ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT DISTINCT supports ORDER BY only on the selected column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT n, nn FROM ordered_numbers ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT DISTINCT supports exactly one selected column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT * FROM ordered_numbers ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT DISTINCT supports only one unqualified descriptor column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT 1 FROM ordered_numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT DISTINCT supports only one unqualified descriptor column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT ordered_numbers.n FROM ordered_numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT DISTINCT supports only one unqualified descriptor column",
         }
     );
     failures += execute_error(
@@ -734,6 +1094,15 @@ static int test_order_limit_diagnostics(void) {
             .message_part = "internal SQLite row operation failed",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT id FROM ordered_numbers ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown,
+            .sqlstate = "HY000",
+            .message_part = "internal SQLite row operation failed",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -798,6 +1167,24 @@ static int test_independent_order_limit_handles(void) {
             .context = "second ordered limited row",
         }
     );
+    failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT id FROM ordered_numbers ORDER BY id DESC LIMIT 1",
+            .values = first_expected,
+            .value_count = sizeof(first_expected) / sizeof(first_expected[0]),
+            .context = "first distinct ordered limited row",
+        }
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT id FROM ordered_numbers ORDER BY id DESC LIMIT 1",
+            .values = second_expected,
+            .value_count = sizeof(second_expected) / sizeof(second_expected[0]),
+            .context = "second distinct ordered limited row",
+        }
+    );
 
     mylite_close(second);
     mylite_close(first);
@@ -828,7 +1215,9 @@ static int create_order_tables(mylite_db *database) {
         "b BIGINT, "
         "bu BIGINT UNSIGNED, "
         "n INT NULL, "
-        "nn INT NOT NULL)",
+        "nn INT NOT NULL, "
+        "ii INTEGER, "
+        "bool_col BOOL)",
         &result
     );
 
@@ -848,10 +1237,11 @@ static int create_order_tables(mylite_db *database) {
     failures += execute_ok(
         database,
         "INSERT INTO ordered_numbers VALUES "
-        "(1, -2, 0, -9223372036854775808, 0, NULL, 5), "
-        "(2, 1, 2, 3, 4, 9, 6), "
-        "(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, NULL, 7), "
-        "(4, 0, 8, 8, 8, 9, 8)",
+        "(1, -2, 0, -9223372036854775808, 0, NULL, 5, -2147483648, 1), "
+        "(2, 1, 2, 3, 4, 9, 6, 0, 0), "
+        "(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, "
+        "NULL, 7, 2147483647, 0), "
+        "(4, 0, 8, 8, 8, 9, 8, 0, NULL)",
         &result
     );
     mylite_result_free(result);

@@ -55,6 +55,7 @@ static int test_show_errors_diagnostics_statements(void);
 static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
+static int test_select_distinct_clause(void);
 static int test_delete_statement(void);
 static int test_update_statement(void);
 static int test_comments_are_skipped(void);
@@ -159,6 +160,7 @@ int main(void) {
     failures += test_show_index_empty_introspection_statements();
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
+    failures += test_select_distinct_clause();
     failures += test_delete_statement();
     failures += test_update_statement();
     failures += test_comments_are_skipped();
@@ -4661,6 +4663,90 @@ static int test_select_order_limit_clauses(void) {
     failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "simple limit clause");
     failures += expect_span_text(child_at(limit_clause, 0U), "0", "simple limit row count");
     failures += expect_true(child_at(limit_clause, 1U) == NULL, "simple limit has no offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_distinct_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT DISTINCT n FROM simple_lifecycle WHERE n IS NOT NULL ORDER BY n DESC "
+        "LIMIT 1 OFFSET 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "select distinct modifier"
+    );
+    failures += expect_child_count(select_list, 1U, "select distinct item count");
+    failures +=
+        expect_span_text(child_at(child_at(select_list, 0U), 0U), "n", "select distinct column");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_TABLE, "distinct table");
+    failures += expect_node(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "distinct where");
+    failures += expect_span_text(child_at(order_clause, 0U), "n", "distinct order key");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "distinct desc direction"
+    );
+    failures += expect_span_text(child_at(limit_clause, 0U), "1", "distinct limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "0", "distinct limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DISTINCT * FROM simple_lifecycle ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "select distinct wildcard modifier"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 0U), 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "select distinct wildcard"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DISTINCT n, nn FROM simple_lifecycle ORDER BY n;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "select distinct multiple modifier"
+    );
+    failures += expect_child_count(child_at(statement, 0U), 2U, "select distinct multiple items");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT DISTINCT n;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT DISTINCT n FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT DISTINCTROW n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT ALL n FROM simple_lifecycle;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

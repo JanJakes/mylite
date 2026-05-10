@@ -276,6 +276,29 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_statement(
     return script;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token select_token,
+    struct mylite_sql_ast_node *select_list,
+    struct mylite_sql_ast_node *from_clause,
+    struct mylite_sql_ast_node *where_clause,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *limit_clause
+) {
+    struct mylite_sql_ast_node *statement = mylite_sql_parser_make_select_statement(
+        state,
+        select_token,
+        select_list,
+        from_clause,
+        where_clause,
+        order_clause,
+        limit_clause
+    );
+
+    mylite_sql_ast_node_set_select_modifier(statement, MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token select_token,

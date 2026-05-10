@@ -31,68 +31,68 @@ column names, and the existing baseline predicate, ordering, and limit paths.
      compatibility expectations.
 
 3. Parser and AST
-   - [ ] Add AST support for the `DISTINCT` select modifier without changing
+   - [x] Add AST support for the `DISTINCT` select modifier without changing
      public ABI.
-   - [ ] Extend Lemon grammar for `SELECT DISTINCT ... FROM table ...`.
-   - [ ] Preserve existing non-distinct select parsing and aggregate parsing.
-   - [ ] Add parser tests for supported distinct syntax and unsupported wider
+   - [x] Extend Lemon grammar for `SELECT DISTINCT ... FROM table ...`.
+   - [x] Preserve existing non-distinct select parsing and aggregate parsing.
+   - [x] Add parser tests for supported distinct syntax and unsupported wider
      select shapes.
 
 4. Analyzer/planner/runtime execution
-   - [ ] Extend the descriptor-backed select path for one-column
+   - [x] Extend the descriptor-backed select path for one-column
      `SELECT DISTINCT column`.
-   - [ ] Accept only one selected unqualified descriptor column, one
+   - [x] Accept only one selected unqualified descriptor column, one
      descriptor-backed persistent base table, optional baseline `WHERE`, optional
      `ORDER BY` on the same selected column, and optional existing select
      `LIMIT` forms.
-   - [ ] Resolve unqualified and schema-qualified table names against selected
+   - [x] Resolve unqualified and schema-qualified table names against selected
      schema and MyLite catalog descriptors.
-   - [ ] Reject reserved `_mylite_*` schema/table names before generated SQLite
+   - [x] Reject reserved `_mylite_*` schema/table names before generated SQLite
      SQL.
-   - [ ] Resolve selected, predicate, and ordering columns from descriptors,
+   - [x] Resolve selected, predicate, and ordering columns from descriptors,
      including explicitly named invisible columns.
-   - [ ] Reuse the existing descriptor-driven predicate and limit planners.
-   - [ ] Reject unsupported distinct wildcard, selected expressions, literal
+   - [x] Reuse the existing descriptor-driven predicate and limit planners.
+   - [x] Reject unsupported distinct wildcard, selected expressions, literal
      selected items, table-qualified selected columns, aliases, multiple select
      items, explicit `ALL`, `DISTINCTROW`, non-selected order columns,
      table-qualified order columns, ordinals, expression order keys, multiple
      sort keys, joins, grouping, subqueries, CTEs, query modifiers, and other
      wider MySQL forms with deterministic diagnostics.
-   - [ ] Return descriptor-backed result rows, warning count `0`, affected rows
+   - [x] Return descriptor-backed result rows, warning count `0`, affected rows
      `0`, and following `ROW_COUNT() == -1` for supported forms.
 
 5. Physical SQLite select
-   - [ ] Generate SQLite `SELECT DISTINCT "column" FROM "physical_table"` with
+   - [x] Generate SQLite `SELECT DISTINCT "column" FROM "physical_table"` with
      optional descriptor-built `WHERE`, `ORDER BY`, and `LIMIT`/`OFFSET`.
-   - [ ] Quote every generated SQLite identifier.
-   - [ ] Bind predicate, limit, and offset values through prepared statements.
-   - [ ] Avoid SQLite fork patches, custom SQLite functions, and MyLite-side
+   - [x] Quote every generated SQLite identifier.
+   - [x] Bind predicate, limit, and offset values through prepared statements.
+   - [x] Avoid SQLite fork patches, custom SQLite functions, and MyLite-side
      duplicate elimination.
-   - [ ] Keep descriptor rows, catalog generation, descriptor versions,
+   - [x] Keep descriptor rows, catalog generation, descriptor versions,
      descriptor caches, and SQLite schema generation unchanged.
 
 6. Tests
-   - [ ] Add or extend fast C tests under `packages/libmylite/tests/`.
-   - [ ] Cover supported distinct behavior over existing descriptor integer
+   - [x] Add or extend fast C tests under `packages/libmylite/tests/`.
+   - [x] Cover supported distinct behavior over existing descriptor integer
      families, duplicate values, nullable values, invisible columns, predicates,
      ordering, limits, schema resolution, labels/result conventions, warning
      count, affected rows, following `ROW_COUNT()`, reopen persistence,
      rename/drop behavior, independent handles, preamble safety, and unsupported
      syntax.
-   - [ ] Keep tests deterministic and avoid adding a new test framework.
+   - [x] Keep tests deterministic and avoid adding a new test framework.
 
 7. Build integration
-   - [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
-   - [ ] Keep first-party warning and clang-tidy policy enabled.
-   - [ ] Keep vendored SQLite warning policy unchanged.
+   - [x] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
+   - [x] Keep first-party warning and clang-tidy policy enabled.
+   - [x] Keep vendored SQLite warning policy unchanged.
 
 8. Verification and review
-   - [ ] Run `cmake --build --preset dev`.
-   - [ ] Run the new CTest entry and relevant parser/select lifecycle entries.
-   - [ ] Run
+   - [x] Run `cmake --build --preset dev`.
+   - [x] Run the new CTest entry and relevant parser/select lifecycle entries.
+   - [x] Run
      `./packages/libmylite/tests/mysql_baseline_select_distinct_column_expectations.sh`.
-   - [ ] Run `cmake --workflow --preset check`.
-   - [ ] Review the final diff for parser independence, descriptor authority,
+   - [x] Run `cmake --workflow --preset check`.
+   - [x] Review the final diff for parser independence, descriptor authority,
      generated SQL safety, result semantics, row-count semantics,
      file-format safety, cleanup on failure, compatibility docs, and scope
      control.

@@ -284,6 +284,7 @@ struct planned_select {
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
+    bool is_distinct;
     struct planned_select_predicate predicate;
     struct planned_select_order order;
     struct planned_select_limit limit;
@@ -1643,6 +1644,13 @@ static int convert_integer_for_column(
     int64_t *out_value
 );
 static int plan_select_columns(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select *out_plan
+);
+static int plan_select_distinct_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
     const struct mylite_catalog_column_descriptor *table_columns,
@@ -8198,6 +8206,8 @@ static int plan_select(
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_select){0};
+    out_plan->is_distinct =
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
     if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
         set_unsupported_error(database, "SELECT supports only descriptor-backed table reads");
         return MYLITE_ERROR;
@@ -8234,8 +8244,23 @@ static int plan_select(
         );
     }
     if (rc == MYLITE_OK) {
-        rc =
-            plan_select_columns(database, select_list, table_columns, table_column_count, out_plan);
+        if (out_plan->is_distinct) {
+            rc = plan_select_distinct_column(
+                database,
+                select_list,
+                table_columns,
+                table_column_count,
+                out_plan
+            );
+        } else {
+            rc = plan_select_columns(
+                database,
+                select_list,
+                table_columns,
+                table_column_count,
+                out_plan
+            );
+        }
     }
     if (rc == MYLITE_OK) {
         rc = plan_select_predicate(
@@ -8254,6 +8279,14 @@ static int plan_select(
             table_column_count,
             &out_plan->order
         );
+    }
+    if (rc == MYLITE_OK && out_plan->is_distinct && out_plan->order.has_order &&
+        out_plan->order.column.column_id != out_plan->columns[0].column_id) {
+        set_unsupported_error(
+            database,
+            "SELECT DISTINCT supports ORDER BY only on the selected column"
+        );
+        rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {
         rc = plan_select_limit(database, limit_clause, &out_plan->limit);
@@ -11736,6 +11769,57 @@ static int plan_select_columns(
     return MYLITE_OK;
 }
 
+static int plan_select_distinct_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select *out_plan
+) {
+    const struct mylite_sql_ast_node *item = NULL;
+    const struct mylite_sql_ast_node *identifier = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_child_count(select_list) != 1U) {
+        set_unsupported_error(database, "SELECT DISTINCT supports exactly one selected column");
+        return MYLITE_ERROR;
+    }
+
+    item = child_at(select_list, 0U);
+    rc = is_unqualified_identifier_select_item(item, &identifier);
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(
+            database,
+            "SELECT DISTINCT supports only one unqualified descriptor column"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(identifier, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = append_select_column(out_plan, &table_columns[column_index]);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list) {
     const struct mylite_sql_ast_node *item = child_at(select_list, 0U);
     const struct mylite_sql_ast_node *expression = child_at(item, 0U);
@@ -13647,7 +13731,11 @@ static int build_select_sql(const struct planned_select *plan, char **out_sql) {
     *out_sql = NULL;
     dynamic_string_init(&string);
 
-    rc = dynamic_string_append(&string, "SELECT ");
+    if (plan->is_distinct) {
+        rc = dynamic_string_append(&string, "SELECT DISTINCT ");
+    } else {
+        rc = dynamic_string_append(&string, "SELECT ");
+    }
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
          ++column_index) {
         if (column_index != 0U) {

@@ -2378,13 +2378,13 @@ static int test_count_aggregate_diagnostics(void) {
             .message_part = "COUNT(DISTINCT column) supports only WHERE",
         }
     );
-    failures += execute_error(
+    failures += expect_count_query(
         database,
-        "SELECT COUNT(*) AS c FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(*) AS c FROM numbers",
+            .column = "c",
+            .value = "4",
+            .context = "count star select item alias",
         }
     );
     failures += execute_error(

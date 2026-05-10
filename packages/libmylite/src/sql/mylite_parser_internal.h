@@ -441,7 +441,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_select_item(
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_item(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_ast_node *expression
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_ast_node *alias
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_dual(
     struct mylite_sql_parser_state *state,

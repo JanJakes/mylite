@@ -24,6 +24,12 @@ run_mysql_with_headers() {
         | docker exec -i "$MYSQL_CONTAINER" mysql -uroot --batch --raw "$@"
 }
 
+repeat_char() {
+    char=$1
+    count=$2
+    awk -v char="$char" -v count="$count" 'BEGIN { for (i = 0; i < count; ++i) printf "%s", char }'
+}
+
 expect_output() {
     label=$1
     expected=$2
@@ -92,6 +98,10 @@ run_mysql \
 "INSERT INTO numbers VALUES (1, 10, 5), (2, NULL, 6), (3, 20, 7);" \
     "$DATABASE" >/dev/null
 
+alias65=$(repeat_char a 65)
+alias256=$(repeat_char a 256)
+alias257=$(repeat_char a 257)
+
 expect_output_with_headers \
     "identifier aliases" \
     "x	y
@@ -124,6 +134,34 @@ expect_output_with_headers \
     "$DATABASE"
 
 expect_output_with_headers \
+    "65-character identifier alias" \
+    "${alias65}
+20" \
+    "SELECT n AS ${alias65} FROM numbers ORDER BY ${alias65} DESC LIMIT 1;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "256-character quoted identifier alias" \
+    "${alias256}
+20" \
+    "SELECT n AS \`${alias256}\` FROM numbers ORDER BY \`${alias256}\` DESC LIMIT 1;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "256-character string literal alias" \
+    "${alias256}
+20" \
+    "SELECT n AS '${alias256}' FROM numbers ORDER BY \`${alias256}\` DESC LIMIT 1;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "257-character alias truncation" \
+    "${alias256}
+1" \
+    "SELECT 1 AS ${alias257};" \
+    "$DATABASE"
+
+expect_output_with_headers \
     "distinct alias" \
     "x
 NULL
@@ -142,11 +180,38 @@ NULL
     "$DATABASE"
 
 expect_output_with_headers \
-    "aggregate aliases" \
-    "c	cn	cd	mn	mx
-3	2	2	10	20" \
-    "SELECT COUNT(*) AS c, COUNT(n) cn, COUNT(DISTINCT n) AS cd, "\
-"MIN(n) AS mn, MAX(n) mx FROM numbers;" \
+    "count star alias" \
+    "c
+3" \
+    "SELECT COUNT(*) AS c FROM numbers;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "count column alias" \
+    "cn
+2" \
+    "SELECT COUNT(n) cn FROM numbers;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "count distinct alias" \
+    "cd
+2" \
+    "SELECT COUNT(DISTINCT n) AS cd FROM numbers;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "min alias" \
+    "mn
+10" \
+    "SELECT MIN(n) AS mn FROM numbers;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "max alias" \
+    "mx
+20" \
+    "SELECT MAX(n) mx FROM numbers;" \
     "$DATABASE"
 
 expect_output_with_headers \

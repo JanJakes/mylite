@@ -316,6 +316,8 @@ static int test_row_count_function_reopen_and_independent_handles(void) {
 }
 
 static int test_row_count_function_unsupported_forms(void) {
+    static const char *const row_count_alias_columns[] = {"rc"};
+    static const char *const row_count_alias_values[] = {"-1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -372,16 +374,19 @@ static int test_row_count_function_unsupported_forms(void) {
     );
     failures += expect_row_count(database, -1, "row count after bare name error");
 
-    failures += execute_error(
-        database,
-        "SELECT ROW_COUNT() AS rc",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+    failures += execute_ok(database, "SELECT ROW_COUNT() AS rc", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = row_count_alias_columns,
+            .values = row_count_alias_values,
+            .count = 1U,
+            .context = "row count alias",
         }
     );
-    failures += expect_row_count(database, -1, "row count after alias error");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_row_count(database, -1, "row count after alias read");
 
     failures += execute_error(
         database,

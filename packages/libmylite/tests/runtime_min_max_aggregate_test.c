@@ -799,13 +799,13 @@ static int test_min_max_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_aggregate_query(
         database,
-        "SELECT MIN(i) AS m FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_aggregate_query){
+            .sql = "SELECT MIN(i) AS m FROM numbers",
+            .column = "m",
+            .value = "-2",
+            .context = "min select item alias",
         }
     );
     failures += execute_error(

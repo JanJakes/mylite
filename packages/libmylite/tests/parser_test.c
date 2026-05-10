@@ -58,6 +58,7 @@ static int test_select_order_limit_clauses(void);
 static int test_select_distinct_clause(void);
 static int test_select_all_clause(void);
 static int test_select_table_alias_clause(void);
+static int test_select_item_alias_clause(void);
 static int test_delete_statement(void);
 static int test_update_statement(void);
 static int test_comments_are_skipped(void);
@@ -165,6 +166,7 @@ int main(void) {
     failures += test_select_distinct_clause();
     failures += test_select_all_clause();
     failures += test_select_table_alias_clause();
+    failures += test_select_item_alias_clause();
     failures += test_delete_statement();
     failures += test_update_statement();
     failures += test_comments_are_skipped();
@@ -5121,6 +5123,100 @@ static int test_select_table_alias_clause(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
         "SELECT n FROM simple_lifecycle AS WHERE n = 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_item_alias_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_item = NULL;
+    const struct mylite_sql_ast_node *second_item = NULL;
+    const struct mylite_sql_ast_node *third_item = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT n AS x, nn y, nums.n AS `Customer identity`, n 'literal alias' "
+        "FROM numbers AS nums ORDER BY x DESC LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    first_item = child_at(select_list, 0U);
+    second_item = child_at(select_list, 1U);
+    third_item = child_at(select_list, 2U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    failures += expect_child_count(select_list, 4U, "select item alias count");
+    failures += expect_span_text(child_at(first_item, 0U), "n", "as alias expression");
+    failures += expect_span_text(child_at(first_item, 1U), "x", "as alias identifier");
+    failures += expect_span_text(child_at(second_item, 0U), "nn", "bare alias expression");
+    failures += expect_span_text(child_at(second_item, 1U), "y", "bare alias identifier");
+    failures += expect_span_text(child_at(third_item, 0U), "nums.n", "qualified alias expression");
+    failures += expect_span_text(
+        child_at(third_item, 1U),
+        "`Customer identity`",
+        "quoted identifier select alias"
+    );
+    failures += expect_literal(
+        child_at(child_at(select_list, 3U), 1U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "string select alias"
+    );
+    failures += expect_span_text(child_at(order_clause, 0U), "x", "alias order key");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "alias order direction"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT DISTINCT n AS x FROM numbers ORDER BY x;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "distinct select item alias modifier"
+    );
+    failures += expect_span_text(
+        child_at(child_at(select_list, 0U), 1U),
+        "x",
+        "distinct select item alias"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT COUNT(*) AS c FROM numbers;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_node(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_COUNT_STAR_FUNCTION,
+        "count select item alias expression"
+    );
+    failures += expect_span_text(child_at(child_at(select_list, 0U), 1U), "c", "count alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT DATABASE() AS d, USER() u FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures +=
+        expect_span_text(child_at(child_at(select_list, 0U), 1U), "d", "database function alias");
+    failures +=
+        expect_span_text(child_at(child_at(select_list, 1U), 1U), "u", "user function alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT * AS x FROM numbers;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT n AS 'x' FROM numbers ORDER BY 'x';",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

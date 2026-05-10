@@ -984,6 +984,7 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
 }
 
 static int test_order_limit_diagnostics(void) {
+    static const char *const alias_first[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -1510,13 +1511,13 @@ static int test_order_limit_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id AS x FROM ordered_numbers ORDER BY x LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_query){
+            .sql = "SELECT id AS x FROM ordered_numbers ORDER BY x LIMIT 1",
+            .values = alias_first,
+            .value_count = sizeof(alias_first) / sizeof(alias_first[0]),
+            .context = "select item alias order by",
         }
     );
     failures += execute_error(

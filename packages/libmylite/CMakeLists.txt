@@ -765,6 +765,18 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_select_qualified_columns_test)
 
+  add_executable(mylite_runtime_select_item_alias_test
+    tests/runtime_select_item_alias_test.c
+  )
+  target_link_libraries(mylite_runtime_select_item_alias_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_select_item_alias_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_select_item_alias_test)
+
   add_executable(mylite_runtime_delete_lifecycle_test
     tests/runtime_delete_lifecycle_test.c
   )
@@ -1186,6 +1198,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.select_qualified_columns
     COMMAND mylite_runtime_select_qualified_columns_test
+  )
+  add_test(
+    NAME libmylite.runtime.select_item_alias
+    COMMAND mylite_runtime_select_item_alias_test
   )
   add_test(
     NAME libmylite.runtime.delete_lifecycle

@@ -25,6 +25,7 @@ enum {
     mysql_error_cant_drop_database = 1008,
     mysql_error_unknown_database = 1049,
     mysql_error_table_exists = 1050,
+    mysql_error_column_ambiguous = 1052,
     mysql_error_not_unique_table_alias = 1066,
     mysql_error_unknown_column = 1054,
     mysql_error_incorrect_parameter_count = 1582,
@@ -83,6 +84,8 @@ enum {
     show_processlist_db_column = 3,
     show_processlist_info_column = 7,
     show_engines_result_column_count = 6,
+    select_item_alias_max_length = 256,
+    select_item_alias_capacity = select_item_alias_max_length + 1,
 };
 
 struct table_name_resolution {
@@ -295,6 +298,7 @@ struct planned_select {
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor *columns;
+    const struct mylite_sql_ast_node **column_aliases;
     size_t column_count;
     bool is_distinct;
     struct planned_select_predicate predicate;
@@ -313,6 +317,7 @@ enum planned_count_function {
 struct planned_count {
     bool has_source;
     const struct mylite_sql_ast_node *expression;
+    const struct mylite_sql_ast_node *alias;
     enum planned_count_function function;
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
@@ -335,6 +340,7 @@ enum planned_min_max_aggregate_function {
 
 struct planned_min_max_aggregate {
     const struct mylite_sql_ast_node *expression;
+    const struct mylite_sql_ast_node *alias;
     enum planned_min_max_aggregate_function function;
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
@@ -1773,9 +1779,17 @@ static int plan_select_order(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,
     const struct select_source_context *source_context,
+    const struct planned_select *select_plan,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_order *out_order
+);
+static int resolve_order_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct planned_select *select_plan,
+    struct mylite_catalog_column_descriptor *out_column,
+    bool *out_resolved
 );
 static int resolve_order_column(
     struct mylite_db *database,
@@ -1832,9 +1846,29 @@ static int integer_range_for_column(
 );
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
 static int append_select_column(
+    struct mylite_db *database,
     struct planned_select *plan,
-    const struct mylite_catalog_column_descriptor *column
+    const struct mylite_catalog_column_descriptor *column,
+    const struct mylite_sql_ast_node *alias
 );
+static int append_select_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_select *plan,
+    size_t column_index
+);
+static int copy_select_item_alias_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *alias,
+    char **out_text
+);
+static int copy_select_item_identifier_alias_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *alias,
+    char **out_text
+);
+static int validate_select_item_alias_text(struct mylite_db *database, char **text);
+static int duplicate_text(struct mylite_db *database, const char *source, char **out_text);
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data);
 static int append_show_table_status(
     const struct mylite_catalog_table_descriptor *table,
@@ -2088,6 +2122,7 @@ static int append_table_exists_note(struct mylite_db *database, const char *tabl
 static void set_unknown_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_where_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_order_column_error(struct mylite_db *database, const char *column_name);
+static void set_ambiguous_order_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_table_error(
     struct mylite_db *database,
     const char *schema_name,
@@ -8110,6 +8145,7 @@ static int plan_update(
             database,
             order_clause,
             NULL,
+            NULL,
             table_columns,
             table_column_count,
             &out_plan->order
@@ -8373,6 +8409,7 @@ static int plan_select(
             database,
             order_clause,
             &source_context,
+            out_plan,
             table_columns,
             table_column_count,
             &out_plan->order
@@ -8404,6 +8441,7 @@ static void planned_select_deinit(struct planned_select *plan) {
     }
 
     free(plan->columns);
+    free((void *)plan->column_aliases);
     *plan = (struct planned_select){0};
 }
 
@@ -8425,10 +8463,7 @@ static int execute_select_from_plan(
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, plan->columns[column_index].name);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+        rc = append_select_result_column(database, result, plan, column_index);
     }
     if (rc == MYLITE_OK) {
         rc = build_select_sql(plan, &sql);
@@ -8456,6 +8491,9 @@ static int execute_select_from_plan(
         mylite_result_free(result);
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
+            return rc;
+        }
+        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
             return rc;
         }
         set_physical_sqlite_row_error(database);
@@ -8505,6 +8543,7 @@ static int plan_count(
     *out_plan = (struct planned_count){false};
     expression = child_at(select_item, 0U);
     out_plan->expression = expression;
+    out_plan->alias = child_at(select_item, 1U);
     count_expression = unwrap_parenthesized_expression(expression);
     out_plan->function = count_function_from_expression(count_expression);
     if (mylite_sql_ast_node_child_count(select_list) != 1U) {
@@ -8847,7 +8886,13 @@ static int append_count_result_column(
     const struct planned_count *plan
 ) {
     char *column_name = NULL;
-    int rc = copy_aggregate_result_column_name(database, &plan->expression->span, &column_name);
+    int rc = MYLITE_OK;
+
+    if (plan->alias != NULL) {
+        rc = copy_select_item_alias_text(database, plan->alias, &column_name);
+    } else {
+        rc = copy_aggregate_result_column_name(database, &plan->expression->span, &column_name);
+    }
 
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_column(result, column_name);
@@ -9116,6 +9161,7 @@ static int plan_min_max_aggregate(
 
     expression = child_at(select_item, 0U);
     out_plan->expression = expression;
+    out_plan->alias = child_at(select_item, 1U);
     expression = unwrap_parenthesized_expression(expression);
     out_plan->function = min_max_aggregate_function_from_expression(expression);
     if (out_plan->function == PLANNED_MIN_MAX_AGGREGATE_NONE) {
@@ -9272,7 +9318,13 @@ static int append_min_max_aggregate_result_column(
     const struct planned_min_max_aggregate *plan
 ) {
     char *column_name = NULL;
-    int rc = copy_aggregate_result_column_name(database, &plan->expression->span, &column_name);
+    int rc = MYLITE_OK;
+
+    if (plan->alias != NULL) {
+        rc = copy_select_item_alias_text(database, plan->alias, &column_name);
+    } else {
+        rc = copy_aggregate_result_column_name(database, &plan->expression->span, &column_name);
+    }
 
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_column(result, column_name);
@@ -9413,9 +9465,14 @@ static int execute_session_scalar_select_statement(
     rc = append_session_scalar_select_warnings(database, select_list);
     while (rc == MYLITE_OK && select_item != NULL) {
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+        const struct mylite_sql_ast_node *alias = child_at(select_item, 1U);
         char *column_name = NULL;
 
-        rc = copy_source_span_text(database, &expression->span, &column_name);
+        if (alias != NULL) {
+            rc = copy_select_item_alias_text(database, alias, &column_name);
+        } else {
+            rc = copy_source_span_text(database, &expression->span, &column_name);
+        }
         if (rc == MYLITE_OK) {
             rc = mylite_result_append_column(result, column_name);
             if (rc != MYLITE_OK) {
@@ -10185,6 +10242,7 @@ static int plan_delete(
         rc = plan_select_order(
             database,
             order_clause,
+            NULL,
             NULL,
             table_columns,
             table_column_count,
@@ -12001,7 +12059,7 @@ static int plan_select_columns(
             if (!table_columns[column_index].is_visible) {
                 continue;
             }
-            int rc = append_select_column(out_plan, &table_columns[column_index]);
+            int rc = append_select_column(database, out_plan, &table_columns[column_index], NULL);
 
             if (rc != MYLITE_OK) {
                 set_nomem_error(database);
@@ -12034,7 +12092,7 @@ static int plan_select_columns(
         if (rc != MYLITE_OK) {
             return rc;
         }
-        rc = append_select_column(out_plan, &column);
+        rc = append_select_column(database, out_plan, &column, child_at(item, 1U));
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
             return rc;
@@ -12087,7 +12145,7 @@ static int plan_select_distinct_column(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = append_select_column(out_plan, &column);
+    rc = append_select_column(database, out_plan, &column, child_at(item, 1U));
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
@@ -12109,23 +12167,41 @@ static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_lis
 }
 
 static int append_select_column(
+    struct mylite_db *database,
     struct planned_select *plan,
-    const struct mylite_catalog_column_descriptor *column
+    const struct mylite_catalog_column_descriptor *column,
+    const struct mylite_sql_ast_node *alias
 ) {
     struct mylite_catalog_column_descriptor *columns = NULL;
+    const struct mylite_sql_ast_node **aliases = NULL;
     size_t required_count = plan->column_count + 1U;
 
     if (required_count > SIZE_MAX / sizeof(*columns)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (required_count > SIZE_MAX / sizeof(*aliases)) {
+        set_nomem_error(database);
         return MYLITE_NOMEM;
     }
 
     columns = realloc(plan->columns, required_count * sizeof(*columns));
     if (columns == NULL) {
+        set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-
     plan->columns = columns;
+
+    aliases = (const struct mylite_sql_ast_node **)
+        realloc((void *)plan->column_aliases, required_count * sizeof(*aliases));
+    if (aliases == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    plan->column_aliases = aliases;
+
     plan->columns[plan->column_count] = *column;
+    plan->column_aliases[plan->column_count] = alias;
     plan->column_count = required_count;
 
     return MYLITE_OK;
@@ -12145,6 +12221,155 @@ static int select_item_column_reference(
     }
 
     *out_column = expression;
+
+    return MYLITE_OK;
+}
+
+static int append_select_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_select *plan,
+    size_t column_index
+) {
+    const char *column_name = plan->columns[column_index].name;
+    const struct mylite_sql_ast_node *alias = plan->column_aliases[column_index];
+    char *alias_text = NULL;
+    int rc = MYLITE_OK;
+
+    if (alias != NULL) {
+        rc = copy_select_item_alias_text(database, alias, &alias_text);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        column_name = alias_text;
+    }
+
+    rc = mylite_result_append_column(result, column_name);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    free(alias_text);
+
+    return rc;
+}
+
+static int copy_select_item_alias_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *alias,
+    char **out_text
+) {
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    if (alias == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (alias->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        return copy_select_item_identifier_alias_text(database, alias, out_text);
+    }
+    if (alias->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(alias) == MYLITE_SQL_AST_LITERAL_STRING) {
+        rc = decode_table_option_string_literal(
+            database,
+            alias,
+            out_text,
+            (struct table_option_name_policy){
+                .identifier_kind = "alias",
+                .nul_message = "select-item aliases do not support NUL bytes",
+            }
+        );
+        if (rc == MYLITE_OK) {
+            rc = validate_select_item_alias_text(database, out_text);
+        }
+        return rc;
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static int copy_select_item_identifier_alias_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *alias,
+    char **out_text
+) {
+    char identifier[select_item_alias_capacity];
+    const char *source = NULL;
+    size_t source_size = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    if (alias == NULL || alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    source = alias->span.text;
+    source_size = alias->span.length;
+    if (source == NULL || source_size == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (source[0] == '`') {
+        rc = copy_quoted_identifier_text(source, source_size, identifier, sizeof(identifier));
+    } else {
+        rc = copy_unquoted_identifier_text(source, source_size, identifier, sizeof(identifier));
+    }
+    if (rc != MYLITE_OK) {
+        set_identifier_too_long_error(database, "alias");
+        return rc;
+    }
+
+    return duplicate_text(database, identifier, out_text);
+}
+
+static int validate_select_item_alias_text(struct mylite_db *database, char **text) {
+    if (text == NULL || *text == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (strlen(*text) > select_item_alias_max_length) {
+        free(*text);
+        *text = NULL;
+        set_identifier_too_long_error(database, "alias");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int duplicate_text(struct mylite_db *database, const char *source, char **out_text) {
+    size_t length = 0U;
+    char *text = NULL;
+
+    if (out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    if (source == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    length = strlen(source);
+    if (length == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    text = (char *)malloc(length + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(text, source, length + 1U);
+    *out_text = text;
 
     return MYLITE_OK;
 }
@@ -12403,11 +12628,13 @@ static int plan_select_order(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,
     const struct select_source_context *source_context,
+    const struct planned_select *select_plan,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_order *out_order
 ) {
     const struct mylite_sql_ast_node *direction = NULL;
+    bool resolved_alias = false;
     int rc = MYLITE_OK;
 
     out_order->has_order = false;
@@ -12421,14 +12648,23 @@ static int plan_select_order(
         return MYLITE_ERROR;
     }
 
-    rc = resolve_order_column(
+    rc = resolve_order_alias(
         database,
         child_at(order_clause, 0U),
-        source_context,
-        table_columns,
-        table_column_count,
-        &out_order->column
+        select_plan,
+        &out_order->column,
+        &resolved_alias
     );
+    if (rc == MYLITE_OK && !resolved_alias) {
+        rc = resolve_order_column(
+            database,
+            child_at(order_clause, 0U),
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_order->column
+        );
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -12440,6 +12676,59 @@ static int plan_select_order(
         out_order->direction = PLANNED_SELECT_ORDER_DESC;
     }
 
+    return MYLITE_OK;
+}
+
+static int resolve_order_alias(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct planned_select *select_plan,
+    struct mylite_catalog_column_descriptor *out_column,
+    bool *out_resolved
+) {
+    char *order_name = NULL;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    *out_resolved = false;
+    if (select_plan == NULL || column_node == NULL ||
+        column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_select_item_identifier_alias_text(database, column_node, &order_name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    for (size_t column_index = 0U; column_index < select_plan->column_count; ++column_index) {
+        const struct mylite_sql_ast_node *alias = select_plan->column_aliases[column_index];
+        char *alias_text = NULL;
+
+        if (alias == NULL) {
+            continue;
+        }
+
+        rc = copy_select_item_alias_text(database, alias, &alias_text);
+        if (rc != MYLITE_OK) {
+            free(order_name);
+            return rc;
+        }
+        if (text_equals_ascii_case_insensitive(alias_text, order_name)) {
+            if (found) {
+                free(alias_text);
+                set_ambiguous_order_column_error(database, order_name);
+                free(order_name);
+                return MYLITE_ERROR;
+            }
+            *out_column = select_plan->columns[column_index];
+            found = true;
+        }
+        free(alias_text);
+    }
+
+    free(order_name);
+    *out_resolved = found;
     return MYLITE_OK;
 }
 
@@ -15709,6 +15998,22 @@ static void set_unknown_order_column_error(struct mylite_db *database, const cha
         mylite_connection_diagnostics(database),
         mysql_error_unknown_column,
         "42S22",
+        message
+    );
+}
+
+static void set_ambiguous_order_column_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Column '%s' in order clause is ambiguous", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_column_ambiguous,
+        "23000",
         message
     );
 }

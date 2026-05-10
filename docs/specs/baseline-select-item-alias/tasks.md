@@ -18,48 +18,48 @@ descriptor resolution and generated SQLite execution authoritative.
      subset.
 
 2. Parser and AST
-   - [ ] Add select-alias grammar for identifier, quoted identifier, and string
+   - [x] Add select-alias grammar for identifier, quoted identifier, and string
      literal aliases.
-   - [ ] Store the alias as optional child `1` of `SELECT_ITEM`, preserving the
+   - [x] Store the alias as optional child `1` of `SELECT_ITEM`, preserving the
      expression as child `0`.
-   - [ ] Preserve current default, `ALL`, `DISTINCT`, `DISTINCTROW`, wildcard,
+   - [x] Preserve current default, `ALL`, `DISTINCT`, `DISTINCTROW`, wildcard,
      aggregate, `DUAL`, no-source, table-alias, and qualified-column parsing.
-   - [ ] Add parser tests for `AS`, bare, quoted-identifier, string-literal,
+   - [x] Add parser tests for `AS`, bare, quoted-identifier, string-literal,
      scalar, aggregate, distinct, table-backed, and unsupported star alias
      forms.
 
 3. Runtime execution
-   - [ ] Decode alias labels without mutating descriptors.
-   - [ ] Use aliases as public result column labels for supported projections,
+   - [x] Decode alias labels without mutating descriptors.
+   - [x] Use aliases as public result column labels for supported projections,
      aggregates, scalar/session functions, and system variables.
-   - [ ] Resolve unqualified table-backed `ORDER BY` keys against projected
+   - [x] Resolve unqualified table-backed `ORDER BY` keys against projected
      aliases before descriptor columns.
-   - [ ] Preserve descriptor authority for table sources, selected values,
+   - [x] Preserve descriptor authority for table sources, selected values,
      predicates, distinct values, aggregate arguments, fallback order columns,
      and limits.
-   - [ ] Preserve generated SQLite identifier quoting and parameter binding.
-   - [ ] Preserve result rows, affected rows, warning count, and following
+   - [x] Preserve generated SQLite identifier quoting and parameter binding.
+   - [x] Preserve result rows, affected rows, warning count, and following
      `ROW_COUNT()` behavior.
-   - [ ] Avoid catalog, storage, VFS, or SQLite fork changes.
+   - [x] Avoid catalog, storage, VFS, or SQLite fork changes.
 
 4. Tests
-   - [ ] Add fast C tests under `packages/libmylite/tests/`.
-   - [ ] Cover successful aliases across descriptor, `ALL`, `DISTINCT`,
+   - [x] Add fast C tests under `packages/libmylite/tests/`.
+   - [x] Cover successful aliases across descriptor, `ALL`, `DISTINCT`,
      `DISTINCTROW`, aggregate, scalar/session, no-source, `DUAL`, table-alias,
      schema-qualified, filtered, ordered, and limited forms.
-   - [ ] Cover alias labels, order alias shadowing, case-insensitive order
+   - [x] Cover alias labels, order alias shadowing, case-insensitive order
      matching, duplicate order alias ambiguity, `WHERE` ignoring aliases,
      unsupported forms, unknown names, reopen, rename/drop, independent
      handles, result conventions, and file-format preservation.
-   - [ ] Keep tests deterministic and avoid a new framework.
+   - [x] Keep tests deterministic and avoid a new framework.
 
 5. Verification and review
-   - [ ] Run `cmake --build --preset dev`.
-   - [ ] Run relevant parser/select/aggregate/scalar lifecycle CTest entries.
-   - [ ] Run
+   - [x] Run `cmake --build --preset dev`.
+   - [x] Run relevant parser/select/aggregate/scalar lifecycle CTest entries.
+   - [x] Run
      `./packages/libmylite/tests/mysql_baseline_select_item_alias_expectations.sh`.
-   - [ ] Run `cmake --workflow --preset check`.
-   - [ ] Review final diff for scope control, grammar independence, descriptor
+   - [x] Run `cmake --workflow --preset check`.
+   - [x] Review final diff for scope control, grammar independence, descriptor
      authority, SQLite pushdown, alias semantics, compatibility docs, and test
      relevance.
 

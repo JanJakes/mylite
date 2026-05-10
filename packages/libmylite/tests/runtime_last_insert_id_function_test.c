@@ -379,8 +379,11 @@ static int test_last_insert_id_reopen_and_independent_handles(void) {
 }
 
 static int test_last_insert_id_unsupported_forms(void) {
+    static const char *const last_insert_id_alias_columns[] = {"id"};
+    static const char *const last_insert_id_alias_values[] = {"0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "unsupported") != 0) {
@@ -434,15 +437,18 @@ static int test_last_insert_id_unsupported_forms(void) {
     );
     failures += expect_last_insert_id(database, "bare name error leaves last insert id");
 
-    failures += execute_error(
-        database,
-        "SELECT LAST_INSERT_ID() AS id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+    failures += execute_ok(database, "SELECT LAST_INSERT_ID() AS id", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = last_insert_id_alias_columns,
+            .values = last_insert_id_alias_values,
+            .count = 1U,
+            .context = "last insert id alias",
         }
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT LAST_INSERT_ID() LIMIT 1",

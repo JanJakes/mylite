@@ -881,8 +881,11 @@ static int test_current_role_function_independent_handles(void) {
 }
 
 static int test_current_role_function_unsupported_forms(void) {
+    static const char *const role_alias_columns[] = {"role_name"};
+    static const char *const role_alias_values[] = {"NONE"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "current_role_unsupported") != 0) {
@@ -980,15 +983,17 @@ static int test_current_role_function_unsupported_forms(void) {
             .message_part = "SELECT supports only descriptor table columns",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT CURRENT_ROLE() AS role_name",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+    failures += execute_ok(database, "SELECT CURRENT_ROLE() AS role_name", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = role_alias_columns,
+            .values = role_alias_values,
+            .count = 1U,
+            .context = "current role select item alias",
         }
     );
+    mylite_result_free(result);
 
     mylite_close(database);
     remove_related_files(path);

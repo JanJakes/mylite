@@ -709,13 +709,12 @@ static int test_filtered_select_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i AS alias FROM numbers WHERE i = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_single_value_query){
+            .sql = "SELECT i AS alias FROM numbers WHERE i = 1",
+            .expected = "1",
+            .context = "select item alias with where",
         }
     );
     failures += execute_error(

@@ -79,6 +79,10 @@ Observed results:
 
 - Identifier, quoted-identifier, and string-literal aliases set the result
   column label.
+- MySQL accepts decoded aliases through 256 characters. Runtime probes also
+  show longer simple `SELECT` aliases are truncated to 256 characters with a
+  warning; this truncation/warning behavior is intentionally deferred for this
+  baseline slice.
 - Bare aliases without `AS` are accepted for identifiers and string literals.
 - Successful row-returning statements leave `@@warning_count = 0` and the
   following `ROW_COUNT() = -1`.
@@ -199,6 +203,9 @@ For supported statements, an alias changes the visible result column name.
   decode doubled backticks.
 - String-literal aliases use the current MyLite string-literal decoder for
   SQL quoted text and escape sequences.
+- MyLite accepts decoded aliases through 256 bytes for this ASCII-oriented
+  baseline and rejects longer aliases with `1059` / `42000`, rather than
+  implementing MySQL's longer-alias truncation warning yet.
 - Alias labels preserve the spelling and bytes of the decoded alias. Name
   matching for `ORDER BY alias` follows MyLite's current descriptor name
   policy, which is ASCII case-insensitive.
@@ -242,8 +249,9 @@ Expected diagnostics for this slice:
 | Duplicate matching order aliases | `1052` / `23000`, ambiguous column in order clause |
 | Qualified alias in `ORDER BY` | unknown-column diagnostic after descriptor fallback |
 | String-literal `ORDER BY` key | parse or unsupported diagnostic |
-| Alias literal decoding failure or too-long alias | deterministic alias diagnostic or allocation diagnostic |
-| Physical SQLite failure | existing internal SQLite row-operation diagnostic |
+| Alias literal decoding failure | deterministic alias diagnostic or allocation diagnostic |
+| Decoded alias longer than 256 bytes | `1059` / `42000`, alias identifier too long |
+| Physical SQLite failure | existing internal SQLite row-operation diagnostic without masking earlier alias diagnostics |
 | Allocation failure | existing allocation diagnostic |
 
 ## Tests

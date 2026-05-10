@@ -1646,7 +1646,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_wildcard_select_list(
         state,
         mylite_sql_parser_make_select_item(
             state,
-            mylite_sql_parser_make_wildcard(state, wildcard_token)
+            mylite_sql_parser_make_wildcard(state, wildcard_token),
+            NULL
         )
     );
 }
@@ -1684,7 +1685,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_append_select_item(
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_select_item(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_ast_node *expression
+    struct mylite_sql_ast_node *expression,
+    struct mylite_sql_ast_node *alias
 ) {
     struct mylite_sql_source_span span =
         expression == NULL ? (struct mylite_sql_source_span){0} : expression->span;
@@ -1693,7 +1695,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_item(
         return NULL;
     }
 
+    if (alias != NULL) {
+        mylite_sql_ast_node_set_span(item, span_join(span, alias->span));
+    }
     mylite_sql_ast_node_append_child(item, expression);
+    mylite_sql_ast_node_append_child(item, alias);
     return item;
 }
 

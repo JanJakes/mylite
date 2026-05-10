@@ -943,7 +943,20 @@ select_item_list(A) ::= select_item_list(B) COMMA select_item(C). {
 }
 
 select_item(A) ::= expression(B). {
-    A = mylite_sql_parser_make_select_item(state, B);
+    A = mylite_sql_parser_make_select_item(state, B, NULL);
+}
+select_item(A) ::= expression(B) AS select_alias(C). {
+    A = mylite_sql_parser_make_select_item(state, B, C);
+}
+select_item(A) ::= expression(B) select_alias(C). {
+    A = mylite_sql_parser_make_select_item(state, B, C);
+}
+
+select_alias(A) ::= identifier(B). {
+    A = B;
+}
+select_alias(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 expression(A) ::= literal(B). {

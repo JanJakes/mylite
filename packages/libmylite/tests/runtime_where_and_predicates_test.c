@@ -153,6 +153,43 @@ static int test_where_and_predicates(void) {
         "'|| as a synonym for OR' is deprecated and will be removed in a future release. Please "
         "use OR instead",
     };
+    static const char *const not_rows[] = {"1", "3", "4"};
+    static const char *const not_null_safe_rows[] = {"1", "3"};
+    static const char *const not_null_rows[] = {"2", "4"};
+    static const char *const not_parenthesized_rows[] = {"1", "3"};
+    static const char *const not_precedence_rows[] = {"1", "4"};
+    static const char *const not_repeated_rows[] = {"2"};
+    static const char *const not_distinct_rows[] = {"9"};
+    static const char *const not_count_row[] = {"2"};
+    static const char *const not_max_row[] = {"2147483647"};
+    static const char *const not_grouped_rows[] = {"1", "1", "2", "2"};
+    static const char *const not_copy_rows[] = {
+        "1",
+        "-2",
+        NULL,
+        "3",
+        "2147483647",
+        NULL,
+        "4",
+        "0",
+        "9",
+    };
+    static const char *const not_inserted_rows[] = {"1", "-2", "3", "2147483647", "4", "0"};
+    static const char *const not_replaced_rows[] = {"1", "-2", "3", "2147483647", "4", "0"};
+    static const char *const not_update_rows[] = {"1", "11", "2", "9", "3", "11", "4", "9"};
+    static const char *const not_update_limited_rows[] = {
+        "1",
+        NULL,
+        "2",
+        "9",
+        "3",
+        NULL,
+        "4",
+        NULL,
+    };
+    static const char *const not_delete_rows[] = {"1", "2", "3"};
+    static const char *const not_delete_limited_rows[] = {"1", "3", "4"};
+    static const char *const not_persisted_rows[] = {"44"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -307,6 +344,91 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT i = 1 ORDER BY id",
+            .values = not_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "comparison not predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT n <=> 9 ORDER BY id",
+            .values = not_null_safe_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "null-safe comparison not predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT n IS NULL ORDER BY id",
+            .values = not_null_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not is null predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT (i = 1 OR nn = 8) ORDER BY id",
+            .values = not_parenthesized_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not parenthesized predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT i = 1 AND nn = 5 OR id = 4 ORDER BY id",
+            .values = not_precedence_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not and or precedence predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT NOT i = 1 ORDER BY id",
+            .values = not_repeated_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "repeated not predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT n = 9",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not unknown predicate",
+        }
+    );
+
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT DISTINCT n FROM numbers WHERE n IS NOT NULL AND tie = 1",
             .values = distinct_row,
             .column_count = 1U,
@@ -404,6 +526,55 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT DISTINCT n FROM numbers WHERE NOT n IS NULL ORDER BY n",
+            .values = not_distinct_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "distinct source not predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE NOT n IS NULL",
+            .values = not_count_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "count source not predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT MAX(i) FROM numbers WHERE NOT nn = 6",
+            .values = not_max_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "aggregate source not predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT tie, COUNT(*) FROM numbers WHERE NOT id = 2 GROUP BY tie ORDER BY tie",
+            .values = not_grouped_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped aggregate source not predicate",
+        }
+    );
+
     failures += execute_ok(
         database,
         "CREATE TABLE copy_numbers SELECT id, i, n FROM numbers WHERE i = 1 AND n IS NOT NULL",
@@ -448,6 +619,31 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "create table select or copied rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE copy_not_numbers SELECT id, i, n FROM numbers WHERE NOT i = 1",
+        &result
+    );
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "create table select not affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i, n FROM copy_not_numbers ORDER BY id",
+            .values = not_copy_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "create table select not copied rows",
         }
     );
 
@@ -507,6 +703,32 @@ static int test_where_and_predicates(void) {
     );
 
     failures +=
+        execute_ok(database, "CREATE TABLE not_inserted_numbers (id INT NOT NULL, i INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO not_inserted_numbers SELECT id, i FROM numbers WHERE NOT i = 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "insert select not affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM not_inserted_numbers ORDER BY id",
+            .values = not_inserted_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "insert select source not predicate",
+        }
+    );
+
+    failures +=
         execute_ok(database, "CREATE TABLE replaced_numbers (id INT NOT NULL, i INT)", &result);
     mylite_result_free(result);
     result = NULL;
@@ -555,6 +777,32 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "replace select source or predicate",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE not_replaced_numbers (id INT NOT NULL, i INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "REPLACE INTO not_replaced_numbers SELECT id, i FROM numbers WHERE NOT i = 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "replace select not affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM not_replaced_numbers ORDER BY id",
+            .values = not_replaced_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "replace select source not predicate",
         }
     );
 
@@ -657,6 +905,47 @@ static int test_where_and_predicates(void) {
     );
 
     failures += reset_numbers(database);
+    failures +=
+        execute_ok(database, "UPDATE numbers SET n = 11 WHERE NOT (i = 1 OR nn = 8)", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 2, "update not affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = not_update_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update not row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "UPDATE numbers SET n = NULL WHERE NOT (n IS NULL) ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "update not limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = not_update_limited_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update not limit row state",
+        }
+    );
+
+    failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i > 1 AND n IS NULL", &result);
     failures += expect_int64(mylite_result_affected_rows(result), 1, "delete and affected rows");
     mylite_result_free(result);
@@ -736,6 +1025,47 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += reset_numbers(database);
+    failures +=
+        execute_ok(database, "DELETE FROM numbers WHERE NOT (n IS NULL OR nn = 6)", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 1, "delete not affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = not_delete_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete not row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "DELETE FROM numbers WHERE NOT (id = 1 OR nn >= 7) ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "delete not limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = not_delete_limited_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete not limit row state",
+        }
+    );
+
     failures += execute_error(
         database,
         "SELECT id FROM numbers WHERE id = 1 AND missing = 1",
@@ -783,7 +1113,25 @@ static int test_where_and_predicates(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM numbers WHERE NOT id = 1",
+        "SELECT id FROM numbers WHERE NOT missing = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE NOT i = 2147483648",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' in WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE ! (id = 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -814,6 +1162,13 @@ static int test_where_and_predicates(void) {
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "UPDATE numbers SET n = 22 WHERE id = 1 OR id = 4", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "UPDATE numbers SET n = 44 WHERE NOT (id = 1 OR id = 2 OR id = 4)",
+        &result
+    );
     mylite_result_free(result);
     result = NULL;
 
@@ -854,6 +1209,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "reopened or updated rows",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE NOT (id = 1 OR id = 2 OR id = 4)",
+            .values = not_persisted_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "reopened not updated rows",
         }
     );
 
@@ -913,6 +1280,30 @@ static int test_independent_where_and_handles(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "second independent handle",
+        }
+    );
+    failures += expect_result(
+        first,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE NOT id <> 2",
+            .values = first_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "first independent handle not predicate",
+        }
+    );
+    failures += expect_result(
+        second,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE NOT id <> 2",
+            .values = second_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "second independent handle not predicate",
         }
     );
 

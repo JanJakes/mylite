@@ -131,6 +131,8 @@ admitted surface:
 - Repeated `NOT` applies right-to-left for the admitted predicate subset.
 - SQL three-valued behavior is preserved: negating unknown yields unknown, and
   unknown rows do not pass `WHERE`.
+- `<=>` remains a two-valued NULL-safe comparison before negation. For example,
+  `NOT nullable_col <=> 9` accepts rows where `nullable_col` is `NULL`.
 - `NOT` records no warning.
 - `WHERE` filtering happens before grouping, aggregate calculation, DML row
   mutation, ordering, and limiting.
@@ -257,6 +259,8 @@ The planner must preserve a boolean predicate tree. Generated SQLite SQL must:
 - represent keyword `NOT` with SQLite's standard unary `NOT` operator over a
   generated child predicate expression;
 - represent `AND` and `OR` with SQLite's standard boolean operators;
+- represent `<=>` with a descriptor-built NULL-safe physical comparison so
+  composing it under `NOT` keeps MySQL's two-valued behavior;
 - bind every comparison literal as a prepared-statement parameter in
   left-to-right SQL emission order;
 - continue binding `LIMIT` parameters after predicate parameters in the same

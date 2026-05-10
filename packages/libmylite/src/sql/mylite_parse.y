@@ -1177,16 +1177,23 @@ predicate_disjunction(A) ::= predicate_disjunction(B) LOGICAL_OR(O) predicate_co
         state, B, O, MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR, C);
 }
 
-predicate_conjunction(A) ::= predicate_primary(B). {
+predicate_conjunction(A) ::= predicate_negation(B). {
     A = B;
 }
-predicate_conjunction(A) ::= predicate_conjunction(B) AND(O) predicate_primary(C). {
+predicate_conjunction(A) ::= predicate_conjunction(B) AND(O) predicate_negation(C). {
     A = mylite_sql_parser_make_and_predicate(
         state, B, O, MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, C);
 }
-predicate_conjunction(A) ::= predicate_conjunction(B) LOGICAL_AND(O) predicate_primary(C). {
+predicate_conjunction(A) ::= predicate_conjunction(B) LOGICAL_AND(O) predicate_negation(C). {
     A = mylite_sql_parser_make_and_predicate(
         state, B, O, MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND, C);
+}
+
+predicate_negation(A) ::= predicate_primary(B). {
+    A = B;
+}
+predicate_negation(A) ::= NOT(O) predicate_negation(B). {
+    A = mylite_sql_parser_make_not_predicate(state, O, B);
 }
 
 predicate_primary(A) ::= predicate_atom(B). {

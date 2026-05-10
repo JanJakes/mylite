@@ -141,6 +141,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_HAVING_CLAUSE = 132,
     MYLITE_SQL_AST_AND_PREDICATE = 133,
     MYLITE_SQL_AST_OR_PREDICATE = 134,
+    MYLITE_SQL_AST_NOT_PREDICATE = 135,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -178,6 +179,7 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND = 17,
     MYLITE_SQL_AST_OPERATOR_LOGICAL_OR = 18,
     MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR = 19,
+    MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT = 20,
 };
 
 enum mylite_sql_ast_integer_type {

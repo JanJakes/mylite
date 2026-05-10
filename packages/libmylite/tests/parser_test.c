@@ -5761,6 +5761,76 @@ static int test_select_where_predicates(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parse_sql("SELECT * FROM simple_lifecycle WHERE NOT id = 1;", MYLITE_SQL_PARSE_OK, &result);
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not predicate"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT,
+        "not predicate operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE NOT NOT id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "outer repeated not predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "inner repeated not predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE NOT id = 1 AND nn = 2 OR n IS NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OR_PREDICATE,
+        "not and or precedence root"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "not binds tighter than and"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not predicate under and"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE NOT (id = 1 OR nn = 2);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not parenthesized predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "not parenthesized child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql(
         "SELECT id FROM simple_lifecycle WHERE simple_lifecycle.id = 1;",
         MYLITE_SQL_PARSE_OK,
@@ -8245,6 +8315,10 @@ static int test_syntax_errors(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT id FROM t WHERE ! (id = 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

@@ -2276,6 +2276,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_or_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_not_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token operator_token,
+    struct mylite_sql_ast_node *child
+) {
+    struct mylite_sql_source_span span = span_from_token(&operator_token);
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    if (child != NULL) {
+        span = span_join(span, child->span);
+    }
+
+    predicate = make_node(state, MYLITE_SQL_AST_NOT_PREDICATE, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_operator(predicate, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT);
+    mylite_sql_ast_node_append_child(predicate, child);
+    return predicate;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token order_token,

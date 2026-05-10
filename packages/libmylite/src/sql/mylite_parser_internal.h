@@ -607,6 +607,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_or_predicate(
     enum mylite_sql_ast_operator operator_kind,
     struct mylite_sql_ast_node *right
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_not_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token operator_token,
+    struct mylite_sql_ast_node *child
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token order_token,

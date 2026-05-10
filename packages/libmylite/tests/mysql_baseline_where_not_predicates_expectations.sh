@@ -143,6 +143,12 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "not nullable null safe comparison rows" \
+    "1,3" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE NOT n <=> 9;" \
+    "$DATABASE"
+
+expect_output \
     "not is null rows" \
     "2,4" \
     "SELECT GROUP_CONCAT(id ORDER BY id) FROM numbers WHERE NOT n IS NULL;" \

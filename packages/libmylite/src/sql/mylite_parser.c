@@ -2001,6 +2001,34 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_zero_argument_functi
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_one_argument_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_ast_node *argument,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *function = NULL;
+
+    if (left_paren.offset != function_token.offset + function_token.length) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
+        return NULL;
+    }
+
+    function = make_node(
+        state,
+        function_kind,
+        span_join(span_from_token(&function_token), span_from_token(&right_paren))
+    );
+    if (function == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(function, argument);
+    return function;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_count_error(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -2456,6 +2484,8 @@ static bool map_keyword_token(
         {"ASC", MYLITE_SQL_PARSE_ASC},
         {"DESC", MYLITE_SQL_PARSE_DESC},
         {"LAST_INSERT_ID", MYLITE_SQL_PARSE_LAST_INSERT_ID},
+        {"MAX", MYLITE_SQL_PARSE_MAX},
+        {"MIN", MYLITE_SQL_PARSE_MIN},
         {"LIMIT", MYLITE_SQL_PARSE_LIMIT},
         {"OFFSET", MYLITE_SQL_PARSE_OFFSET},
         {"USE", MYLITE_SQL_PARSE_USE},

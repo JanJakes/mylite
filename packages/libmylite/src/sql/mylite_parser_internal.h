@@ -534,6 +534,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_zero_argument_functi
     enum mylite_sql_ast_node_kind function_kind,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_one_argument_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_ast_node *argument,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_count_error(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,

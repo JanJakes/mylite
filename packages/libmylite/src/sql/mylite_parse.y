@@ -940,6 +940,14 @@ expression(A) ::= COUNT(T) LPAREN(L) STAR RPAREN(R). {
     A = mylite_sql_parser_make_no_space_zero_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_STAR_FUNCTION, R);
 }
+expression(A) ::= MIN(T) LPAREN(L) identifier(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R);
+}
+expression(A) ::= MAX(T) LPAREN(L) identifier(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R);
+}
 expression(A) ::= VERSION(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_VERSION_FUNCTION, R);
@@ -1061,6 +1069,12 @@ identifier(A) ::= CURRENT_ROLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COUNT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MIN(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MAX(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= VERSION(T). {

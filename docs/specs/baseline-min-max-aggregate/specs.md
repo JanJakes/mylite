@@ -250,7 +250,8 @@ The aggregate argument and predicate columns are resolved from MyLite column
 descriptors, not from SQLite metadata. Unknown aggregate, predicate, or order
 columns are reported deterministically through the existing unknown-column
 diagnostic path for supported descriptor-backed selects. Current descriptor
-catalog name matching remains the existing binary/case-sensitive baseline.
+catalog column name matching follows the existing ASCII case-insensitive
+baseline after identifier unquoting.
 
 Unsupported object kinds must be rejected once non-base-table descriptors
 exist.

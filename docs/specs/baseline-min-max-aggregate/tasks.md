@@ -31,70 +31,70 @@ names, and the existing baseline predicate conversion path.
      compatibility expectations.
 
 3. Parser and AST
-   - [ ] Add `MIN` and `MAX` keyword recognition without making them reserved.
-   - [ ] Add an AST node for one-column `MIN()` / `MAX()` aggregate functions.
-   - [ ] Extend Lemon grammar for no-space `MIN(identifier)` and
+   - [x] Add `MIN` and `MAX` keyword recognition without making them reserved.
+   - [x] Add an AST node for one-column `MIN()` / `MAX()` aggregate functions.
+   - [x] Extend Lemon grammar for no-space `MIN(identifier)` and
      `MAX(identifier)`, including whitespace or comments inside the argument
      list.
-   - [ ] Preserve source spans for default result labels.
-   - [ ] Preserve `MIN` and `MAX` as identifiers where the grammar admits
+   - [x] Preserve source spans for default result labels.
+   - [x] Preserve `MIN` and `MAX` as identifiers where the grammar admits
      nonreserved function-name identifiers.
-   - [ ] Add parser tests for supported min/max syntax and unsupported
+   - [x] Add parser tests for supported min/max syntax and unsupported
      argument/spacing forms.
 
 4. Analyzer/planner/runtime execution
-   - [ ] Add a min/max aggregate select path distinct from scalar session
+   - [x] Add a min/max aggregate select path distinct from scalar session
      selects, count selects, and regular table projection selects.
-   - [ ] Accept only one aggregate select item, one descriptor-backed
+   - [x] Accept only one aggregate select item, one descriptor-backed
      persistent base table, and optional baseline `WHERE`.
-   - [ ] Resolve unqualified and schema-qualified table names against selected
+   - [x] Resolve unqualified and schema-qualified table names against selected
      schema and MyLite catalog descriptors.
-   - [ ] Reject reserved `_mylite_*` schema/table names before generated SQLite
+   - [x] Reject reserved `_mylite_*` schema/table names before generated SQLite
      SQL.
-   - [ ] Resolve the aggregate argument column from descriptors, including
+   - [x] Resolve the aggregate argument column from descriptors, including
      explicitly named invisible columns.
-   - [ ] Reuse the existing descriptor-driven predicate planner for optional
+   - [x] Reuse the existing descriptor-driven predicate planner for optional
      `WHERE`.
-   - [ ] Reject unsupported aggregate arguments, aliases, mixed projections,
+   - [x] Reject unsupported aggregate arguments, aliases, mixed projections,
      multiple aggregate items, no-source/`DUAL`, `ORDER BY`, `LIMIT`,
      `GROUP BY`, `HAVING`, joins, subqueries, CTEs, and window clauses with
      deterministic diagnostics.
-   - [ ] Return one row with one integer or `NULL` value, warning count `0`,
+   - [x] Return one row with one integer or `NULL` value, warning count `0`,
      and affected rows `0` for supported forms.
 
 5. Physical SQLite aggregate
-   - [ ] Generate SQLite `SELECT MIN("physical_column") FROM "physical_table"`
+   - [x] Generate SQLite `SELECT MIN("physical_column") FROM "physical_table"`
      or `SELECT MAX("physical_column") FROM "physical_table"` with optional
      descriptor-built `WHERE`.
-   - [ ] Quote every generated SQLite identifier.
-   - [ ] Bind predicate values through prepared statements.
-   - [ ] Avoid SQLite fork patches and custom SQLite functions.
-   - [ ] Keep descriptor rows, catalog generation, descriptor versions,
+   - [x] Quote every generated SQLite identifier.
+   - [x] Bind predicate values through prepared statements.
+   - [x] Avoid SQLite fork patches and custom SQLite functions.
+   - [x] Keep descriptor rows, catalog generation, descriptor versions,
      descriptor caches, and SQLite schema generation unchanged.
 
 6. Tests
-   - [ ] Add a fast C test under `packages/libmylite/tests/` and register it
+   - [x] Add a fast C test under `packages/libmylite/tests/` and register it
      with a dotted CTest name.
-   - [ ] Cover supported min/max over existing descriptor integer families,
+   - [x] Cover supported min/max over existing descriptor integer families,
      nullable/all-`NULL` values, empty tables, no-match predicates, schema
      resolution, predicate reuse, labels, warning count, affected rows,
      following `ROW_COUNT()`, reopen persistence, rename/truncate/drop
      behavior, independent handles, preamble safety, and unsupported syntax.
-   - [ ] Keep tests deterministic and avoid adding a new test framework.
+   - [x] Keep tests deterministic and avoid adding a new test framework.
 
 7. Build integration
-   - [ ] Add any new test binary to `packages/libmylite/CMakeLists.txt`.
-   - [ ] Keep first-party warning and clang-tidy policy enabled.
-   - [ ] Keep vendored SQLite warning policy unchanged.
+   - [x] Add any new test binary to `packages/libmylite/CMakeLists.txt`.
+   - [x] Keep first-party warning and clang-tidy policy enabled.
+   - [x] Keep vendored SQLite warning policy unchanged.
 
 8. Verification and review
-   - [ ] Run `cmake --build --preset dev`.
-   - [ ] Run the new CTest entry and relevant parser/count/select lifecycle
+   - [x] Run `cmake --build --preset dev`.
+   - [x] Run the new CTest entry and relevant parser/count/select lifecycle
      entries.
    - [x] Run
      `./packages/libmylite/tests/mysql_baseline_min_max_aggregate_expectations.sh`.
-   - [ ] Run `cmake --workflow --preset check`.
-   - [ ] Review the final diff for parser independence, descriptor authority,
+   - [x] Run `cmake --workflow --preset check`.
+   - [x] Review the final diff for parser independence, descriptor authority,
      generated SQL safety, result semantics, row-count semantics,
      file-format safety, cleanup on failure, compatibility docs, and scope
      control.

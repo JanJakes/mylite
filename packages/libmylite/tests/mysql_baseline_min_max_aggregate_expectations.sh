@@ -75,14 +75,28 @@ cleanup
 
 run_mysql \
     "CREATE DATABASE ${DATABASE}; USE ${DATABASE};
-     CREATE TABLE t(id INT NOT NULL, n INT NULL, nn INT NOT NULL, u INT UNSIGNED NULL, b BIGINT NULL, bu BIGINT UNSIGNED NULL);
+     CREATE TABLE t(
+       id INT NOT NULL,
+       n INT NULL,
+       nn INT NOT NULL,
+       u INT UNSIGNED NULL,
+       b BIGINT NULL,
+       bu BIGINT UNSIGNED NULL,
+       ti TINYINT NULL,
+       ti1 TINYINT(1) NULL,
+       si SMALLINT NULL,
+       mi MEDIUMINT NULL,
+       bool_col BOOL NULL,
+       boolean_col BOOLEAN NULL
+     );
      CREATE TABLE empty_t(id INT NOT NULL, n INT NULL, nn INT NOT NULL);
      CREATE TABLE null_t(n INT NULL, b BIGINT NULL);
      INSERT INTO t VALUES
-       (1, NULL, 10, 1, -1, 1),
-       (2, 20, 20, 2, 0, 2),
-       (3, 20, 30, 4294967295, 9223372036854775807, 9223372036854775807),
-       (4, 30, 40, NULL, NULL, NULL);
+       (1, NULL, 10, 1, -1, 1, -128, 0, -32768, -8388608, FALSE, TRUE),
+       (2, 20, 20, 2, 0, 2, -1, 1, 0, 0, TRUE, FALSE),
+       (3, 20, 30, 4294967295, 9223372036854775807, 9223372036854775807,
+        127, NULL, 32767, 8388607, NULL, NULL),
+       (4, 30, 40, NULL, NULL, NULL, NULL, 1, NULL, NULL, FALSE, TRUE);
      INSERT INTO null_t VALUES (NULL, NULL), (NULL, NULL);" >/dev/null
 
 core=$(run_mysql \
@@ -112,6 +126,23 @@ expect_value \
     "max unsigned bigint supported range" \
     "9223372036854775807" \
     "$(printf '%s\n' "$core" | sed -n '14p')"
+
+small_integer_values=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT MIN(ti), MAX(ti), MIN(ti1), MAX(ti1),
+            MIN(si), MAX(si), MIN(mi), MAX(mi),
+            MIN(bool_col), MAX(bool_col), MIN(boolean_col), MAX(boolean_col)
+       FROM t;
+     SELECT MIN(ID), MAX(NN) FROM t;"
+)
+expect_value \
+    "small integer min max" \
+    "-128	127	0	1	-32768	32767	-8388608	8388607	0	1	0	1" \
+    "$(printf '%s\n' "$small_integer_values" | sed -n '1p')"
+expect_value \
+    "case-insensitive column names" \
+    "1	40" \
+    "$(printf '%s\n' "$small_integer_values" | sed -n '2p')"
 
 nulls=$(run_mysql \
     "USE ${DATABASE};

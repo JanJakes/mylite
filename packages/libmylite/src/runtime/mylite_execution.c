@@ -297,6 +297,21 @@ struct planned_count {
     struct planned_select_predicate predicate;
 };
 
+enum planned_min_max_aggregate_function {
+    PLANNED_MIN_MAX_AGGREGATE_NONE = 0,
+    PLANNED_MIN_MAX_AGGREGATE_MIN = 1,
+    PLANNED_MIN_MAX_AGGREGATE_MAX = 2,
+};
+
+struct planned_min_max_aggregate {
+    const struct mylite_sql_ast_node *expression;
+    enum planned_min_max_aggregate_function function;
+    struct table_name_resolution source;
+    struct mylite_catalog_table_descriptor table;
+    struct mylite_catalog_column_descriptor aggregate_column;
+    struct planned_select_predicate predicate;
+};
+
 struct planned_show_create_table {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor table;
@@ -1029,29 +1044,62 @@ static int execute_count_from_plan(
     const struct planned_count *plan,
     mylite_result **out_result
 );
+static bool select_statement_has_min_max_aggregate(const struct mylite_sql_ast_node *statement);
+static int plan_min_max_aggregate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_min_max_aggregate *out_plan
+);
+static enum planned_min_max_aggregate_function min_max_aggregate_function_from_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static int plan_min_max_aggregate_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int execute_min_max_aggregate_from_plan(
+    struct mylite_db *database,
+    const struct planned_min_max_aggregate *plan,
+    mylite_result **out_result
+);
 static int append_count_result_column(
     struct mylite_db *database,
     mylite_result *result,
     const struct planned_count *plan
 );
-static int copy_count_result_column_name(
+static int append_min_max_aggregate_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_min_max_aggregate *plan
+);
+static int copy_aggregate_result_column_name(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
     char **out_text
 );
-static size_t count_label_extra_spaces_after_block_comments(
+static size_t aggregate_label_extra_spaces_after_block_comments(
     const struct mylite_sql_source_span *span
 );
-static void copy_count_label_with_spacing(
+static void copy_aggregate_label_with_spacing(
     const struct mylite_sql_source_span *span,
     char *destination
 );
+static bool aggregate_label_needs_space_after_block_comment(char next_byte);
 static int read_count_from_source(
     struct mylite_db *database,
     const struct planned_count *plan,
     int64_t *out_count
 );
+static int read_min_max_aggregate_from_source(
+    struct mylite_db *database,
+    const struct planned_min_max_aggregate *plan,
+    mylite_result *result
+);
 static int step_count_statement(sqlite3_stmt *statement, int64_t *out_count);
+static int step_min_max_aggregate_statement(sqlite3_stmt *statement, mylite_result *result);
 static int format_count_value(
     struct mylite_db *database,
     int64_t count_value,
@@ -1064,6 +1112,7 @@ static int append_count_value_row(
     const char *count_text
 );
 static int count_execution_error(struct mylite_db *database, int rc);
+static int min_max_aggregate_execution_error(struct mylite_db *database, int rc);
 static bool select_statement_is_session_scalar(const struct mylite_sql_ast_node *statement);
 static int execute_session_scalar_select_statement(
     struct mylite_db *database,
@@ -1745,6 +1794,11 @@ static int append_insert_parameters(struct dynamic_string *string, size_t column
 static int append_numbered_parameter(struct dynamic_string *string, size_t parameter_index);
 static int build_select_sql(const struct planned_select *plan, char **out_sql);
 static int build_count_sql(const struct planned_count *plan, char **out_sql);
+static int build_min_max_aggregate_sql(
+    const struct planned_min_max_aggregate *plan,
+    char **out_sql
+);
+static const char *min_max_aggregate_sql_function(enum planned_min_max_aggregate_function function);
 static int append_select_predicate_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
@@ -1790,6 +1844,10 @@ static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert 
 static int step_insert_row(sqlite3_stmt *statement);
 static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_select *plan);
 static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan);
+static int bind_min_max_aggregate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_min_max_aggregate *plan
+);
 static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_delete *plan);
 static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_update *plan);
 static int bind_update_matched_parameters(
@@ -2277,6 +2335,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
+    case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         break;
     }
@@ -3243,6 +3303,7 @@ static int execute_select_statement(
 ) {
     struct planned_select plan = {0};
     struct planned_count count_plan = {false};
+    struct planned_min_max_aggregate min_max_plan = {0};
     const char *argument_count_error_function = NULL;
     int rc = MYLITE_OK;
 
@@ -3258,6 +3319,13 @@ static int execute_select_statement(
         rc = plan_count(database, statement, &count_plan);
         if (rc == MYLITE_OK) {
             rc = execute_count_from_plan(database, &count_plan, out_result);
+        }
+        return rc;
+    }
+    if (select_statement_has_min_max_aggregate(statement)) {
+        rc = plan_min_max_aggregate(database, statement, &min_max_plan);
+        if (rc == MYLITE_OK) {
+            rc = execute_min_max_aggregate_from_plan(database, &min_max_plan, out_result);
         }
         return rc;
     }
@@ -5200,6 +5268,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
     case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
+    case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         break;
     }
@@ -8357,7 +8427,7 @@ static int append_count_result_column(
     const struct planned_count *plan
 ) {
     char *column_name = NULL;
-    int rc = copy_count_result_column_name(database, &plan->expression->span, &column_name);
+    int rc = copy_aggregate_result_column_name(database, &plan->expression->span, &column_name);
 
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_column(result, column_name);
@@ -8370,7 +8440,7 @@ static int append_count_result_column(
     return rc;
 }
 
-static int copy_count_result_column_name(
+static int copy_aggregate_result_column_name(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
     char **out_text
@@ -8391,7 +8461,7 @@ static int copy_count_result_column_name(
         return MYLITE_NOMEM;
     }
 
-    extra_spaces = count_label_extra_spaces_after_block_comments(span);
+    extra_spaces = aggregate_label_extra_spaces_after_block_comments(span);
     if (extra_spaces > SIZE_MAX - span->length - 1U) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -8403,13 +8473,13 @@ static int copy_count_result_column_name(
         return MYLITE_NOMEM;
     }
 
-    copy_count_label_with_spacing(span, text);
+    copy_aggregate_label_with_spacing(span, text);
     *out_text = text;
 
     return MYLITE_OK;
 }
 
-static size_t count_label_extra_spaces_after_block_comments(
+static size_t aggregate_label_extra_spaces_after_block_comments(
     const struct mylite_sql_source_span *span
 ) {
     size_t extra_spaces = 0U;
@@ -8424,7 +8494,8 @@ static size_t count_label_extra_spaces_after_block_comments(
             }
             if (source_index + 1U < span->length) {
                 source_index += 2U;
-                if (source_index < span->length && span->text[source_index] == '*') {
+                if (source_index < span->length &&
+                    aggregate_label_needs_space_after_block_comment(span->text[source_index])) {
                     ++extra_spaces;
                 }
             }
@@ -8436,7 +8507,7 @@ static size_t count_label_extra_spaces_after_block_comments(
     return extra_spaces;
 }
 
-static void copy_count_label_with_spacing(
+static void copy_aggregate_label_with_spacing(
     const struct mylite_sql_source_span *span,
     char *destination
 ) {
@@ -8461,7 +8532,8 @@ static void copy_count_label_with_spacing(
                 destination[destination_index + 1U] = span->text[source_index + 1U];
                 destination_index += 2U;
                 source_index += 2U;
-                if (source_index < span->length && span->text[source_index] == '*') {
+                if (source_index < span->length &&
+                    aggregate_label_needs_space_after_block_comment(span->text[source_index])) {
                     destination[destination_index] = ' ';
                     ++destination_index;
                 }
@@ -8474,6 +8546,22 @@ static void copy_count_label_with_spacing(
     }
 
     destination[destination_index] = '\0';
+}
+
+static bool aggregate_label_needs_space_after_block_comment(char next_byte) {
+    switch (next_byte) {
+    case ' ':
+    case '\f':
+    case '\n':
+    case '\r':
+    case '\t':
+    case '\v':
+    case ')':
+    case ',':
+        return false;
+    default:
+        return true;
+    }
 }
 
 static int read_count_from_source(
@@ -8549,6 +8637,278 @@ static int append_count_value_row(
 }
 
 static int count_execution_error(struct mylite_db *database, int rc) {
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
+        return rc;
+    }
+
+    set_physical_sqlite_row_error(database);
+    return MYLITE_ERROR;
+}
+
+static bool select_statement_has_min_max_aggregate(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    while (select_item != NULL) {
+        const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
+
+        expression = unwrap_parenthesized_expression(expression);
+        if (min_max_aggregate_function_from_expression(expression) !=
+            PLANNED_MIN_MAX_AGGREGATE_NONE) {
+            return true;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return false;
+}
+
+static int plan_min_max_aggregate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_min_max_aggregate *out_plan
+) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    struct mylite_catalog_column_descriptor *table_columns = NULL;
+    size_t table_column_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_min_max_aggregate){0};
+    if (mylite_sql_ast_node_child_count(select_list) != 1U) {
+        set_unsupported_error(database, "MIN/MAX supports exactly one aggregate select item");
+        return MYLITE_ERROR;
+    }
+
+    expression = child_at(select_item, 0U);
+    out_plan->expression = expression;
+    expression = unwrap_parenthesized_expression(expression);
+    out_plan->function = min_max_aggregate_function_from_expression(expression);
+    if (out_plan->function == PLANNED_MIN_MAX_AGGREGATE_NONE) {
+        set_unsupported_error(database, "MIN/MAX supports exactly one aggregate select item");
+        return MYLITE_ERROR;
+    }
+
+    optional_clause = child_at(statement, 2U);
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            where_clause = optional_clause;
+        } else {
+            set_unsupported_error(database, "MIN/MAX supports only WHERE");
+            return MYLITE_ERROR;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+
+    if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
+        set_unsupported_error(database, "MIN/MAX supports only descriptor-backed table reads");
+        return MYLITE_ERROR;
+    }
+    if (from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        set_unsupported_error(database, "MIN/MAX supports only descriptor-backed table reads");
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_table_name(database, child_at(from_clause, 0U), &out_plan->source);
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(out_plan->source.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->source.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_table_columns(
+            database,
+            out_plan->table.table_id,
+            &table_columns,
+            &table_column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_min_max_aggregate_column(
+            database,
+            expression,
+            table_columns,
+            table_column_count,
+            &out_plan->aggregate_column
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_select_predicate(
+            database,
+            where_clause,
+            table_columns,
+            table_column_count,
+            &out_plan->predicate
+        );
+    }
+
+    free(table_columns);
+    return rc;
+}
+
+static enum planned_min_max_aggregate_function min_max_aggregate_function_from_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression == NULL) {
+        return PLANNED_MIN_MAX_AGGREGATE_NONE;
+    }
+    if (expression->kind == MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION) {
+        return PLANNED_MIN_MAX_AGGREGATE_MIN;
+    }
+    if (expression->kind == MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION) {
+        return PLANNED_MIN_MAX_AGGREGATE_MAX;
+    }
+
+    return PLANNED_MIN_MAX_AGGREGATE_NONE;
+}
+
+static int plan_min_max_aggregate_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    const struct mylite_sql_ast_node *column_node = child_at(function, 0U);
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct integer_column_range range;
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(database, "MIN/MAX supports only unqualified descriptor columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    rc = integer_range_for_column(
+        database,
+        &table_columns[column_index],
+        "MIN/MAX supports only integer descriptor columns",
+        &range
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    *out_column = table_columns[column_index];
+    return MYLITE_OK;
+}
+
+static int execute_min_max_aggregate_from_plan(
+    struct mylite_db *database,
+    const struct planned_min_max_aggregate *plan,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = append_min_max_aggregate_result_column(database, result, plan);
+    if (rc == MYLITE_OK) {
+        rc = read_min_max_aggregate_from_source(database, plan, result);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return min_max_aggregate_execution_error(database, rc);
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int append_min_max_aggregate_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct planned_min_max_aggregate *plan
+) {
+    char *column_name = NULL;
+    int rc = copy_aggregate_result_column_name(database, &plan->expression->span, &column_name);
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column(result, column_name);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    free(column_name);
+    return rc;
+}
+
+static int read_min_max_aggregate_from_source(
+    struct mylite_db *database,
+    const struct planned_min_max_aggregate *plan,
+    mylite_result *result
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int rc = build_min_max_aggregate_sql(plan, &sql);
+
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_min_max_aggregate_parameters(statement, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = step_min_max_aggregate_statement(statement, result);
+    }
+
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    return rc;
+}
+
+static int step_min_max_aggregate_statement(sqlite3_stmt *statement, mylite_result *result) {
+    int sqlite_rc = sqlite3_step(statement);
+    int rc = MYLITE_OK;
+
+    if (sqlite_rc != SQLITE_ROW) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    rc = append_selected_sqlite_row(statement, result);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    sqlite_rc = sqlite3_step(statement);
+    if (sqlite_rc != SQLITE_DONE) {
+        return mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return MYLITE_OK;
+}
+
+static int min_max_aggregate_execution_error(struct mylite_db *database, int rc) {
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
         return rc;
@@ -13071,6 +13431,63 @@ static int build_count_sql(const struct planned_count *plan, char **out_sql) {
     return rc;
 }
 
+static int build_min_max_aggregate_sql(
+    const struct planned_min_max_aggregate *plan,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "SELECT ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, min_max_aggregate_sql_function(plan->function));
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(&string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->aggregate_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, ") FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static const char *min_max_aggregate_sql_function(
+    enum planned_min_max_aggregate_function function
+) {
+    switch (function) {
+    case PLANNED_MIN_MAX_AGGREGATE_NONE:
+        return "";
+    case PLANNED_MIN_MAX_AGGREGATE_MIN:
+        return "MIN";
+    case PLANNED_MIN_MAX_AGGREGATE_MAX:
+        return "MAX";
+    }
+
+    return "";
+}
+
 static int append_select_predicate_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
@@ -13553,6 +13970,17 @@ static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_
 }
 
 static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan) {
+    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+        return bind_int64_parameter(statement, 1, plan->predicate.value.integer);
+    }
+
+    return MYLITE_OK;
+}
+
+static int bind_min_max_aggregate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_min_max_aggregate *plan
+) {
     if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
         return bind_int64_parameter(statement, 1, plan->predicate.value.integer);
     }

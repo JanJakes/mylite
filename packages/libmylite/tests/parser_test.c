@@ -38,6 +38,7 @@ static int test_row_count_function(void);
 static int test_last_insert_id_function(void);
 static int test_diagnostics_count_system_variables(void);
 static int test_count_star_aggregate(void);
+static int test_min_max_aggregate(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -141,6 +142,7 @@ int main(void) {
     failures += test_last_insert_id_function();
     failures += test_diagnostics_count_system_variables();
     failures += test_count_star_aggregate();
+    failures += test_min_max_aggregate();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -1247,6 +1249,102 @@ static int test_count_star_aggregate(void) {
     failures += parse_sql("SELECT COUNT(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT COUNT(t.*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_min_max_aggregate(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT MIN(id), max(n), Max( n ) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, "min aggregate");
+    failures += expect_span_text(first_expression, "MIN(id)", "min aggregate span");
+    failures += expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "min arg");
+    failures += expect_span_text(child_at(first_expression, 0U), "id", "min arg span");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, "lower max");
+    failures += expect_span_text(second_expression, "max(n)", "lower max span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, "mixed max");
+    failures += expect_span_text(third_expression, "Max( n )", "mixed max span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "min max from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT MAX(/* inside */n) FROM t WHERE id = 1;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION,
+        "commented max aggregate"
+    );
+    failures += expect_span_text(first_expression, "MAX(/* inside */n)", "commented max span");
+    failures += expect_span_text(child_at(first_expression, 0U), "n", "commented max arg span");
+    failures += expect_node(child_at(select, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "max where");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT (MIN(id));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized min aggregate"
+    );
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION,
+        "wrapped min aggregate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE min (max INT, min INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "min max identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT MIN, MAX;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare min identifier");
+    failures += expect_span_text(first_expression, "MIN", "bare min span");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_IDENTIFIER, "bare max identifier");
+    failures += expect_span_text(second_expression, "MAX", "bare max span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT MIN (id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT MAX/**/(id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT MIN();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT MAX(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT MIN(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT MIN(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT MIN(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT MIN(t.id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT MIN(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

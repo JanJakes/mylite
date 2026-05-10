@@ -1450,6 +1450,10 @@ expression(A) ::= CURRENT_ROLE(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR, B, R);
 }
+expression(A) ::= IF(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_IF_FUNCTION, B, C, D, R);
+}
 expression(A) ::= CONNECTION_ID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_CONNECTION_ID_FUNCTION, R);

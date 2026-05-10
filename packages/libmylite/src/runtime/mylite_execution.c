@@ -96,6 +96,7 @@ enum {
     avg_fraction_digits = 4,
     avg_fraction_scale = 10000,
     avg_round_half_digit = 5,
+    if_stack_initial_capacity = 8,
 };
 
 struct table_name_resolution {
@@ -620,6 +621,23 @@ struct session_scalar_cell {
     const char *value;
     char integer_text[integer_text_capacity];
     char literal_text[literal_projection_text_capacity];
+};
+
+struct if_eval_frame {
+    const struct mylite_sql_ast_node *true_value;
+    const struct mylite_sql_ast_node *false_value;
+};
+
+struct if_eval_stack {
+    struct if_eval_frame *items;
+    size_t count;
+    size_t capacity;
+};
+
+struct if_validation_stack {
+    const struct mylite_sql_ast_node **items;
+    size_t count;
+    size_t capacity;
 };
 
 enum session_system_variable_kind {
@@ -1811,10 +1829,12 @@ static bool select_statement_is_session_scalar_projection(
     const struct mylite_sql_ast_node *statement
 );
 static bool select_statement_is_literal_projection(const struct mylite_sql_ast_node *statement);
+static bool select_statement_is_if_projection(const struct mylite_sql_ast_node *statement);
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement);
 static bool select_statement_is_literal_projection_attempt(
     const struct mylite_sql_ast_node *statement
 );
+static bool select_statement_is_if_projection_attempt(const struct mylite_sql_ast_node *statement);
 static int execute_scalar_projection_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1843,6 +1863,39 @@ static int literal_projection_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int if_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int if_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int if_non_function_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int if_integer_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct session_scalar_cell *out_cell
+);
+static int if_eval_stack_push(
+    struct mylite_db *database,
+    struct if_eval_stack *stack,
+    const struct mylite_sql_ast_node *true_value,
+    const struct mylite_sql_ast_node *false_value
+);
+static void if_eval_stack_deinit(struct if_eval_stack *stack);
+static void copy_session_scalar_cell(
+    struct session_scalar_cell *destination,
+    const struct session_scalar_cell *source
+);
+static bool if_scalar_condition_is_true(const struct session_scalar_cell *cell);
 static int normalize_decimal_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
@@ -1871,6 +1924,20 @@ static bool resolve_system_variable_kind(
 static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind);
 static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind);
 static bool system_variable_kind_warns_on_scalar_read(enum session_system_variable_kind kind);
+static bool is_if_projection_expression(const struct mylite_sql_ast_node *expression);
+static int validate_if_value_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_if_non_function_value_expression(const struct mylite_sql_ast_node *expression);
+static bool is_if_integer_literal_in_range(const struct mylite_sql_ast_node *literal);
+static int if_validation_stack_push(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static void if_validation_stack_deinit(struct if_validation_stack *stack);
+static bool is_if_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
 static bool is_literal_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_literal_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
 static bool is_literal_projection_attempt_operand(const struct mylite_sql_ast_node *expression);
@@ -3627,6 +3694,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_IF_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -5065,7 +5133,8 @@ static int execute_select_statement(
         return MYLITE_ERROR;
     }
     if (select_statement_is_session_scalar_projection(statement) ||
-        select_statement_is_literal_projection(statement)) {
+        select_statement_is_literal_projection(statement) ||
+        select_statement_is_if_projection(statement)) {
         return execute_scalar_projection_select_statement(database, statement, out_result);
     }
     if (select_statement_has_group_by_clause(statement)) {
@@ -5097,6 +5166,14 @@ static int execute_select_statement(
             database,
             "SELECT literal projection supports only unparenthesized integer, boolean, and NULL "
             "literals"
+        );
+        return MYLITE_ERROR;
+    }
+    if (select_statement_is_if_projection_attempt(statement)) {
+        set_unsupported_error(
+            database,
+            "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested IF() "
+            "arguments"
         );
         return MYLITE_ERROR;
     }
@@ -7055,6 +7132,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
     case MYLITE_SQL_AST_CURRENT_ROLE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_IF_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -13937,6 +14015,36 @@ static bool select_statement_is_literal_projection(const struct mylite_sql_ast_n
     return true;
 }
 
+static bool select_statement_is_if_projection(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        return false;
+    }
+    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
+        return false;
+    }
+    if (child_at(statement, 2U) != NULL) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    if (select_item == NULL) {
+        return false;
+    }
+    while (select_item != NULL) {
+        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
+            !is_if_projection_expression(child_at(select_item, 0U))) {
+            return false;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return true;
+}
+
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
 
@@ -13976,6 +14084,30 @@ static bool select_statement_is_literal_projection_attempt(
     }
 
     return true;
+}
+
+static bool select_statement_is_if_projection_attempt(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
+    const struct mylite_sql_ast_node *select_item = NULL;
+
+    if (!select_statement_has_no_source_or_dual(statement)) {
+        return false;
+    }
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
+        child_at(statement, 2U) != NULL) {
+        return false;
+    }
+
+    select_item = child_at(select_list, 0U);
+    while (select_item != NULL) {
+        if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
+            is_if_projection_attempt_expression(child_at(select_item, 0U))) {
+            return true;
+        }
+        select_item = select_item->next_sibling;
+    }
+
+    return false;
 }
 
 static int execute_scalar_projection_select_statement(
@@ -14233,11 +14365,265 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return literal_projection_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_IF_FUNCTION:
+        return if_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return system_variable_value(database, expression, out_cell);
     default:
         return MYLITE_OK;
     }
+}
+
+static int if_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return if_scalar_value(database, expression, out_cell);
+}
+
+static int if_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct if_eval_stack stack = {0};
+    struct session_scalar_cell cell = {0};
+    const struct mylite_sql_ast_node *current = expression;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    rc = validate_if_value_expression(database, expression);
+    while (rc == MYLITE_OK) {
+        if (current != NULL && current->kind == MYLITE_SQL_AST_IF_FUNCTION) {
+            if (mylite_sql_ast_node_child_count(current) != 3U) {
+                set_unsupported_error(
+                    database,
+                    "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested "
+                    "IF() arguments"
+                );
+                rc = MYLITE_ERROR;
+            } else {
+                rc = if_eval_stack_push(
+                    database,
+                    &stack,
+                    child_at(current, 1U),
+                    child_at(current, 2U)
+                );
+                current = child_at(current, 0U);
+            }
+            continue;
+        }
+        if (current != NULL) {
+            rc = if_non_function_scalar_value(database, current, &cell);
+            current = NULL;
+            continue;
+        }
+        if (stack.count == 0U) {
+            copy_session_scalar_cell(out_cell, &cell);
+            break;
+        }
+
+        --stack.count;
+        if (if_scalar_condition_is_true(&cell)) {
+            current = stack.items[stack.count].true_value;
+        } else {
+            current = stack.items[stack.count].false_value;
+        }
+        cell = (struct session_scalar_cell){0};
+    }
+
+    if_eval_stack_deinit(&stack);
+    return rc;
+}
+
+static int if_non_function_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *literal = expression;
+    bool has_sign = false;
+    bool is_negative = false;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested IF() "
+            "arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        has_sign = true;
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested IF() "
+                "arguments"
+            );
+            return MYLITE_ERROR;
+        }
+        literal = child_at(expression, 0U);
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested IF() "
+            "arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    switch (mylite_sql_ast_node_literal_kind(literal)) {
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        if (has_sign) {
+            break;
+        }
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        if (has_sign) {
+            break;
+        }
+        out_cell->value = "1";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        if (has_sign) {
+            break;
+        }
+        out_cell->value = "0";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        return if_integer_literal_value(database, literal, is_negative, out_cell);
+    default:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested IF() "
+        "arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int if_integer_literal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal,
+    bool is_negative,
+    struct session_scalar_cell *out_cell
+) {
+    uint64_t magnitude = 0U;
+    int64_t value = 0;
+    int written = 0;
+
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
+        magnitude > (uint64_t)INT64_MAX) {
+        set_unsupported_error(database, "SELECT IF() supports only signed 64-bit integer operands");
+        return MYLITE_ERROR;
+    }
+
+    if (is_negative && magnitude != 0U) {
+        value = -(int64_t)magnitude;
+    } else {
+        value = (int64_t)magnitude;
+    }
+    written = snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRId64, value);
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format IF() integer value");
+        return MYLITE_ERROR;
+    }
+
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static int if_eval_stack_push(
+    struct mylite_db *database,
+    struct if_eval_stack *stack,
+    const struct mylite_sql_ast_node *true_value,
+    const struct mylite_sql_ast_node *false_value
+) {
+    struct if_eval_frame *items = NULL;
+    size_t capacity = 0U;
+
+    if (stack == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        items = (struct if_eval_frame *)realloc((void *)stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+
+    stack->items[stack->count] = (struct if_eval_frame){
+        .true_value = true_value,
+        .false_value = false_value,
+    };
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static void if_eval_stack_deinit(struct if_eval_stack *stack) {
+    if (stack == NULL) {
+        return;
+    }
+
+    free((void *)stack->items);
+    *stack = (struct if_eval_stack){0};
+}
+
+static void copy_session_scalar_cell(
+    struct session_scalar_cell *destination,
+    const struct session_scalar_cell *source
+) {
+    *destination = (struct session_scalar_cell){0};
+    if (source == NULL || source->value == NULL) {
+        return;
+    }
+    if (source->value == source->integer_text) {
+        memcpy(destination->integer_text, source->integer_text, sizeof(destination->integer_text));
+        destination->value = destination->integer_text;
+        return;
+    }
+    if (source->value == source->literal_text) {
+        memcpy(destination->literal_text, source->literal_text, sizeof(destination->literal_text));
+        destination->value = destination->literal_text;
+        return;
+    }
+
+    destination->value = source->value;
+}
+
+static bool if_scalar_condition_is_true(const struct session_scalar_cell *cell) {
+    if (cell == NULL || cell->value == NULL) {
+        return false;
+    }
+    if (strcmp(cell->value, "0") == 0) {
+        return false;
+    }
+    return true;
 }
 
 static int literal_projection_value(
@@ -14873,6 +15259,178 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     }
 
     return false;
+}
+
+static bool is_if_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    return expression->kind == MYLITE_SQL_AST_IF_FUNCTION;
+}
+
+static int validate_if_value_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    struct if_validation_stack stack = {0};
+    int rc = MYLITE_OK;
+
+    rc = if_validation_stack_push(database, &stack, expression);
+    while (rc == MYLITE_OK && stack.count != 0U) {
+        const struct mylite_sql_ast_node *current = NULL;
+
+        --stack.count;
+        current = stack.items[stack.count];
+        if (current == NULL) {
+            set_unsupported_error(
+                database,
+                "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested IF() "
+                "arguments"
+            );
+            rc = MYLITE_ERROR;
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_IF_FUNCTION) {
+            if (mylite_sql_ast_node_child_count(current) != 3U) {
+                set_unsupported_error(
+                    database,
+                    "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested "
+                    "IF() arguments"
+                );
+                rc = MYLITE_ERROR;
+                continue;
+            }
+            rc = if_validation_stack_push(database, &stack, child_at(current, 0U));
+            if (rc == MYLITE_OK) {
+                rc = if_validation_stack_push(database, &stack, child_at(current, 1U));
+            }
+            if (rc == MYLITE_OK) {
+                rc = if_validation_stack_push(database, &stack, child_at(current, 2U));
+            }
+            continue;
+        }
+        if (!is_if_non_function_value_expression(current)) {
+            set_unsupported_error(
+                database,
+                "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested IF() "
+                "arguments"
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+
+    if_validation_stack_deinit(&stack);
+    return rc;
+}
+
+static bool is_if_non_function_value_expression(const struct mylite_sql_ast_node *expression) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal = child_at(expression, 0U);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+            return false;
+        }
+        if (mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return false;
+        }
+        return is_if_integer_literal_in_range(literal);
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return is_if_integer_literal_in_range(expression);
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        return true;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        return true;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        return true;
+    }
+    return false;
+}
+
+static bool is_if_integer_literal_in_range(const struct mylite_sql_ast_node *literal) {
+    uint64_t magnitude = 0U;
+
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return false;
+    }
+    if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+        return false;
+    }
+    if (magnitude > (uint64_t)INT64_MAX) {
+        return false;
+    }
+    return true;
+}
+
+static int if_validation_stack_push(
+    struct mylite_db *database,
+    struct if_validation_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node **items = NULL;
+    size_t capacity = 0U;
+
+    if (stack == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (stack->count == stack->capacity) {
+        capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+        if (capacity < stack->capacity || capacity > SIZE_MAX / sizeof(*items)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        items = (const struct mylite_sql_ast_node **)
+            realloc((void *)stack->items, capacity * sizeof(*items));
+        if (items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        stack->items = items;
+        stack->capacity = capacity;
+    }
+
+    stack->items[stack->count] = expression;
+    ++stack->count;
+    return MYLITE_OK;
+}
+
+static void if_validation_stack_deinit(struct if_validation_stack *stack) {
+    if (stack == NULL) {
+        return;
+    }
+
+    free((void *)stack->items);
+    *stack = (struct if_validation_stack){0};
+}
+
+static bool is_if_projection_attempt_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    return expression->kind == MYLITE_SQL_AST_IF_FUNCTION;
 }
 
 static bool is_literal_projection_expression(const struct mylite_sql_ast_node *expression) {

@@ -80,7 +80,7 @@ Runtime probes against MySQL 8.4.9 confirm:
   result-column labels and syntax diagnostics.
 - Analyzer/runtime: the scalar projection analyzer accepts `IF()` only in the
   existing no-source and `FROM DUAL` scalar select path. Evaluation is
-  MyLite-owned and recursive only for nested admitted `IF()` expressions.
+  MyLite-owned and walks nested admitted `IF()` expressions without SQLite SQL.
 - Catalog: not involved. This feature must not read or mutate schema/table
   descriptors, descriptor versions, catalog generation, descriptor caches, or
   `sqlite_schema_generation`.
@@ -169,7 +169,7 @@ arguments, but runtime acceptance must remain bounded to the admitted
 
 ## Semantics
 
-Evaluation is recursive:
+Evaluation walks the admitted expression tree:
 
 1. Evaluate the condition.
 2. The condition is true when it is not `NULL` and its integer text is not
@@ -229,9 +229,10 @@ MyLite unsupported-feature diagnostic style.
 Scalar `IF()` projection is constant per statement. MyLite should evaluate it
 directly into the result object without opening catalog descriptors, scanning
 SQLite tables, or generating SQLite SQL. Nested `IF()` depth is bounded by
-parser input and AST allocation; evaluation should be linear in the admitted
-expression tree size and allocate only the result-cell scratch storage already
-used by scalar projection.
+parser input and AST allocation; validation and evaluation should be linear in
+the admitted expression tree size and may use small explicit stacks for nested
+`IF()` traversal, plus the result-cell scratch storage already used by scalar
+projection.
 
 No SQLite extension API or fork patch is needed. A future general expression
 engine may introduce shared expression planning or SQLite hooks, but this slice
@@ -273,4 +274,3 @@ Update:
   wording needs to mention `IF()`; and
 - avoid claiming `CASE`, `IFNULL`, `NULLIF`, `COALESCE`, general expressions,
   table-backed expressions, subqueries, or MySQL result metadata fidelity.
-

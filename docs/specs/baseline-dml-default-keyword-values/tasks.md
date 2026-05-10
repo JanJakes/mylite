@@ -12,19 +12,19 @@
   diagnostics, and tests.
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Commit and push the start-feature artifacts.
-- [ ] Add parser grammar, AST support, parser helpers, and parser tests for
+- [x] Commit and push the start-feature artifacts.
+- [x] Add parser grammar, AST support, parser helpers, and parser tests for
   DML `DEFAULT` value nodes.
-- [ ] Extend descriptor-driven insert/replace/update planning to resolve
+- [x] Extend descriptor-driven insert/replace/update planning to resolve
   DML `DEFAULT` through target descriptors, including `INSERT IGNORE`
   warning demotion.
-- [ ] Add runtime lifecycle tests for strict DML, ignore DML, update behavior,
+- [x] Add runtime lifecycle tests for strict DML, ignore DML, update behavior,
   persistence, preamble preservation, independent handles, and deterministic
   rejection of unsupported broader forms.
-- [ ] Confirm whether a new test binary is needed in
+- [x] Confirm whether a new test binary is needed in
   `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, descriptor authority,
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, descriptor authority,
   performance, cleanup, compatibility wording, and test relevance.
 - [ ] Commit, push `main`, and continue to the next baseline slice.

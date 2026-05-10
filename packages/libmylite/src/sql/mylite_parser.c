@@ -2595,6 +2595,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_literal(
     return literal;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_dml_default_value(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token token
+) {
+    return make_node(state, MYLITE_SQL_AST_DML_DEFAULT_VALUE, span_from_token(&token));
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_system_variable(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token

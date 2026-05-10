@@ -147,6 +147,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_PREDICATE_VALUE_LIST = 138,
     MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE = 139,
     MYLITE_SQL_AST_XOR_PREDICATE = 140,
+    MYLITE_SQL_AST_DML_DEFAULT_VALUE = 141,
 };
 
 enum mylite_sql_ast_literal_kind {

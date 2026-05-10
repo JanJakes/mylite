@@ -923,6 +923,9 @@ insert_value(A) ::= TRUE(T). {
 insert_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
+insert_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_dml_default_value(state, T);
+}
 
 update_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
@@ -945,6 +948,9 @@ update_value(A) ::= TRUE(T). {
 }
 update_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+update_value(A) ::= DEFAULT(T). {
+    A = mylite_sql_parser_make_dml_default_value(state, T);
 }
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {

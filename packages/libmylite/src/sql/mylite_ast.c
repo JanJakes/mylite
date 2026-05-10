@@ -330,6 +330,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "column_default_null";
     case MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE:
         return "column_default_value";
+    case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
+        return "dml_default_value";
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return "rename_table_statement";
     case MYLITE_SQL_AST_INSERT_STATEMENT:

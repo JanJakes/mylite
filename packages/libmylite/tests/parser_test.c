@@ -7080,6 +7080,34 @@ static int test_replace_modifier_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "REPLACE INTO app.simple_lifecycle (id) VALUES (DEFAULT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT, "replace default");
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_DML_DEFAULT_VALUE,
+        "replace values default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE INTO app.simple_lifecycle SET id = DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_REPLACE_SET_STATEMENT, "replace set default");
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 1U), 0U), 1U),
+        MYLITE_SQL_AST_DML_DEFAULT_VALUE,
+        "replace set default value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "REPLACE LOW_PRIORITY INTO app.simple_lifecycle (id) SELECT id FROM app.source_lifecycle;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -7236,6 +7264,34 @@ static int test_insert_modifier_statements(void) {
         child_at(statement, 3U),
         MYLITE_SQL_AST_INSERT_IGNORE_MODIFIER,
         "delayed ignore insert set ignore modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle (id) VALUES (DEFAULT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert default");
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 2U), 0U), 0U),
+        MYLITE_SQL_AST_DML_DEFAULT_VALUE,
+        "insert values default"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT INTO app.simple_lifecycle SET id = DEFAULT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_SET_STATEMENT, "insert set default");
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 1U), 0U), 1U),
+        MYLITE_SQL_AST_DML_DEFAULT_VALUE,
+        "insert set default value"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -7478,6 +7534,17 @@ static int test_update_statement(void) {
         child_at(child_at(where_clause, 0U), 1U),
         MYLITE_SQL_AST_LITERAL_TRUE,
         "update true predicate value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("UPDATE simple_lifecycle SET amount = DEFAULT;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    assignment = child_at(child_at(statement, 1U), 0U);
+    failures += expect_node(
+        child_at(assignment, 1U),
+        MYLITE_SQL_AST_DML_DEFAULT_VALUE,
+        "update default assignment value"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -8648,7 +8715,7 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
-        parse_sql("REPLACE INTO t SET id = DEFAULT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        parse_sql("REPLACE INTO t SET id = DEFAULT(id);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t SET id = ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -8780,7 +8847,7 @@ static int test_syntax_errors(void) {
     failures += parse_sql("UPDATE t SET id = other;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("UPDATE t SET id = DEFAULT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parse_sql("UPDATE t SET id = DEFAULT(id);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("UPDATE t SET id = 1 LIMIT +1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

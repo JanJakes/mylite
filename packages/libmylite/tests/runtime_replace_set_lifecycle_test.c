@@ -540,9 +540,9 @@ static int test_replace_set_schema_resolution_and_diagnostics(void) {
         database,
         "REPLACE INTO numbers SET id = DEFAULT, nn = 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .code = mysql_error_field_no_default,
+            .sqlstate = "HY000",
+            .message_part = "Field 'id' doesn't have a default value",
         }
     );
     failures += execute_error(

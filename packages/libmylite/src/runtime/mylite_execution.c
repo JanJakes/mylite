@@ -2347,6 +2347,12 @@ static int convert_insert_value(
     bool ignore_errors,
     struct planned_value *out_value
 );
+static int materialize_dml_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
+    struct planned_value *out_value
+);
 static int convert_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -3566,6 +3572,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
     case MYLITE_SQL_AST_WILDCARD:
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
@@ -6993,6 +7000,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
     case MYLITE_SQL_AST_WILDCARD:
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_DML_DEFAULT_VALUE:
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
@@ -16785,6 +16793,9 @@ static int convert_insert_value(
     }
 
     *out_value = (struct planned_value){.is_null = true, .integer = 0};
+    if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
+        return materialize_dml_default_value(database, column, ignore_errors, out_value);
+    }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
         if (!column->is_nullable) {
@@ -16814,6 +16825,41 @@ static int convert_insert_value(
     );
 }
 
+static int materialize_dml_default_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column,
+    bool ignore_errors,
+    struct planned_value *out_value
+) {
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_INTEGER) {
+        *out_value = (struct planned_value){
+            .is_null = false,
+            .integer = column->default_integer,
+        };
+        return MYLITE_OK;
+    }
+    if (column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE && column->is_nullable) {
+        *out_value = (struct planned_value){.is_null = true, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (!ignore_errors) {
+        set_no_default_error(database, column->name);
+        return MYLITE_ERROR;
+    }
+
+    int rc = append_no_default_warning(database, column->name);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (column->is_nullable) {
+        *out_value = (struct planned_value){.is_null = true, .integer = 0};
+    } else {
+        *out_value = (struct planned_value){.is_null = false, .integer = 0};
+    }
+    return MYLITE_OK;
+}
+
 static int convert_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
@@ -16833,7 +16879,10 @@ static int convert_integer_literal(
         if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
             is_negative = true;
         } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
-            set_unsupported_error(database, "INSERT supports only integer and NULL values");
+            set_unsupported_error(
+                database,
+                "INSERT supports only integer, boolean, NULL, and DEFAULT values"
+            );
             return MYLITE_ERROR;
         }
         literal = child_at(value_node, 0U);
@@ -16843,7 +16892,7 @@ static int convert_integer_literal(
             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
             set_unsupported_error(
                 database,
-                "INSERT supports only integer, boolean, and NULL values"
+                "INSERT supports only integer, boolean, NULL, and DEFAULT values"
             );
             return MYLITE_ERROR;
         }
@@ -18674,6 +18723,9 @@ static int convert_update_value(
     }
 
     *out_value = (struct planned_value){.is_null = true, .integer = 0};
+    if (value_node->kind == MYLITE_SQL_AST_DML_DEFAULT_VALUE) {
+        return materialize_dml_default_value(database, column, false, out_value);
+    }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
         if (!column->is_nullable) {
@@ -18705,7 +18757,7 @@ static int convert_update_integer_literal(
         } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
             set_unsupported_error(
                 database,
-                "UPDATE supports only integer and NULL assignment values"
+                "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values"
             );
             return MYLITE_ERROR;
         }
@@ -18716,7 +18768,7 @@ static int convert_update_integer_literal(
             mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
             set_unsupported_error(
                 database,
-                "UPDATE supports only integer, boolean, and NULL assignment values"
+                "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values"
             );
             return MYLITE_ERROR;
         }

@@ -2368,6 +2368,9 @@ static int test_explicit_default_null_lifecycle(void) {
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci",
     };
     static const char *const initial_rows[] = {NULL, NULL, NULL, "7"};
+    static const char *const explicit_default_rows[] =
+        {NULL, NULL, NULL, "1", NULL, NULL, NULL, "7"};
+    static const char *const update_default_rows[] = {NULL, NULL, NULL, "1", NULL, NULL, NULL, "7"};
     static const char *const added_rows[] = {"1", NULL, "2", NULL};
     static const char *const omitted_added_rows[] = {"1", NULL, "2", NULL, "3", NULL};
     static const char *const renamed_column_row[] = {"renamed", "bigint", "YES", "", NULL, ""};
@@ -2536,22 +2539,27 @@ static int test_explicit_default_null_lifecycle(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures +=
+        expect_dml_ok(database, "INSERT INTO defaults VALUES (DEFAULT, DEFAULT, DEFAULT, 1)", 1);
+    failures += expect_query_values(
         database,
-        "INSERT INTO defaults VALUES (DEFAULT, DEFAULT, DEFAULT, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_query){
+            .sql = "SELECT a, b, c, nn FROM defaults ORDER BY nn",
+            .values = explicit_default_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "explicit DML DEFAULT nullable values",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok(database, "UPDATE defaults SET a = DEFAULT", 0);
+    failures += expect_query_values(
         database,
-        "UPDATE defaults SET a = DEFAULT",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_query){
+            .sql = "SELECT a, b, c, nn FROM defaults ORDER BY nn",
+            .values = update_default_rows,
+            .column_count = 4U,
+            .row_count = 2U,
+            .context = "update DML DEFAULT nullable values",
         }
     );
 

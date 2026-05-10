@@ -20,7 +20,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `-` (unary) | ❌ | Change the sign of the argument |
 | `/` | ❌ | Division operator |
 | `:=` | ❌ | Assign a value |
-| `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, or `NULL`; `SET` statements and expression assignments remain unsupported |
+| `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, `NULL`, or descriptor-resolved `DEFAULT`; `SET` statements and expression assignments remain unsupported |
 | `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
 | `^` | ❌ | Bitwise XOR |
 | `AND, &&` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `AND` binds tighter than `XOR` and `OR`, `&&` is accepted with deprecation warning 1287, and no general expression-level boolean semantics are supported |

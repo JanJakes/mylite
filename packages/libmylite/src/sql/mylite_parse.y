@@ -738,6 +738,12 @@ select_statement(A) ::=
     A = mylite_sql_parser_make_select_distinct_statement(
         state, T, B, mylite_sql_parser_make_from_table(state, F, N), W, O, L);
 }
+select_statement(A) ::=
+    SELECT(T) DISTINCTROW select_item_list(B) FROM(F) table_name(N) where_clause_opt(W)
+    order_clause_opt(O) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_distinct_statement(
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N), W, O, L);
+}
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL);
@@ -756,6 +762,13 @@ select_statement(A) ::=
 }
 select_statement(A) ::=
     SELECT(T) DISTINCT STAR(S) FROM(F) table_name(N) where_clause_opt(W)
+    order_clause_opt(O) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_distinct_statement(
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_table(state, F, N), W, O, L);
+}
+select_statement(A) ::=
+    SELECT(T) DISTINCTROW STAR(S) FROM(F) table_name(N) where_clause_opt(W)
     order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),

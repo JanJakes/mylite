@@ -1165,16 +1165,24 @@ predicate(A) ::= predicate_disjunction(B). {
     A = B;
 }
 
-predicate_disjunction(A) ::= predicate_conjunction(B). {
+predicate_disjunction(A) ::= predicate_xor(B). {
     A = B;
 }
-predicate_disjunction(A) ::= predicate_disjunction(B) OR(O) predicate_conjunction(C). {
+predicate_disjunction(A) ::= predicate_disjunction(B) OR(O) predicate_xor(C). {
     A = mylite_sql_parser_make_or_predicate(
         state, B, O, MYLITE_SQL_AST_OPERATOR_LOGICAL_OR, C);
 }
-predicate_disjunction(A) ::= predicate_disjunction(B) LOGICAL_OR(O) predicate_conjunction(C). {
+predicate_disjunction(A) ::= predicate_disjunction(B) LOGICAL_OR(O) predicate_xor(C). {
     A = mylite_sql_parser_make_or_predicate(
         state, B, O, MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR, C);
+}
+
+predicate_xor(A) ::= predicate_conjunction(B). {
+    A = B;
+}
+predicate_xor(A) ::= predicate_xor(B) XOR(O) predicate_conjunction(C). {
+    A = mylite_sql_parser_make_xor_predicate(
+        state, B, O, MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR, C);
 }
 
 predicate_conjunction(A) ::= predicate_negation(B). {

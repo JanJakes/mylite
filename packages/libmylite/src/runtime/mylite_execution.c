@@ -320,6 +320,7 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_BETWEEN = 6,
     PLANNED_SELECT_PREDICATE_IN = 7,
     PLANNED_SELECT_PREDICATE_IS_BOOLEAN = 8,
+    PLANNED_SELECT_PREDICATE_XOR = 9,
 };
 
 struct planned_select_predicate_node {
@@ -3588,6 +3589,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE:
     case MYLITE_SQL_AST_AND_PREDICATE:
     case MYLITE_SQL_AST_OR_PREDICATE:
+    case MYLITE_SQL_AST_XOR_PREDICATE:
     case MYLITE_SQL_AST_NOT_PREDICATE:
     case MYLITE_SQL_AST_BETWEEN_PREDICATE:
     case MYLITE_SQL_AST_IN_PREDICATE:
@@ -7014,6 +7016,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE:
     case MYLITE_SQL_AST_AND_PREDICATE:
     case MYLITE_SQL_AST_OR_PREDICATE:
+    case MYLITE_SQL_AST_XOR_PREDICATE:
     case MYLITE_SQL_AST_NOT_PREDICATE:
     case MYLITE_SQL_AST_BETWEEN_PREDICATE:
     case MYLITE_SQL_AST_IN_PREDICATE:
@@ -17651,6 +17654,9 @@ static bool is_logical_predicate_node(const struct mylite_sql_ast_node *node) {
     if (node->kind == MYLITE_SQL_AST_OR_PREDICATE) {
         return true;
     }
+    if (node->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
+        return true;
+    }
     return false;
 }
 
@@ -17796,6 +17802,9 @@ static bool planned_predicate_kind_for_operator(
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
         *out_kind = PLANNED_SELECT_PREDICATE_OR;
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+        *out_kind = PLANNED_SELECT_PREDICATE_XOR;
         return true;
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
     case MYLITE_SQL_AST_OPERATOR_NONE:
@@ -21242,6 +21251,9 @@ static int append_select_predicate_logical_operator_sql(
         operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
         return dynamic_string_append(string, " AND ");
     }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR) {
+        return dynamic_string_append(string, " <> ");
+    }
 
     return MYLITE_ERROR;
 }
@@ -21261,7 +21273,8 @@ static int append_select_predicate_expression_node_sql(
     }
 
     node = &predicate->nodes[node_index];
-    if (node->kind == PLANNED_SELECT_PREDICATE_AND || node->kind == PLANNED_SELECT_PREDICATE_OR) {
+    if (node->kind == PLANNED_SELECT_PREDICATE_AND || node->kind == PLANNED_SELECT_PREDICATE_OR ||
+        node->kind == PLANNED_SELECT_PREDICATE_XOR) {
         return append_select_predicate_logical_node_sql(string, node, items, item_count);
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_NOT) {
@@ -21414,6 +21427,7 @@ static int append_select_is_boolean_predicate_term_sql(
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
         break;
     }
@@ -21876,6 +21890,7 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
         break;
     }
@@ -22029,7 +22044,8 @@ static int bind_select_predicate_parameters(
 
         node = &predicate->nodes[item.node_index];
         if (node->kind == PLANNED_SELECT_PREDICATE_AND ||
-            node->kind == PLANNED_SELECT_PREDICATE_OR) {
+            node->kind == PLANNED_SELECT_PREDICATE_OR ||
+            node->kind == PLANNED_SELECT_PREDICATE_XOR) {
             rc = append_predicate_sql_work_node(&items, &item_count, node->right_index);
             if (rc == MYLITE_OK) {
                 rc = append_predicate_sql_work_node(&items, &item_count, node->left_index);

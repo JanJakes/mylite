@@ -37,6 +37,7 @@ struct expected_result {
 };
 
 static int test_where_and_predicates(void);
+static int test_where_xor_predicates(void);
 static int test_independent_where_and_handles(void);
 static int seed_database(mylite_db *database);
 static int reset_numbers(mylite_db *database);
@@ -71,6 +72,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_where_and_predicates();
+    failures += test_where_xor_predicates();
     failures += test_independent_where_and_handles();
 
     return failures == 0 ? 0 : 1;
@@ -2368,7 +2370,7 @@ static int test_where_and_predicates(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM numbers WHERE id = 1 XOR nn = 8",
+        "SELECT id FROM numbers WHERE id XOR nn = 8",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -2801,6 +2803,547 @@ static int test_where_and_predicates(void) {
     return failures;
 }
 
+static int test_where_xor_predicates(void) {
+    static const char *const simple_rows[] = {"2", "1", "4", "0"};
+    static const char *const null_right_rows[] = {"4"};
+    static const char *const null_truth_rows[] = {"3"};
+    static const char *const precedence_rows[] = {"2", "4"};
+    static const char *const or_precedence_rows[] = {"1", "2", "4"};
+    static const char *const parenthesized_rows[] = {"1", "2", "3", "4"};
+    static const char *const in_unknown_rows[] = {"2", "3"};
+    static const char *const not_rows[] = {"1", "3"};
+    static const char *const repeated_rows[] = {"2", "3"};
+    static const char *const distinct_rows[] = {"9"};
+    static const char *const count_row[] = {"3"};
+    static const char *const grouped_rows[] = {"1", "1", "2", "1"};
+    static const char *const copy_rows[] = {"1", NULL, "2", "9", "3", NULL};
+    static const char *const inserted_rows[] = {"2", "9", "4", "9"};
+    static const char *const update_rows[] = {"1", "11", "2", "11", "3", "11", "4", "9"};
+    static const char *const update_limited_rows[] = {
+        "1",
+        NULL,
+        "2",
+        "9",
+        "3",
+        NULL,
+        "4",
+        "22",
+    };
+    static const char *const delete_limited_rows[] = {"1", "2", "3"};
+    static const char *const persisted_rows[] = {"33", "33", "33"};
+    static const char *const warning_rows[] = {"1", "4"};
+    static const char *const warning_table[] = {
+        "Warning",
+        "1287",
+        "'&&' is deprecated and will be removed in a future release. Please use AND instead",
+    };
+    char path[test_path_capacity];
+    unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "xor_lifecycle") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    mylite_file_preamble_init(expected_preamble);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open xor database");
+    failures += seed_database(database);
+
+    failures += execute_ok(
+        database,
+        "SELECT id, i FROM numbers WHERE i = 1 XOR nn = 8 ORDER BY id",
+        &result
+    );
+    if (result != NULL) {
+        failures += expect_size(mylite_result_column_count(result), 2U, "xor labels columns");
+        failures += expect_size(mylite_result_row_count(result), 2U, "xor labels rows");
+        failures += expect_text(mylite_result_column_name(result, 0U), "id", "xor label id");
+        failures += expect_text(mylite_result_column_name(result, 1U), "i", "xor label i");
+        failures += expect_result_value(result, 0U, 0U, simple_rows[0], "xor row 1 id");
+        failures += expect_result_value(result, 0U, 1U, simple_rows[1], "xor row 1 i");
+        failures += expect_result_value(result, 1U, 0U, simple_rows[2], "xor row 2 id");
+        failures += expect_result_value(result, 1U, 1U, simple_rows[3], "xor row 2 i");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "xor warning count");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "xor affected rows");
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = 1 XOR n = 9 ORDER BY id",
+            .values = null_right_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor null right operand",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n IS NULL XOR nn = 5 ORDER BY id",
+            .values = null_truth_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor null truth operand",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = 1 XOR nn = 8 AND n = 9 ORDER BY id",
+            .values = precedence_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "and binds tighter than xor",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = 1 XOR nn = 8 OR id = 1 ORDER BY id",
+            .values = or_precedence_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor binds tighter than or",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = 1 AND nn = 6 XOR id = 4 ORDER BY id",
+            .values = precedence_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "left conjunction before xor",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE (i = 1 OR nn = 8) XOR n IS NULL ORDER BY id",
+            .values = parenthesized_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "parenthesized xor operands",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (-2, 1) XOR n IS UNKNOWN ORDER BY id",
+            .values = in_unknown_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor with in and unknown predicates",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT i = 1 XOR nn = 8 ORDER BY id",
+            .values = not_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not binds tighter than xor",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = -2 XOR i = 1 XOR n IS NULL ORDER BY id",
+            .values = repeated_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "left associative repeated xor",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = 1 XOR id <=> 4 ORDER BY id",
+            .values = precedence_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor with null safe comparison",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN 0 AND 1 XOR n IS NULL ORDER BY id",
+            .values = parenthesized_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor with between",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE id = 1 XOR nn = 8 && n = 9 ORDER BY id",
+            .values = warning_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 1U,
+            .affected_rows = 0,
+            .context = "xor with deprecated symbolic and",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SHOW WARNINGS",
+            .values = warning_table,
+            .column_count = 3U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor deprecated symbolic and warning",
+        }
+    );
+
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT DISTINCT n FROM numbers WHERE i = 1 XOR nn = 8 ORDER BY n",
+            .values = distinct_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor distinct source reuse",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE i = 1 XOR n IS NULL",
+            .values = count_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor count source reuse",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT tie, COUNT(*) FROM numbers WHERE i = 1 XOR nn = 8 GROUP BY tie "
+                   "ORDER BY tie",
+            .values = grouped_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor grouped source reuse",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE copy_xor_numbers AS SELECT id, n FROM numbers WHERE n IS NULL XOR i = 1",
+        &result
+    );
+    if (result != NULL) {
+        failures += expect_int64(mylite_result_affected_rows(result), 3, "xor ctas affected rows");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM copy_xor_numbers ORDER BY id",
+            .values = copy_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor create table select source reuse",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE inserted_xor_numbers (id INT NOT NULL, n INT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO inserted_xor_numbers SELECT id, n FROM numbers WHERE i = 1 XOR nn = 8",
+        &result
+    );
+    if (result != NULL) {
+        failures +=
+            expect_int64(mylite_result_affected_rows(result), 2, "xor insert select affected rows");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM inserted_xor_numbers ORDER BY id",
+            .values = inserted_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor insert select source reuse",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE replaced_xor_numbers (id INT NOT NULL, n INT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "REPLACE INTO replaced_xor_numbers SELECT id, n FROM numbers WHERE i = 1 XOR nn = 8",
+        &result
+    );
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            2,
+            "xor replace select affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM replaced_xor_numbers ORDER BY id",
+            .values = inserted_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor replace select source reuse",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures +=
+        execute_ok(database, "UPDATE numbers SET n = 11 WHERE n IS NULL XOR i = 1", &result);
+    if (result != NULL) {
+        failures +=
+            expect_int64(mylite_result_affected_rows(result), 3, "xor update affected rows");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "xor update warnings");
+        failures += expect_size(mylite_result_row_count(result), 0U, "xor update no rows");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = update_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor update rows",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "UPDATE numbers SET n = 22 WHERE i = 1 XOR nn = 8 ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    if (result != NULL) {
+        failures +=
+            expect_int64(mylite_result_affected_rows(result), 1, "xor update limit affected rows");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = update_limited_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor ordered limited update rows",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "DELETE FROM numbers WHERE n IS NOT UNKNOWN XOR id = 1 ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    if (result != NULL) {
+        failures +=
+            expect_int64(mylite_result_affected_rows(result), 1, "xor delete limit affected rows");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = delete_limited_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "xor ordered limited delete rows",
+        }
+    );
+
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE missing_left = 1 XOR id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing_left' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE id = 1 XOR missing_right = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing_right' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE id = 1 XOR i = 2147483648",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' in WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM numbers WHERE numbers.id = 1 XOR nn = 8",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE supports only unqualified predicate columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE numbers SET n = 1 WHERE numbers.id = 1 XOR nn = 8",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE supports only unqualified predicate columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i XOR nn = 8",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 XOR 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures +=
+        execute_ok(database, "UPDATE numbers SET nn = 33 WHERE n IS NULL XOR i = 1", &result);
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            3,
+            "xor persisted update affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    mylite_close(database);
+    database = NULL;
+
+    if (read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)) != 0) {
+        fprintf(stderr, "failed to read xor database preamble\n");
+        ++failures;
+    } else {
+        failures += expect_bytes(
+            actual_preamble,
+            expected_preamble,
+            sizeof(expected_preamble),
+            "xor preamble"
+        );
+    }
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen xor database");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT nn FROM numbers WHERE n IS NULL XOR i = 1 ORDER BY id",
+            .values = persisted_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "reopened xor updated rows",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_independent_where_and_handles(void) {
     static const char *const first_values[] = {"31"};
     static const char *const second_values[] = {"41"};
@@ -2947,6 +3490,30 @@ static int test_independent_where_and_handles(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "second independent handle is predicate",
+        }
+    );
+    failures += expect_result(
+        first,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE id = 2 XOR nn = 100",
+            .values = first_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "first independent handle xor predicate",
+        }
+    );
+    failures += expect_result(
+        second,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE id = 2 XOR nn = 100",
+            .values = second_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "second independent handle xor predicate",
         }
     );
 

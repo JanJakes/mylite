@@ -2375,6 +2375,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_or_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_xor_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_ast_node *right
+) {
+    struct mylite_sql_source_span span =
+        left == NULL ? span_from_token(&operator_token) : left->span;
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    if (right != NULL) {
+        span = span_join(span, right->span);
+    }
+
+    predicate = make_node(state, MYLITE_SQL_AST_XOR_PREDICATE, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_operator(predicate, operator_kind);
+    mylite_sql_ast_node_append_child(predicate, left);
+    mylite_sql_ast_node_append_child(predicate, right);
+    return predicate;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_not_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token operator_token,
@@ -3171,6 +3197,7 @@ static bool map_keyword_token(
         {"AND", MYLITE_SQL_PARSE_AND},
         {"BETWEEN", MYLITE_SQL_PARSE_BETWEEN},
         {"OR", MYLITE_SQL_PARSE_OR},
+        {"XOR", MYLITE_SQL_PARSE_XOR},
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},

@@ -6055,6 +6055,96 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE id = 1 XOR nn = 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_XOR_PREDICATE,
+        "xor predicate"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR,
+        "xor predicate operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE id = 1 XOR nn = 2 XOR n IS NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_XOR_PREDICATE,
+        "chained xor predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_XOR_PREDICATE,
+        "left-associative chained xor predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE id = 1 XOR nn = 2 AND n IS NULL OR id = 3;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OR_PREDICATE,
+        "or above xor precedence root"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_XOR_PREDICATE,
+        "xor binds tighter than or"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U), 1U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "and binds tighter than xor"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE (id = 1 OR nn = 2) XOR n IS NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_XOR_PREDICATE,
+        "parentheses override xor precedence"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized or xor left operand"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE NOT id = 1 XOR nn = 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_XOR_PREDICATE,
+        "not xor precedence root"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not binds tighter than xor"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT * FROM simple_lifecycle WHERE (id = 1 OR nn = 2) AND n IS NULL;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -8616,11 +8706,8 @@ static int test_syntax_errors(void) {
         parse_sql("SELECT id FROM t WHERE id = '1';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql(
-        "SELECT id FROM t WHERE id = 1 XOR nn = 2;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parse_sql("SELECT id FROM t WHERE id XOR nn = 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

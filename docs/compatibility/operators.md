@@ -5,14 +5,14 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | Function or operator | Status | Notes |
 | --- | --- | --- |
 | `&` | ❌ | Bitwise AND |
-| `>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
+| `>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; specified for upcoming limited no-source/`DUAL` signed-64 scalar comparison projection; no table-backed expression support |
 | `>>` | ❌ | Right shift |
-| `>=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
-| `<` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
-| `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
+| `>=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; specified for upcoming limited no-source/`DUAL` signed-64 scalar comparison projection; no table-backed expression support |
+| `<` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; specified for upcoming limited no-source/`DUAL` signed-64 scalar comparison projection; no table-backed expression support |
+| `<>, !=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; specified for upcoming limited no-source/`DUAL` signed-64 scalar comparison projection; no table-backed expression support |
 | `<<` | ❌ | Left shift |
-| `<=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
-| `<=>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
+| `<=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; specified for upcoming limited no-source/`DUAL` signed-64 scalar comparison projection; no table-backed expression support |
+| `<=>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only; specified for upcoming limited no-source/`DUAL` signed-64 scalar NULL-safe equality projection |
 | `%, MOD` | 🟡 | Limited no-source/`DUAL` signed-64 scalar modulo projection with `%`, infix `MOD`, and `MOD(left, right)`; no table-backed expression support |
 | `*` | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection only; no table-backed expression support |
 | `+` | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection only; no table-backed expression support |
@@ -21,7 +21,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `/` | ❌ | Division operator |
 | `:=` | ❌ | Assign a value |
 | `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, `NULL`, or descriptor-resolved `DEFAULT`; `SET` statements and expression assignments remain unsupported |
-| `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
+| `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only; specified for upcoming limited no-source/`DUAL` signed-64 scalar comparison projection; no table-backed expression support |
 | `^` | ❌ | Bitwise XOR |
 | `AND, &&` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `AND` binds tighter than `XOR` and `OR`, `&&` is accepted with deprecation warning 1287, and no general expression-level boolean semantics are supported |
 | `BETWEEN ... AND ...` | 🟡 | Limited descriptor-backed `WHERE` range predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and two decimal integer or `TRUE`/`FALSE` bounds; no expression operands, string/temporal ranges, row ranges, or full expression-level operator support |

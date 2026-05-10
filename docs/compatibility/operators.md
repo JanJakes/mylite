@@ -13,7 +13,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `<<` | ❌ | Left shift |
 | `<=` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with decimal integer or `TRUE`/`FALSE` right operands only; no expression-level operator support |
 | `<=>` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
-| `%, MOD` | ❌ | Modulo operator |
+| `%, MOD` | 🟡 | Specified for upcoming limited no-source/`DUAL` signed-64 scalar modulo projection with `%`, infix `MOD`, and `MOD(left, right)`; not implemented yet, and no table-backed expression support |
 | `*` | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection only; no table-backed expression support |
 | `+` | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection only; no table-backed expression support |
 | `-` (binary) | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection only; no table-backed expression support |

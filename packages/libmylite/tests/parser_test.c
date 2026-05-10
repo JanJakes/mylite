@@ -201,6 +201,7 @@ static int test_use_statements(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *first_use = NULL;
     const struct mylite_sql_ast_node *second_use = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
     int failures = 0;
 
     failures += parse_sql("USE mylite_seed; USE `select`;", MYLITE_SQL_PARSE_OK, &result);
@@ -214,6 +215,69 @@ static int test_use_statements(void) {
     failures += expect_span_text(child_at(second_use, 0U), "`select`", "second schema");
 
     mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET NAMES utf8mb4;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SET_NAMES_STATEMENT, "set names statement");
+    failures += expect_child_count(statement, 1U, "set names child count");
+    failures += expect_span_text(child_at(statement, 0U), "utf8mb4", "set names charset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET NAMES names;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_SET_NAMES_STATEMENT, "set names names");
+    failures += expect_child_count(statement, 1U, "set names names child count");
+    failures += expect_span_text(child_at(statement, 0U), "names", "names charset identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SET NAMES 'utf8mb4' COLLATE `utf8mb4_0900_ai_ci`;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SET_NAMES_STATEMENT, "set names collate statement");
+    failures += expect_child_count(statement, 2U, "set names collate child count");
+    failures += expect_literal(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "set names string charset"
+    );
+    failures +=
+        expect_span_text(child_at(statement, 1U), "`utf8mb4_0900_ai_ci`", "set names collation");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET NAMES DEFAULT;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET,
+        "set names default target"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET CHARACTER SET UTF8MB4;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT,
+        "set character set statement"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "UTF8MB4", "set character set target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET CHARSET DEFAULT;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT, "set charset statement");
+    failures += expect_node(
+        child_at(statement, 0U),
+        MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET,
+        "set charset default target"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -1810,6 +1874,9 @@ static int test_qualified_identifier_keyword_part(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *qualified = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
     int failures = 0;
 
     failures += parse_sql("SELECT mydb.select;", MYLITE_SQL_PARSE_OK, &result);
@@ -1834,6 +1901,14 @@ static int test_qualified_identifier_keyword_part(void) {
     failures += expect_span_text(child_at(qualified, 0U), "mydb", "commented qualified left");
     failures += expect_span_text(child_at(qualified, 1U), "select", "commented qualified right");
 
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE names (names INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "names", "names table identifier");
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "names", "names column identifier");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -5651,6 +5726,33 @@ static int test_syntax_errors(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET NAMES;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET NAMES NULL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET NAMES utf8mb4, latin1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SET CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SET character_set_client = utf8mb4;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SET NAMES ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SET NAMES CONCAT('utf8', 'mb4');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE DATABASE a.b;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

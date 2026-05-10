@@ -502,6 +502,35 @@ static int execute_use_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_set_names_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_set_character_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_set_connection_character_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool allow_collation,
+    mylite_result **out_result
+);
+static int validate_set_connection_character_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool allow_collation
+);
+static int validate_set_connection_character_set_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target
+);
+static int validate_set_names_collation_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target
+);
 static int execute_create_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -2397,6 +2426,10 @@ static int execute_parsed_statement(
     switch (statement->kind) {
     case MYLITE_SQL_AST_USE_STATEMENT:
         return execute_use_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
+        return execute_set_names_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
+        return execute_set_character_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
         return execute_create_schema_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
@@ -2545,6 +2578,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
         break;
     }
 
@@ -2608,6 +2642,137 @@ static int execute_use_statement(
     database->session.has_selected_schema = true;
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int execute_set_names_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_set_connection_character_set_statement(database, statement, true, out_result);
+}
+
+static int execute_set_character_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_set_connection_character_set_statement(database, statement, false, out_result);
+}
+
+static int execute_set_connection_character_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool allow_collation,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = validate_set_connection_character_set_statement(database, statement, allow_collation);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int validate_set_connection_character_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool allow_collation
+) {
+    const struct mylite_sql_ast_node *target = NULL;
+    const struct mylite_sql_ast_node *collation = NULL;
+    int rc = MYLITE_OK;
+
+    if (statement == NULL || (statement->kind != MYLITE_SQL_AST_SET_NAMES_STATEMENT &&
+                              statement->kind != MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT)) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    target = child_at(statement, 0U);
+    collation = child_at(statement, 1U);
+    if (collation != NULL && !allow_collation) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = validate_set_connection_character_set_target(database, target);
+    if (rc == MYLITE_OK && collation != NULL) {
+        rc = validate_set_names_collation_target(database, collation);
+    }
+    return rc;
+}
+
+static int validate_set_connection_character_set_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target
+) {
+    char charset_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (target->kind == MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_table_option_name_text(
+        database,
+        target,
+        charset_name,
+        sizeof(charset_name),
+        (struct table_option_name_policy){
+            .identifier_kind = "character set",
+            .nul_message = "SET character set names do not support NUL bytes",
+        }
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_equals_ascii_case_insensitive(charset_name, "utf8mb4")) {
+        set_unknown_character_set_error(database, charset_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int validate_set_names_collation_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target
+) {
+    char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = copy_table_option_name_text(
+        database,
+        target,
+        collation_name,
+        sizeof(collation_name),
+        (struct table_option_name_policy){
+            .identifier_kind = "collation",
+            .nul_message = "SET collation names do not support NUL bytes",
+        }
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_equals_ascii_case_insensitive(collation_name, "utf8mb4_0900_ai_ci")) {
+        set_unknown_collation_error(database, collation_name);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int execute_create_table_statement(
@@ -5425,6 +5590,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_DROP_SCHEMA_STATEMENT:
         return -1;
     case MYLITE_SQL_AST_USE_STATEMENT:
+    case MYLITE_SQL_AST_SET_NAMES_STATEMENT:
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
@@ -5524,6 +5691,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
         break;
     }
 

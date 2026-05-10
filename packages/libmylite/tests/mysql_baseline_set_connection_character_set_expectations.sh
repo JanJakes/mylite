@@ -151,6 +151,13 @@ expect_error \
     "SET NAMES bogus;"
 
 expect_error \
+    "names remains nonreserved in set names value" \
+    1115 \
+    42000 \
+    "Unknown character set: 'names'" \
+    "SET NAMES names;"
+
+expect_error \
     "unknown set character set rejected" \
     1115 \
     42000 \

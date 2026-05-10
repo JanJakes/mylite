@@ -361,6 +361,63 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *charset_name,
+    struct mylite_sql_ast_node *collation_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&set_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (collation_name != NULL) {
+        span = span_join(span, collation_name->span);
+    } else if (charset_name != NULL) {
+        span = span_join(span, charset_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SET_NAMES_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, charset_name);
+    mylite_sql_ast_node_append_child(statement, collation_name);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_character_set_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *charset_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&set_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (charset_name != NULL) {
+        span = span_join(span, charset_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_SET_CHARACTER_SET_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, charset_name);
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_character_set_default_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token default_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET,
+        span_from_token(&default_token)
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
@@ -2634,6 +2691,7 @@ static bool map_keyword_token(
         {"DELETE", MYLITE_SQL_PARSE_DELETE},
         {"UPDATE", MYLITE_SQL_PARSE_UPDATE},
         {"SET", MYLITE_SQL_PARSE_SET},
+        {"NAMES", MYLITE_SQL_PARSE_NAMES},
         {"INT", MYLITE_SQL_PARSE_INT},
         {"TINYINT", MYLITE_SQL_PARSE_TINYINT},
         {"SMALLINT", MYLITE_SQL_PARSE_SMALLINT},

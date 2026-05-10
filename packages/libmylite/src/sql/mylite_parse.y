@@ -60,6 +60,9 @@ statement(A) ::= select_statement(B). {
 statement(A) ::= use_statement(B). {
     A = B;
 }
+statement(A) ::= set_connection_charset_statement(B). {
+    A = B;
+}
 statement(A) ::= create_table_statement(B). {
     A = B;
 }
@@ -183,6 +186,42 @@ statement(A) ::= update_statement(B). {
 
 use_statement(A) ::= USE(T) identifier(B). {
     A = mylite_sql_parser_make_use_statement(state, T, B);
+}
+
+set_connection_charset_statement(A) ::= SET(S) NAMES option_name(C) set_names_collate_opt(L). {
+    A = mylite_sql_parser_make_set_names_statement(state, S, C, L);
+}
+set_connection_charset_statement(A) ::= SET(S) NAMES DEFAULT(D). {
+    A = mylite_sql_parser_make_set_names_statement(
+        state,
+        S,
+        mylite_sql_parser_make_set_character_set_default_target(state, D),
+        NULL);
+}
+set_connection_charset_statement(A) ::= SET(S) CHARACTER SET option_name(C). {
+    A = mylite_sql_parser_make_set_character_set_statement(state, S, C);
+}
+set_connection_charset_statement(A) ::= SET(S) CHARACTER SET DEFAULT(D). {
+    A = mylite_sql_parser_make_set_character_set_statement(
+        state,
+        S,
+        mylite_sql_parser_make_set_character_set_default_target(state, D));
+}
+set_connection_charset_statement(A) ::= SET(S) CHARSET option_name(C). {
+    A = mylite_sql_parser_make_set_character_set_statement(state, S, C);
+}
+set_connection_charset_statement(A) ::= SET(S) CHARSET DEFAULT(D). {
+    A = mylite_sql_parser_make_set_character_set_statement(
+        state,
+        S,
+        mylite_sql_parser_make_set_character_set_default_target(state, D));
+}
+
+set_names_collate_opt(A) ::= . {
+    A = NULL;
+}
+set_names_collate_opt(A) ::= COLLATE option_name(C). {
+    A = C;
 }
 
 create_table_statement(A) ::=
@@ -1266,6 +1305,9 @@ identifier(A) ::= STORAGE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CHARSET(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= NAMES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CHARACTER(T). {

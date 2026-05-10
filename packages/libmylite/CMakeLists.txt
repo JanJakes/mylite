@@ -617,6 +617,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_character_set_system_variables_test)
 
+  add_executable(mylite_runtime_set_connection_character_set_test
+    tests/runtime_set_connection_character_set_test.c
+  )
+  target_link_libraries(mylite_runtime_set_connection_character_set_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_set_connection_character_set_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_set_connection_character_set_test)
+
   add_executable(mylite_runtime_show_like_filters_test
     tests/runtime_show_like_filters_test.c
   )
@@ -1177,6 +1188,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.character_set_system_variables
     COMMAND mylite_runtime_character_set_system_variables_test
+  )
+  add_test(
+    NAME libmylite.runtime.set_connection_character_set
+    COMMAND mylite_runtime_set_connection_character_set_test
   )
   add_test(
     NAME libmylite.runtime.show_like_filters

@@ -87,6 +87,21 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_use_statement(
     struct mylite_sql_token use_token,
     struct mylite_sql_ast_node *schema_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_names_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *charset_name,
+    struct mylite_sql_ast_node *collation_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_character_set_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token set_token,
+    struct mylite_sql_ast_node *charset_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_set_character_set_default_target(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token default_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,

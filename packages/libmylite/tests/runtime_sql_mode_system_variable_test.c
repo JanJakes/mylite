@@ -518,7 +518,7 @@ static int test_sql_mode_qualifiers_and_errors(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SET",
+            .message_part = "SESSION",
         }
     );
     failures += expect_query_result(

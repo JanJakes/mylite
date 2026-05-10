@@ -1161,8 +1161,20 @@ having_integer_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
 
-predicate(A) ::= predicate_conjunction(B). {
+predicate(A) ::= predicate_disjunction(B). {
     A = B;
+}
+
+predicate_disjunction(A) ::= predicate_conjunction(B). {
+    A = B;
+}
+predicate_disjunction(A) ::= predicate_disjunction(B) OR(O) predicate_conjunction(C). {
+    A = mylite_sql_parser_make_or_predicate(
+        state, B, O, MYLITE_SQL_AST_OPERATOR_LOGICAL_OR, C);
+}
+predicate_disjunction(A) ::= predicate_disjunction(B) LOGICAL_OR(O) predicate_conjunction(C). {
+    A = mylite_sql_parser_make_or_predicate(
+        state, B, O, MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR, C);
 }
 
 predicate_conjunction(A) ::= predicate_primary(B). {

@@ -117,6 +117,42 @@ static int test_where_and_predicates(void) {
         "1287",
         "'&&' is deprecated and will be removed in a future release. Please use AND instead",
     };
+    static const char *const or_rows[] = {"2", "4"};
+    static const char *const or_precedence_rows[] = {"2"};
+    static const char *const or_null_rows[] = {"1", "2", "3", "4"};
+    static const char *const or_distinct_rows[] = {NULL, "9"};
+    static const char *const or_count_row[] = {"3"};
+    static const char *const or_max_row[] = {"2147483647"};
+    static const char *const or_grouped_rows[] = {"1", "2", "2", "2"};
+    static const char *const or_copy_rows[] = {"2", "1", "9", "4", "0", "9"};
+    static const char *const or_inserted_rows[] = {"2", "1", "4", "0"};
+    static const char *const or_replaced_rows[] = {"2", "1", "4", "0"};
+    static const char *const or_update_rows[] = {"1", NULL, "2", "11", "3", NULL, "4", "11"};
+    static const char *const or_update_null_rows[] = {"1", NULL, "2", NULL, "3", NULL, "4", "9"};
+    static const char *const or_update_limited_rows[] = {
+        "1",
+        NULL,
+        "2",
+        "9",
+        "3",
+        "99",
+        "4",
+        "99",
+    };
+    static const char *const or_delete_rows[] = {"1", "3"};
+    static const char *const or_delete_limited_rows[] = {"1", "2"};
+    static const char *const or_persisted_rows[] = {"22", "22"};
+    static const char *const or_warning_rows[] = {"1", "2", "4"};
+    static const char *const or_warning_table[] = {
+        "Warning",
+        "1287",
+        "'|| as a synonym for OR' is deprecated and will be removed in a future release. Please "
+        "use OR instead",
+        "Warning",
+        "1287",
+        "'|| as a synonym for OR' is deprecated and will be removed in a future release. Please "
+        "use OR instead",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -198,6 +234,79 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = 1 OR nn = 8 ORDER BY id",
+            .values = or_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "comparison or predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = 1 OR nn = 8 AND n IS NULL ORDER BY id",
+            .values = or_precedence_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "or and precedence predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE (i = 1 OR nn = 8) AND n IS NULL ORDER BY id",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "parenthesized or predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n IS NULL OR n = 9 ORDER BY id",
+            .values = or_null_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "or null predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE id = 1 || nn = 8 || i = 1 ORDER BY id",
+            .values = or_warning_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 2U,
+            .affected_rows = 0,
+            .context = "deprecated symbolic or predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SHOW WARNINGS",
+            .values = or_warning_table,
+            .column_count = 3U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "deprecated symbolic or warnings",
+        }
+    );
+
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT DISTINCT n FROM numbers WHERE n IS NOT NULL AND tie = 1",
             .values = distinct_row,
             .column_count = 1U,
@@ -245,6 +354,56 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT DISTINCT n FROM numbers WHERE n IS NULL OR tie = 1 ORDER BY n",
+            .values = or_distinct_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "distinct source or predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE n = 9 OR nn = 7",
+            .values = or_count_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "count source or predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT MAX(i) FROM numbers WHERE nn = 6 OR n IS NULL",
+            .values = or_max_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "aggregate source or predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT tie, COUNT(*) FROM numbers WHERE id = 1 OR nn >= 6 GROUP BY tie "
+                   "ORDER BY tie",
+            .values = or_grouped_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped aggregate source or predicate",
+        }
+    );
+
     failures += execute_ok(
         database,
         "CREATE TABLE copy_numbers SELECT id, i, n FROM numbers WHERE i = 1 AND n IS NOT NULL",
@@ -264,6 +423,31 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "create table select copied rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE copy_or_numbers SELECT id, i, n FROM numbers WHERE i = 1 OR nn = 8",
+        &result
+    );
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "create table select or affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i, n FROM copy_or_numbers ORDER BY id",
+            .values = or_copy_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "create table select or copied rows",
         }
     );
 
@@ -297,6 +481,32 @@ static int test_where_and_predicates(void) {
     );
 
     failures +=
+        execute_ok(database, "CREATE TABLE or_inserted_numbers (id INT NOT NULL, i INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO or_inserted_numbers SELECT id, i FROM numbers WHERE i = 1 OR nn = 8",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 2, "insert select or affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM or_inserted_numbers ORDER BY id",
+            .values = or_inserted_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "insert select source or predicate",
+        }
+    );
+
+    failures +=
         execute_ok(database, "CREATE TABLE replaced_numbers (id INT NOT NULL, i INT)", &result);
     mylite_result_free(result);
     result = NULL;
@@ -322,6 +532,32 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures +=
+        execute_ok(database, "CREATE TABLE or_replaced_numbers (id INT NOT NULL, i INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "REPLACE INTO or_replaced_numbers SELECT id, i FROM numbers WHERE i = 1 OR nn = 8",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 2, "replace select or affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM or_replaced_numbers ORDER BY id",
+            .values = or_replaced_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "replace select source or predicate",
+        }
+    );
+
     failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE i = 1 AND nn = 6", &result);
     failures += expect_int64(mylite_result_affected_rows(result), 1, "update and affected rows");
@@ -337,6 +573,42 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "update and row state",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE i = 1 OR nn = 8", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 2, "update or affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = or_update_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update or row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(database, "UPDATE numbers SET n = NULL WHERE id = 1 OR nn = 6", &result);
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "update or changed affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = or_update_null_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update or changed row state",
         }
     );
     failures += reset_numbers(database);
@@ -361,6 +633,28 @@ static int test_where_and_predicates(void) {
             .context = "update and limit row state",
         }
     );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "UPDATE numbers SET n = 99 WHERE id = 1 OR nn >= 6 ORDER BY id DESC LIMIT 2",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 2, "update or limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = or_update_limited_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update or limit row state",
+        }
+    );
 
     failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i > 1 AND n IS NULL", &result);
@@ -377,6 +671,24 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "delete and row state",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(database, "DELETE FROM numbers WHERE i = 1 OR nn = 8", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 2, "delete or affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = or_delete_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete or row state",
         }
     );
     failures += reset_numbers(database);
@@ -401,10 +713,41 @@ static int test_where_and_predicates(void) {
             .context = "delete and limit row state",
         }
     );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "DELETE FROM numbers WHERE id = 1 OR nn >= 6 ORDER BY id DESC LIMIT 2",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 2, "delete or limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = or_delete_limited_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete or limit row state",
+        }
+    );
 
     failures += execute_error(
         database,
         "SELECT id FROM numbers WHERE id = 1 AND missing = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE id = 1 OR missing = 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -422,7 +765,16 @@ static int test_where_and_predicates(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM numbers WHERE id = 1 OR nn = 8",
+        "SELECT id FROM numbers WHERE id = 1 OR i = 2147483648",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' in WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE id = 1 XOR nn = 8",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -457,7 +809,11 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += reset_numbers(database);
     failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE id = 2 AND nn = 6", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "UPDATE numbers SET n = 22 WHERE id = 1 OR id = 4", &result);
     mylite_result_free(result);
     result = NULL;
 
@@ -488,6 +844,18 @@ static int test_where_and_predicates(void) {
             .context = "reopened updated row",
         }
     );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE id = 1 OR id = 4 ORDER BY id",
+            .values = or_persisted_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "reopened or updated rows",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -516,17 +884,17 @@ static int test_independent_where_and_handles(void) {
     failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second database");
     failures += seed_database(first);
     failures += seed_database(second);
-    failures += execute_ok(first, "UPDATE numbers SET n = 31 WHERE id = 2 AND nn = 6", &result);
+    failures += execute_ok(first, "UPDATE numbers SET n = 31 WHERE id = 2 OR nn = 100", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += execute_ok(second, "UPDATE numbers SET n = 41 WHERE id = 2 AND nn = 6", &result);
+    failures += execute_ok(second, "UPDATE numbers SET n = 41 WHERE id = 2 OR nn = 100", &result);
     mylite_result_free(result);
     result = NULL;
 
     failures += expect_result(
         first,
         (struct expected_result){
-            .sql = "SELECT n FROM numbers WHERE id = 2 AND nn = 6",
+            .sql = "SELECT n FROM numbers WHERE id = 2 OR nn = 100",
             .values = first_values,
             .column_count = 1U,
             .row_count = 1U,
@@ -538,7 +906,7 @@ static int test_independent_where_and_handles(void) {
     failures += expect_result(
         second,
         (struct expected_result){
-            .sql = "SELECT n FROM numbers WHERE id = 2 AND nn = 6",
+            .sql = "SELECT n FROM numbers WHERE id = 2 OR nn = 100",
             .values = second_values,
             .column_count = 1U,
             .row_count = 1U,

@@ -57,6 +57,7 @@ enum {
     mysql_error_unknown_storage_engine = 1286,
     mysql_error_display_width_out_of_range = 1439,
     mysql_warning_deprecated_logical_and = 1287,
+    mysql_warning_deprecated_logical_or = 1287,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_integer_display_width_deprecated = 1681,
     mysql_error_must_have_visible_column = 4028,
@@ -313,28 +314,49 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_NONE = 0,
     PLANNED_SELECT_PREDICATE_COMPARISON = 1,
     PLANNED_SELECT_PREDICATE_IS_NULL = 2,
+    PLANNED_SELECT_PREDICATE_AND = 3,
+    PLANNED_SELECT_PREDICATE_OR = 4,
 };
 
-struct planned_select_predicate_term {
+struct planned_select_predicate_node {
     enum planned_select_predicate_kind kind;
     enum mylite_sql_ast_operator operator_kind;
     struct mylite_catalog_column_descriptor column;
     struct planned_value value;
+    size_t left_index;
+    size_t right_index;
 };
 
 struct planned_select_predicate {
-    struct planned_select_predicate_term *terms;
-    size_t term_count;
+    struct planned_select_predicate_node *nodes;
+    size_t node_count;
+    size_t root_index;
+    bool has_root;
 };
 
 enum predicate_work_item_kind {
     PREDICATE_WORK_NODE = 0,
     PREDICATE_WORK_DEPRECATED_AND_WARNING = 1,
+    PREDICATE_WORK_DEPRECATED_OR_WARNING = 2,
+    PREDICATE_WORK_FINISH_LOGICAL = 3,
 };
 
 struct predicate_work_item {
     enum predicate_work_item_kind kind;
     const struct mylite_sql_ast_node *node;
+    enum mylite_sql_ast_operator operator_kind;
+};
+
+enum predicate_sql_work_item_kind {
+    PREDICATE_SQL_WORK_NODE = 0,
+    PREDICATE_SQL_WORK_OPERATOR = 1,
+    PREDICATE_SQL_WORK_CLOSE = 2,
+};
+
+struct predicate_sql_work_item {
+    enum predicate_sql_work_item_kind kind;
+    size_t node_index;
+    enum mylite_sql_ast_operator operator_kind;
 };
 
 struct planned_select_order {
@@ -2393,13 +2415,75 @@ static int plan_select_predicate_node(
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
 );
+static int plan_select_predicate_work_item(
+    struct mylite_db *database,
+    struct predicate_work_item item,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+);
+static int finish_planned_select_logical_predicate(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    struct planned_select_predicate *out_predicate
+);
+static int plan_select_predicate_ast_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+);
+static const struct mylite_sql_ast_node *unwrap_parenthesized_predicate(
+    const struct mylite_sql_ast_node *node
+);
+static bool is_logical_predicate_node(const struct mylite_sql_ast_node *node);
+static int append_select_predicate_logical_work(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    struct predicate_work_item **items,
+    size_t *item_count
+);
+static int append_select_predicate_deprecated_warning_work(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    struct predicate_work_item **items,
+    size_t *item_count
+);
+static int plan_select_predicate_leaf_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+);
+static bool planned_predicate_kind_for_operator(
+    enum mylite_sql_ast_operator operator_kind,
+    enum planned_select_predicate_kind *out_kind
+);
 static int plan_comparison_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_select_predicate *predicate
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
 );
 static int plan_is_null_predicate(
     struct mylite_db *database,
@@ -2407,15 +2491,20 @@ static int plan_is_null_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_select_predicate *predicate
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
 );
-static int append_planned_select_predicate_term(
+static int append_planned_select_predicate_node(
     struct mylite_db *database,
     struct planned_select_predicate *predicate,
-    const struct planned_select_predicate_term *term
+    const struct planned_select_predicate_node *node,
+    size_t *out_node_index
 );
 static int append_deprecated_logical_and_warning(struct mylite_db *database);
-static bool planned_select_predicate_has_terms(const struct planned_select_predicate *predicate);
+static int append_deprecated_logical_or_warning(struct mylite_db *database);
+static bool planned_select_predicate_has_expression(
+    const struct planned_select_predicate *predicate
+);
 static int append_predicate_work_node(
     struct mylite_db *database,
     struct predicate_work_item **items,
@@ -2427,11 +2516,33 @@ static int append_predicate_work_deprecated_and_warning(
     struct predicate_work_item **items,
     size_t *item_count
 );
+static int append_predicate_work_deprecated_or_warning(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count
+);
+static int append_predicate_work_finish_logical(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    enum mylite_sql_ast_operator operator_kind
+);
 static int append_predicate_work_item(
     struct mylite_db *database,
     struct predicate_work_item **items,
     size_t *item_count,
     struct predicate_work_item item
+);
+static int append_predicate_result_index(
+    struct mylite_db *database,
+    size_t **indexes,
+    size_t *index_count,
+    size_t index
+);
+static int pop_predicate_result_index(
+    const size_t *indexes,
+    size_t *index_count,
+    size_t *out_index
 );
 static int bind_select_predicate_parameters(
     sqlite3_stmt *statement,
@@ -2759,19 +2870,69 @@ static int append_select_predicate_sql(
     const struct planned_select_predicate *predicate,
     size_t *next_parameter
 );
-static int append_select_predicate_term_sql(
+static int append_select_predicate_expression_sql(
     struct dynamic_string *string,
-    const struct planned_select_predicate_term *term,
+    const struct planned_select_predicate *predicate,
+    size_t *next_parameter
+);
+static int append_select_predicate_expression_work_item(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    struct predicate_sql_work_item item,
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    size_t *next_parameter
+);
+static int append_select_predicate_logical_operator_sql(
+    struct dynamic_string *string,
+    enum mylite_sql_ast_operator operator_kind
+);
+static int append_select_predicate_expression_node_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    size_t node_index,
+    size_t *next_parameter,
+    struct predicate_sql_work_item **items,
+    size_t *item_count
+);
+static int append_select_predicate_logical_node_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    struct predicate_sql_work_item **items,
+    size_t *item_count
+);
+static int append_select_predicate_node_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
 static int append_select_comparison_predicate_term_sql(
     struct dynamic_string *string,
-    const struct planned_select_predicate_term *term,
+    const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
 static int append_select_is_null_predicate_term_sql(
     struct dynamic_string *string,
-    const struct planned_select_predicate_term *term
+    const struct planned_select_predicate_node *node
+);
+static int append_predicate_sql_work_node(
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    size_t node_index
+);
+static int append_predicate_sql_work_operator(
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    enum mylite_sql_ast_operator operator_kind
+);
+static int append_predicate_sql_work_close(
+    struct predicate_sql_work_item **items,
+    size_t *item_count
+);
+static int append_predicate_sql_work_item(
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    struct predicate_sql_work_item item
 );
 static int append_select_order_sql(
     struct dynamic_string *string,
@@ -3326,6 +3487,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
     case MYLITE_SQL_AST_AND_PREDICATE:
+    case MYLITE_SQL_AST_OR_PREDICATE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
@@ -6746,6 +6908,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
     case MYLITE_SQL_AST_AND_PREDICATE:
+    case MYLITE_SQL_AST_OR_PREDICATE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
@@ -17140,7 +17303,7 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
         return;
     }
 
-    free(predicate->terms);
+    free(predicate->nodes);
     *predicate = (struct planned_select_predicate){0};
 }
 
@@ -17154,63 +17317,305 @@ static int plan_select_predicate_node(
 ) {
     struct predicate_work_item *items = NULL;
     size_t item_count = 0U;
+    size_t *result_indexes = NULL;
+    size_t result_index_count = 0U;
     int rc = append_predicate_work_node(database, &items, &item_count, predicate_node);
 
     while (rc == MYLITE_OK && item_count > 0U) {
         struct predicate_work_item item = items[--item_count];
-        const struct mylite_sql_ast_node *current = item.node;
-
-        if (item.kind == PREDICATE_WORK_DEPRECATED_AND_WARNING) {
-            rc = append_deprecated_logical_and_warning(database);
-            continue;
-        }
-
-        while (current != NULL && current->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-            current = child_at(current, 0U);
-        }
-        if (current != NULL && current->kind == MYLITE_SQL_AST_AND_PREDICATE) {
-            rc = append_predicate_work_node(database, &items, &item_count, child_at(current, 1U));
-            if (rc == MYLITE_OK && mylite_sql_ast_node_operator(current) ==
-                                       MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
-                rc = append_predicate_work_deprecated_and_warning(database, &items, &item_count);
-            }
-            if (rc == MYLITE_OK) {
-                rc = append_predicate_work_node(
-                    database,
-                    &items,
-                    &item_count,
-                    child_at(current, 0U)
-                );
-            }
-        } else if (current != NULL && current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
-            rc = plan_comparison_predicate(
-                database,
-                current,
-                source_context,
-                table_columns,
-                table_column_count,
-                out_predicate
-            );
-        } else if (current != NULL && current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
-            rc = plan_is_null_predicate(
-                database,
-                current,
-                source_context,
-                table_columns,
-                table_column_count,
-                out_predicate
-            );
-        } else {
-            set_unsupported_error(
-                database,
-                "SELECT supports only descriptor column WHERE predicates"
-            );
-            rc = MYLITE_ERROR;
-        }
+        rc = plan_select_predicate_work_item(
+            database,
+            item,
+            &items,
+            &item_count,
+            &result_indexes,
+            &result_index_count,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate
+        );
     }
 
+    if (rc == MYLITE_OK && result_index_count == 1U) {
+        out_predicate->root_index = result_indexes[0];
+        out_predicate->has_root = true;
+    } else if (rc == MYLITE_OK) {
+        set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+        rc = MYLITE_ERROR;
+    }
+
+    free(result_indexes);
     free(items);
     return rc;
+}
+
+static int plan_select_predicate_work_item(
+    struct mylite_db *database,
+    struct predicate_work_item item,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+) {
+    switch (item.kind) {
+    case PREDICATE_WORK_DEPRECATED_AND_WARNING:
+        return append_deprecated_logical_and_warning(database);
+    case PREDICATE_WORK_DEPRECATED_OR_WARNING:
+        return append_deprecated_logical_or_warning(database);
+    case PREDICATE_WORK_FINISH_LOGICAL:
+        return finish_planned_select_logical_predicate(
+            database,
+            item.operator_kind,
+            result_indexes,
+            result_index_count,
+            out_predicate
+        );
+    case PREDICATE_WORK_NODE:
+        return plan_select_predicate_ast_node(
+            database,
+            item.node,
+            items,
+            item_count,
+            result_indexes,
+            result_index_count,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate
+        );
+    }
+
+    set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+    return MYLITE_ERROR;
+}
+
+static int finish_planned_select_logical_predicate(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    struct planned_select_predicate *out_predicate
+) {
+    enum planned_select_predicate_kind kind = PLANNED_SELECT_PREDICATE_NONE;
+    size_t left_index = 0U;
+    size_t right_index = 0U;
+    size_t node_index = 0U;
+    struct planned_select_predicate_node logical_node = {0};
+    int rc = MYLITE_OK;
+
+    if (!planned_predicate_kind_for_operator(operator_kind, &kind)) {
+        set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+        return MYLITE_ERROR;
+    }
+
+    rc = pop_predicate_result_index(*result_indexes, result_index_count, &right_index);
+    if (rc == MYLITE_OK) {
+        rc = pop_predicate_result_index(*result_indexes, result_index_count, &left_index);
+    }
+    if (rc != MYLITE_OK) {
+        set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+        return rc;
+    }
+
+    logical_node = (struct planned_select_predicate_node){
+        .kind = kind,
+        .operator_kind = operator_kind,
+        .left_index = left_index,
+        .right_index = right_index,
+    };
+    rc = append_planned_select_predicate_node(database, out_predicate, &logical_node, &node_index);
+    if (rc == MYLITE_OK) {
+        rc =
+            append_predicate_result_index(database, result_indexes, result_index_count, node_index);
+    }
+
+    return rc;
+}
+
+static int plan_select_predicate_ast_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+) {
+    const struct mylite_sql_ast_node *current = unwrap_parenthesized_predicate(predicate_node);
+
+    if (is_logical_predicate_node(current)) {
+        return append_select_predicate_logical_work(database, current, items, item_count);
+    }
+    if (current != NULL && (current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+                            current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE)) {
+        return plan_select_predicate_leaf_node(
+            database,
+            current,
+            result_indexes,
+            result_index_count,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate
+        );
+    }
+
+    set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
+    return MYLITE_ERROR;
+}
+
+static const struct mylite_sql_ast_node *unwrap_parenthesized_predicate(
+    const struct mylite_sql_ast_node *node
+) {
+    const struct mylite_sql_ast_node *current = node;
+
+    while (current != NULL && current->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        current = child_at(current, 0U);
+    }
+
+    return current;
+}
+
+static bool is_logical_predicate_node(const struct mylite_sql_ast_node *node) {
+    if (node == NULL) {
+        return false;
+    }
+
+    if (node->kind == MYLITE_SQL_AST_AND_PREDICATE) {
+        return true;
+    }
+    if (node->kind == MYLITE_SQL_AST_OR_PREDICATE) {
+        return true;
+    }
+    return false;
+}
+
+static int append_select_predicate_logical_work(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    struct predicate_work_item **items,
+    size_t *item_count
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
+    int rc = append_predicate_work_finish_logical(database, items, item_count, operator_kind);
+
+    if (rc == MYLITE_OK) {
+        rc = append_predicate_work_node(database, items, item_count, child_at(predicate_node, 1U));
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_deprecated_warning_work(
+            database,
+            operator_kind,
+            items,
+            item_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_predicate_work_node(database, items, item_count, child_at(predicate_node, 0U));
+    }
+
+    return rc;
+}
+
+static int append_select_predicate_deprecated_warning_work(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    struct predicate_work_item **items,
+    size_t *item_count
+) {
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
+        return append_predicate_work_deprecated_and_warning(database, items, item_count);
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR) {
+        return append_predicate_work_deprecated_or_warning(database, items, item_count);
+    }
+
+    return MYLITE_OK;
+}
+
+static int plan_select_predicate_leaf_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    size_t **result_indexes,
+    size_t *result_index_count,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *out_predicate
+) {
+    size_t node_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (predicate_node->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        rc = plan_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else {
+        rc = plan_is_null_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc =
+            append_predicate_result_index(database, result_indexes, result_index_count, node_index);
+    }
+
+    return rc;
+}
+
+static bool planned_predicate_kind_for_operator(
+    enum mylite_sql_ast_operator operator_kind,
+    enum planned_select_predicate_kind *out_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+        *out_kind = PLANNED_SELECT_PREDICATE_AND;
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+        *out_kind = PLANNED_SELECT_PREDICATE_OR;
+        return true;
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+        break;
+    }
+
+    return false;
 }
 
 static int plan_comparison_predicate(
@@ -17219,11 +17624,14 @@ static int plan_comparison_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_select_predicate *predicate
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
 ) {
-    struct planned_select_predicate_term term = {
+    struct planned_select_predicate_node node = {
         .kind = PLANNED_SELECT_PREDICATE_COMPARISON,
         .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
     };
     int rc = resolve_predicate_column(
         database,
@@ -17231,22 +17639,22 @@ static int plan_comparison_predicate(
         source_context,
         table_columns,
         table_column_count,
-        &term.column
+        &node.column
     );
 
     if (rc == MYLITE_OK) {
         rc = convert_predicate_integer_literal(
             database,
             child_at(predicate_node, 1U),
-            &term.column,
-            &term.value
+            &node.column,
+            &node.value
         );
     }
     if (rc != MYLITE_OK) {
         return rc;
     }
 
-    return append_planned_select_predicate_term(database, predicate, &term);
+    return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
 }
 
 static int plan_is_null_predicate(
@@ -17255,11 +17663,14 @@ static int plan_is_null_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_select_predicate *predicate
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
 ) {
-    struct planned_select_predicate_term term = {
+    struct planned_select_predicate_node node = {
         .kind = PLANNED_SELECT_PREDICATE_IS_NULL,
         .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
     };
     int rc = resolve_predicate_column(
         database,
@@ -17267,38 +17678,42 @@ static int plan_is_null_predicate(
         source_context,
         table_columns,
         table_column_count,
-        &term.column
+        &node.column
     );
 
     if (rc != MYLITE_OK) {
         return rc;
     }
 
-    return append_planned_select_predicate_term(database, predicate, &term);
+    return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
 }
 
-static int append_planned_select_predicate_term(
+static int append_planned_select_predicate_node(
     struct mylite_db *database,
     struct planned_select_predicate *predicate,
-    const struct planned_select_predicate_term *term
+    const struct planned_select_predicate_node *node,
+    size_t *out_node_index
 ) {
-    struct planned_select_predicate_term *terms = NULL;
-    size_t required_count = predicate->term_count + 1U;
+    struct planned_select_predicate_node *nodes = NULL;
+    size_t required_count = predicate->node_count + 1U;
 
-    if (required_count > SIZE_MAX / sizeof(*terms)) {
+    if (required_count > SIZE_MAX / sizeof(*nodes)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
 
-    terms = realloc(predicate->terms, required_count * sizeof(*terms));
-    if (terms == NULL) {
+    nodes = realloc(predicate->nodes, required_count * sizeof(*nodes));
+    if (nodes == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
 
-    predicate->terms = terms;
-    predicate->terms[predicate->term_count] = *term;
-    predicate->term_count = required_count;
+    predicate->nodes = nodes;
+    predicate->nodes[predicate->node_count] = *node;
+    if (out_node_index != NULL) {
+        *out_node_index = predicate->node_count;
+    }
+    predicate->node_count = required_count;
 
     return MYLITE_OK;
 }
@@ -17317,12 +17732,29 @@ static int append_deprecated_logical_and_warning(struct mylite_db *database) {
     return rc;
 }
 
-static bool planned_select_predicate_has_terms(const struct planned_select_predicate *predicate) {
+static int append_deprecated_logical_or_warning(struct mylite_db *database) {
+    int rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_deprecated_logical_or,
+        "HY000",
+        "'|| as a synonym for OR' is deprecated and will be removed in a future release. Please "
+        "use OR instead"
+    );
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static bool planned_select_predicate_has_expression(
+    const struct planned_select_predicate *predicate
+) {
     if (predicate == NULL) {
         return false;
     }
 
-    return predicate->term_count > 0U;
+    return predicate->has_root;
 }
 
 static int append_predicate_work_node(
@@ -17352,6 +17784,36 @@ static int append_predicate_work_deprecated_and_warning(
     );
 }
 
+static int append_predicate_work_deprecated_or_warning(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count
+) {
+    return append_predicate_work_item(
+        database,
+        items,
+        item_count,
+        (struct predicate_work_item){.kind = PREDICATE_WORK_DEPRECATED_OR_WARNING}
+    );
+}
+
+static int append_predicate_work_finish_logical(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    return append_predicate_work_item(
+        database,
+        items,
+        item_count,
+        (struct predicate_work_item){
+            .kind = PREDICATE_WORK_FINISH_LOGICAL,
+            .operator_kind = operator_kind,
+        }
+    );
+}
+
 static int append_predicate_work_item(
     struct mylite_db *database,
     struct predicate_work_item **items,
@@ -17376,6 +17838,47 @@ static int append_predicate_work_item(
     (*items)[*item_count] = item;
     *item_count = required_count;
 
+    return MYLITE_OK;
+}
+
+static int append_predicate_result_index(
+    struct mylite_db *database,
+    size_t **indexes,
+    size_t *index_count,
+    size_t index
+) {
+    size_t *grown_indexes = NULL;
+    size_t required_count = *index_count + 1U;
+
+    if (required_count > SIZE_MAX / sizeof(*grown_indexes)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    grown_indexes = realloc(*indexes, required_count * sizeof(*grown_indexes));
+    if (grown_indexes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    *indexes = grown_indexes;
+    (*indexes)[*index_count] = index;
+    *index_count = required_count;
+
+    return MYLITE_OK;
+}
+
+static int pop_predicate_result_index(
+    const size_t *indexes,
+    size_t *index_count,
+    size_t *out_index
+) {
+    if (indexes == NULL || index_count == NULL || *index_count == 0U || out_index == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    --(*index_count);
+    *out_index = indexes[*index_count];
     return MYLITE_OK;
 }
 
@@ -20261,37 +20764,142 @@ static int append_select_predicate_sql(
 ) {
     int rc = MYLITE_OK;
 
-    if (!planned_select_predicate_has_terms(predicate)) {
+    if (!planned_select_predicate_has_expression(predicate)) {
         return MYLITE_OK;
     }
 
     rc = dynamic_string_append(string, " WHERE ");
-    for (size_t index = 0U; rc == MYLITE_OK && index < predicate->term_count; ++index) {
-        if (index != 0U) {
-            rc = dynamic_string_append(string, " AND ");
-        }
-        if (rc == MYLITE_OK) {
-            rc = append_select_predicate_term_sql(string, &predicate->terms[index], next_parameter);
-        }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_expression_sql(string, predicate, next_parameter);
     }
 
     return rc;
 }
 
-static int append_select_predicate_term_sql(
+static int append_select_predicate_expression_sql(
     struct dynamic_string *string,
-    const struct planned_select_predicate_term *term,
+    const struct planned_select_predicate *predicate,
+    size_t *next_parameter
+) {
+    struct predicate_sql_work_item *items = NULL;
+    size_t item_count = 0U;
+    int rc = append_predicate_sql_work_node(&items, &item_count, predicate->root_index);
+
+    while (rc == MYLITE_OK && item_count > 0U) {
+        struct predicate_sql_work_item item = items[--item_count];
+        rc = append_select_predicate_expression_work_item(
+            string,
+            predicate,
+            item,
+            &items,
+            &item_count,
+            next_parameter
+        );
+    }
+
+    free(items);
+    return rc;
+}
+
+static int append_select_predicate_expression_work_item(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    struct predicate_sql_work_item item,
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    size_t *next_parameter
+) {
+    switch (item.kind) {
+    case PREDICATE_SQL_WORK_CLOSE:
+        return dynamic_string_append_char(string, ')');
+    case PREDICATE_SQL_WORK_OPERATOR:
+        return append_select_predicate_logical_operator_sql(string, item.operator_kind);
+    case PREDICATE_SQL_WORK_NODE:
+        return append_select_predicate_expression_node_sql(
+            string,
+            predicate,
+            item.node_index,
+            next_parameter,
+            items,
+            item_count
+        );
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int append_select_predicate_logical_operator_sql(
+    struct dynamic_string *string,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR) {
+        return dynamic_string_append(string, " OR ");
+    }
+
+    return dynamic_string_append(string, " AND ");
+}
+
+static int append_select_predicate_expression_node_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate *predicate,
+    size_t node_index,
+    size_t *next_parameter,
+    struct predicate_sql_work_item **items,
+    size_t *item_count
+) {
+    const struct planned_select_predicate_node *node = NULL;
+
+    if (node_index >= predicate->node_count) {
+        return MYLITE_ERROR;
+    }
+
+    node = &predicate->nodes[node_index];
+    if (node->kind == PLANNED_SELECT_PREDICATE_AND || node->kind == PLANNED_SELECT_PREDICATE_OR) {
+        return append_select_predicate_logical_node_sql(string, node, items, item_count);
+    }
+
+    return append_select_predicate_node_sql(string, node, next_parameter);
+}
+
+static int append_select_predicate_logical_node_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    struct predicate_sql_work_item **items,
+    size_t *item_count
+) {
+    int rc = dynamic_string_append_char(string, '(');
+
+    if (rc == MYLITE_OK) {
+        rc = append_predicate_sql_work_close(items, item_count);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_predicate_sql_work_node(items, item_count, node->right_index);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_predicate_sql_work_operator(items, item_count, node->operator_kind);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_predicate_sql_work_node(items, item_count, node->left_index);
+    }
+
+    return rc;
+}
+
+static int append_select_predicate_node_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
     int rc = dynamic_string_append_char(string, '(');
 
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(string, term->column.name);
+        rc = dynamic_string_append_quoted_identifier(string, node->column.name);
     }
-    if (rc == MYLITE_OK && term->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        rc = append_select_comparison_predicate_term_sql(string, term, next_parameter);
-    } else if (rc == MYLITE_OK && term->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
-        rc = append_select_is_null_predicate_term_sql(string, term);
+    if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+        rc = append_select_comparison_predicate_term_sql(string, node, next_parameter);
+    } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
+        rc = append_select_is_null_predicate_term_sql(string, node);
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ')');
@@ -20302,13 +20910,13 @@ static int append_select_predicate_term_sql(
 
 static int append_select_comparison_predicate_term_sql(
     struct dynamic_string *string,
-    const struct planned_select_predicate_term *term,
+    const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
     int rc = dynamic_string_append_char(string, ' ');
 
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(string, comparison_operator_sql(term->operator_kind));
+        rc = dynamic_string_append(string, comparison_operator_sql(node->operator_kind));
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_char(string, ' ');
@@ -20325,13 +20933,78 @@ static int append_select_comparison_predicate_term_sql(
 
 static int append_select_is_null_predicate_term_sql(
     struct dynamic_string *string,
-    const struct planned_select_predicate_term *term
+    const struct planned_select_predicate_node *node
 ) {
-    if (term->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
+    if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
         return dynamic_string_append(string, " IS NOT NULL");
     }
 
     return dynamic_string_append(string, " IS NULL");
+}
+
+static int append_predicate_sql_work_node(
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    size_t node_index
+) {
+    return append_predicate_sql_work_item(
+        items,
+        item_count,
+        (struct predicate_sql_work_item){
+            .kind = PREDICATE_SQL_WORK_NODE,
+            .node_index = node_index,
+        }
+    );
+}
+
+static int append_predicate_sql_work_operator(
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    enum mylite_sql_ast_operator operator_kind
+) {
+    return append_predicate_sql_work_item(
+        items,
+        item_count,
+        (struct predicate_sql_work_item){
+            .kind = PREDICATE_SQL_WORK_OPERATOR,
+            .operator_kind = operator_kind,
+        }
+    );
+}
+
+static int append_predicate_sql_work_close(
+    struct predicate_sql_work_item **items,
+    size_t *item_count
+) {
+    return append_predicate_sql_work_item(
+        items,
+        item_count,
+        (struct predicate_sql_work_item){.kind = PREDICATE_SQL_WORK_CLOSE}
+    );
+}
+
+static int append_predicate_sql_work_item(
+    struct predicate_sql_work_item **items,
+    size_t *item_count,
+    struct predicate_sql_work_item item
+) {
+    struct predicate_sql_work_item *grown_items = NULL;
+    size_t required_count = *item_count + 1U;
+
+    if (required_count > SIZE_MAX / sizeof(*grown_items)) {
+        return MYLITE_NOMEM;
+    }
+
+    grown_items = realloc(*items, required_count * sizeof(*grown_items));
+    if (grown_items == NULL) {
+        return MYLITE_NOMEM;
+    }
+
+    *items = grown_items;
+    (*items)[*item_count] = item;
+    *item_count = required_count;
+
+    return MYLITE_OK;
 }
 
 static int append_select_order_sql(
@@ -20480,13 +21153,13 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = append_update_rowid_limited_sql(&string, plan, &next_parameter);
-    } else if (rc == MYLITE_OK && planned_select_predicate_has_terms(&plan->predicate)) {
+    } else if (rc == MYLITE_OK && planned_select_predicate_has_expression(&plan->predicate)) {
         rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
     } else if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK &&
-        (plan->limit.has_limit || planned_select_predicate_has_terms(&plan->predicate))) {
+        (plan->limit.has_limit || planned_select_predicate_has_expression(&plan->predicate))) {
         rc = dynamic_string_append(&string, " AND ");
     }
     if (rc == MYLITE_OK) {
@@ -20639,6 +21312,8 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
         break;
     }
 
@@ -20771,20 +21446,43 @@ static int bind_select_predicate_parameters(
     const struct planned_select_predicate *predicate,
     int *parameter_index
 ) {
+    struct predicate_sql_work_item *items = NULL;
+    size_t item_count = 0U;
     int rc = MYLITE_OK;
 
-    for (size_t index = 0U; rc == MYLITE_OK && index < predicate->term_count; ++index) {
-        const struct planned_select_predicate_term *term = &predicate->terms[index];
+    if (!planned_select_predicate_has_expression(predicate)) {
+        return MYLITE_OK;
+    }
 
-        if (term->kind != PLANNED_SELECT_PREDICATE_COMPARISON) {
+    rc = append_predicate_sql_work_node(&items, &item_count, predicate->root_index);
+    while (rc == MYLITE_OK && item_count > 0U) {
+        struct predicate_sql_work_item item = items[--item_count];
+        const struct planned_select_predicate_node *node = NULL;
+
+        if (item.node_index >= predicate->node_count) {
+            rc = MYLITE_ERROR;
             continue;
         }
-        rc = bind_int64_parameter(statement, *parameter_index, term->value.integer);
+
+        node = &predicate->nodes[item.node_index];
+        if (node->kind == PLANNED_SELECT_PREDICATE_AND ||
+            node->kind == PLANNED_SELECT_PREDICATE_OR) {
+            rc = append_predicate_sql_work_node(&items, &item_count, node->right_index);
+            if (rc == MYLITE_OK) {
+                rc = append_predicate_sql_work_node(&items, &item_count, node->left_index);
+            }
+            continue;
+        }
+        if (node->kind != PLANNED_SELECT_PREDICATE_COMPARISON) {
+            continue;
+        }
+        rc = bind_int64_parameter(statement, *parameter_index, node->value.integer);
         if (rc == MYLITE_OK) {
             ++(*parameter_index);
         }
     }
 
+    free(items);
     return rc;
 }
 

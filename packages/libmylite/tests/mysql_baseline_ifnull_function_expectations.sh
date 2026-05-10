@@ -95,6 +95,13 @@ esac
 
 cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; CREATE TABLE t(id INT); INSERT INTO t VALUES (1), (NULL), (0);" >/dev/null
+run_mysql "CREATE TABLE ifnull (ifnull INT); INSERT INTO ifnull VALUES (7);" "$DATABASE" >/dev/null
+
+expect_output \
+    "IFNULL nonreserved identifier" \
+    "7" \
+    "SELECT ifnull FROM ifnull;" \
+    "$DATABASE"
 
 expect_output_with_headers \
     "non-null first values and labels" \
@@ -152,6 +159,22 @@ expect_error \
     42000 \
     "Incorrect parameter count in the call to native function 'IFNULL'" \
     "SELECT IFNULL(1,2,3);" \
+    "$DATABASE"
+
+expect_error \
+    "nested empty IFNULL arguments" \
+    1582 \
+    42000 \
+    "Incorrect parameter count in the call to native function 'IFNULL'" \
+    "SELECT IFNULL(NULL, IFNULL());" \
+    "$DATABASE"
+
+expect_error \
+    "empty IFNULL arguments in IF condition" \
+    1582 \
+    42000 \
+    "Incorrect parameter count in the call to native function 'IFNULL'" \
+    "SELECT IF(IFNULL(),1,2);" \
     "$DATABASE"
 
 accepted_but_deferred=$(run_mysql_with_headers \

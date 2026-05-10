@@ -2776,6 +2776,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_count_error
     return error;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_two_argument_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_ast_node *first_argument,
+    struct mylite_sql_ast_node *second_argument,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *function = NULL;
+
+    function = make_node(
+        state,
+        function_kind,
+        span_join(span_from_token(&function_token), span_from_token(&right_paren))
+    );
+    if (function == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(function, first_argument);
+    mylite_sql_ast_node_append_child(function, second_argument);
+    return function;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_three_argument_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,
@@ -3257,6 +3281,7 @@ static bool map_keyword_token(
         {"CREATE", MYLITE_SQL_PARSE_CREATE},
         {"TABLE", MYLITE_SQL_PARSE_TABLE},
         {"IF", MYLITE_SQL_PARSE_IF},
+        {"IFNULL", MYLITE_SQL_PARSE_IFNULL},
         {"IGNORE", MYLITE_SQL_PARSE_IGNORE},
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
         {"DATABASE", MYLITE_SQL_PARSE_DATABASE},

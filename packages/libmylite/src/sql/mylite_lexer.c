@@ -505,6 +505,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"HOUR_SECOND", MYLITE_SQL_KEYWORD_RESERVED},
         {"IDENTIFIED", 0U},
         {"IF", MYLITE_SQL_KEYWORD_RESERVED},
+        {"IFNULL", 0U},
         {"IGNORE", MYLITE_SQL_KEYWORD_RESERVED},
         {"IGNORE_SERVER_IDS", 0U},
         {"IMPORT", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},

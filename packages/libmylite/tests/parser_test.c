@@ -33,6 +33,7 @@ static int test_current_database_functions(void);
 static int test_current_user_identity_functions(void);
 static int test_current_role_function(void);
 static int test_if_function(void);
+static int test_ifnull_function(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
@@ -155,6 +156,7 @@ int main(void) {
     failures += test_current_user_identity_functions();
     failures += test_current_role_function();
     failures += test_if_function();
+    failures += test_ifnull_function();
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
@@ -850,6 +852,124 @@ static int test_if_function(void) {
     failures += parse_sql("SELECT IF(1,2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT IF(1,2,3,4);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_ifnull_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    const struct mylite_sql_ast_node *nested = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT IFNULL(1,2), IfNull(TRUE,NULL), ifnull(+0,-1) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IFNULL_FUNCTION, "ifnull function");
+    failures += expect_span_text(first_expression, "IFNULL(1,2)", "ifnull function span");
+    failures += expect_child_count(first_expression, 2U, "ifnull function argument count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "ifnull value"
+    );
+    failures += expect_literal(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "ifnull fallback"
+    );
+    failures += expect_node(second_expression, MYLITE_SQL_AST_IFNULL_FUNCTION, "mixed ifnull");
+    failures +=
+        expect_literal(child_at(second_expression, 0U), MYLITE_SQL_AST_LITERAL_TRUE, "ifnull TRUE");
+    failures +=
+        expect_literal(child_at(second_expression, 1U), MYLITE_SQL_AST_LITERAL_NULL, "ifnull NULL");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_IFNULL_FUNCTION, "lower ifnull");
+    failures += expect_operator(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "ifnull positive value"
+    );
+    failures += expect_operator(
+        child_at(third_expression, 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "ifnull negative fallback"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "ifnull from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT IFNULL (NULL,10), (IFNULL(NULL,10)), IFNULL(IFNULL(NULL,1),2), "
+        "IFNULL(IF(0,NULL,4),5);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    nested = child_at(third_expression, 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IFNULL_FUNCTION, "spaced ifnull");
+    failures += expect_span_text(first_expression, "IFNULL (NULL,10)", "spaced ifnull span");
+    failures +=
+        expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized ifnull");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_IFNULL_FUNCTION, "wrapped ifnull");
+    failures += expect_span_text(parenthesized, "(IFNULL(NULL,10))", "parenthesized ifnull span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_IFNULL_FUNCTION, "outer ifnull");
+    failures += expect_node(nested, MYLITE_SQL_AST_IFNULL_FUNCTION, "inner ifnull");
+    failures += expect_node(
+        child_at(child_at(child_at(select_list, 3U), 0U), 0U),
+        MYLITE_SQL_AST_IF_FUNCTION,
+        "nested if in ifnull"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT IFNULL(1, 2 + 3);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IFNULL_FUNCTION, "deferred ifnull");
+    failures += expect_node(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "deferred ifnull arithmetic fallback"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT IFNULL();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR,
+        "empty ifnull argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT IFNULL(1);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR,
+        "one ifnull argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT IFNULL(1,2,3);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR,
+        "three ifnull argument count error"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -2376,6 +2496,25 @@ static int test_qualified_identifier_keyword_part(void) {
     columns = child_at(statement, 1U);
     column = child_at(columns, 0U);
     failures += expect_span_text(child_at(column, 0U), "names", "names column identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE ifnull (ifnull INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "ifnull", "ifnull table identifier");
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "ifnull", "ifnull column identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ifnull FROM ifnull;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_span_text(
+        child_at(child_at(select_list, 0U), 0U),
+        "ifnull",
+        "ifnull selected identifier"
+    );
+    failures += expect_span_text(child_at(child_at(statement, 1U), 0U), "ifnull", "ifnull table");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

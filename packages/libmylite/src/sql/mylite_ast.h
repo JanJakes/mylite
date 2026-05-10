@@ -149,6 +149,8 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_XOR_PREDICATE = 140,
     MYLITE_SQL_AST_DML_DEFAULT_VALUE = 141,
     MYLITE_SQL_AST_IF_FUNCTION = 142,
+    MYLITE_SQL_AST_IFNULL_FUNCTION = 143,
+    MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR = 144,
 };
 
 enum mylite_sql_ast_literal_kind {

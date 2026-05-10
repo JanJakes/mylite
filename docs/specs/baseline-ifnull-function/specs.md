@@ -60,7 +60,8 @@ Runtime probes against MySQL 8.4.9 confirm:
 - successful scalar `IFNULL()` projection reports `@@warning_count = 0` for the
   admitted in-range values and makes a following `ROW_COUNT()` return `-1`.
 - wrong arities such as `IFNULL()`, `IFNULL(1)`, and `IFNULL(1,2,3)` report
-  MySQL error 1582 / SQLSTATE `42000`.
+  MySQL error 1582 / SQLSTATE `42000`, including when the malformed call is
+  nested inside an admitted `IFNULL()` or `IF()` expression.
 - MySQL accepts broader forms such as string operands, arithmetic operands,
   user/system variables, subqueries, table-backed `IFNULL()`, and no-source
   `ORDER BY` / `LIMIT`. Those are deferred by this MyLite slice.
@@ -74,7 +75,8 @@ Runtime probes against MySQL 8.4.9 confirm:
   `-1` and warning count storage.
 - Lexer/parser/AST: the parser admits a new `IFNULL()` expression node and a
   matching argument-count error node. It preserves source spans for default
-  result-column labels and diagnostics.
+  result-column labels and diagnostics. `IFNULL` remains usable as an unquoted
+  nonreserved identifier outside the admitted function-call grammar.
 - Analyzer/runtime: the scalar projection analyzer accepts `IFNULL()` only in
   the existing no-source and `FROM DUAL` scalar select path. Evaluation is
   MyLite-owned and walks nested admitted `IFNULL()` / `IF()` expressions without

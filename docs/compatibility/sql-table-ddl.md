@@ -7,7 +7,7 @@ actions.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `ALTER TABLE` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]`, append-only `ALTER TABLE ... ADD [COLUMN]`, single-column `ALTER TABLE ... DROP [COLUMN]`, single-column `ALTER TABLE ... RENAME COLUMN ... TO ...`, single-column `ALTER TABLE ... MODIFY [COLUMN] ...`, single-column `ALTER TABLE ... CHANGE [COLUMN] old_col new_col ...`, single-column `ALTER TABLE ... ALTER [COLUMN] ... SET DEFAULT ...` / `DROP DEFAULT`, and single-column `ALTER TABLE ... ALTER [COLUMN] ... SET VISIBLE\|INVISIBLE` forms only; see [ALTER TABLE actions](#alter-table-actions) |
+| `ALTER TABLE` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]`, append-only `ALTER TABLE ... ADD [COLUMN]`, single-column `ALTER TABLE ... DROP [COLUMN]`, single-column `ALTER TABLE ... RENAME COLUMN ... TO ...`, single-column `ALTER TABLE ... MODIFY [COLUMN] ...`, single-column `ALTER TABLE ... CHANGE [COLUMN] old_col new_col ...`, single-column `ALTER TABLE ... ALTER [COLUMN] ... SET DEFAULT ...` / `DROP DEFAULT`, single-column `ALTER TABLE ... ALTER [COLUMN] ... SET VISIBLE\|INVISIBLE`, and fixed metadata no-op `ALTER TABLE ... [DEFAULT] CHARSET` / `CHARACTER SET utf8mb4` plus `COLLATE utf8mb4_0900_ai_ci` forms only; see [ALTER TABLE actions](#alter-table-actions) |
 | `CREATE TABLE` | 🟡 | Limited persistent base-table creation: optional `IF NOT EXISTS`, explicit integer-family columns (`TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`/`INTEGER`, `BIGINT`) and the `INT1`/`INT2`/`INT3`/`INT4`/`INT8` plus `BOOL`/`BOOLEAN` aliases, optional deprecated display width `0..255` before optional single `SIGNED` or `UNSIGNED` for integer-family and `INT*` aliases, `NULL`/`NOT NULL`, optional `DEFAULT NULL`, optional descriptor-owned decimal integer/`TRUE`/`FALSE` defaults within the current signed-64 physical range, optional explicit `ENGINE [=] InnoDB`, and optional fixed default `utf8mb4` / `utf8mb4_0900_ai_ci` table charset/collation options; display width emits warning 1681 and only signed `TINYINT(1)`/`INT1(1)` plus `BOOL`/`BOOLEAN` persist as `tinyint(1)` metadata; existing-table `IF NOT EXISTS` is a no-op with `Note 1050`; no other options, keys, expression defaults, `VISIBLE`/`INVISIBLE` column definitions, temporary tables, or generated invisible primary keys |
 | `CREATE TEMPORARY TABLE` | ❌ | Session-scoped table lifecycle and name shadowing |
 | `CREATE TABLE ... LIKE` | ❌ | Exact metadata cloning rules |
@@ -32,7 +32,7 @@ actions.
 | Primary key requirement enforcement | ❌ | `@@sql_require_primary_key` DDL effects are not implemented; limited scalar reads expose the fixed disabled baseline only |
 | AUTO_INCREMENT columns | ❌ | Allocation and metadata |
 | Table options: engine | 🟡 | Optional explicit `ENGINE [=] InnoDB` only; no alternate engines, engine substitution, or durable per-table engine metadata |
-| Table options: charset/collation | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options only for the limited persistent `CREATE TABLE` subset, with matching static `SHOW CHARACTER SET` / `SHOW COLLATION` rows; no alternate defaults, descriptor metadata, string semantics, or full charset/collation catalogs |
+| Table options: charset/collation | 🟡 | Optional fixed default `CHARSET` / `CHARACTER SET utf8mb4` and `COLLATE utf8mb4_0900_ai_ci` options for the limited persistent `CREATE TABLE` subset plus fixed metadata no-op `ALTER TABLE ... [DEFAULT] CHARSET` / `CHARACTER SET utf8mb4` and `ALTER TABLE ... [DEFAULT] COLLATE utf8mb4_0900_ai_ci` for persistent base tables, with matching static `SHOW CHARACTER SET` / `SHOW COLLATION` rows; no alternate defaults, descriptor metadata, string semantics, conversion, or full charset/collation catalogs |
 | Table options: storage | ❌ | Storage option metadata |
 | Table options: statistics | ❌ | Statistics option metadata |
 | Table options: misc | ❌ | Misc table options |
@@ -54,7 +54,7 @@ actions.
 | `RENAME TO` | 🟡 | Limited single-action persistent base-table `ALTER TABLE ... RENAME [TO\|AS]` through descriptor rename; supports unqualified, schema-qualified, cross-schema, and same-object no-op forms; no combined actions, temporary tables, views, triggers, options, locks, algorithms, privileges, or metadata side effects |
 | `ORDER BY` | ❌ | Physical row ordering syntax and embedded behavior |
 | `CONVERT TO CHARACTER SET` | ❌ | Column/table charset and collation conversion semantics |
-| `DEFAULT CHARACTER SET` / `COLLATE` | ❌ | Table default charset/collation changes |
+| `DEFAULT CHARACTER SET` / `COLLATE` | 🟡 | Limited fixed metadata no-op `ALTER TABLE table_name [DEFAULT] CHARSET` / `CHARACTER SET utf8mb4` and `ALTER TABLE table_name [DEFAULT] COLLATE utf8mb4_0900_ai_ci` for persistent base tables; validates the fixed baseline names, preserves descriptors and rows, and reports zero affected rows/warnings; no conversion, non-default charsets/collations, descriptor metadata, string semantics, multiple actions, temporary tables, views, or full charset/collation catalogs |
 | `FORCE` | ❌ | Forced table rebuild semantics |
 | `DISCARD TABLESPACE` | ❌ | Tablespace discard syntax |
 | `IMPORT TABLESPACE` | ❌ | Tablespace import syntax |

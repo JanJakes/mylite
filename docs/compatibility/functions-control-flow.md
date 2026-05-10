@@ -4,7 +4,7 @@ Conditional expression helpers.
 
 | Function | Status | Notes |
 | --- | --- | --- |
-| `COALESCE()` | ❌ | Return first non-NULL argument |
+| `COALESCE()` | 🟡 | Limited no-source and `FROM DUAL` scalar `SELECT COALESCE(value[, ...])` over signed-64 decimal integer, `TRUE`/`FALSE`, `NULL`, nested `COALESCE()` operands, supported nested `IFNULL()` operands, and supported nested `IF()` operands; no table-backed evaluation, predicates, DML assignments, string/decimal/float/hex/bit operands, arithmetic arguments, subqueries, or expression metadata |
 | `IF()` | 🟡 | Limited no-source and `FROM DUAL` scalar `SELECT IF(condition, true_value, false_value)` over signed-64 decimal integer, `TRUE`/`FALSE`, `NULL`, and nested `IF()` operands; no table-backed evaluation, predicates, DML assignments, string/decimal/float/hex/bit operands, arithmetic arguments, subqueries, or expression metadata |
 | `IFNULL()` | 🟡 | Limited no-source and `FROM DUAL` scalar `SELECT IFNULL(value, fallback)` over signed-64 decimal integer, `TRUE`/`FALSE`, `NULL`, nested `IFNULL()` operands, and supported nested `IF()` operands; no table-backed evaluation, predicates, DML assignments, string/decimal/float/hex/bit operands, arithmetic arguments, subqueries, or expression metadata |
 | `NULLIF()` | ❌ | Return NULL if expr1 = expr2 |

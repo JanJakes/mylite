@@ -337,7 +337,7 @@ tests.
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
 | `CAST()` | ❌ | Explicit conversion. | [cast functions](docs/compatibility/functions-casts.md) |
-| `COALESCE()` | ❌ | First non-NULL argument. | [control-flow functions](docs/compatibility/functions-control-flow.md) |
+| `COALESCE()` | 🟡 | Limited no-source and `FROM DUAL` scalar `SELECT COALESCE(value[, ...])` over signed-64 decimal integer, `TRUE`/`FALSE`, `NULL`, nested `COALESCE()` operands, supported nested `IFNULL()` operands, and supported nested `IF()` operands; no table-backed evaluation, predicates, DML assignments, string/decimal/float/hex/bit operands, arithmetic arguments, subqueries, or expression metadata. | [control-flow functions](docs/compatibility/functions-control-flow.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `CONVERT()` | ❌ | Explicit conversion. | [cast functions](docs/compatibility/functions-casts.md) |
 | `GREATEST()` | ❌ | Largest argument. | [comparison functions](docs/compatibility/functions-comparison.md) |
 | `IF()` | 🟡 | Limited no-source and `FROM DUAL` scalar `SELECT IF(condition, true_value, false_value)` over signed-64 decimal integer, `TRUE`/`FALSE`, `NULL`, and nested `IF()` operands; no table-backed evaluation, predicates, DML assignments, string/decimal/float/hex/bit operands, arithmetic arguments, subqueries, or expression metadata. | [control-flow functions](docs/compatibility/functions-control-flow.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md) |

@@ -18,7 +18,7 @@ miscellaneous system helpers.
 | `INET_NTOA()` | ❌ | Return IP address from a numeric value |
 | `IS_FREE_LOCK()` | ❌ | Whether the named lock is free |
 | `IS_USED_LOCK()` | ❌ | Named-lock owner lookup |
-| `LAST_INSERT_ID()` | ❌ | Value of the AUTOINCREMENT column for the last INSERT |
+| `LAST_INSERT_ID()` | 🟡 | Limited zero-argument one-row scalar `SELECT LAST_INSERT_ID()` with optional `FROM DUAL`; returns the current no-generated-id baseline value `0`; no `AUTO_INCREMENT`, `LAST_INSERT_ID(expr)`, protocol insert-id metadata, C API state, aliases, table-backed evaluation, or generated id behavior |
 | `LOAD_FILE()` | ❌ | Load the named file |
 | `NAME_CONST()` | ❌ | Cause the column to have the given name |
 | `RELEASE_ALL_LOCKS()` | ❌ | Release all current named locks |

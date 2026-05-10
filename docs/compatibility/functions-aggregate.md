@@ -19,7 +19,7 @@ Aggregate functions and grouping helpers.
 | `STDDEV()` | ❌ | Return population standard deviation |
 | `STDDEV_POP()` | ❌ | Return population standard deviation |
 | `STDDEV_SAMP()` | ❌ | Return sample standard deviation |
-| `SUM()` | ❌ | Return sum |
+| `SUM()` | 🟡 | Limited one-item `SELECT SUM(column) [AS alias]` over one descriptor-backed persistent base table with optional source table alias, source-qualified column argument, and baseline `WHERE`; integer/`NULL` descriptor columns only, with results limited to MyLite's signed-64 text result envelope; no expression arguments, `DISTINCT`, exact decimal result widening beyond signed 64 bits, grouping, ordering, limiting, or window forms |
 | `VAR_POP()` | ❌ | Return population standard variance |
 | `VAR_SAMP()` | ❌ | Return sample variance |
 | `VARIANCE()` | ❌ | Return population standard variance |

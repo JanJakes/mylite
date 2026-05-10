@@ -225,6 +225,33 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT n FROM ordered_numbers AS nums ORDER BY n",
+            .values = ordered_n,
+            .value_count = sizeof(ordered_n) / sizeof(ordered_n[0]),
+            .context = "aliased ascending null ordering",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT n FROM ordered_numbers nums WHERE n IS NOT NULL ORDER BY n DESC LIMIT 2",
+            .values = all_desc_limit_two,
+            .value_count = sizeof(all_desc_limit_two) / sizeof(all_desc_limit_two[0]),
+            .context = "bare alias where order limit",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ALL n FROM ordered_numbers AS nums ORDER BY n LIMIT 3",
+            .values = all_limit_three,
+            .value_count = sizeof(all_limit_three) / sizeof(all_limit_three[0]),
+            .context = "all aliased limit",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY n",
             .values = distinct_n,
             .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
@@ -234,10 +261,28 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM ordered_numbers AS nums ORDER BY n",
+            .values = distinct_n,
+            .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
+            .context = "distinct aliased nullable ascending",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT DISTINCTROW n FROM ordered_numbers ORDER BY n",
             .values = distinct_n,
             .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
             .context = "distinctrow nullable ascending",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCTROW n FROM ordered_numbers nums ORDER BY n",
+            .values = distinct_n,
+            .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
+            .context = "distinctrow aliased nullable ascending",
         }
     );
     failures += expect_query_values(
@@ -493,6 +538,31 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     result = NULL;
 
     failures +=
+        execute_ok(database, "SELECT * FROM ordered_numbers AS nums ORDER BY nn LIMIT 1", &result);
+    failures += expect_size(
+        mylite_result_column_count(result),
+        ordered_numbers_column_count,
+        "aliased ordered star column count"
+    );
+    failures += expect_size(mylite_result_row_count(result), 1U, "aliased ordered star row count");
+    failures +=
+        expect_text(mylite_result_column_name(result, 0U), "id", "aliased ordered star id name");
+    failures += expect_result_value(result, 0U, 0U, "1", "aliased ordered star id value");
+    failures += expect_result_value(
+        result,
+        0U,
+        ordered_numbers_nullable_column_index,
+        NULL,
+        "aliased ordered star null value"
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 0, "aliased ordered star affected rows");
+    failures +=
+        expect_size(mylite_result_warning_count(result), 0U, "aliased ordered star warnings");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
         execute_ok(database, "SELECT i, i FROM ordered_numbers ORDER BY nn LIMIT 1", &result);
     failures += expect_size(mylite_result_column_count(result), 2U, "duplicate ordered columns");
     failures += expect_text(mylite_result_column_name(result, 0U), "i", "duplicate ordered col 1");
@@ -627,6 +697,16 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM app.ordered_numbers AS nums WHERE nn >= 6 ORDER BY i DESC "
+                   "LIMIT 1",
+            .values = single_three,
+            .value_count = sizeof(single_three) / sizeof(single_three[0]),
+            .context = "schema-qualified aliased ordered limited select",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT ALL n FROM app.ordered_numbers ORDER BY n LIMIT 3",
             .values = all_limit_three,
             .value_count = sizeof(all_limit_three) / sizeof(all_limit_three[0]),
@@ -640,6 +720,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .values = distinct_n,
             .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
             .context = "schema-qualified distinct select",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DISTINCT n FROM app.ordered_numbers AS nums ORDER BY n",
+            .values = distinct_n,
+            .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
+            .context = "schema-qualified aliased distinct select",
         }
     );
     failures += expect_query_values(
@@ -719,6 +808,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT n FROM ordered_numbers AS nums ORDER BY n",
+            .values = ordered_n,
+            .value_count = sizeof(ordered_n) / sizeof(ordered_n[0]),
+            .context = "reopened aliased values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT DISTINCT n FROM ordered_numbers ORDER BY n",
             .values = distinct_n,
             .value_count = sizeof(distinct_n) / sizeof(distinct_n[0]),
@@ -775,6 +873,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .message_part = "Table 'app.ordered_numbers' doesn't exist",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT n FROM ordered_numbers AS nums ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.ordered_numbers' doesn't exist",
+        }
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -782,6 +889,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .values = single_three,
             .value_count = sizeof(single_three) / sizeof(single_three[0]),
             .context = "renamed ordered limited row",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT n FROM renamed_ordered_numbers AS nums ORDER BY n",
+            .values = ordered_n,
+            .value_count = sizeof(ordered_n) / sizeof(ordered_n[0]),
+            .context = "renamed aliased values",
         }
     );
     failures += expect_query_values(
@@ -851,6 +967,15 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .message_part = "Table 'app.renamed_ordered_numbers' doesn't exist",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT n FROM renamed_ordered_numbers AS nums ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.renamed_ordered_numbers' doesn't exist",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -878,6 +1003,15 @@ static int test_order_limit_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT * FROM ordered_numbers ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT n FROM ordered_numbers AS nums ORDER BY n",
         (struct expected_sql_error){
             .code = mysql_error_no_database_selected,
             .sqlstate = "3D000",
@@ -931,6 +1065,15 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT n FROM missing_schema.ordered_numbers AS nums ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT * FROM _mylite_reserved.ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
@@ -950,6 +1093,15 @@ static int test_order_limit_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT ALL n FROM _mylite_reserved.ordered_numbers ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_database_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect database name",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT n FROM _mylite_reserved.ordered_numbers AS nums ORDER BY n",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
             .sqlstate = "42000",
@@ -991,6 +1143,15 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT n FROM missing_table AS nums ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing_table' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT * FROM _mylite_reserved ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
@@ -1018,6 +1179,15 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT n FROM _mylite_reserved AS nums ORDER BY n",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_table_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect table name",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT missing FROM ordered_numbers ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
@@ -1028,6 +1198,15 @@ static int test_order_limit_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT ALL missing FROM ordered_numbers ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT missing FROM ordered_numbers AS nums ORDER BY id LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -1054,6 +1233,15 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT id FROM ordered_numbers AS nums WHERE missing = 1 ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT id FROM ordered_numbers ORDER BY missing LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
@@ -1068,6 +1256,42 @@ static int test_order_limit_diagnostics(void) {
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
             .message_part = "Unknown column 'missing' in 'order clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM ordered_numbers AS nums ORDER BY missing LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'order clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT nums.id FROM ordered_numbers AS nums ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only unqualified table columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM ordered_numbers AS nums WHERE nums.id = 1 ORDER BY id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE supports only unqualified predicate columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM ordered_numbers AS nums ORDER BY nums.id LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "ORDER BY supports only unqualified descriptor columns",
         }
     );
     failures += execute_error(
@@ -1438,6 +1662,15 @@ static int test_independent_order_limit_handles(void) {
         }
     );
     failures += expect_query_values(
+        first,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers AS nums ORDER BY id DESC LIMIT 1",
+            .values = first_expected,
+            .value_count = sizeof(first_expected) / sizeof(first_expected[0]),
+            .context = "first aliased ordered limited row",
+        }
+    );
+    failures += expect_query_values(
         second,
         (struct expected_query){
             .sql = "SELECT id FROM ordered_numbers ORDER BY id DESC LIMIT 1",
@@ -1453,6 +1686,15 @@ static int test_independent_order_limit_handles(void) {
             .values = second_expected,
             .value_count = sizeof(second_expected) / sizeof(second_expected[0]),
             .context = "second all ordered limited row",
+        }
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers AS nums ORDER BY id DESC LIMIT 1",
+            .values = second_expected,
+            .value_count = sizeof(second_expected) / sizeof(second_expected[0]),
+            .context = "second aliased ordered limited row",
         }
     );
     failures += expect_query_values(

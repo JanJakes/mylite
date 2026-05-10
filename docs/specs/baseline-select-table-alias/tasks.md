@@ -18,42 +18,42 @@ SQLite execution.
    - [x] Update compatibility docs for the exact limited table-alias subset.
 
 2. Parser and AST
-   - [ ] Add a table-alias optional grammar node for supported table-backed
+   - [x] Add a table-alias optional grammar node for supported table-backed
      `SELECT` productions.
-   - [ ] Store the alias as the optional second child of `FROM_TABLE` while
+   - [x] Store the alias as the optional second child of `FROM_TABLE` while
      preserving the table name as child `0`.
-   - [ ] Preserve current default, `ALL`, `DISTINCT`, `DISTINCTROW`, wildcard,
+   - [x] Preserve current default, `ALL`, `DISTINCT`, `DISTINCTROW`, wildcard,
      aggregate, `DUAL`, and no-source parsing.
-   - [ ] Add parser tests for `AS`, bare, quoted, schema-qualified, modifier,
+   - [x] Add parser tests for `AS`, bare, quoted, schema-qualified, modifier,
      wildcard, and aggregate alias forms.
 
 3. Runtime execution
-   - [ ] Reuse existing table-backed select planning from the table-name child.
-   - [ ] Preserve descriptor authority for schema/table, selected columns,
+   - [x] Reuse existing table-backed select planning from the table-name child.
+   - [x] Preserve descriptor authority for schema/table, selected columns,
      predicate columns, ordering columns, aggregate arguments, and limits.
-   - [ ] Preserve generated SQLite identifier quoting and parameter binding.
-   - [ ] Preserve result rows, column labels, affected rows, warning count, and
+   - [x] Preserve generated SQLite identifier quoting and parameter binding.
+   - [x] Preserve result rows, column labels, affected rows, warning count, and
      following `ROW_COUNT()` behavior.
-   - [ ] Avoid catalog, storage, VFS, or SQLite fork changes.
+   - [x] Avoid catalog, storage, VFS, or SQLite fork changes.
 
 4. Tests
-   - [ ] Extend fast C tests under `packages/libmylite/tests/`.
-   - [ ] Cover successful aliases across representative default, `ALL`,
+   - [x] Extend fast C tests under `packages/libmylite/tests/`.
+   - [x] Cover successful aliases across representative default, `ALL`,
      `DISTINCT`, `DISTINCTROW`, wildcard, aggregate, schema-qualified,
      filtered, ordered, and limited forms.
-   - [ ] Cover no default schema, unknown schema, unknown table, reserved
+   - [x] Cover no default schema, unknown schema, unknown table, reserved
      target names, unknown columns, unsupported qualified references, reopen,
      rename/drop, independent handles, result conventions, and file-format
      preservation through representative aliased statements.
-   - [ ] Keep tests deterministic and avoid a new framework.
+   - [x] Keep tests deterministic and avoid a new framework.
 
 5. Verification and review
-   - [ ] Run `cmake --build --preset dev`.
-   - [ ] Run relevant parser/select/aggregate lifecycle CTest entries.
-   - [ ] Run
+   - [x] Run `cmake --build --preset dev`.
+   - [x] Run relevant parser/select/aggregate lifecycle CTest entries.
+   - [x] Run
      `./packages/libmylite/tests/mysql_baseline_select_table_alias_expectations.sh`.
-   - [ ] Run `cmake --workflow --preset check`.
-   - [ ] Review final diff for scope control, grammar independence, descriptor
+   - [x] Run `cmake --workflow --preset check`.
+   - [x] Review final diff for scope control, grammar independence, descriptor
      authority, SQLite pushdown, compatibility docs, and test relevance.
 
 ## Out Of Scope

@@ -57,6 +57,7 @@ static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
 static int test_select_distinct_clause(void);
 static int test_select_all_clause(void);
+static int test_select_table_alias_clause(void);
 static int test_delete_statement(void);
 static int test_update_statement(void);
 static int test_comments_are_skipped(void);
@@ -163,6 +164,7 @@ int main(void) {
     failures += test_select_order_limit_clauses();
     failures += test_select_distinct_clause();
     failures += test_select_all_clause();
+    failures += test_select_table_alias_clause();
     failures += test_delete_statement();
     failures += test_update_statement();
     failures += test_comments_are_skipped();
@@ -4928,6 +4930,131 @@ static int test_select_all_clause(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql(
         "SELECT DISTINCT ALL n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_table_alias_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *from_table = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT n FROM simple_lifecycle AS s WHERE n IS NOT NULL ORDER BY n DESC "
+        "LIMIT 1 OFFSET 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_node(from_table, MYLITE_SQL_AST_FROM_TABLE, "alias from table");
+    failures += expect_child_count(from_table, 2U, "alias from table child count");
+    failures += expect_span_text(child_at(from_table, 0U), "simple_lifecycle", "alias table");
+    failures += expect_span_text(child_at(from_table, 1U), "s", "as alias");
+    failures += expect_node(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "alias where");
+    failures += expect_span_text(child_at(order_clause, 0U), "n", "alias order key");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "alias desc direction"
+    );
+    failures += expect_span_text(child_at(limit_clause, 0U), "1", "alias limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "0", "alias limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM app.simple_lifecycle s ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 0U), 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "bare alias wildcard"
+    );
+    failures += expect_child_count(from_table, 2U, "bare alias child count");
+    failures += expect_span_text(child_at(from_table, 0U), "app.simple_lifecycle", "schema table");
+    failures += expect_span_text(child_at(from_table, 1U), "s", "bare alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT ALL n FROM simple_lifecycle AS `select` ORDER BY n;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "all alias modifier"
+    );
+    failures += expect_span_text(child_at(from_table, 1U), "`select`", "quoted alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DISTINCT n FROM simple_lifecycle s ORDER BY n;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "distinct alias modifier"
+    );
+    failures += expect_span_text(child_at(from_table, 1U), "s", "distinct alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT DISTINCTROW n FROM simple_lifecycle AS s ORDER BY n;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "distinctrow alias modifier"
+    );
+    failures += expect_span_text(child_at(from_table, 1U), "s", "distinctrow alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT COUNT(*) FROM simple_lifecycle AS s;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    from_table = child_at(statement, 1U);
+    failures += expect_node(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_COUNT_STAR_FUNCTION,
+        "count alias function"
+    );
+    failures += expect_span_text(child_at(from_table, 1U), "s", "count alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT MIN(n) FROM simple_lifecycle s;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    from_table = child_at(statement, 1U);
+    failures += expect_span_text(child_at(from_table, 1U), "s", "min alias");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT n FROM simple_lifecycle AS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT n FROM simple_lifecycle AS WHERE n = 1;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

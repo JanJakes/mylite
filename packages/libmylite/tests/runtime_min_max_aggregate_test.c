@@ -161,6 +161,24 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
     failures += expect_aggregate_query(
         database,
         (struct expected_aggregate_query){
+            .sql = "SELECT MIN(i) FROM numbers AS nums",
+            .column = "MIN(i)",
+            .value = "-2",
+            .context = "aliased signed int minimum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(i) FROM numbers nums",
+            .column = "MAX(i)",
+            .value = "2147483647",
+            .context = "bare aliased signed int maximum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
             .sql = "SELECT MAX(I) FROM numbers",
             .column = "MAX(I)",
             .value = "2147483647",
@@ -448,6 +466,15 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
             .context = "schema-qualified source",
         }
     );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(i) FROM app.numbers AS nums WHERE id = 3",
+            .column = "MAX(i)",
+            .value = "2147483647",
+            .context = "schema-qualified aliased source",
+        }
+    );
 
     failures += expect_row_count(database, "-1", "row count after aggregate result set");
     catalog = mylite_connection_catalog_for_test(database);
@@ -566,6 +593,15 @@ static int test_min_max_diagnostics(void) {
             .message_part = "No database selected",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT MIN(i) FROM numbers AS nums",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
 
     failures += seed_schema(database, "app");
     failures += execute_ok(database, "USE app", &result);
@@ -584,7 +620,25 @@ static int test_min_max_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT MIN(i) FROM missing AS nums",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing' doesn't exist",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT MIN(i) FROM missing_schema.numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_database,
+            .sqlstate = "42000",
+            .message_part = "Unknown database 'missing_schema'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT MIN(i) FROM missing_schema.numbers AS nums",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
             .sqlstate = "42000",

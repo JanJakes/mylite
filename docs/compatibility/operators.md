@@ -35,7 +35,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `IS NOT NULL` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only |
 | `IS NULL` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only |
 | `LIKE` | ❌ | Simple pattern matching |
-| `NOT, !` | ❌ | Negates value |
+| `NOT, !` | 🟡 | Limited keyword `NOT` over descriptor-backed `WHERE` boolean expressions for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; symbolic `!` remains unsupported until MyLite owns its higher-precedence expression semantics and deprecation warning behavior |
 | `NOT BETWEEN ... AND ...` | ❌ | Whether a value is not within a range of values |
 | `NOT EXISTS()` | ❌ | Whether the result of a query contains no rows |
 | `NOT IN()` | ❌ | Whether a value is not within a set of values |

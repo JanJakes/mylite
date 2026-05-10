@@ -196,6 +196,7 @@ enum mylite_sql_ast_operator mylite_sql_ast_node_operator(const struct mylite_sq
          node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION &&
          node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
          node->kind != MYLITE_SQL_AST_IS_NULL_PREDICATE &&
+         node->kind != MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE &&
          node->kind != MYLITE_SQL_AST_AND_PREDICATE && node->kind != MYLITE_SQL_AST_OR_PREDICATE &&
          node->kind != MYLITE_SQL_AST_NOT_PREDICATE)) {
         return MYLITE_SQL_AST_OPERATOR_NONE;
@@ -394,6 +395,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "in_predicate";
     case MYLITE_SQL_AST_PREDICATE_VALUE_LIST:
         return "predicate_value_list";
+    case MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE:
+        return "is_boolean_predicate";
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
         return "order_by_clause";
     case MYLITE_SQL_AST_ORDER_DIRECTION:
@@ -636,6 +639,18 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "deprecated_logical_or";
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
         return "logical_not";
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+        return "is_true";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+        return "is_not_true";
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+        return "is_false";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+        return "is_not_false";
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+        return "is_unknown";
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+        return "is_not_unknown";
     }
 
     return "unknown";

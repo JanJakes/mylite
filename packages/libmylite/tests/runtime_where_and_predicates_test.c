@@ -238,6 +238,34 @@ static int test_where_and_predicates(void) {
     static const char *const in_bigint_boundary_rows[] = {"1", "3"};
     static const char *const in_warning_rows[] = {"1"};
     static const char *const in_persisted_rows[] = {"8", "8", "8"};
+    static const char *const is_true_rows[] = {"1", "2", "3"};
+    static const char *const is_false_rows[] = {"4"};
+    static const char *const is_unknown_rows[] = {"1", "3"};
+    static const char *const is_not_unknown_rows[] = {"2", "4"};
+    static const char *const is_all_rows[] = {"1", "2", "3", "4"};
+    static const char *const is_precedence_rows[] = {"1", "4"};
+    static const char *const is_or_precedence_rows[] = {"2", "4"};
+    static const char *const is_unsigned_false_rows[] = {"1"};
+    static const char *const is_unsigned_true_rows[] = {"2", "3", "4"};
+    static const char *const is_distinct_rows[] = {NULL, "9"};
+    static const char *const is_count_row[] = {"2"};
+    static const char *const is_grouped_rows[] = {"1", "2", "2", "1"};
+    static const char *const is_copy_rows[] = {"1", "-2", NULL, "3", "2147483647", NULL};
+    static const char *const is_inserted_rows[] = {"4", "0"};
+    static const char *const is_replaced_rows[] = {"2", "1", "4", "0"};
+    static const char *const is_update_rows[] = {"1", "11", "2", "9", "3", "11", "4", "9"};
+    static const char *const is_update_limited_rows[] = {
+        "1",
+        NULL,
+        "2",
+        "9",
+        "3",
+        "22",
+        "4",
+        "9",
+    };
+    static const char *const is_delete_limited_rows[] = {"1", "2", "3"};
+    static const char *const is_persisted_rows[] = {"6", "6", "6"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -844,6 +872,211 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IS TRUE ORDER BY id",
+            .values = is_true_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "is true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IS FALSE ORDER BY id",
+            .values = is_false_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "is false predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n IS UNKNOWN ORDER BY id",
+            .values = is_unknown_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "is unknown predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IS NOT TRUE ORDER BY id",
+            .values = is_false_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "is not true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n IS NOT TRUE ORDER BY id",
+            .values = is_unknown_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "nullable is not true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IS NOT FALSE ORDER BY id",
+            .values = is_true_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "is not false predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n IS NOT FALSE ORDER BY id",
+            .values = is_all_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "nullable is not false predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n IS NOT UNKNOWN ORDER BY id",
+            .values = is_not_unknown_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "is not unknown predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT n IS UNKNOWN ORDER BY id",
+            .values = is_not_unknown_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "prefix not is unknown predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IS TRUE AND nn = 5 OR id = 4 ORDER BY id",
+            .values = is_precedence_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "is and or precedence predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IS FALSE OR nn = 6 AND n IS TRUE ORDER BY id",
+            .values = is_or_precedence_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "is or and precedence predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE iu IS FALSE ORDER BY id",
+            .values = is_unsigned_false_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "unsigned is false predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE ia IS TRUE ORDER BY id",
+            .values = is_true_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "integer alias is true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE b IS TRUE ORDER BY id",
+            .values = is_all_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "bigint is true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE bu IS TRUE ORDER BY id",
+            .values = is_unsigned_true_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "unsigned bigint is true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IS TRUE && nn = 5",
+            .values = in_warning_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .affected_rows = 0,
+            .context = "deprecated symbolic and is predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SHOW WARNINGS",
+            .values = warning_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "deprecated symbolic and is warning",
+        }
+    );
+
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT DISTINCT n FROM numbers WHERE n IS NOT NULL AND tie = 1",
             .values = distinct_row,
             .column_count = 1U,
@@ -1090,6 +1323,55 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT DISTINCT n FROM numbers WHERE i IS TRUE ORDER BY n",
+            .values = is_distinct_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "distinct source is predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE n IS UNKNOWN",
+            .values = is_count_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "count source is predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT MAX(i) FROM numbers WHERE i IS TRUE",
+            .values = max_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "aggregate source is predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT tie, COUNT(*) FROM numbers WHERE i IS TRUE GROUP BY tie ORDER BY tie",
+            .values = is_grouped_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped aggregate source is predicate",
+        }
+    );
+
     failures += execute_ok(
         database,
         "CREATE TABLE copy_numbers SELECT id, i, n FROM numbers WHERE i = 1 AND n IS NOT NULL",
@@ -1209,6 +1491,31 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "create table select in copied rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE copy_is_numbers SELECT id, i, n FROM numbers WHERE n IS UNKNOWN",
+        &result
+    );
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        2,
+        "create table select is affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i, n FROM copy_is_numbers ORDER BY id",
+            .values = is_copy_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "create table select is copied rows",
         }
     );
 
@@ -1350,6 +1657,32 @@ static int test_where_and_predicates(void) {
     );
 
     failures +=
+        execute_ok(database, "CREATE TABLE is_inserted_numbers (id INT NOT NULL, i INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO is_inserted_numbers SELECT id, i FROM numbers WHERE i IS FALSE",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "insert select is affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM is_inserted_numbers ORDER BY id",
+            .values = is_inserted_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "insert select source is predicate",
+        }
+    );
+
+    failures +=
         execute_ok(database, "CREATE TABLE replaced_numbers (id INT NOT NULL, i INT)", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1483,6 +1816,32 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "replace select source in predicate",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE is_replaced_numbers (id INT NOT NULL, i INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "REPLACE INTO is_replaced_numbers SELECT id, i FROM numbers WHERE n IS NOT UNKNOWN",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 2, "replace select is affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM is_replaced_numbers ORDER BY id",
+            .values = is_replaced_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "replace select source is predicate",
         }
     );
 
@@ -1707,6 +2066,46 @@ static int test_where_and_predicates(void) {
     );
 
     failures += reset_numbers(database);
+    failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE n IS UNKNOWN", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 2, "update is affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = is_update_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update is row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "UPDATE numbers SET n = 22 WHERE i IS TRUE ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "update is limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = is_update_limited_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update is limit row state",
+        }
+    );
+
+    failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i > 1 AND n IS NULL", &result);
     failures += expect_int64(mylite_result_affected_rows(result), 1, "delete and affected rows");
     mylite_result_free(result);
@@ -1905,6 +2304,29 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "delete in limit row state",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "DELETE FROM numbers WHERE n IS NOT UNKNOWN ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "delete is limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = is_delete_limited_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete is limit row state",
         }
     );
 
@@ -2171,6 +2593,69 @@ static int test_where_and_predicates(void) {
     );
     failures += execute_error(
         database,
+        "SELECT id FROM numbers WHERE missing IS TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE id IS 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE id IS TRUE IS TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE 1 IS TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE id + 1 IS TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM numbers WHERE numbers.i IS TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE supports only unqualified predicate columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE numbers SET n = 1 WHERE numbers.i IS TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE supports only unqualified predicate columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT id FROM numbers WHERE ! (id = 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -2216,6 +2701,9 @@ static int test_where_and_predicates(void) {
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(database, "UPDATE numbers SET b = 8 WHERE i IN (-2, 1, 0)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "UPDATE numbers SET nn = 6 WHERE i IS TRUE", &result);
     mylite_result_free(result);
     result = NULL;
 
@@ -2292,6 +2780,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "reopened in updated rows",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT nn FROM numbers WHERE i IS TRUE ORDER BY id",
+            .values = is_persisted_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "reopened is updated rows",
         }
     );
 
@@ -2423,6 +2923,30 @@ static int test_independent_where_and_handles(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "second independent handle in predicate",
+        }
+    );
+    failures += expect_result(
+        first,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE id IS TRUE AND id = 2",
+            .values = first_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "first independent handle is predicate",
+        }
+    );
+    failures += expect_result(
+        second,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE id IS TRUE AND id = 2",
+            .values = second_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "second independent handle is predicate",
         }
     );
 

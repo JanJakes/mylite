@@ -2224,6 +2224,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_is_boolean_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token is_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_token truth_token
+) {
+    struct mylite_sql_source_span span = left == NULL ? span_from_token(&is_token) : left->span;
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    span = span_join(span, span_from_token(&truth_token));
+    predicate = make_node(state, MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_operator(predicate, operator_kind);
+    mylite_sql_ast_node_append_child(predicate, left);
+    return predicate;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_between_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,
@@ -3253,6 +3274,7 @@ static bool map_keyword_token(
         {"IN", MYLITE_SQL_PARSE_IN},
         {"TRUE", MYLITE_SQL_PARSE_TRUE},
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
+        {"UNKNOWN", MYLITE_SQL_PARSE_UNKNOWN},
         {"NULL", MYLITE_SQL_PARSE_NULL},
         {"DUAL", MYLITE_SQL_PARSE_DUAL},
         {"USER", MYLITE_SQL_PARSE_USER},

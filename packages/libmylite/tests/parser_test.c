@@ -5615,6 +5615,36 @@ static int test_select_where_predicates(void) {
             MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL,
             MYLITE_SQL_AST_IS_NULL_PREDICATE,
         },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id IS TRUE;",
+            MYLITE_SQL_AST_OPERATOR_IS_TRUE,
+            MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id IS NOT TRUE;",
+            MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE,
+            MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id IS FALSE;",
+            MYLITE_SQL_AST_OPERATOR_IS_FALSE,
+            MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id IS NOT FALSE;",
+            MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE,
+            MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id IS UNKNOWN;",
+            MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN,
+            MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE,
+        },
+        {
+            "SELECT id FROM simple_lifecycle WHERE id IS NOT UNKNOWN;",
+            MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN,
+            MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE,
+        },
     };
     struct mylite_sql_parse_result result;
     int failures = 0;
@@ -5812,6 +5842,45 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE NOT id IS UNKNOWN;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "prefix not is unknown predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE,
+        "prefix not is unknown child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id IS TRUE AND nn = 5 OR id = 3;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OR_PREDICATE,
+        "is boolean and or precedence root"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "is boolean binds before later and"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE,
+        "is boolean precedence child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id IN ();",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
@@ -5827,6 +5896,34 @@ static int test_select_where_predicates(void) {
 
     failures += parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id IN ('1');",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id IS 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id IS TRUE IS TRUE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE 1 IS TRUE;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id + 1 IS TRUE;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -8509,10 +8606,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT id FROM t WHERE TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures +=
-        parse_sql("SELECT id FROM t WHERE id IS TRUE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

@@ -319,6 +319,7 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_NOT = 5,
     PLANNED_SELECT_PREDICATE_BETWEEN = 6,
     PLANNED_SELECT_PREDICATE_IN = 7,
+    PLANNED_SELECT_PREDICATE_IS_BOOLEAN = 8,
 };
 
 struct planned_select_predicate_node {
@@ -2513,6 +2514,15 @@ static int plan_is_null_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static int plan_is_boolean_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
 static int plan_between_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -2985,6 +2995,15 @@ static int append_select_comparison_predicate_term_sql(
 static int append_select_is_null_predicate_term_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate_node *node
+);
+static int append_select_is_boolean_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node
+);
+static int append_is_boolean_rhs_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    const char *suffix
 );
 static int append_select_between_predicate_term_sql(
     struct dynamic_string *string,
@@ -3566,6 +3585,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_HAVING_CLAUSE:
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
+    case MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE:
     case MYLITE_SQL_AST_AND_PREDICATE:
     case MYLITE_SQL_AST_OR_PREDICATE:
     case MYLITE_SQL_AST_NOT_PREDICATE:
@@ -6991,6 +7011,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_HAVING_CLAUSE:
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
+    case MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE:
     case MYLITE_SQL_AST_AND_PREDICATE:
     case MYLITE_SQL_AST_OR_PREDICATE:
     case MYLITE_SQL_AST_NOT_PREDICATE:
@@ -17588,6 +17609,7 @@ static int plan_select_predicate_ast_node(
     }
     if (current != NULL && (current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE ||
+                            current->kind == MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IN_PREDICATE)) {
         return plan_select_predicate_leaf_node(
@@ -17723,6 +17745,16 @@ static int plan_select_predicate_leaf_node(
             out_predicate,
             &node_index
         );
+    } else if (predicate_node->kind == MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE) {
+        rc = plan_is_boolean_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
     } else if (predicate_node->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
         rc = plan_between_predicate(
             database,
@@ -17782,6 +17814,12 @@ static bool planned_predicate_kind_for_operator(
     case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
         break;
     }
 
@@ -17838,6 +17876,37 @@ static int plan_is_null_predicate(
 ) {
     struct planned_select_predicate_node node = {
         .kind = PLANNED_SELECT_PREDICATE_IS_NULL,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = resolve_predicate_column(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node.column
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int plan_is_boolean_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_IS_BOOLEAN,
         .operator_kind = mylite_sql_ast_node_operator(predicate_node),
         .left_index = SIZE_MAX,
         .right_index = SIZE_MAX,
@@ -21258,6 +21327,8 @@ static int append_select_predicate_node_sql(
         rc = append_select_comparison_predicate_term_sql(string, node, next_parameter);
     } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
         rc = append_select_is_null_predicate_term_sql(string, node);
+    } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IS_BOOLEAN) {
+        rc = append_select_is_boolean_predicate_term_sql(string, node);
     } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
         rc = append_select_between_predicate_term_sql(string, next_parameter);
     } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IN) {
@@ -21304,6 +21375,70 @@ static int append_select_is_null_predicate_term_sql(
     }
 
     return dynamic_string_append(string, " IS NULL");
+}
+
+static int append_select_is_boolean_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node
+) {
+    switch (node->operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+        return append_is_boolean_rhs_term_sql(string, node, " IS NOT NULL AND ");
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+        return append_is_boolean_rhs_term_sql(string, node, " IS NULL OR ");
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+        return append_is_boolean_rhs_term_sql(string, node, " IS NOT NULL AND ");
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+        return append_is_boolean_rhs_term_sql(string, node, " IS NULL OR ");
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+        return dynamic_string_append(string, " IS NULL");
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+        return dynamic_string_append(string, " IS NOT NULL");
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+        break;
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int append_is_boolean_rhs_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    const char *suffix
+) {
+    int rc = dynamic_string_append(string, suffix);
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, node->column.name);
+    }
+    if (rc == MYLITE_OK && (node->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_FALSE ||
+                            node->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE)) {
+        rc = dynamic_string_append(string, " = 0");
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, " <> 0");
+    }
+
+    return rc;
 }
 
 static int append_select_between_predicate_term_sql(
@@ -21731,6 +21866,12 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
     case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
     case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:

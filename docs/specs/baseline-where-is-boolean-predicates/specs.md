@@ -223,7 +223,8 @@ The actual helper signature may differ, but the AST must preserve:
 - source spans for diagnostics and tests.
 
 `UNKNOWN` should be tokenized as a MyLite parser keyword for this grammar while
-remaining outside the full scalar literal surface.
+remaining a nonreserved identifier outside the `IS UNKNOWN` predicate shape and
+outside the full scalar literal surface.
 
 ## Semantics
 

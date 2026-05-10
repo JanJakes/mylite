@@ -151,6 +151,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_IF_FUNCTION = 142,
     MYLITE_SQL_AST_IFNULL_FUNCTION = 143,
     MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR = 144,
+    MYLITE_SQL_AST_COALESCE_FUNCTION = 145,
 };
 
 enum mylite_sql_ast_literal_kind {

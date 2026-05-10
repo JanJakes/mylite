@@ -34,6 +34,7 @@ static int test_current_user_identity_functions(void);
 static int test_current_role_function(void);
 static int test_if_function(void);
 static int test_ifnull_function(void);
+static int test_coalesce_function(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
@@ -157,6 +158,7 @@ int main(void) {
     failures += test_current_role_function();
     failures += test_if_function();
     failures += test_ifnull_function();
+    failures += test_coalesce_function();
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
@@ -970,6 +972,150 @@ static int test_ifnull_function(void) {
         MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR,
         "three ifnull argument count error"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_coalesce_function(void) {
+    enum {
+        coalesce_nested_ifnull_item_index = 4,
+        coalesce_nested_if_item_index = 5,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    const struct mylite_sql_ast_node *nested = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT COALESCE(1), Coalesce(TRUE,NULL), coalesce(+0,-1,NULL) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_COALESCE_FUNCTION, "coalesce function");
+    failures += expect_span_text(first_expression, "COALESCE(1)", "coalesce function span");
+    failures += expect_child_count(first_expression, 1U, "coalesce function child count");
+    arguments = child_at(first_expression, 0U);
+    failures += expect_node(arguments, MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST, "coalesce args");
+    failures += expect_child_count(arguments, 1U, "coalesce one argument");
+    failures +=
+        expect_literal(child_at(arguments, 0U), MYLITE_SQL_AST_LITERAL_INTEGER, "coalesce value");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_COALESCE_FUNCTION, "mixed coalesce");
+    arguments = child_at(second_expression, 0U);
+    failures += expect_child_count(arguments, 2U, "coalesce two arguments");
+    failures +=
+        expect_literal(child_at(arguments, 0U), MYLITE_SQL_AST_LITERAL_TRUE, "coalesce TRUE");
+    failures +=
+        expect_literal(child_at(arguments, 1U), MYLITE_SQL_AST_LITERAL_NULL, "coalesce NULL");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_COALESCE_FUNCTION, "lower coalesce");
+    arguments = child_at(third_expression, 0U);
+    failures += expect_child_count(arguments, 3U, "coalesce three arguments");
+    failures += expect_operator(
+        child_at(arguments, 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "coalesce positive value"
+    );
+    failures += expect_operator(
+        child_at(arguments, 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "coalesce negative fallback"
+    );
+    failures += expect_literal(
+        child_at(arguments, 2U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "coalesce null fallback"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "coalesce from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT COALESCE (NULL,10), (COALESCE(NULL,10)), "
+        "COALESCE(NULL, COALESCE(NULL,1), 2), COALESCE(IF(0,NULL,4),5), "
+        "COALESCE(NULL, IFNULL(COALESCE(NULL,NULL),9)), "
+        "COALESCE(NULL, IF(COALESCE(NULL,0),1,2));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    arguments = child_at(third_expression, 0U);
+    nested = child_at(arguments, 1U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_COALESCE_FUNCTION, "spaced coalesce");
+    failures += expect_span_text(first_expression, "COALESCE (NULL,10)", "spaced coalesce span");
+    failures += expect_node(
+        parenthesized,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized coalesce"
+    );
+    failures += expect_node(
+        child_at(parenthesized, 0U),
+        MYLITE_SQL_AST_COALESCE_FUNCTION,
+        "wrapped coalesce"
+    );
+    failures +=
+        expect_span_text(parenthesized, "(COALESCE(NULL,10))", "parenthesized coalesce span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_COALESCE_FUNCTION, "outer coalesce");
+    failures += expect_node(nested, MYLITE_SQL_AST_COALESCE_FUNCTION, "inner coalesce");
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(select_list, 3U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_IF_FUNCTION,
+        "nested if in coalesce"
+    );
+    failures += expect_node(
+        child_at(
+            child_at(child_at(child_at(select_list, coalesce_nested_ifnull_item_index), 0U), 0U),
+            1U
+        ),
+        MYLITE_SQL_AST_IFNULL_FUNCTION,
+        "nested ifnull in coalesce"
+    );
+    failures += expect_node(
+        child_at(
+            child_at(child_at(child_at(select_list, coalesce_nested_if_item_index), 0U), 0U),
+            1U
+        ),
+        MYLITE_SQL_AST_IF_FUNCTION,
+        "nested if in coalesce"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT COALESCE(1, 2 + 3, 'x');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_COALESCE_FUNCTION, "deferred coalesce");
+    arguments = child_at(first_expression, 0U);
+    failures += expect_node(
+        child_at(arguments, 1U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "deferred coalesce arithmetic argument"
+    );
+    failures += expect_literal(
+        child_at(arguments, 2U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "deferred coalesce string argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT COALESCE();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT COALESCE(NULL, COALESCE());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT COALESCE(1,,2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -2515,6 +2661,26 @@ static int test_qualified_identifier_keyword_part(void) {
         "ifnull selected identifier"
     );
     failures += expect_span_text(child_at(child_at(statement, 1U), 0U), "ifnull", "ifnull table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE coalesce (coalesce INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "coalesce", "coalesce table identifier");
+    columns = child_at(statement, 1U);
+    column = child_at(columns, 0U);
+    failures += expect_span_text(child_at(column, 0U), "coalesce", "coalesce column identifier");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT coalesce FROM coalesce;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_span_text(
+        child_at(child_at(select_list, 0U), 0U),
+        "coalesce",
+        "coalesce selected identifier"
+    );
+    failures +=
+        expect_span_text(child_at(child_at(statement, 1U), 0U), "coalesce", "coalesce table");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

@@ -1458,6 +1458,10 @@ expression(A) ::= IFNULL(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). 
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_IFNULL_FUNCTION, B, C, R);
 }
+expression(A) ::= COALESCE(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_COALESCE_FUNCTION, B, R);
+}
 expression(A) ::= IFNULL(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR, NULL, R);
@@ -1648,6 +1652,9 @@ identifier(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= IFNULL(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COALESCE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= USER(T). {

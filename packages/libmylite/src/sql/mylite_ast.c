@@ -338,6 +338,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "ifnull_function";
     case MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR:
         return "ifnull_argument_count_error";
+    case MYLITE_SQL_AST_COALESCE_FUNCTION:
+        return "coalesce_function";
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return "rename_table_statement";
     case MYLITE_SQL_AST_INSERT_STATEMENT:

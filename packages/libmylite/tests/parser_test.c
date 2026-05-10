@@ -5643,6 +5643,57 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE id = 1 AND nn IS NOT NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "and predicate"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_AND,
+        "and predicate operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE (id = 1) && (nn IS NOT NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "deprecated and predicate"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND,
+        "deprecated and predicate operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT * FROM simple_lifecycle WHERE id = 1 AND nn = 2 AND n IS NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "chained and predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "left-associative chained and predicate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
         "SELECT id FROM simple_lifecycle WHERE simple_lifecycle.id = 1;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -8119,13 +8170,6 @@ static int test_syntax_errors(void) {
 
     failures +=
         parse_sql("SELECT id FROM t WHERE id = '1';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parse_sql(
-        "SELECT id FROM t WHERE id = 1 AND nn = 2;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

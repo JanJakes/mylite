@@ -603,15 +603,6 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE i = 1 AND nn = 6",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT i FROM numbers WHERE i = 1 OR nn = 6",
         (struct expected_sql_error){
             .code = mysql_error_parse,

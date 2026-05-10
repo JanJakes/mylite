@@ -10,17 +10,16 @@
   ownership boundaries, physical SQLite handling, diagnostics, and tests.
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Add parser grammar, AST kind/operator support, parser helpers, and token
+- [x] Add parser grammar, AST kind/operator support, parser helpers, and token
   mapping for `AND` / `&&`.
-- [ ] Extend descriptor-driven predicate planning to support conjunctions,
+- [x] Extend descriptor-driven predicate planning to support conjunctions,
   cleanup, SQL generation, and parameter binding.
-- [ ] Add parser and runtime lifecycle tests, including warning diagnostics,
+- [x] Add parser and runtime lifecycle tests, including warning diagnostics,
   source reuse, DML behavior, persistence, preamble preservation, and
   independent handles.
-- [ ] Register any new tests in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, descriptor authority,
+- [x] Register any new tests in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, descriptor authority,
   performance, cleanup, compatibility wording, and test relevance.
-- [ ] Commit, push `main`, and continue to the next baseline slice.
-
+- [x] Commit, push `main`, and continue to the next baseline slice.

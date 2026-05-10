@@ -194,7 +194,8 @@ enum mylite_sql_ast_operator mylite_sql_ast_node_operator(const struct mylite_sq
     if (node == NULL || (node->kind != MYLITE_SQL_AST_UNARY_EXPRESSION &&
                          node->kind != MYLITE_SQL_AST_BINARY_EXPRESSION &&
                          node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
-                         node->kind != MYLITE_SQL_AST_IS_NULL_PREDICATE)) {
+                         node->kind != MYLITE_SQL_AST_IS_NULL_PREDICATE &&
+                         node->kind != MYLITE_SQL_AST_AND_PREDICATE)) {
         return MYLITE_SQL_AST_OPERATOR_NONE;
     }
 
@@ -379,6 +380,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "comparison_predicate";
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
         return "is_null_predicate";
+    case MYLITE_SQL_AST_AND_PREDICATE:
+        return "and_predicate";
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
         return "order_by_clause";
     case MYLITE_SQL_AST_ORDER_DIRECTION:
@@ -611,6 +614,10 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "is_null";
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
         return "is_not_null";
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+        return "logical_and";
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+        return "deprecated_logical_and";
     }
 
     return "unknown";

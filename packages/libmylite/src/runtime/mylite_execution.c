@@ -56,6 +56,7 @@ enum {
     mysql_error_bad_null = 1048,
     mysql_error_unknown_storage_engine = 1286,
     mysql_error_display_width_out_of_range = 1439,
+    mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_integer_display_width_deprecated = 1681,
     mysql_error_must_have_visible_column = 4028,
@@ -314,11 +315,26 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_IS_NULL = 2,
 };
 
-struct planned_select_predicate {
+struct planned_select_predicate_term {
     enum planned_select_predicate_kind kind;
     enum mylite_sql_ast_operator operator_kind;
     struct mylite_catalog_column_descriptor column;
     struct planned_value value;
+};
+
+struct planned_select_predicate {
+    struct planned_select_predicate_term *terms;
+    size_t term_count;
+};
+
+enum predicate_work_item_kind {
+    PREDICATE_WORK_NODE = 0,
+    PREDICATE_WORK_DEPRECATED_AND_WARNING = 1,
+};
+
+struct predicate_work_item {
+    enum predicate_work_item_kind kind;
+    const struct mylite_sql_ast_node *node;
 };
 
 struct planned_select_order {
@@ -1444,6 +1460,7 @@ static int plan_grouped_aggregate(
     const struct mylite_sql_ast_node *statement,
     struct planned_grouped_aggregate *out_plan
 );
+static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *plan);
 static int collect_grouped_aggregate_clauses(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1582,6 +1599,7 @@ static int plan_count(
     const struct mylite_sql_ast_node *statement,
     struct planned_count *out_plan
 );
+static void planned_count_deinit(struct planned_count *plan);
 static int plan_count_without_source(
     struct mylite_db *database,
     const struct planned_count_source_nodes *nodes,
@@ -1622,6 +1640,7 @@ static int plan_column_aggregate(
     const struct mylite_sql_ast_node *statement,
     struct planned_column_aggregate *out_plan
 );
+static void planned_column_aggregate_deinit(struct planned_column_aggregate *plan);
 static enum planned_column_aggregate_function column_aggregate_function_from_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -2365,6 +2384,7 @@ static int plan_select_predicate(
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
 );
+static void planned_select_predicate_deinit(struct planned_select_predicate *predicate);
 static int plan_select_predicate_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -2379,7 +2399,7 @@ static int plan_comparison_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_select_predicate *out_predicate
+    struct planned_select_predicate *predicate
 );
 static int plan_is_null_predicate(
     struct mylite_db *database,
@@ -2387,7 +2407,36 @@ static int plan_is_null_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_select_predicate *out_predicate
+    struct planned_select_predicate *predicate
+);
+static int append_planned_select_predicate_term(
+    struct mylite_db *database,
+    struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_term *term
+);
+static int append_deprecated_logical_and_warning(struct mylite_db *database);
+static bool planned_select_predicate_has_terms(const struct planned_select_predicate *predicate);
+static int append_predicate_work_node(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    const struct mylite_sql_ast_node *node
+);
+static int append_predicate_work_deprecated_and_warning(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count
+);
+static int append_predicate_work_item(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    struct predicate_work_item item
+);
+static int bind_select_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate *predicate,
+    int *parameter_index
 );
 static int resolve_predicate_column(
     struct mylite_db *database,
@@ -2709,6 +2758,20 @@ static int append_select_predicate_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
     size_t *next_parameter
+);
+static int append_select_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_term *term,
+    size_t *next_parameter
+);
+static int append_select_comparison_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_term *term,
+    size_t *next_parameter
+);
+static int append_select_is_null_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_term *term
 );
 static int append_select_order_sql(
     struct dynamic_string *string,
@@ -3262,6 +3325,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_HAVING_CLAUSE:
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
+    case MYLITE_SQL_AST_AND_PREDICATE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
@@ -4734,6 +4798,7 @@ static int execute_select_statement(
         if (rc == MYLITE_OK) {
             rc = execute_grouped_aggregate_from_plan(database, &grouped_plan, out_result);
         }
+        planned_grouped_aggregate_deinit(&grouped_plan);
         return rc;
     }
     if (select_statement_has_count_aggregate(statement)) {
@@ -4741,6 +4806,7 @@ static int execute_select_statement(
         if (rc == MYLITE_OK) {
             rc = execute_count_from_plan(database, &count_plan, out_result);
         }
+        planned_count_deinit(&count_plan);
         return rc;
     }
     if (select_statement_has_column_aggregate(statement)) {
@@ -4748,6 +4814,7 @@ static int execute_select_statement(
         if (rc == MYLITE_OK) {
             rc = execute_column_aggregate_from_plan(database, &aggregate_plan, out_result);
         }
+        planned_column_aggregate_deinit(&aggregate_plan);
         return rc;
     }
     if (select_statement_is_literal_projection_attempt(statement)) {
@@ -6678,6 +6745,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_HAVING_CLAUSE:
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
+    case MYLITE_SQL_AST_AND_PREDICATE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
@@ -10721,6 +10789,7 @@ static void planned_update_deinit(struct planned_update *plan) {
         return;
     }
 
+    planned_select_predicate_deinit(&plan->predicate);
     *plan = (struct planned_update){0};
 }
 
@@ -10986,6 +11055,7 @@ static void planned_select_deinit(struct planned_select *plan) {
 
     free(plan->columns);
     free((void *)plan->column_aliases);
+    planned_select_predicate_deinit(&plan->predicate);
     *plan = (struct planned_select){0};
 }
 
@@ -11101,6 +11171,15 @@ static int plan_grouped_aggregate(
 
     free(table_columns);
     return rc;
+}
+
+static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    planned_select_predicate_deinit(&plan->predicate);
+    *plan = (struct planned_grouped_aggregate){0};
 }
 
 static int collect_grouped_aggregate_clauses(
@@ -12154,6 +12233,15 @@ static int plan_count(
     return plan_count_table_source(database, &source_nodes, out_plan);
 }
 
+static void planned_count_deinit(struct planned_count *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    planned_select_predicate_deinit(&plan->predicate);
+    *plan = (struct planned_count){false};
+}
+
 static int plan_count_without_source(
     struct mylite_db *database,
     const struct planned_count_source_nodes *nodes,
@@ -12807,6 +12895,15 @@ static int plan_column_aggregate(
 
     free(table_columns);
     return rc;
+}
+
+static void planned_column_aggregate_deinit(struct planned_column_aggregate *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    planned_select_predicate_deinit(&plan->predicate);
+    *plan = (struct planned_column_aggregate){0};
 }
 
 static enum planned_column_aggregate_function column_aggregate_function_from_expression(
@@ -14721,6 +14818,7 @@ static void planned_delete_deinit(struct planned_delete *plan) {
         return;
     }
 
+    planned_select_predicate_deinit(&plan->predicate);
     *plan = (struct planned_delete){0};
 }
 
@@ -17011,16 +17109,18 @@ static int plan_select_predicate(
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
 ) {
+    int rc = MYLITE_OK;
+
     *out_predicate = (struct planned_select_predicate){0};
     if (where_clause == NULL) {
         return MYLITE_OK;
     }
     if (where_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE) {
-        set_unsupported_error(database, "SELECT supports only one descriptor column predicate");
+        set_unsupported_error(database, "SELECT supports only descriptor column WHERE predicates");
         return MYLITE_ERROR;
     }
 
-    return plan_select_predicate_node(
+    rc = plan_select_predicate_node(
         database,
         child_at(where_clause, 0U),
         source_context,
@@ -17028,6 +17128,20 @@ static int plan_select_predicate(
         table_column_count,
         out_predicate
     );
+    if (rc != MYLITE_OK) {
+        planned_select_predicate_deinit(out_predicate);
+    }
+
+    return rc;
+}
+
+static void planned_select_predicate_deinit(struct planned_select_predicate *predicate) {
+    if (predicate == NULL) {
+        return;
+    }
+
+    free(predicate->terms);
+    *predicate = (struct planned_select_predicate){0};
 }
 
 static int plan_select_predicate_node(
@@ -17038,38 +17152,65 @@ static int plan_select_predicate_node(
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
 ) {
-    const struct mylite_sql_ast_node *current = predicate_node;
+    struct predicate_work_item *items = NULL;
+    size_t item_count = 0U;
+    int rc = append_predicate_work_node(database, &items, &item_count, predicate_node);
 
-    while (current != NULL && current->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-        current = child_at(current, 0U);
-    }
-    if (current == NULL) {
-        set_unsupported_error(database, "SELECT supports only one descriptor column predicate");
-        return MYLITE_ERROR;
-    }
-    if (current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
-        return plan_comparison_predicate(
-            database,
-            current,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_predicate
-        );
-    }
-    if (current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
-        return plan_is_null_predicate(
-            database,
-            current,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_predicate
-        );
+    while (rc == MYLITE_OK && item_count > 0U) {
+        struct predicate_work_item item = items[--item_count];
+        const struct mylite_sql_ast_node *current = item.node;
+
+        if (item.kind == PREDICATE_WORK_DEPRECATED_AND_WARNING) {
+            rc = append_deprecated_logical_and_warning(database);
+            continue;
+        }
+
+        while (current != NULL && current->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+            current = child_at(current, 0U);
+        }
+        if (current != NULL && current->kind == MYLITE_SQL_AST_AND_PREDICATE) {
+            rc = append_predicate_work_node(database, &items, &item_count, child_at(current, 1U));
+            if (rc == MYLITE_OK && mylite_sql_ast_node_operator(current) ==
+                                       MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
+                rc = append_predicate_work_deprecated_and_warning(database, &items, &item_count);
+            }
+            if (rc == MYLITE_OK) {
+                rc = append_predicate_work_node(
+                    database,
+                    &items,
+                    &item_count,
+                    child_at(current, 0U)
+                );
+            }
+        } else if (current != NULL && current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+            rc = plan_comparison_predicate(
+                database,
+                current,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_predicate
+            );
+        } else if (current != NULL && current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+            rc = plan_is_null_predicate(
+                database,
+                current,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_predicate
+            );
+        } else {
+            set_unsupported_error(
+                database,
+                "SELECT supports only descriptor column WHERE predicates"
+            );
+            rc = MYLITE_ERROR;
+        }
     }
 
-    set_unsupported_error(database, "SELECT supports only one descriptor column predicate");
-    return MYLITE_ERROR;
+    free(items);
+    return rc;
 }
 
 static int plan_comparison_predicate(
@@ -17078,32 +17219,34 @@ static int plan_comparison_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_select_predicate *out_predicate
+    struct planned_select_predicate *predicate
 ) {
+    struct planned_select_predicate_term term = {
+        .kind = PLANNED_SELECT_PREDICATE_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+    };
     int rc = resolve_predicate_column(
         database,
         child_at(predicate_node, 0U),
         source_context,
         table_columns,
         table_column_count,
-        &out_predicate->column
+        &term.column
     );
 
     if (rc == MYLITE_OK) {
         rc = convert_predicate_integer_literal(
             database,
             child_at(predicate_node, 1U),
-            &out_predicate->column,
-            &out_predicate->value
+            &term.column,
+            &term.value
         );
     }
     if (rc != MYLITE_OK) {
         return rc;
     }
 
-    out_predicate->kind = PLANNED_SELECT_PREDICATE_COMPARISON;
-    out_predicate->operator_kind = mylite_sql_ast_node_operator(predicate_node);
-    return MYLITE_OK;
+    return append_planned_select_predicate_term(database, predicate, &term);
 }
 
 static int plan_is_null_predicate(
@@ -17112,23 +17255,127 @@ static int plan_is_null_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
-    struct planned_select_predicate *out_predicate
+    struct planned_select_predicate *predicate
 ) {
+    struct planned_select_predicate_term term = {
+        .kind = PLANNED_SELECT_PREDICATE_IS_NULL,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+    };
     int rc = resolve_predicate_column(
         database,
         child_at(predicate_node, 0U),
         source_context,
         table_columns,
         table_column_count,
-        &out_predicate->column
+        &term.column
     );
 
     if (rc != MYLITE_OK) {
         return rc;
     }
 
-    out_predicate->kind = PLANNED_SELECT_PREDICATE_IS_NULL;
-    out_predicate->operator_kind = mylite_sql_ast_node_operator(predicate_node);
+    return append_planned_select_predicate_term(database, predicate, &term);
+}
+
+static int append_planned_select_predicate_term(
+    struct mylite_db *database,
+    struct planned_select_predicate *predicate,
+    const struct planned_select_predicate_term *term
+) {
+    struct planned_select_predicate_term *terms = NULL;
+    size_t required_count = predicate->term_count + 1U;
+
+    if (required_count > SIZE_MAX / sizeof(*terms)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    terms = realloc(predicate->terms, required_count * sizeof(*terms));
+    if (terms == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    predicate->terms = terms;
+    predicate->terms[predicate->term_count] = *term;
+    predicate->term_count = required_count;
+
+    return MYLITE_OK;
+}
+
+static int append_deprecated_logical_and_warning(struct mylite_db *database) {
+    int rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_deprecated_logical_and,
+        "HY000",
+        "'&&' is deprecated and will be removed in a future release. Please use AND instead"
+    );
+
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static bool planned_select_predicate_has_terms(const struct planned_select_predicate *predicate) {
+    if (predicate == NULL) {
+        return false;
+    }
+
+    return predicate->term_count > 0U;
+}
+
+static int append_predicate_work_node(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    const struct mylite_sql_ast_node *node
+) {
+    return append_predicate_work_item(
+        database,
+        items,
+        item_count,
+        (struct predicate_work_item){.kind = PREDICATE_WORK_NODE, .node = node}
+    );
+}
+
+static int append_predicate_work_deprecated_and_warning(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count
+) {
+    return append_predicate_work_item(
+        database,
+        items,
+        item_count,
+        (struct predicate_work_item){.kind = PREDICATE_WORK_DEPRECATED_AND_WARNING}
+    );
+}
+
+static int append_predicate_work_item(
+    struct mylite_db *database,
+    struct predicate_work_item **items,
+    size_t *item_count,
+    struct predicate_work_item item
+) {
+    struct predicate_work_item *grown_items = NULL;
+    size_t required_count = *item_count + 1U;
+
+    if (required_count > SIZE_MAX / sizeof(*grown_items)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    grown_items = realloc(*items, required_count * sizeof(*grown_items));
+    if (grown_items == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    *items = grown_items;
+    (*items)[*item_count] = item;
+    *item_count = required_count;
+
     return MYLITE_OK;
 }
 
@@ -20014,43 +20261,77 @@ static int append_select_predicate_sql(
 ) {
     int rc = MYLITE_OK;
 
-    if (predicate->kind == PLANNED_SELECT_PREDICATE_NONE) {
+    if (!planned_select_predicate_has_terms(predicate)) {
         return MYLITE_OK;
     }
 
     rc = dynamic_string_append(string, " WHERE ");
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(string, predicate->column.name);
-    }
-    if (predicate->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_char(string, ' ');
+    for (size_t index = 0U; rc == MYLITE_OK && index < predicate->term_count; ++index) {
+        if (index != 0U) {
+            rc = dynamic_string_append(string, " AND ");
         }
         if (rc == MYLITE_OK) {
-            rc = dynamic_string_append(string, comparison_operator_sql(predicate->operator_kind));
-        }
-        if (rc == MYLITE_OK) {
-            rc = dynamic_string_append_char(string, ' ');
-        }
-        if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(string, *next_parameter);
-        }
-        if (rc == MYLITE_OK) {
-            ++(*next_parameter);
-        }
-    } else if (predicate->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
-        if (predicate->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
-            if (rc == MYLITE_OK) {
-                rc = dynamic_string_append(string, " IS NOT NULL");
-            }
-        } else {
-            if (rc == MYLITE_OK) {
-                rc = dynamic_string_append(string, " IS NULL");
-            }
+            rc = append_select_predicate_term_sql(string, &predicate->terms[index], next_parameter);
         }
     }
 
     return rc;
+}
+
+static int append_select_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_term *term,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append_char(string, '(');
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, term->column.name);
+    }
+    if (rc == MYLITE_OK && term->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
+        rc = append_select_comparison_predicate_term_sql(string, term, next_parameter);
+    } else if (rc == MYLITE_OK && term->kind == PLANNED_SELECT_PREDICATE_IS_NULL) {
+        rc = append_select_is_null_predicate_term_sql(string, term);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_select_comparison_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_term *term,
+    size_t *next_parameter
+) {
+    int rc = dynamic_string_append_char(string, ' ');
+
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, comparison_operator_sql(term->operator_kind));
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ' ');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
+    }
+
+    return rc;
+}
+
+static int append_select_is_null_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_term *term
+) {
+    if (term->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
+        return dynamic_string_append(string, " IS NOT NULL");
+    }
+
+    return dynamic_string_append(string, " IS NULL");
 }
 
 static int append_select_order_sql(
@@ -20199,13 +20480,13 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = append_update_rowid_limited_sql(&string, plan, &next_parameter);
-    } else if (rc == MYLITE_OK && plan->predicate.kind != PLANNED_SELECT_PREDICATE_NONE) {
+    } else if (rc == MYLITE_OK && planned_select_predicate_has_terms(&plan->predicate)) {
         rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
     } else if (rc == MYLITE_OK) {
         rc = dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK &&
-        (plan->limit.has_limit || plan->predicate.kind != PLANNED_SELECT_PREDICATE_NONE)) {
+        (plan->limit.has_limit || planned_select_predicate_has_terms(&plan->predicate))) {
         rc = dynamic_string_append(&string, " AND ");
     }
     if (rc == MYLITE_OK) {
@@ -20356,6 +20637,8 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
         break;
     }
 
@@ -20469,12 +20752,7 @@ static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
-    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->predicate.value.integer);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
-    }
+    rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
         if (rc == MYLITE_OK) {
@@ -20483,6 +20761,28 @@ static int bind_select_parameters(sqlite3_stmt *statement, const struct planned_
     }
     if (rc == MYLITE_OK && plan->limit.has_offset) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
+    }
+
+    return rc;
+}
+
+static int bind_select_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate *predicate,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < predicate->term_count; ++index) {
+        const struct planned_select_predicate_term *term = &predicate->terms[index];
+
+        if (term->kind != PLANNED_SELECT_PREDICATE_COMPARISON) {
+            continue;
+        }
+        rc = bind_int64_parameter(statement, *parameter_index, term->value.integer);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
     }
 
     return rc;
@@ -20540,8 +20840,8 @@ static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_c
             ++parameter_index;
         }
     }
-    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->predicate.value.integer);
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
 
     return rc;
@@ -20551,11 +20851,9 @@ static int bind_column_aggregate_parameters(
     sqlite3_stmt *statement,
     const struct planned_column_aggregate *plan
 ) {
-    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        return bind_int64_parameter(statement, 1, plan->predicate.value.integer);
-    }
+    int parameter_index = 1;
 
-    return MYLITE_OK;
+    return bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
 }
 
 static int bind_grouped_aggregate_parameters(
@@ -20565,12 +20863,7 @@ static int bind_grouped_aggregate_parameters(
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
-    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->predicate.value.integer);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
-    }
+    rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     if (rc == MYLITE_OK && plan->having.kind == PLANNED_GROUPED_HAVING_COMPARISON) {
         rc = bind_int64_parameter(statement, parameter_index, plan->having.value.integer);
         if (rc == MYLITE_OK) {
@@ -20594,12 +20887,7 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
-    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->predicate.value.integer);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
-    }
+    rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
     }
@@ -20614,11 +20902,8 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
     if (rc == MYLITE_OK) {
         ++parameter_index;
     }
-    if (rc == MYLITE_OK && plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->predicate.value.integer);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
@@ -20637,11 +20922,9 @@ static int bind_update_matched_parameters(
     sqlite3_stmt *statement,
     const struct planned_update *plan
 ) {
-    if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
-        return bind_int64_parameter(statement, 1, plan->predicate.value.integer);
-    }
+    int parameter_index = 1;
 
-    return MYLITE_OK;
+    return bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
 }
 
 static int bind_planned_value_parameter(

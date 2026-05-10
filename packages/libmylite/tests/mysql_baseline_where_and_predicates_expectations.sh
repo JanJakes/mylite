@@ -239,11 +239,11 @@ expect_output \
 
 expect_output \
     "insert select source conjunction" \
-    "1:-2,2:1,3:2147483647,4:0,9:1" \
+    "1:-2,2:1,2:1,3:2147483647,4:0" \
     "DROP TABLE IF EXISTS inserted_numbers; "\
 "CREATE TABLE inserted_numbers (id INT NOT NULL, i INT); "\
 "INSERT INTO inserted_numbers SELECT id, i FROM numbers; "\
-"INSERT INTO inserted_numbers SELECT 9, i FROM numbers WHERE i = 1 AND n IS NOT NULL; "\
+"INSERT INTO inserted_numbers SELECT id, i FROM numbers WHERE i = 1 AND n IS NOT NULL; "\
 "SELECT GROUP_CONCAT(CONCAT(id, ':', i) ORDER BY id) FROM inserted_numbers;" \
     "$DATABASE"
 

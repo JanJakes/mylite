@@ -139,6 +139,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION = 130,
     MYLITE_SQL_AST_GROUP_BY_CLAUSE = 131,
     MYLITE_SQL_AST_HAVING_CLAUSE = 132,
+    MYLITE_SQL_AST_AND_PREDICATE = 133,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -172,6 +173,8 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL = 13,
     MYLITE_SQL_AST_OPERATOR_IS_NULL = 14,
     MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL = 15,
+    MYLITE_SQL_AST_OPERATOR_LOGICAL_AND = 16,
+    MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND = 17,
 };
 
 enum mylite_sql_ast_integer_type {

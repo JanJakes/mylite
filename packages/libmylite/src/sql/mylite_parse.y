@@ -1161,10 +1161,26 @@ having_integer_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
 
-predicate(A) ::= predicate_atom(B). {
+predicate(A) ::= predicate_conjunction(B). {
     A = B;
 }
-predicate(A) ::= LPAREN(L) predicate(B) RPAREN(R). {
+
+predicate_conjunction(A) ::= predicate_primary(B). {
+    A = B;
+}
+predicate_conjunction(A) ::= predicate_conjunction(B) AND(O) predicate_primary(C). {
+    A = mylite_sql_parser_make_and_predicate(
+        state, B, O, MYLITE_SQL_AST_OPERATOR_LOGICAL_AND, C);
+}
+predicate_conjunction(A) ::= predicate_conjunction(B) LOGICAL_AND(O) predicate_primary(C). {
+    A = mylite_sql_parser_make_and_predicate(
+        state, B, O, MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND, C);
+}
+
+predicate_primary(A) ::= predicate_atom(B). {
+    A = B;
+}
+predicate_primary(A) ::= LPAREN(L) predicate(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 

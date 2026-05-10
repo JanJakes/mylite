@@ -2224,6 +2224,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_and_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token operator_token,
+    enum mylite_sql_ast_operator operator_kind,
+    struct mylite_sql_ast_node *right
+) {
+    struct mylite_sql_source_span span =
+        left == NULL ? span_from_token(&operator_token) : left->span;
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    if (right != NULL) {
+        span = span_join(span, right->span);
+    }
+
+    predicate = make_node(state, MYLITE_SQL_AST_AND_PREDICATE, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_operator(predicate, operator_kind);
+    mylite_sql_ast_node_append_child(predicate, left);
+    mylite_sql_ast_node_append_child(predicate, right);
+    return predicate;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token order_token,
@@ -2995,6 +3021,7 @@ static bool map_keyword_token(
         {"AS", MYLITE_SQL_PARSE_AS},
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
+        {"AND", MYLITE_SQL_PARSE_AND},
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
@@ -3188,12 +3215,14 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
     case MYLITE_SQL_OPERATOR_SLASH:
         *out_parser_token = MYLITE_SQL_PARSE_SLASH;
         return true;
+    case MYLITE_SQL_OPERATOR_LOGICAL_AND:
+        *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_AND;
+        return true;
     case MYLITE_SQL_OPERATOR_NONE:
     case MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT:
     case MYLITE_SQL_OPERATOR_JSON_EXTRACT:
     case MYLITE_SQL_OPERATOR_LEFT_SHIFT:
     case MYLITE_SQL_OPERATOR_RIGHT_SHIFT:
-    case MYLITE_SQL_OPERATOR_LOGICAL_AND:
     case MYLITE_SQL_OPERATOR_LOGICAL_OR:
     case MYLITE_SQL_OPERATOR_ASSIGN:
     case MYLITE_SQL_OPERATOR_PERCENT:

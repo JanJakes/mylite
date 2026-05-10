@@ -458,16 +458,6 @@ static int test_last_insert_id_unsupported_forms(void) {
             .message_part = "syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT LAST_INSERT_ID(), 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor-backed table reads",
-        }
-    );
-
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE t (id INT)");

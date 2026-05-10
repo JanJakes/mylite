@@ -499,29 +499,11 @@ static int test_current_user_identity_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT USER(), 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor-backed table reads",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT SESSION_USER() LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT SESSION_USER(), 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor-backed table reads",
         }
     );
     failures += execute_error(
@@ -954,15 +936,6 @@ static int test_current_role_function_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT CURRENT_ROLE(), 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor-backed table reads",
         }
     );
     failures += execute_error(

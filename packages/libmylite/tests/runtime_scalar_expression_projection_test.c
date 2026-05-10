@@ -299,7 +299,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "scalar expression projection supports only signed 64-bit integer",
+            .message_part = "SELECT scalar projection supports only session scalar values",
         }
     );
     failures += execute_error(
@@ -308,7 +308,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "scalar expression projection supports only signed 64-bit integer",
+            .message_part = "SELECT scalar projection supports only session scalar values",
         }
     );
     failures += execute_error(
@@ -317,7 +317,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "scalar expression projection supports only signed 64-bit integer",
+            .message_part = "SELECT scalar projection supports only session scalar values",
         }
     );
     failures += execute_error(

@@ -427,15 +427,6 @@ static int test_version_function_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT VERSION(), 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor-backed table reads",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT VERSION() FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,

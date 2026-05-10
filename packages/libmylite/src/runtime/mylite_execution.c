@@ -1835,14 +1835,9 @@ static int append_count_value_row(
 static int count_execution_error(struct mylite_db *database, int rc);
 static int column_aggregate_execution_error(struct mylite_db *database, int rc);
 static int grouped_aggregate_execution_error(struct mylite_db *database, int rc);
-static bool select_statement_is_session_scalar_projection(
-    const struct mylite_sql_ast_node *statement
-);
-static bool select_statement_is_scalar_value_projection(
-    const struct mylite_sql_ast_node *statement
-);
+static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_node *statement);
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement);
-static bool select_statement_is_scalar_value_projection_attempt(
+static bool select_statement_is_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 );
 static int execute_scalar_projection_select_statement(
@@ -2053,9 +2048,11 @@ static int if_validation_stack_push(
     const struct mylite_sql_ast_node *expression
 );
 static void if_validation_stack_deinit(struct if_validation_stack *stack);
+static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_projection_literal_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_function_expression(const struct mylite_sql_ast_node *expression);
+static bool is_scalar_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_value_projection_attempt_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -5260,8 +5257,7 @@ static int execute_select_statement(
         set_native_function_parameter_count_error(database, argument_count_error_function);
         return MYLITE_ERROR;
     }
-    if (select_statement_is_session_scalar_projection(statement) ||
-        select_statement_is_scalar_value_projection(statement)) {
+    if (select_statement_is_scalar_projection(statement)) {
         return execute_scalar_projection_select_statement(database, statement, out_result);
     }
     if (select_statement_has_group_by_clause(statement)) {
@@ -5288,11 +5284,11 @@ static int execute_select_statement(
         planned_column_aggregate_deinit(&aggregate_plan);
         return rc;
     }
-    if (select_statement_is_scalar_value_projection_attempt(statement)) {
+    if (select_statement_is_scalar_projection_attempt(statement)) {
         set_unsupported_error(
             database,
-            "SELECT scalar expression projection supports only signed 64-bit integer, boolean, "
-            "NULL, and nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() values"
+            "SELECT scalar projection supports only session scalar values, signed 64-bit integer, "
+            "boolean, NULL, and nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() values"
         );
         return MYLITE_ERROR;
     }
@@ -14079,9 +14075,7 @@ static int grouped_aggregate_execution_error(struct mylite_db *database, int rc)
     return MYLITE_ERROR;
 }
 
-static bool select_statement_is_session_scalar_projection(
-    const struct mylite_sql_ast_node *statement
-) {
+static bool select_statement_is_scalar_projection(const struct mylite_sql_ast_node *statement) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     const struct mylite_sql_ast_node *select_item = NULL;
@@ -14102,39 +14096,7 @@ static bool select_statement_is_session_scalar_projection(
     }
     while (select_item != NULL) {
         if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_session_scalar_expression(child_at(select_item, 0U))) {
-            return false;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return true;
-}
-
-static bool select_statement_is_scalar_value_projection(
-    const struct mylite_sql_ast_node *statement
-) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
-        return false;
-    }
-    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
-        return false;
-    }
-    if (child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    if (select_item == NULL) {
-        return false;
-    }
-    while (select_item != NULL) {
-        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_scalar_value_projection_expression(child_at(select_item, 0U))) {
+            !is_scalar_projection_expression(child_at(select_item, 0U))) {
             return false;
         }
         select_item = select_item->next_sibling;
@@ -14155,12 +14117,12 @@ static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_n
     return false;
 }
 
-static bool select_statement_is_scalar_value_projection_attempt(
+static bool select_statement_is_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *select_item = NULL;
-    bool saw_scalar_value_expression = false;
+    bool saw_scalar_projection_expression = false;
 
     if (!select_statement_has_no_source_or_dual(statement)) {
         return false;
@@ -14176,14 +14138,14 @@ static bool select_statement_is_scalar_value_projection_attempt(
     }
     while (select_item != NULL) {
         if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_scalar_value_projection_attempt_expression(child_at(select_item, 0U))) {
+            !is_scalar_projection_attempt_expression(child_at(select_item, 0U))) {
             return false;
         }
-        saw_scalar_value_expression = true;
+        saw_scalar_projection_expression = true;
         select_item = select_item->next_sibling;
     }
 
-    return saw_scalar_value_expression;
+    return saw_scalar_projection_expression;
 }
 
 static int execute_scalar_projection_select_statement(
@@ -15923,6 +15885,18 @@ static void if_validation_stack_deinit(struct if_validation_stack *stack) {
     *stack = (struct if_validation_stack){0};
 }
 
+static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (is_session_scalar_expression(expression)) {
+        return true;
+    }
+    return is_scalar_value_projection_expression(expression);
+}
+
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression) {
     expression = unwrap_parenthesized_expression(expression);
 
@@ -15984,6 +15958,18 @@ static bool is_scalar_function_expression(const struct mylite_sql_ast_node *expr
     default:
         return false;
     }
+}
+
+static bool is_scalar_projection_attempt_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (is_session_scalar_expression(expression)) {
+        return true;
+    }
+    return is_scalar_value_projection_attempt_expression(expression);
 }
 
 static bool is_scalar_value_projection_attempt_expression(

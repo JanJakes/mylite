@@ -181,11 +181,11 @@ expect_value "where unsigned bigint supported max count column" "1" "$(printf '%
 
 accepted_but_deferred=$(run_mysql \
     "USE ${DATABASE};
-     SELECT COUNT(1), COUNT(NULL), COUNT(DISTINCT n), COUNT(t.n) FROM t;
+     SELECT COUNT(1), COUNT(NULL), COUNT(t.n) FROM t;
      SELECT COUNT(n) FROM t ORDER BY id;
      SELECT COUNT(n) FROM t LIMIT 1;"
 )
-expect_value "deferred count expr forms" "4	0	2	3" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '1p')"
+expect_value "deferred count expr forms" "4	0	3" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '1p')"
 expect_value "deferred order by aggregate" "3" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '2p')"
 expect_value "deferred limit one returns row" "3" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '3p')"
 

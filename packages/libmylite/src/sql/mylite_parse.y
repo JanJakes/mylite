@@ -1466,6 +1466,10 @@ expression(A) ::= NULLIF(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). 
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_NULLIF_FUNCTION, B, C, R);
 }
+expression(A) ::= ISNULL(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ISNULL_FUNCTION, B, R);
+}
 expression(A) ::= IFNULL(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_IFNULL_ARGUMENT_COUNT_ERROR, NULL, R);
@@ -1495,6 +1499,15 @@ expression(A) ::=
     (void)C;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= ISNULL(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= ISNULL(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= CONNECTION_ID(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
@@ -1677,6 +1690,9 @@ identifier(A) ::= COALESCE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= NULLIF(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ISNULL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= USER(T). {

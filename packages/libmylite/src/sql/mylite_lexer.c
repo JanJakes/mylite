@@ -542,6 +542,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"IO_THREAD", 0U},
         {"IPC", 0U},
         {"IS", MYLITE_SQL_KEYWORD_RESERVED},
+        {"ISNULL", 0U},
         {"ISOLATION", 0U},
         {"ISSUER", 0U},
         {"ITERATE", MYLITE_SQL_KEYWORD_RESERVED},

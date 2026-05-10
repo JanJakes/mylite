@@ -88,6 +88,7 @@ static int test_keywords(void) {
     failures += expect_keyword("count", 0U);
     failures += expect_keyword("avg", 0U);
     failures += expect_keyword("nullif", 0U);
+    failures += expect_keyword("isnull", 0U);
     failures += expect_keyword("bit_and", 0U);
     failures += expect_keyword("bit_or", 0U);
     failures += expect_keyword("bit_xor", 0U);

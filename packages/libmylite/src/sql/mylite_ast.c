@@ -344,6 +344,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "nullif_function";
     case MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR:
         return "nullif_argument_count_error";
+    case MYLITE_SQL_AST_ISNULL_FUNCTION:
+        return "isnull_function";
+    case MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR:
+        return "isnull_argument_count_error";
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return "rename_table_statement";
     case MYLITE_SQL_AST_INSERT_STATEMENT:

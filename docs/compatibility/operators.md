@@ -17,7 +17,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `*` | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection only; no table-backed expression support |
 | `+` | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection only; no table-backed expression support |
 | `-` (binary) | 🟡 | Limited no-source/`DUAL` signed-64 scalar arithmetic projection only; no table-backed expression support |
-| `-` (unary) | ❌ | Change the sign of the argument |
+| `-` (unary) | 🟡 | Specified for upcoming limited no-source/`DUAL` signed-64 scalar unary arithmetic projection with unary `+` and unary `-`; not implemented yet, and no table-backed expression support |
 | `/` | ❌ | Division operator |
 | `:=` | ❌ | Assign a value |
 | `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, `NULL`, or descriptor-resolved `DEFAULT`; `SET` statements and expression assignments remain unsupported |

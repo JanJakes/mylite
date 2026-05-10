@@ -13,8 +13,8 @@ Aggregate functions and grouping helpers.
 | `COUNT(DISTINCT)` | ❌ | Return count of a number of different values |
 | `GROUP_CONCAT()` | ❌ | Return a concatenated string |
 | `GROUPING()` | ❌ | Distinguish super-aggregate ROLLUP rows from regular rows |
-| `MAX()` | ❌ | Return maximum value |
-| `MIN()` | ❌ | Return minimum value |
+| `MAX()` | 🟡 | Limited one-item `SELECT MAX(column)` over one descriptor-backed persistent base table with optional baseline `WHERE`; integer/`NULL` descriptor columns only, no expression arguments, `DISTINCT`, grouping, aliases, ordering, limiting, or window forms |
+| `MIN()` | 🟡 | Limited one-item `SELECT MIN(column)` over one descriptor-backed persistent base table with optional baseline `WHERE`; integer/`NULL` descriptor columns only, no expression arguments, `DISTINCT`, grouping, aliases, ordering, limiting, or window forms |
 | `STD()` | ❌ | Return population standard deviation |
 | `STDDEV()` | ❌ | Return population standard deviation |
 | `STDDEV_POP()` | ❌ | Return population standard deviation |

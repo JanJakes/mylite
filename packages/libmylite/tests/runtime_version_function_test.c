@@ -779,7 +779,7 @@ static int test_version_system_variable_scope_and_errors(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor-backed table reads",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
         }
     );
     failures += execute_error(

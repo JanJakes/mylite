@@ -424,7 +424,7 @@ static int test_sql_quote_show_create_qualifiers_and_errors(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "descriptor-backed table reads",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
         }
     );
 

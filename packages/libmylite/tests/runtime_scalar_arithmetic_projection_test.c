@@ -16,12 +16,13 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
-    mixed_column_count = 11,
-    label_column_count = 4,
-    parenthesized_column_count = 10,
-    operand_column_count = 5,
+    core_column_count = 12,
+    alias_column_count = 4,
+    parenthesized_column_count = 4,
+    boundary_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_incorrect_parameter_count = 1582,
+    mysql_error_bigint_out_of_range = 1690,
 };
 
 struct expected_sql_error {
@@ -39,9 +40,9 @@ struct expected_query {
     const char *context;
 };
 
-static int test_scalar_expression_projection_values_and_file_safety(void);
-static int test_scalar_expression_projection_unsupported_forms(void);
-static int test_scalar_expression_projection_independent_handles(void);
+static int test_scalar_arithmetic_values_and_file_safety(void);
+static int test_scalar_arithmetic_overflow_and_unsupported_forms(void);
+static int test_scalar_arithmetic_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query(mylite_db *database, struct expected_query expected);
@@ -72,76 +73,65 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_scalar_expression_projection_values_and_file_safety();
-    failures += test_scalar_expression_projection_unsupported_forms();
-    failures += test_scalar_expression_projection_independent_handles();
+    failures += test_scalar_arithmetic_values_and_file_safety();
+    failures += test_scalar_arithmetic_overflow_and_unsupported_forms();
+    failures += test_scalar_arithmetic_independent_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_scalar_expression_projection_values_and_file_safety(void) {
-    static const char *const mixed_columns[] = {
-        "1",
-        "NULL",
-        "TRUE",
-        "FALSE",
-        "2",
-        "-3",
-        "IF(1,4,5)",
-        "IFNULL(NULL,6)",
-        "COALESCE(NULL,7)",
-        "NULLIF(8,8)",
-        "ISNULL(NULL)",
+static int test_scalar_arithmetic_values_and_file_safety(void) {
+    static const char *const core_columns[] = {
+        "1+2*3",
+        "(1+2)*3",
+        "7-10",
+        "3*-2",
+        "TRUE+2",
+        "FALSE*9",
+        "NULL+1",
+        "IF(1,2,3)+4",
+        "IFNULL(NULL,5)*2",
+        "COALESCE(NULL,7)-2",
+        "NULLIF(8,8)+1",
+        "ISNULL(NULL)+9",
     };
-    static const char *const mixed_values[] = {
-        "1",
-        NULL,
-        "1",
+    static const char *const core_values[] = {
+        "7",
+        "9",
+        "-3",
+        "-6",
+        "3",
         "0",
-        "2",
-        "-3",
-        "4",
-        "6",
-        "7",
         NULL,
-        "1",
+        "6",
+        "10",
+        "5",
+        NULL,
+        "10",
     };
-    static const char *const label_columns[] = {"one", "if_result", "n", "bare_alias"};
-    static const char *const label_values[] = {"1", "5", "9", "0"};
+    static const char *const alias_columns[] = {"sum", "diff", "product", "nullable"};
+    static const char *const alias_values[] = {"3", "-2", "12", NULL};
     static const char *const parenthesized_columns[] = {
-        "1",
-        "NULL",
-        "(TRUE)",
-        "2",
-        "(-3)",
-        "(IF(1,4,5))",
-        "IFNULL((NULL),(6))",
-        "COALESCE((NULL),(7))",
-        "NULLIF((8),(8))",
-        "ISNULL((NULL))",
+        "(1+2)",
+        "(1+2)*3",
+        "(+2)+(-3)",
+        "((1+2)*3)",
     };
-    static const char *const parenthesized_values[] = {
-        "1",
-        NULL,
-        "1",
-        "2",
-        "-3",
-        "4",
-        "6",
-        "7",
-        NULL,
-        "1",
+    static const char *const parenthesized_values[] = {"3", "9", "-1", "9"};
+    static const char *const boundary_columns[] = {
+        "-9223372036854775807 - 1",
+        "3037000499*3037000499",
+        "-3037000499*3037000499",
     };
-    static const char *const operand_columns[] = {
-        "IF((1),(2),(3))",
-        "IFNULL((NULL),(4))",
-        "COALESCE((NULL),(NULL),(5))",
-        "NULLIF((1),(1))",
-        "ISNULL((NULL))",
+    static const char *const boundary_values[] = {
+        "-9223372036854775808",
+        "9223372030926249001",
+        "-9223372030926249001",
     };
-    static const char *const operand_values[] = {"2", "4", "5", NULL, "1"};
-    static const char *const row_count_columns[] = {"ROW_COUNT()"};
-    static const char *const row_count_values[] = {"-1"};
+    static const char *const row_count_columns[] = {"1+2", "@@warning_count", "ROW_COUNT()"};
+    static const char *const row_count_values[] = {"3", "0", "0"};
+    static const char *const following_count_columns[] = {"@@warning_count", "ROW_COUNT()"};
+    static const char *const following_count_values[] = {"0", "-1"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -149,7 +139,6 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     uint64_t catalog_generation = 0U;
     uint64_t sqlite_schema_generation = 0U;
     mylite_db *database = NULL;
-    mylite_result *result = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "values") != 0) {
@@ -159,6 +148,9 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     mylite_file_preamble_init(expected_preamble);
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open values file");
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(database, "CREATE TABLE rc_seed(id INT)", NULL);
     session = mylite_connection_session_state(database);
     catalog_generation = session->catalog_generation;
     sqlite_schema_generation = session->sqlite_schema_generation;
@@ -166,23 +158,24 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT 1, NULL, TRUE, FALSE, +2, -3, IF(1,4,5), "
-                   "IFNULL(NULL,6), COALESCE(NULL,7), NULLIF(8,8), ISNULL(NULL)",
-            .columns = mixed_columns,
-            .column_count = mixed_column_count,
-            .values = mixed_values,
+            .sql = "SELECT 1+2*3, (1+2)*3, 7-10, 3*-2, TRUE+2, FALSE*9, "
+                   "NULL+1, IF(1,2,3)+4, IFNULL(NULL,5)*2, "
+                   "COALESCE(NULL,7)-2, NULLIF(8,8)+1, ISNULL(NULL)+9",
+            .columns = core_columns,
+            .column_count = core_column_count,
+            .values = core_values,
             .row_count = 1U,
-            .context = "mixed scalar value projection",
+            .context = "core arithmetic values",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT ALL 1 AS one, IF(0,4,5) if_result, NULLIF(9,10) AS n, "
-                   "ISNULL(1) bare_alias FROM DUAL",
-            .columns = label_columns,
-            .column_count = label_column_count,
-            .values = label_values,
+            .sql = "SELECT ALL 1+2 AS sum, 5-7 diff, 3*4 product, NULL*9 AS "
+                   "nullable FROM DUAL",
+            .columns = alias_columns,
+            .column_count = alias_column_count,
+            .values = alias_values,
             .row_count = 1U,
             .context = "dual aliases and all",
         }
@@ -190,41 +183,47 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT (1), (NULL), (TRUE), (+2), (-3), (IF(1,4,5)), "
-                   "IFNULL((NULL),(6)), COALESCE((NULL),(7)), NULLIF((8),(8)), "
-                   "ISNULL((NULL))",
+            .sql = "SELECT (1+2), (1+2)*3, (+2)+(-3), ((1+2)*3)",
             .columns = parenthesized_columns,
             .column_count = parenthesized_column_count,
             .values = parenthesized_values,
             .row_count = 1U,
-            .context = "parenthesized scalar values",
+            .context = "parenthesized arithmetic labels",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT IF((1),(2),(3)), IFNULL((NULL),(4)), "
-                   "COALESCE((NULL),(NULL),(5)), NULLIF((1),(1)), ISNULL((NULL))",
-            .columns = operand_columns,
-            .column_count = operand_column_count,
-            .values = operand_values,
+            .sql = "SELECT -9223372036854775807 - 1, 3037000499*3037000499, "
+                   "-3037000499*3037000499",
+            .columns = boundary_columns,
+            .column_count = boundary_column_count,
+            .values = boundary_values,
             .row_count = 1U,
-            .context = "parenthesized scalar operands",
+            .context = "signed arithmetic boundaries",
         }
     );
-
-    failures += execute_ok(database, "SELECT 1, IF(1,2,3), ISNULL(NULL) FROM DUAL", &result);
-    mylite_result_free(result);
-    result = NULL;
+    failures += execute_ok(database, "UPDATE rc_seed SET id = 1 WHERE id = 2", NULL);
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT ROW_COUNT()",
+            .sql = "SELECT 1+2, @@warning_count, ROW_COUNT()",
             .columns = row_count_columns,
-            .column_count = 1U,
+            .column_count = 3U,
             .values = row_count_values,
             .row_count = 1U,
-            .context = "row count after mixed scalar select",
+            .context = "row count and warnings inside arithmetic select",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@warning_count, ROW_COUNT()",
+            .columns = following_count_columns,
+            .column_count = 2U,
+            .values = following_count_values,
+            .row_count = 1U,
+            .context = "row count after arithmetic select",
         }
     );
 
@@ -232,12 +231,12 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     failures += expect_int64(
         (int64_t)session->catalog_generation,
         (int64_t)catalog_generation,
-        "mixed scalar select leaves catalog generation unchanged"
+        "scalar arithmetic leaves catalog generation unchanged"
     );
     failures += expect_int64(
         (int64_t)session->sqlite_schema_generation,
         (int64_t)sqlite_schema_generation,
-        "mixed scalar select leaves sqlite schema generation unchanged"
+        "scalar arithmetic leaves sqlite schema generation unchanged"
     );
 
     mylite_close(database);
@@ -246,20 +245,20 @@ static int test_scalar_expression_projection_values_and_file_safety(void) {
     failures += expect_int(
         read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble)),
         0,
-        "read mixed scalar preamble"
+        "read arithmetic preamble"
     );
     failures += expect_bytes(
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "mixed scalar select leaves preamble unchanged"
+        "scalar arithmetic leaves preamble unchanged"
     );
 
     remove_related_files(path);
     return failures;
 }
 
-static int test_scalar_expression_projection_unsupported_forms(void) {
+static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -272,21 +271,120 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open unsupported file");
     failures += execute_ok(database, "CREATE DATABASE app", NULL);
     failures += execute_ok(database, "USE app", NULL);
-    failures += execute_ok(database, "CREATE TABLE t(id INT NOT NULL)", NULL);
-    failures += execute_ok(database, "INSERT INTO t VALUES (1)", NULL);
+    failures += execute_ok(database, "CREATE TABLE t(id INT)", NULL);
+    failures += execute_ok(database, "INSERT INTO t VALUES (0), (1), (NULL)", NULL);
 
     failures += execute_error(
         database,
-        "SELECT IF(1,2), 1",
+        "SELECT 9223372036854775807+1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT value is out of range",
         }
     );
     failures += execute_error(
         database,
-        "SELECT 1, ISNULL()",
+        "SELECT 9223372036854775807 - -1",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 3037000500*3037000500",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT NULL * (9223372036854775807 + 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "BIGINT value is out of range",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 9223372036854775808 + 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit integer operands",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT -9223372036854775808 + 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit integer operands",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1/0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT -(1+2)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 + '2'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1.5 + 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT VERSION()+1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 + @@warning_count",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 + ISNULL()",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_parameter_count,
             .sqlstate = "42000",
@@ -295,16 +393,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT 'x', IF(1,2,3)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT scalar projection supports only session scalar values",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT IF(1,(2+3),4)",
+        "SELECT IF(1+0,2,3)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -313,16 +402,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT IF(VERSION(),1,2)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT IF() supports only signed 64-bit integer",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT 1 FROM t",
+        "SELECT 1+id FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -331,16 +411,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT IF(1,2,3) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT 1, IF(1,2,3) WHERE TRUE",
+        "SELECT 1+2 WHERE TRUE",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -349,7 +420,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT 1, IF(1,2,3) LIMIT 1",
+        "SELECT 1+2 LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -358,7 +429,7 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT 1, IF(1,2,3) ORDER BY 1",
+        "SELECT 1+2 ORDER BY 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -371,11 +442,11 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     return failures;
 }
 
-static int test_scalar_expression_projection_independent_handles(void) {
-    static const char *const first_columns[] = {"first_result", "ISNULL(NULL)"};
-    static const char *const first_values[] = {"2", "1"};
-    static const char *const second_columns[] = {"second_result", "NULLIF(1,1)"};
-    static const char *const second_values[] = {"4", NULL};
+static int test_scalar_arithmetic_independent_handles(void) {
+    static const char *const first_columns[] = {"first_result", "1+2*3"};
+    static const char *const first_values[] = {"6", "7"};
+    static const char *const second_columns[] = {"second_result", "NULLIF(8,8)+1"};
+    static const char *const second_values[] = {"10", NULL};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
     int failures = 0;
@@ -385,23 +456,23 @@ static int test_scalar_expression_projection_independent_handles(void) {
     failures += expect_query(
         first,
         (struct expected_query){
-            .sql = "SELECT IF(1,2,3) AS first_result, ISNULL(NULL)",
+            .sql = "SELECT IF(1,2,3)+4 AS first_result, 1+2*3",
             .columns = first_columns,
             .column_count = 2U,
             .values = first_values,
             .row_count = 1U,
-            .context = "first handle mixed scalar",
+            .context = "first handle arithmetic",
         }
     );
     failures += expect_query(
         second,
         (struct expected_query){
-            .sql = "SELECT IFNULL(NULL,4) AS second_result, NULLIF(1,1)",
+            .sql = "SELECT IFNULL(NULL,5)*2 AS second_result, NULLIF(8,8)+1",
             .columns = second_columns,
             .column_count = 2U,
             .values = second_values,
             .row_count = 1U,
-            .context = "second handle mixed scalar",
+            .context = "second handle arithmetic",
         }
     );
 
@@ -497,7 +568,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     int written = snprintf(
         path,
         path_size,
-        "/tmp/mylite-scalar-expression-projection-%s-%d.mylite",
+        "/tmp/mylite-scalar-arithmetic-projection-%s-%d.mylite",
         name,
         current_process_id()
     );

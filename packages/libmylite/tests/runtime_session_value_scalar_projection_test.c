@@ -343,15 +343,6 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT VERSION(), 1+2",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT scalar projection supports only session scalar values",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT VERSION(), 'x'",
         (struct expected_sql_error){
             .code = mysql_error_parse,

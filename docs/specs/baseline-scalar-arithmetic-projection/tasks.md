@@ -14,22 +14,22 @@
 - [x] Update compatibility documentation for the specified but not yet
   implemented subset.
 - [x] Commit and push the start-feature artifacts.
-- [ ] Admit no-source and `FROM DUAL` scalar arithmetic projection over `+`,
+- [x] Admit no-source and `FROM DUAL` scalar arithmetic projection over `+`,
   binary `-`, and `*` without widening table-backed expression projection.
-- [ ] Preserve existing scalar value function operand restrictions unless the
+- [x] Preserve existing scalar value function operand restrictions unless the
   implementation deliberately and safely admits arithmetic there.
-- [ ] Add MyLite-owned checked signed-64 arithmetic evaluation with `NULL`
+- [x] Add MyLite-owned checked signed-64 arithmetic evaluation with `NULL`
   propagation and deterministic overflow diagnostics.
-- [ ] Preserve warning-count and row-count ordering for mixed scalar projections.
-- [ ] Add runtime lifecycle tests for values, precedence, labels, aliases,
+- [x] Preserve warning-count and row-count ordering for mixed scalar projections.
+- [x] Add runtime lifecycle tests for values, precedence, labels, aliases,
   warnings, row count, overflow, file safety, independent handles, and
   deterministic rejection of unsupported broader forms.
-- [ ] Update existing scalar projection tests that currently expect arithmetic
+- [x] Update existing scalar projection tests that currently expect arithmetic
   rejection where this feature now admits it.
-- [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, expression-scope
+- [x] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, expression-scope
   control, diagnostics sequencing, overflow correctness, performance, cleanup,
   compatibility wording, and test relevance.
 - [ ] Commit, push `main`, and continue to the next baseline slice.

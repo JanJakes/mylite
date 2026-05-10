@@ -168,6 +168,9 @@ statement(A) ::= insert_values_statement(B). {
 statement(A) ::= replace_values_statement(B). {
     A = B;
 }
+statement(A) ::= replace_set_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_set_statement(B). {
     A = B;
 }
@@ -609,6 +612,15 @@ replace_values_statement(A) ::=
 replace_values_statement(A) ::=
     REPLACE(R) table_name(T) insert_column_list_opt(C) VALUES insert_row_list(V). {
     A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V);
+}
+
+replace_set_statement(A) ::=
+    REPLACE(R) INTO table_name(T) SET insert_assignment_list(S). {
+    A = mylite_sql_parser_make_replace_set_statement(state, R, T, S);
+}
+replace_set_statement(A) ::=
+    REPLACE(R) table_name(T) SET insert_assignment_list(S). {
+    A = mylite_sql_parser_make_replace_set_statement(state, R, T, S);
 }
 
 insert_set_statement(A) ::=

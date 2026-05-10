@@ -18,8 +18,8 @@
 enum {
     test_path_capacity = 1024,
     sql_capacity = 2048,
-    replace_integer_family_column_count = 8,
-    replace_success_row_count = 6,
+    numbers_query_column_count = 9,
+    replace_set_renamed_row_count = 5,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -27,7 +27,6 @@ enum {
     mysql_error_incorrect_table_name = 1103,
     mysql_error_column_specified_twice = 1110,
     mysql_error_table_does_not_exist = 1146,
-    mysql_error_column_count_mismatch = 1136,
     mysql_error_data_out_of_range = 1264,
     mysql_error_field_no_default = 1364,
     mysql_error_bad_null = 1048,
@@ -47,14 +46,14 @@ struct expected_query {
     const char *context;
 };
 
-static int test_replace_values_success_persistence_rename_and_drop(void);
-static int test_replace_values_schema_resolution_and_diagnostics(void);
-static int test_replace_values_independent_handles(void);
+static int test_replace_set_success_persistence_rename_and_drop(void);
+static int test_replace_set_schema_resolution_and_diagnostics(void);
+static int test_replace_set_independent_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
 static int create_numbers_table(mylite_db *database, const char *table_name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int expect_replace_ok(mylite_db *database, const char *sql, int64_t affected_rows);
+static int expect_replace_ok(mylite_db *database, const char *sql);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_result_value(
     const mylite_result *result,
@@ -86,15 +85,16 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_replace_values_success_persistence_rename_and_drop();
-    failures += test_replace_values_schema_resolution_and_diagnostics();
-    failures += test_replace_values_independent_handles();
+    failures += test_replace_set_success_persistence_rename_and_drop();
+    failures += test_replace_set_schema_resolution_and_diagnostics();
+    failures += test_replace_set_independent_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_replace_values_success_persistence_rename_and_drop(void) {
-    static const char *const integer_family_values[] = {
+static int test_replace_set_success_persistence_rename_and_drop(void) {
+    static const char *const replaced_values[] = {
+        "1",
         "-2147483648",
         "2147483647",
         "4294967295",
@@ -103,31 +103,49 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
         "9223372036854775807",
         NULL,
         "9",
-    };
-    static const char *const ordered_rows[] = {
-        "1",
-        "-3",
-        "-4",
-        "6",
-        "1",
-        "0",
-        "1",
-        "-2147483648",
-        "9",
-        "3",
+        "2",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
         NULL,
         "10",
+        "3",
+        "-3",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "-4",
         "4",
+        "1",
         NULL,
-        "11",
-        "5",
         NULL,
-        "12",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "0",
     };
-    static const char *const row_count_two[] = {"2"};
-    static const char *const persisted_row[] = {"1", "-2147483648", "9"};
-    static const char *const renamed_row[] = {"7", "77"};
     static const char *const last_insert_and_row_count[] = {"0", "1"};
+    static const char *const updated_row[] = {"2", "77", NULL, "10"};
+    static const char *const persisted_row[] = {"1", "-2147483648", "9"};
+    static const char *const renamed_rows[] = {
+        "1",
+        "9",
+        "2",
+        "10",
+        "3",
+        "-4",
+        "4",
+        "0",
+        "5",
+        "44",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -167,26 +185,14 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
 
     failures += expect_replace_ok(
         database,
-        "REPLACE INTO numbers VALUES (1, -2147483648, 2147483647, 4294967295, "
-        "0, -9223372036854775808, 9223372036854775807, NULL, 9)",
-        1
+        "REPLACE INTO numbers SET id = 1, i = -2147483648, ii = 2147483647, "
+        "iu = 4294967295, integeru = 0, b = -9223372036854775808, "
+        "bu = 9223372036854775807, n = NULL, nn = 9"
     );
-    failures += expect_replace_ok(database, "REPLACE numbers (id, i, nn) VALUES (1, -3, -4)", 1);
-    failures += expect_replace_ok(database, "REPLACE INTO numbers (id, nn) VALUES (3, +10)", 1);
+    failures += expect_replace_ok(database, "REPLACE numbers SET id = 2, nn = +10");
+    failures += expect_replace_ok(database, "REPLACE INTO app.numbers SET id = 3, i = -3, nn = -4");
     failures +=
-        expect_replace_ok(database, "REPLACE INTO numbers (id, nn) VALUES (4, 11), (5, 12)", 2);
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT ROW_COUNT()",
-            .values = row_count_two,
-            .column_count = 1U,
-            .row_count = 1U,
-            .context = "replace row count function",
-        }
-    );
-    failures +=
-        expect_replace_ok(database, "REPLACE INTO numbers (id, i, nn) VALUES (6, TRUE, FALSE)", 1);
+        expect_replace_ok(database, "REPLACE INTO numbers SET id = 4, i = TRUE, nn = FALSE");
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -194,7 +200,7 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
             .values = last_insert_and_row_count,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "replace leaves last insert id",
+            .context = "replace set leaves last insert id",
         }
     );
 
@@ -204,53 +210,58 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
         failures += expect_uint64(
             catalog->generation,
             catalog_generation_before_replace,
-            "replace leaves catalog generation"
+            "replace set leaves catalog generation"
         );
     }
     if (session != NULL) {
         failures += expect_uint64(
             session->sqlite_schema_generation,
             sqlite_generation_before_replace,
-            "replace leaves SQLite schema generation"
+            "replace set leaves SQLite schema generation"
         );
     }
 
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT i, ii, iu, integeru, b, bu, n, nn FROM numbers WHERE nn = 9",
-            .values = integer_family_values,
-            .column_count = replace_integer_family_column_count,
-            .row_count = 1U,
-            .context = "replace integer family values",
+            .sql = "SELECT id, i, ii, iu, integeru, b, bu, n, nn FROM numbers ORDER BY id",
+            .values = replaced_values,
+            .column_count = numbers_query_column_count,
+            .row_count = 4U,
+            .context = "replace set values",
         }
     );
+
+    failures += execute_ok(database, "UPDATE numbers SET i = 77 WHERE id = 2", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 1, "update replaced row");
+    mylite_result_free(result);
+    result = NULL;
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, i, nn FROM numbers ORDER BY nn",
-            .values = ordered_rows,
-            .column_count = 3U,
-            .row_count = replace_success_row_count,
-            .context = "replace values rows",
+            .sql = "SELECT id, i, n, nn FROM numbers WHERE id = 2",
+            .values = updated_row,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "updated replace set row",
         }
     );
 
     failures += expect_int(
         mylite_catalog_read_schema_by_name(database, "app", &schema),
         MYLITE_OK,
-        "read replace schema"
+        "read replace set schema"
     );
     failures += expect_int(
         mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &table),
         MYLITE_OK,
-        "read replace table"
+        "read replace set table"
     );
     sqlite = mylite_connection_sqlite_for_test(database);
     if (sqlite != NULL) {
         failures += query_physical_row_count(sqlite, table.physical_name, &physical_rows);
     }
-    failures += expect_int(physical_rows, replace_success_row_count, "physical rows after replace");
+    failures += expect_int(physical_rows, 4, "physical rows after replace set");
 
     mylite_close(database);
     database = NULL;
@@ -260,7 +271,7 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "replace preserves preamble"
+        "replace set preserves preamble"
     );
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
@@ -270,27 +281,26 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, i, nn FROM numbers WHERE nn = 9",
+            .sql = "SELECT id, i, nn FROM numbers WHERE id = 1",
             .values = persisted_row,
             .column_count = 3U,
             .row_count = 1U,
-            .context = "persisted replace row",
+            .context = "persisted replace set row",
         }
     );
 
     failures += execute_ok(database, "RENAME TABLE numbers TO renamed_numbers", &result);
     mylite_result_free(result);
     result = NULL;
-    failures +=
-        expect_replace_ok(database, "REPLACE INTO renamed_numbers (id, nn) VALUES (7, 77)", 1);
+    failures += expect_replace_ok(database, "REPLACE INTO renamed_numbers SET id = 5, nn = 44");
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, nn FROM renamed_numbers WHERE id = 7",
-            .values = renamed_row,
+            .sql = "SELECT id, nn FROM renamed_numbers ORDER BY id",
+            .values = renamed_rows,
             .column_count = 2U,
-            .row_count = 1U,
-            .context = "replace after rename",
+            .row_count = replace_set_renamed_row_count,
+            .context = "replace set after rename",
         }
     );
 
@@ -299,7 +309,7 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
     result = NULL;
     failures += execute_error(
         database,
-        "REPLACE INTO renamed_numbers (id, nn) VALUES (8, 88)",
+        "REPLACE INTO renamed_numbers SET id = 6, nn = 55",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -313,9 +323,10 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
     return failures;
 }
 
-static int test_replace_values_schema_resolution_and_diagnostics(void) {
+static int test_replace_set_schema_resolution_and_diagnostics(void) {
     static const char *const qualified_values[] = {"1", "2"};
     static const char *const empty_values[] = {NULL};
+    static const char *const no_key_values[] = {"1", "10", "1", "20"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -330,7 +341,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     failures += seed_schema(database, "app");
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (1, 2)",
+        "REPLACE INTO numbers SET id = 1, nn = 2",
         (struct expected_sql_error){
             .code = mysql_error_no_database_selected,
             .sqlstate = "3D000",
@@ -339,7 +350,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO missing_schema.numbers (id, nn) VALUES (1, 2)",
+        "REPLACE INTO missing_schema.numbers SET id = 1, nn = 2",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
             .sqlstate = "42000",
@@ -354,7 +365,8 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += expect_replace_ok(database, "REPLACE INTO app.qualified_numbers VALUES (1, 2)", 1);
+    failures +=
+        expect_replace_ok(database, "REPLACE INTO app.qualified_numbers SET id = 1, nn = 2");
     failures += expect_query_values(
         database,
         (struct expected_query){
@@ -362,7 +374,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
             .values = qualified_values,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "schema-qualified replace",
+            .context = "schema-qualified replace set",
         }
     );
 
@@ -373,7 +385,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
 
     failures += execute_error(
         database,
-        "REPLACE INTO missing_table VALUES (1)",
+        "REPLACE INTO missing_table SET id = 1, nn = 2",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
@@ -382,7 +394,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO _mylite_reserved VALUES (1)",
+        "REPLACE INTO _mylite_reserved SET id = 1, nn = 2",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
             .sqlstate = "42000",
@@ -391,7 +403,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (missing, nn) VALUES (1, 2)",
+        "REPLACE INTO numbers SET missing = 1, nn = 2",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
@@ -400,7 +412,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, id, nn) VALUES (1, 2, 3)",
+        "REPLACE INTO numbers SET id = 1, id = 2, nn = 3",
         (struct expected_sql_error){
             .code = mysql_error_column_specified_twice,
             .sqlstate = "42000",
@@ -409,25 +421,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers VALUES (1)",
-        (struct expected_sql_error){
-            .code = mysql_error_column_count_mismatch,
-            .sqlstate = "21S01",
-            .message_part = "Column count doesn't match value count at row 1",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (1, 2, 3)",
-        (struct expected_sql_error){
-            .code = mysql_error_column_count_mismatch,
-            .sqlstate = "21S01",
-            .message_part = "Column count doesn't match value count at row 1",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id) VALUES (1)",
+        "REPLACE INTO numbers SET id = 1",
         (struct expected_sql_error){
             .code = mysql_error_field_no_default,
             .sqlstate = "HY000",
@@ -436,7 +430,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (NULL, 1)",
+        "REPLACE INTO numbers SET id = NULL, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_bad_null,
             .sqlstate = "23000",
@@ -445,7 +439,16 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, i, nn) VALUES (1, 2147483648, 1)",
+        "REPLACE INTO numbers SET id = NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'id' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO numbers SET id = 1, i = 2147483648, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_data_out_of_range,
             .sqlstate = "22003",
@@ -454,7 +457,16 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, iu, nn) VALUES (1, -1, 1)",
+        "REPLACE INTO numbers SET id = 1, i = 2147483648",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO numbers SET id = 1, iu = -1, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_data_out_of_range,
             .sqlstate = "22003",
@@ -463,7 +475,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, bu, nn) VALUES (1, 9223372036854775808, 1)",
+        "REPLACE INTO numbers SET id = 1, bu = 9223372036854775808, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_data_out_of_range,
             .sqlstate = "22003",
@@ -472,7 +484,16 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers VALUE (1)",
+        "REPLACE INTO numbers SET numbers.id = 1, nn = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "REPLACE ... SET supports only unqualified assignment columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO numbers SET id = 1 + 2, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -481,7 +502,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers VALUES ROW(1)",
+        "REPLACE INTO numbers SET id = '1', nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -490,7 +511,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE LOW_PRIORITY INTO numbers VALUES (1)",
+        "REPLACE LOW_PRIORITY INTO numbers SET id = 1, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -499,7 +520,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers SELECT 1",
+        "REPLACE DELAYED INTO numbers SET id = 1, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -508,7 +529,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers PARTITION (p0) VALUES (1)",
+        "REPLACE INTO numbers PARTITION (p0) SET id = 1, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -517,7 +538,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (app.id) VALUES (1)",
+        "REPLACE INTO numbers SET id = DEFAULT, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -526,7 +547,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (?, 1)",
+        "REPLACE INTO numbers SET id = ?, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -535,7 +556,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (ABS(1), 1)",
+        "REPLACE INTO numbers SET id = ABS(1), nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -544,7 +565,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES ((SELECT 1), 1)",
+        "REPLACE INTO numbers SET id = (SELECT 1), nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -553,7 +574,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES ('1', 1)",
+        "REPLACE INTO numbers SET id = 1.5, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -562,7 +583,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (1 + 2, 1)",
+        "REPLACE INTO numbers SET id = 1e0, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -571,7 +592,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (DEFAULT, 1)",
+        "REPLACE INTO numbers SET id = 0x1, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -580,34 +601,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (1.5, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (1e0, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (0x1, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (b'1', 1)",
+        "REPLACE INTO numbers SET id = b'1', nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -622,7 +616,20 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
             .values = empty_values,
             .column_count = 1U,
             .row_count = 0U,
-            .context = "failed replace leaves no rows",
+            .context = "failed replace set leaves no rows",
+        }
+    );
+
+    failures += expect_replace_ok(database, "REPLACE INTO numbers SET id = 1, nn = 10");
+    failures += expect_replace_ok(database, "REPLACE INTO numbers SET id = 1, nn = 20");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, nn FROM numbers ORDER BY nn",
+            .values = no_key_values,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "replace set no-key rows remain independent",
         }
     );
 
@@ -632,7 +639,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     return failures;
 }
 
-static int test_replace_values_independent_handles(void) {
+static int test_replace_set_independent_handles(void) {
     static const char *const first_values[] = {"1", "11"};
     static const char *const second_values[] = {"2", "22"};
     char first_path[test_path_capacity];
@@ -662,8 +669,8 @@ static int test_replace_values_independent_handles(void) {
     failures += create_numbers_table(first, "numbers");
     failures += create_numbers_table(second, "numbers");
 
-    failures += expect_replace_ok(first, "REPLACE INTO numbers (id, nn) VALUES (1, 11)", 1);
-    failures += expect_replace_ok(second, "REPLACE INTO numbers (id, nn) VALUES (2, 22)", 1);
+    failures += expect_replace_ok(first, "REPLACE INTO numbers SET id = 1, nn = 11");
+    failures += expect_replace_ok(second, "REPLACE INTO numbers SET id = 2, nn = 22");
     failures += expect_query_values(
         first,
         (struct expected_query){
@@ -671,7 +678,7 @@ static int test_replace_values_independent_handles(void) {
             .values = first_values,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "first independent replace rows",
+            .context = "first independent replace set rows",
         }
     );
     failures += expect_query_values(
@@ -681,7 +688,7 @@ static int test_replace_values_independent_handles(void) {
             .values = second_values,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "second independent replace rows",
+            .context = "second independent replace set rows",
         }
     );
 
@@ -771,15 +778,14 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     return failures;
 }
 
-static int expect_replace_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
+static int expect_replace_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), 0U, "replace column count");
-    failures += expect_size(mylite_result_row_count(result), 0U, "replace row count");
-    failures +=
-        expect_int64(mylite_result_affected_rows(result), affected_rows, "replace affected rows");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "replace warning count");
+    failures += expect_size(mylite_result_column_count(result), 0U, "replace set column count");
+    failures += expect_size(mylite_result_row_count(result), 0U, "replace set row count");
+    failures += expect_int64(mylite_result_affected_rows(result), 1, "replace set affected rows");
+    failures += expect_size(mylite_result_warning_count(result), 0U, "replace set warning count");
     mylite_result_free(result);
 
     return failures;
@@ -836,7 +842,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     written = snprintf(
         path,
         path_size,
-        "%s/mylite_replace_values_lifecycle_%d_%s.mylite",
+        "%s/mylite_replace_set_lifecycle_%d_%s.mylite",
         directory,
         current_process_id(),
         name

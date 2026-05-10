@@ -386,6 +386,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *assignments
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token replace_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *assignments
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_assignment_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *assignment

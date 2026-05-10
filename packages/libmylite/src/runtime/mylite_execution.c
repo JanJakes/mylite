@@ -643,6 +643,16 @@ static int execute_insert_set_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_replace_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_planned_insert_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_delete_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1669,6 +1679,7 @@ static int collect_insert_set_target_indexes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment_list,
     const struct planned_insert *plan,
+    const char *unsupported_qualified_target_message,
     size_t **out_indexes,
     size_t *out_index_count
 );
@@ -2422,6 +2433,8 @@ static int execute_parsed_statement(
         return execute_replace_values_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
         return execute_insert_set_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
+        return execute_replace_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DELETE_STATEMENT:
         return execute_delete_statement(database, statement, out_result);
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
@@ -3426,6 +3439,22 @@ static int execute_planned_insert_statement(
 }
 
 static int execute_insert_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_planned_insert_set_statement(database, statement, out_result);
+}
+
+static int execute_replace_set_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_planned_insert_set_statement(database, statement, out_result);
+}
+
+static int execute_planned_insert_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -5387,6 +5416,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INSERT_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_DELETE_STATEMENT:
     case MYLITE_SQL_AST_UPDATE_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
@@ -8051,6 +8081,9 @@ static int plan_insert_set(
             database,
             assignment_list,
             out_plan,
+            statement->kind == MYLITE_SQL_AST_REPLACE_SET_STATEMENT
+                ? "REPLACE ... SET supports only unqualified assignment columns"
+                : "INSERT ... SET supports only unqualified assignment columns",
             &target_indexes,
             &target_count
         );
@@ -12000,6 +12033,7 @@ static int collect_insert_set_target_indexes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment_list,
     const struct planned_insert *plan,
+    const char *unsupported_qualified_target_message,
     size_t **out_indexes,
     size_t *out_index_count
 ) {
@@ -12044,10 +12078,7 @@ static int collect_insert_set_target_indexes(
 
         target = child_at(assignment, 0U);
         if (target == NULL || target->kind != MYLITE_SQL_AST_IDENTIFIER) {
-            set_unsupported_error(
-                database,
-                "INSERT ... SET supports only unqualified assignment columns"
-            );
+            set_unsupported_error(database, unsupported_qualified_target_message);
             free(indexes);
             return MYLITE_ERROR;
         }

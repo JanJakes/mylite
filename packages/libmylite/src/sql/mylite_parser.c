@@ -1478,6 +1478,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_insert_set_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_replace_set_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token replace_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *assignments
+) {
+    struct mylite_sql_source_span span = span_from_token(&replace_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (assignments != NULL) {
+        span = span_join(span, assignments->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_REPLACE_SET_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, assignments);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_assignment_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *assignment

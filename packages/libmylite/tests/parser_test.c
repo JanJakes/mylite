@@ -3700,6 +3700,78 @@ static int test_table_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "REPLACE INTO app.simple_lifecycle SET id = +1, amount = NULL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_REPLACE_SET_STATEMENT, "replace set statement");
+    failures += expect_child_count(statement, 2U, "replace set statement");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app.simple_lifecycle", "replace set target");
+    failures += expect_node(
+        child_at(statement, 1U),
+        MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST,
+        "replace set assignments"
+    );
+    failures += expect_child_count(child_at(statement, 1U), 2U, "replace set assignment count");
+    failures += expect_node(
+        child_at(child_at(statement, 1U), 0U),
+        MYLITE_SQL_AST_INSERT_ASSIGNMENT,
+        "replace set first assignment"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(statement, 1U), 0U), 0U),
+        "id",
+        "replace set first target"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(statement, 1U), 0U), 1U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "replace set first value"
+    );
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 1U), 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "replace set second value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE simple_lifecycle SET id = TRUE, amount = false;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_REPLACE_SET_STATEMENT, "replace set no into");
+    failures += expect_span_text(child_at(statement, 0U), "simple_lifecycle", "replace set target");
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 1U), 0U), 1U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "replace set true value"
+    );
+    failures += expect_literal(
+        child_at(child_at(child_at(statement, 1U), 1U), 1U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "replace set false value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE INTO simple_lifecycle SET simple_lifecycle.id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 1U), 0U), 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "replace set qualified target"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT * FROM app.simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
     statement = child_at(result.root, 0U);
     failures += expect_node(statement, MYLITE_SQL_AST_SELECT_STATEMENT, "table wildcard select");
@@ -6525,9 +6597,6 @@ static int test_syntax_errors(void) {
     failures += parse_sql("REPLACE INTO t VALUES ROW(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("REPLACE INTO t SET id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql(
         "REPLACE LOW_PRIORITY INTO t VALUES (1);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
@@ -6570,6 +6639,47 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("REPLACE INTO t VALUES (b'1');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE INTO t SET id = 'text';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t SET id = 1 + 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE INTO t SET id = DEFAULT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t SET id = ?;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE INTO t SET id = ABS(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("REPLACE INTO t SET id = (SELECT 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t SET id = 1.5;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t SET id = 1e0;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t SET id = 0x1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("REPLACE INTO t SET id = b'1';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "REPLACE LOW_PRIORITY INTO t SET id = 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

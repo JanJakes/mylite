@@ -462,15 +462,6 @@ static int test_if_function_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT IF(1,2,3), 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT IF() supports only signed 64-bit integer",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT IF(1,2,3) LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,

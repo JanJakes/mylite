@@ -501,24 +501,6 @@ static int test_coalesce_function_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT COALESCE(1,2), 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT COALESCE() supports only signed 64-bit integer",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COALESCE(1,2), IFNULL(NULL,3)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT IFNULL() supports only signed 64-bit integer",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT COALESCE(1,2) LIMIT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,

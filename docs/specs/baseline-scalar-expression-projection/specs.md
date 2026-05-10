@@ -16,8 +16,8 @@ SELECT ALL scalar_value[, scalar_value ...] FROM DUAL
 The admitted values are the already-supported warning-free scalar leaves and
 functions:
 
-- decimal integer literals with optional unary `+` or `-` in the current
-  signed-64 envelope;
+- top-level decimal integer literals with optional unary `+` or `-` in the
+  current literal-projection envelope;
 - `TRUE`, `FALSE`, and `NULL`;
 - parentheses around admitted scalar values; and
 - nested supported `IF()`, `IFNULL()`, `COALESCE()`, `NULLIF()`, and
@@ -154,10 +154,13 @@ scalar_integer:
   | - unsigned_decimal_integer_literal
 ```
 
-Integer values remain limited to the current warning-free signed-64 baseline
-envelope: `-9223372036854775807` through `9223372036854775807`. Larger MySQL
-unsigned and exact numeric behavior is deferred until MyLite owns expression
-numeric types, warnings, and metadata more generally.
+Top-level scalar integer select items keep the existing literal-projection
+envelope and diagnostics, including the current 81-significant-digit exact
+integer limit. Scalar function operands remain limited to the warning-free
+signed-64 baseline envelope: `-9223372036854775807` through
+`9223372036854775807`. Larger MySQL unsigned and exact numeric function
+behavior is deferred until MyLite owns expression numeric types, warnings, and
+metadata more generally.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -259,7 +262,7 @@ more precise for a recognized top-level function call.
 Fast C tests should cover:
 
 - mixed no-source scalar value projection with literals and all supported
-  scalar functions;
+  scalar functions, preserving the existing top-level literal integer envelope;
 - mixed `FROM DUAL` projection and explicit `ALL`;
 - explicit aliases and default labels, including unary `+` and parentheses;
 - parenthesized top-level values and parenthesized nested function operands;

@@ -1838,27 +1838,11 @@ static int grouped_aggregate_execution_error(struct mylite_db *database, int rc)
 static bool select_statement_is_session_scalar_projection(
     const struct mylite_sql_ast_node *statement
 );
-static bool select_statement_is_literal_projection(const struct mylite_sql_ast_node *statement);
-static bool select_statement_is_if_projection(const struct mylite_sql_ast_node *statement);
-static bool select_statement_is_ifnull_projection(const struct mylite_sql_ast_node *statement);
-static bool select_statement_is_coalesce_projection(const struct mylite_sql_ast_node *statement);
-static bool select_statement_is_nullif_projection(const struct mylite_sql_ast_node *statement);
-static bool select_statement_is_isnull_projection(const struct mylite_sql_ast_node *statement);
+static bool select_statement_is_scalar_value_projection(
+    const struct mylite_sql_ast_node *statement
+);
 static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_node *statement);
-static bool select_statement_is_literal_projection_attempt(
-    const struct mylite_sql_ast_node *statement
-);
-static bool select_statement_is_if_projection_attempt(const struct mylite_sql_ast_node *statement);
-static bool select_statement_is_ifnull_projection_attempt(
-    const struct mylite_sql_ast_node *statement
-);
-static bool select_statement_is_coalesce_projection_attempt(
-    const struct mylite_sql_ast_node *statement
-);
-static bool select_statement_is_nullif_projection_attempt(
-    const struct mylite_sql_ast_node *statement
-);
-static bool select_statement_is_isnull_projection_attempt(
+static bool select_statement_is_scalar_value_projection_attempt(
     const struct mylite_sql_ast_node *statement
 );
 static int execute_scalar_projection_select_statement(
@@ -2018,11 +2002,6 @@ static bool resolve_system_variable_kind(
 static bool system_variable_kind_allows_global_scope(enum session_system_variable_kind kind);
 static bool system_variable_kind_allows_session_scope(enum session_system_variable_kind kind);
 static bool system_variable_kind_warns_on_scalar_read(enum session_system_variable_kind kind);
-static bool is_if_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_ifnull_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_coalesce_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_nullif_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_isnull_projection_expression(const struct mylite_sql_ast_node *expression);
 static int validate_if_value_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2074,14 +2053,15 @@ static int if_validation_stack_push(
     const struct mylite_sql_ast_node *expression
 );
 static void if_validation_stack_deinit(struct if_validation_stack *stack);
-static bool is_if_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
-static bool is_ifnull_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
-static bool is_coalesce_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
-static bool is_nullif_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
-static bool is_isnull_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
-static bool is_literal_projection_expression(const struct mylite_sql_ast_node *expression);
-static bool is_literal_projection_attempt_expression(const struct mylite_sql_ast_node *expression);
-static bool is_literal_projection_attempt_operand(const struct mylite_sql_ast_node *expression);
+static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_scalar_projection_literal_expression(const struct mylite_sql_ast_node *expression);
+static bool is_scalar_function_expression(const struct mylite_sql_ast_node *expression);
+static bool is_scalar_value_projection_attempt_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_scalar_value_projection_attempt_operand(
+    const struct mylite_sql_ast_node *expression
+);
 static int append_system_variable_read_warning(
     struct mylite_db *database,
     enum session_system_variable_kind kind
@@ -5281,12 +5261,7 @@ static int execute_select_statement(
         return MYLITE_ERROR;
     }
     if (select_statement_is_session_scalar_projection(statement) ||
-        select_statement_is_literal_projection(statement) ||
-        select_statement_is_if_projection(statement) ||
-        select_statement_is_ifnull_projection(statement) ||
-        select_statement_is_coalesce_projection(statement) ||
-        select_statement_is_nullif_projection(statement) ||
-        select_statement_is_isnull_projection(statement)) {
+        select_statement_is_scalar_value_projection(statement)) {
         return execute_scalar_projection_select_statement(database, statement, out_result);
     }
     if (select_statement_has_group_by_clause(statement)) {
@@ -5313,51 +5288,11 @@ static int execute_select_statement(
         planned_column_aggregate_deinit(&aggregate_plan);
         return rc;
     }
-    if (select_statement_is_literal_projection_attempt(statement)) {
+    if (select_statement_is_scalar_value_projection_attempt(statement)) {
         set_unsupported_error(
             database,
-            "SELECT literal projection supports only unparenthesized integer, boolean, and NULL "
-            "literals"
-        );
-        return MYLITE_ERROR;
-    }
-    if (select_statement_is_if_projection_attempt(statement)) {
-        set_unsupported_error(
-            database,
-            "SELECT IF() supports only signed 64-bit integer, boolean, NULL, and nested "
-            "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() arguments"
-        );
-        return MYLITE_ERROR;
-    }
-    if (select_statement_is_ifnull_projection_attempt(statement)) {
-        set_unsupported_error(
-            database,
-            "SELECT IFNULL() supports only signed 64-bit integer, boolean, NULL, and nested "
-            "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() arguments"
-        );
-        return MYLITE_ERROR;
-    }
-    if (select_statement_is_coalesce_projection_attempt(statement)) {
-        set_unsupported_error(
-            database,
-            "SELECT COALESCE() supports only signed 64-bit integer, boolean, NULL, and nested "
-            "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() arguments"
-        );
-        return MYLITE_ERROR;
-    }
-    if (select_statement_is_nullif_projection_attempt(statement)) {
-        set_unsupported_error(
-            database,
-            "SELECT NULLIF() supports only signed 64-bit integer, boolean, NULL, and nested "
-            "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() arguments"
-        );
-        return MYLITE_ERROR;
-    }
-    if (select_statement_is_isnull_projection_attempt(statement)) {
-        set_unsupported_error(
-            database,
-            "SELECT ISNULL() supports only signed 64-bit integer, boolean, NULL, and nested "
-            "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() arguments"
+            "SELECT scalar expression projection supports only signed 64-bit integer, boolean, "
+            "NULL, and nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() values"
         );
         return MYLITE_ERROR;
     }
@@ -14176,7 +14111,9 @@ static bool select_statement_is_session_scalar_projection(
     return true;
 }
 
-static bool select_statement_is_literal_projection(const struct mylite_sql_ast_node *statement) {
+static bool select_statement_is_scalar_value_projection(
+    const struct mylite_sql_ast_node *statement
+) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
     const struct mylite_sql_ast_node *select_item = NULL;
@@ -14197,157 +14134,7 @@ static bool select_statement_is_literal_projection(const struct mylite_sql_ast_n
     }
     while (select_item != NULL) {
         if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_literal_projection_expression(child_at(select_item, 0U))) {
-            return false;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return true;
-}
-
-static bool select_statement_is_if_projection(const struct mylite_sql_ast_node *statement) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
-        return false;
-    }
-    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
-        return false;
-    }
-    if (child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    if (select_item == NULL) {
-        return false;
-    }
-    while (select_item != NULL) {
-        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_if_projection_expression(child_at(select_item, 0U))) {
-            return false;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return true;
-}
-
-static bool select_statement_is_ifnull_projection(const struct mylite_sql_ast_node *statement) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
-        return false;
-    }
-    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
-        return false;
-    }
-    if (child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    if (select_item == NULL) {
-        return false;
-    }
-    while (select_item != NULL) {
-        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_ifnull_projection_expression(child_at(select_item, 0U))) {
-            return false;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return true;
-}
-
-static bool select_statement_is_coalesce_projection(const struct mylite_sql_ast_node *statement) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
-        return false;
-    }
-    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
-        return false;
-    }
-    if (child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    if (select_item == NULL) {
-        return false;
-    }
-    while (select_item != NULL) {
-        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_coalesce_projection_expression(child_at(select_item, 0U))) {
-            return false;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return true;
-}
-
-static bool select_statement_is_nullif_projection(const struct mylite_sql_ast_node *statement) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
-        return false;
-    }
-    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
-        return false;
-    }
-    if (child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    if (select_item == NULL) {
-        return false;
-    }
-    while (select_item != NULL) {
-        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_nullif_projection_expression(child_at(select_item, 0U))) {
-            return false;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return true;
-}
-
-static bool select_statement_is_isnull_projection(const struct mylite_sql_ast_node *statement) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *from_clause = child_at(statement, 1U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
-        return false;
-    }
-    if (from_clause != NULL && from_clause->kind != MYLITE_SQL_AST_FROM_DUAL) {
-        return false;
-    }
-    if (child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    if (select_item == NULL) {
-        return false;
-    }
-    while (select_item != NULL) {
-        if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_isnull_projection_expression(child_at(select_item, 0U))) {
+            !is_scalar_value_projection_expression(child_at(select_item, 0U))) {
             return false;
         }
         select_item = select_item->next_sibling;
@@ -14368,11 +14155,12 @@ static bool select_statement_has_no_source_or_dual(const struct mylite_sql_ast_n
     return false;
 }
 
-static bool select_statement_is_literal_projection_attempt(
+static bool select_statement_is_scalar_value_projection_attempt(
     const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
     const struct mylite_sql_ast_node *select_item = NULL;
+    bool saw_scalar_value_expression = false;
 
     if (!select_statement_has_no_source_or_dual(statement)) {
         return false;
@@ -14388,141 +14176,14 @@ static bool select_statement_is_literal_projection_attempt(
     }
     while (select_item != NULL) {
         if (select_item->kind != MYLITE_SQL_AST_SELECT_ITEM ||
-            !is_literal_projection_attempt_expression(child_at(select_item, 0U))) {
+            !is_scalar_value_projection_attempt_expression(child_at(select_item, 0U))) {
             return false;
         }
+        saw_scalar_value_expression = true;
         select_item = select_item->next_sibling;
     }
 
-    return true;
-}
-
-static bool select_statement_is_if_projection_attempt(const struct mylite_sql_ast_node *statement) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (!select_statement_has_no_source_or_dual(statement)) {
-        return false;
-    }
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    while (select_item != NULL) {
-        if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
-            is_if_projection_attempt_expression(child_at(select_item, 0U))) {
-            return true;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return false;
-}
-
-static bool select_statement_is_ifnull_projection_attempt(
-    const struct mylite_sql_ast_node *statement
-) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (!select_statement_has_no_source_or_dual(statement)) {
-        return false;
-    }
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    while (select_item != NULL) {
-        if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
-            is_ifnull_projection_attempt_expression(child_at(select_item, 0U))) {
-            return true;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return false;
-}
-
-static bool select_statement_is_coalesce_projection_attempt(
-    const struct mylite_sql_ast_node *statement
-) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (!select_statement_has_no_source_or_dual(statement)) {
-        return false;
-    }
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    while (select_item != NULL) {
-        if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
-            is_coalesce_projection_attempt_expression(child_at(select_item, 0U))) {
-            return true;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return false;
-}
-
-static bool select_statement_is_nullif_projection_attempt(
-    const struct mylite_sql_ast_node *statement
-) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (!select_statement_has_no_source_or_dual(statement)) {
-        return false;
-    }
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    while (select_item != NULL) {
-        if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
-            is_nullif_projection_attempt_expression(child_at(select_item, 0U))) {
-            return true;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return false;
-}
-
-static bool select_statement_is_isnull_projection_attempt(
-    const struct mylite_sql_ast_node *statement
-) {
-    const struct mylite_sql_ast_node *select_list = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *select_item = NULL;
-
-    if (!select_statement_has_no_source_or_dual(statement)) {
-        return false;
-    }
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        child_at(statement, 2U) != NULL) {
-        return false;
-    }
-
-    select_item = child_at(select_list, 0U);
-    while (select_item != NULL) {
-        if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
-            is_isnull_projection_attempt_expression(child_at(select_item, 0U))) {
-            return true;
-        }
-        select_item = select_item->next_sibling;
-    }
-
-    return false;
+    return saw_scalar_value_expression;
 }
 
 static int execute_scalar_projection_select_statement(
@@ -14610,6 +14271,8 @@ static int copy_scalar_projection_column_name(
     const struct mylite_sql_ast_node *expression,
     char **out_text
 ) {
+    const struct mylite_sql_ast_node *unwrapped = NULL;
+
     if (out_text == NULL) {
         return MYLITE_MISUSE;
     }
@@ -14618,13 +14281,22 @@ static int copy_scalar_projection_column_name(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
-        mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
-        const struct mylite_sql_ast_node *literal = child_at(expression, 0U);
+    unwrapped = unwrap_parenthesized_expression(expression);
+    if (unwrapped != NULL && unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        mylite_sql_ast_node_operator(unwrapped) == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        const struct mylite_sql_ast_node *literal = child_at(unwrapped, 0U);
 
         if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
             mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
             return copy_source_span_text(database, &literal->span, out_text);
+        }
+    }
+    if (unwrapped != NULL && unwrapped->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(unwrapped);
+
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            return copy_source_span_text(database, &unwrapped->span, out_text);
         }
     }
 
@@ -14893,6 +14565,11 @@ static int if_eval_current_expression(
 ) {
     int rc = MYLITE_OK;
 
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_if_unsupported_error(database, function_name);
+        return MYLITE_ERROR;
+    }
     if (expression->kind == MYLITE_SQL_AST_IF_FUNCTION) {
         if (mylite_sql_ast_node_child_count(expression) != 3U) {
             set_if_unsupported_error(database, function_name);
@@ -15944,51 +15621,6 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     return false;
 }
 
-static bool is_if_projection_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
-
-    if (expression == NULL) {
-        return false;
-    }
-    return expression->kind == MYLITE_SQL_AST_IF_FUNCTION;
-}
-
-static bool is_ifnull_projection_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
-
-    if (expression == NULL) {
-        return false;
-    }
-    return expression->kind == MYLITE_SQL_AST_IFNULL_FUNCTION;
-}
-
-static bool is_coalesce_projection_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
-
-    if (expression == NULL) {
-        return false;
-    }
-    return expression->kind == MYLITE_SQL_AST_COALESCE_FUNCTION;
-}
-
-static bool is_nullif_projection_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
-
-    if (expression == NULL) {
-        return false;
-    }
-    return expression->kind == MYLITE_SQL_AST_NULLIF_FUNCTION;
-}
-
-static bool is_isnull_projection_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
-
-    if (expression == NULL) {
-        return false;
-    }
-    return expression->kind == MYLITE_SQL_AST_ISNULL_FUNCTION;
-}
-
 static int validate_if_value_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -16016,6 +15648,7 @@ static int validate_if_value_node(
     const struct mylite_sql_ast_node *expression,
     const char *function_name
 ) {
+    expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         set_if_unsupported_error(database, function_name);
         return MYLITE_ERROR;
@@ -16193,6 +15826,7 @@ static const char *if_function_name(const struct mylite_sql_ast_node *expression
 static bool is_if_non_function_value_expression(const struct mylite_sql_ast_node *expression) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
 
+    expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         return false;
     }
@@ -16289,54 +15923,19 @@ static void if_validation_stack_deinit(struct if_validation_stack *stack) {
     *stack = (struct if_validation_stack){0};
 }
 
-static bool is_if_projection_attempt_expression(const struct mylite_sql_ast_node *expression) {
+static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression) {
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL) {
         return false;
     }
-    return expression->kind == MYLITE_SQL_AST_IF_FUNCTION;
-}
-
-static bool is_ifnull_projection_attempt_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
-
-    if (expression == NULL) {
-        return false;
+    if (is_scalar_projection_literal_expression(expression)) {
+        return true;
     }
-    return expression->kind == MYLITE_SQL_AST_IFNULL_FUNCTION;
+    return is_scalar_function_expression(expression);
 }
 
-static bool is_coalesce_projection_attempt_expression(
-    const struct mylite_sql_ast_node *expression
-) {
-    expression = unwrap_parenthesized_expression(expression);
-
-    if (expression == NULL) {
-        return false;
-    }
-    return expression->kind == MYLITE_SQL_AST_COALESCE_FUNCTION;
-}
-
-static bool is_nullif_projection_attempt_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
-
-    if (expression == NULL) {
-        return false;
-    }
-    return expression->kind == MYLITE_SQL_AST_NULLIF_FUNCTION;
-}
-
-static bool is_isnull_projection_attempt_expression(const struct mylite_sql_ast_node *expression) {
-    expression = unwrap_parenthesized_expression(expression);
-
-    if (expression == NULL) {
-        return false;
-    }
-    return expression->kind == MYLITE_SQL_AST_ISNULL_FUNCTION;
-}
-
-static bool is_literal_projection_expression(const struct mylite_sql_ast_node *expression) {
+static bool is_scalar_projection_literal_expression(const struct mylite_sql_ast_node *expression) {
     enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
 
     if (expression == NULL) {
@@ -16353,10 +15952,7 @@ static bool is_literal_projection_expression(const struct mylite_sql_ast_node *e
         if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
             return false;
         }
-        if (mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) {
-            return true;
-        }
-        return false;
+        return mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER;
     }
     if (expression->kind != MYLITE_SQL_AST_LITERAL) {
         return false;
@@ -16374,7 +15970,26 @@ static bool is_literal_projection_expression(const struct mylite_sql_ast_node *e
     }
 }
 
-static bool is_literal_projection_attempt_expression(const struct mylite_sql_ast_node *expression) {
+static bool is_scalar_function_expression(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return false;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_IF_FUNCTION:
+    case MYLITE_SQL_AST_IFNULL_FUNCTION:
+    case MYLITE_SQL_AST_COALESCE_FUNCTION:
+    case MYLITE_SQL_AST_NULLIF_FUNCTION:
+    case MYLITE_SQL_AST_ISNULL_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool is_scalar_value_projection_attempt_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         return false;
     }
@@ -16383,49 +15998,43 @@ static bool is_literal_projection_attempt_expression(const struct mylite_sql_ast
     case MYLITE_SQL_AST_LITERAL:
         return true;
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
-        return is_literal_projection_attempt_operand(expression);
+        return is_scalar_value_projection_attempt_operand(expression);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
-        if (!is_literal_projection_attempt_operand(child_at(expression, 0U))) {
+        if (!is_scalar_value_projection_attempt_operand(child_at(expression, 0U))) {
             return false;
         }
-        return is_literal_projection_attempt_operand(child_at(expression, 1U));
-    case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
-        return is_literal_projection_attempt_operand(expression);
+        return is_scalar_value_projection_attempt_operand(child_at(expression, 1U));
     default:
-        return false;
+        return is_scalar_function_expression(expression);
     }
 }
 
-static bool is_literal_projection_attempt_operand(const struct mylite_sql_ast_node *expression) {
-    if (expression == NULL) {
-        return false;
-    }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return true;
-    }
-    if (expression->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
-        const struct mylite_sql_ast_node *child = child_at(expression, 0U);
+static bool is_scalar_value_projection_attempt_operand(
+    const struct mylite_sql_ast_node *expression
+) {
+    while (true) {
+        enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
 
-        if (child != NULL && child->kind == MYLITE_SQL_AST_LITERAL) {
+        expression = unwrap_parenthesized_expression(expression);
+        if (expression == NULL) {
+            return false;
+        }
+        if (expression->kind == MYLITE_SQL_AST_LITERAL) {
             return true;
         }
-        return false;
-    }
-    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
-        const struct mylite_sql_ast_node *child = child_at(expression, 0U);
-
+        if (is_scalar_function_expression(expression)) {
+            return true;
+        }
+        if (expression->kind != MYLITE_SQL_AST_UNARY_EXPRESSION) {
+            return false;
+        }
+        operator_kind = mylite_sql_ast_node_operator(expression);
         if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
             operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
             return false;
         }
-        if (child != NULL && child->kind == MYLITE_SQL_AST_LITERAL) {
-            return true;
-        }
-        return false;
+        expression = child_at(expression, 0U);
     }
-
-    return false;
 }
 
 static const struct mylite_sql_ast_node *unwrap_parenthesized_expression(

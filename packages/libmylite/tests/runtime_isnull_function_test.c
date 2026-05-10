@@ -490,15 +490,6 @@ static int test_isnull_function_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
-        "SELECT ISNULL(NULL), 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT ISNULL() supports only signed 64-bit integer",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT ISNULL(NULL) WHERE TRUE",
         (struct expected_sql_error){
             .code = mysql_error_parse,

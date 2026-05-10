@@ -283,6 +283,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
     struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause,
     struct mylite_sql_ast_node *group_clause,
+    struct mylite_sql_ast_node *having_clause,
     struct mylite_sql_ast_node *order_clause,
     struct mylite_sql_ast_node *limit_clause
 ) {
@@ -293,6 +294,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
         from_clause,
         where_clause,
         group_clause,
+        having_clause,
         order_clause,
         limit_clause
     );
@@ -308,6 +310,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause,
     struct mylite_sql_ast_node *group_clause,
+    struct mylite_sql_ast_node *having_clause,
     struct mylite_sql_ast_node *order_clause,
     struct mylite_sql_ast_node *limit_clause
 ) {
@@ -326,6 +329,9 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     if (group_clause != NULL) {
         span = span_join(span, group_clause->span);
     }
+    if (having_clause != NULL) {
+        span = span_join(span, having_clause->span);
+    }
     if (order_clause != NULL) {
         span = span_join(span, order_clause->span);
     }
@@ -342,6 +348,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     mylite_sql_ast_node_append_child(statement, from_clause);
     mylite_sql_ast_node_append_child(statement, where_clause);
     mylite_sql_ast_node_append_child(statement, group_clause);
+    mylite_sql_ast_node_append_child(statement, having_clause);
     mylite_sql_ast_node_append_child(statement, order_clause);
     mylite_sql_ast_node_append_child(statement, limit_clause);
     return statement;
@@ -2149,6 +2156,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
     return group_clause;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_having_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token having_token,
+    struct mylite_sql_ast_node *predicate
+) {
+    struct mylite_sql_source_span span = span_from_token(&having_token);
+    struct mylite_sql_ast_node *having_clause = NULL;
+
+    if (predicate != NULL) {
+        span = span_join(span, predicate->span);
+    }
+
+    having_clause = make_node(state, MYLITE_SQL_AST_HAVING_CLAUSE, span);
+    if (having_clause == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(having_clause, predicate);
+    return having_clause;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_comparison_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,
@@ -2968,6 +2996,7 @@ static bool map_keyword_token(
         {"FROM", MYLITE_SQL_PARSE_FROM},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
+        {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
         {"CONNECTION_ID", MYLITE_SQL_PARSE_CONNECTION_ID},

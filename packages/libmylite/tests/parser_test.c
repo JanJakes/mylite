@@ -5739,23 +5739,28 @@ static int test_select_group_by_clause(void) {
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *group_clause = NULL;
+    const struct mylite_sql_ast_node *having_clause = NULL;
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
     int failures = 0;
 
     failures += parse_sql(
-        "SELECT g, COUNT(*) FROM numbers WHERE id >= 1 GROUP BY g ORDER BY g LIMIT 2;",
+        "SELECT g, COUNT(*) AS c FROM numbers WHERE id >= 1 GROUP BY g HAVING c > 1 "
+        "ORDER BY g LIMIT 2;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
     statement = child_at(result.root, 0U);
     select_list = child_at(statement, 0U);
     group_clause = first_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+    having_clause = first_child_kind(statement, MYLITE_SQL_AST_HAVING_CLAUSE);
     order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
     limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
     failures += expect_node(group_clause, MYLITE_SQL_AST_GROUP_BY_CLAUSE, "group clause");
     failures += expect_span_text(child_at(group_clause, 0U), "g", "group key");
     failures += expect_node(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "group where");
+    failures += expect_node(having_clause, MYLITE_SQL_AST_HAVING_CLAUSE, "group having");
+    failures += expect_span_text(child_at(child_at(having_clause, 0U), 0U), "c", "having alias");
     failures += expect_node(order_clause, MYLITE_SQL_AST_ORDER_BY_CLAUSE, "group order");
     failures += expect_node(limit_clause, MYLITE_SQL_AST_LIMIT_CLAUSE, "group limit");
     failures += expect_node(
@@ -5766,13 +5771,14 @@ static int test_select_group_by_clause(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
-        "SELECT t.g AS k, SUM(t.n) AS s FROM app.numbers AS t GROUP BY t.g ORDER BY k DESC "
-        "LIMIT 1 OFFSET 1;",
+        "SELECT t.g AS k, SUM(t.n) AS s FROM app.numbers AS t GROUP BY t.g "
+        "HAVING SUM(t.n) IS NOT NULL ORDER BY k DESC LIMIT 1 OFFSET 1;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
     statement = child_at(result.root, 0U);
     group_clause = first_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+    having_clause = first_child_kind(statement, MYLITE_SQL_AST_HAVING_CLAUSE);
     order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
     limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
     failures += expect_node(
@@ -5781,6 +5787,11 @@ static int test_select_group_by_clause(void) {
         "qualified group key"
     );
     failures += expect_span_text(child_at(group_clause, 0U), "t.g", "qualified group span");
+    failures += expect_node(
+        child_at(child_at(having_clause, 0U), 0U),
+        MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION,
+        "having aggregate operand"
+    );
     failures += expect_span_text(child_at(order_clause, 0U), "k", "group order alias");
     failures += expect_order_direction(
         child_at(order_clause, 1U),
@@ -5807,6 +5818,21 @@ static int test_select_group_by_clause(void) {
 
     failures += parse_sql(
         "SELECT g, COUNT(*) FROM numbers GROUP BY g HAVING COUNT(*) > 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    having_clause = first_child_kind(statement, MYLITE_SQL_AST_HAVING_CLAUSE);
+    failures += expect_node(having_clause, MYLITE_SQL_AST_HAVING_CLAUSE, "count having");
+    failures += expect_node(
+        child_at(child_at(having_clause, 0U), 0U),
+        MYLITE_SQL_AST_COUNT_STAR_FUNCTION,
+        "having count star"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT g, COUNT(*) FROM numbers GROUP BY g HAVING COUNT(*) + 1 > 2;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

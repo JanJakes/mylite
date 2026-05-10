@@ -948,90 +948,90 @@ update_value(A) ::= FALSE(T). {
 }
 
 select_statement(A) ::= SELECT(T) select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL, NULL);
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) ALL select_item_list(B). {
-    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL, NULL);
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL);
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) ALL select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL);
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::=
     SELECT(T) select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
 select_statement(A) ::=
     SELECT(T) ALL select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
 select_statement(A) ::=
     SELECT(T) DISTINCT select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
 select_statement(A) ::=
     SELECT(T) DISTINCTROW select_item_list(B) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
-        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
 select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        NULL, NULL, NULL, NULL, NULL);
+        NULL, NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) ALL STAR(S). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        NULL, NULL, NULL, NULL, NULL);
+        NULL, NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::= SELECT(T) ALL STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL);
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL, NULL, NULL);
 }
 select_statement(A) ::=
     SELECT(T) STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
 select_statement(A) ::=
     SELECT(T) ALL STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
 select_statement(A) ::=
     SELECT(T) DISTINCT STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
 select_statement(A) ::=
     SELECT(T) DISTINCTROW STAR(S) FROM(F) table_name(N) table_alias_opt(AL) where_clause_opt(W)
-    group_clause_opt(G) order_clause_opt(O) limit_clause_opt(L). {
+    group_clause_opt(G) having_clause_opt(H) order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_distinct_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
-        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, O, L);
+        mylite_sql_parser_make_from_table(state, F, N, AL), W, G, H, O, L);
 }
 
 table_alias_opt(A) ::= . {
@@ -1056,6 +1056,109 @@ group_clause_opt(A) ::= . {
 }
 group_clause_opt(A) ::= GROUP(G) BY qualified_identifier(K). {
     A = mylite_sql_parser_make_group_by_clause(state, G, K);
+}
+
+having_clause_opt(A) ::= . {
+    A = NULL;
+}
+having_clause_opt(A) ::= HAVING(H) having_predicate(P). {
+    A = mylite_sql_parser_make_having_clause(state, H, P);
+}
+
+having_predicate(A) ::= having_predicate_atom(B). {
+    A = B;
+}
+having_predicate(A) ::= LPAREN(L) having_predicate(B) RPAREN(R). {
+    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
+}
+
+having_predicate_atom(A) ::= having_operand(C) EQUAL(O) having_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
+}
+having_predicate_atom(A) ::= having_operand(C) NULL_SAFE_EQUAL(O) having_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, V);
+}
+having_predicate_atom(A) ::= having_operand(C) NOT_EQUAL(O) having_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V);
+}
+having_predicate_atom(A) ::= having_operand(C) LESS(O) having_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS, V);
+}
+having_predicate_atom(A) ::= having_operand(C) LESS_EQUAL(O) having_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, V);
+}
+having_predicate_atom(A) ::= having_operand(C) GREATER(O) having_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER, V);
+}
+having_predicate_atom(A) ::= having_operand(C) GREATER_EQUAL(O) having_integer_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
+}
+having_predicate_atom(A) ::= having_operand(C) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
+}
+having_predicate_atom(A) ::= having_operand(C) IS(I) NOT NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
+
+having_operand(A) ::= qualified_identifier(B). {
+    A = B;
+}
+having_operand(A) ::= selected_grouped_aggregate_expression(B). {
+    A = B;
+}
+
+selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L) STAR RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_COUNT_STAR_FUNCTION, R);
+}
+selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION, B, R);
+}
+selected_grouped_aggregate_expression(A) ::= MIN(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R);
+}
+selected_grouped_aggregate_expression(A) ::= MAX(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R);
+}
+selected_grouped_aggregate_expression(A) ::= SUM(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R);
+}
+selected_grouped_aggregate_expression(A) ::= AVG(T) LPAREN qualified_identifier(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R);
+}
+
+having_integer_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+having_integer_value(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+having_integer_value(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+having_integer_value(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+having_integer_value(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
 
 predicate(A) ::= predicate_atom(B). {

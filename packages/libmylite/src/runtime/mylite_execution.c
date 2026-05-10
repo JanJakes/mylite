@@ -112,6 +112,7 @@ enum column_reference_diagnostic_context {
     COLUMN_REFERENCE_WHERE = 1,
     COLUMN_REFERENCE_ORDER = 2,
     COLUMN_REFERENCE_GROUP = 3,
+    COLUMN_REFERENCE_HAVING = 4,
 };
 
 struct planned_column {
@@ -333,6 +334,25 @@ struct planned_select_limit {
     int64_t offset;
 };
 
+enum planned_grouped_having_kind {
+    PLANNED_GROUPED_HAVING_NONE = 0,
+    PLANNED_GROUPED_HAVING_COMPARISON = 1,
+    PLANNED_GROUPED_HAVING_IS_NULL = 2,
+};
+
+enum planned_grouped_having_operand {
+    PLANNED_GROUPED_HAVING_OPERAND_NONE = 0,
+    PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN = 1,
+    PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE = 2,
+};
+
+struct planned_grouped_having {
+    enum planned_grouped_having_kind kind;
+    enum planned_grouped_having_operand operand;
+    enum mylite_sql_ast_operator operator_kind;
+    struct planned_value value;
+};
+
 struct planned_diagnostics_show_limit {
     bool has_limit;
     uint64_t row_count;
@@ -435,6 +455,7 @@ struct planned_grouped_aggregate {
     struct mylite_catalog_column_descriptor group_column;
     struct mylite_catalog_column_descriptor aggregate_column;
     struct planned_select_predicate predicate;
+    struct planned_grouped_having having;
     struct planned_select_order order;
     struct planned_select_limit limit;
 };
@@ -442,6 +463,7 @@ struct planned_grouped_aggregate {
 struct grouped_aggregate_clauses {
     const struct mylite_sql_ast_node *where_clause;
     const struct mylite_sql_ast_node *group_clause;
+    const struct mylite_sql_ast_node *having_clause;
     const struct mylite_sql_ast_node *order_clause;
     const struct mylite_sql_ast_node *limit_clause;
 };
@@ -1460,6 +1482,76 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
 );
 static bool grouped_aggregate_function_has_column(enum planned_grouped_aggregate_function function);
 static bool grouped_aggregate_function_is_bitwise(enum planned_grouped_aggregate_function function);
+static int plan_grouped_aggregate_having(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *having_clause,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+);
+static int plan_grouped_having_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *having_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+);
+static int plan_grouped_having_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    enum planned_grouped_having_operand *out_operand
+);
+static int plan_grouped_having_identifier_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    enum planned_grouped_having_operand *out_operand
+);
+static int plan_grouped_having_aggregate_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_grouped_aggregate *plan
+);
+static int convert_grouped_having_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_grouped_aggregate *plan,
+    enum planned_grouped_having_operand operand,
+    struct planned_value *out_value
+);
+static int parse_grouped_having_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *operand_name,
+    bool *out_is_negative,
+    uint64_t *out_magnitude
+);
+static int convert_grouped_having_group_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct planned_grouped_aggregate *plan,
+    struct planned_value *out_value
+);
+static int convert_grouped_having_aggregate_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const char *operand_name,
+    struct planned_value *out_value
+);
 static int plan_grouped_aggregate_order(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,
@@ -2600,6 +2692,19 @@ static int append_grouped_aggregate_select_list_sql(
     const struct planned_grouped_aggregate *plan
 );
 static const char *grouped_aggregate_sql_function(enum planned_grouped_aggregate_function function);
+static int append_grouped_having_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
+);
+static int append_grouped_having_operand_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan
+);
+static int append_grouped_having_aggregate_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan
+);
 static int append_select_predicate_sql(
     struct dynamic_string *string,
     const struct planned_select_predicate *predicate,
@@ -2784,6 +2889,7 @@ static void set_unknown_column_error(struct mylite_db *database, const char *col
 static void set_unknown_where_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_order_column_error(struct mylite_db *database, const char *column_name);
 static void set_unknown_group_column_error(struct mylite_db *database, const char *column_name);
+static void set_unknown_having_column_error(struct mylite_db *database, const char *column_name);
 static void set_ambiguous_order_column_error(struct mylite_db *database, const char *column_name);
 static void set_only_full_group_by_error(
     struct mylite_db *database,
@@ -2850,6 +2956,7 @@ static void set_display_width_out_of_range_error(
     const char *column_name
 );
 static void set_predicate_out_of_range_error(struct mylite_db *database, const char *column_name);
+static void set_having_out_of_range_error(struct mylite_db *database, const char *operand_name);
 static void set_limit_out_of_range_error(struct mylite_db *database);
 static void set_identifier_too_long_error(struct mylite_db *database, const char *kind);
 static void set_reserved_name_error(struct mylite_db *database, const char *kind, const char *name);
@@ -3152,6 +3259,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
+    case MYLITE_SQL_AST_HAVING_CLAUSE:
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
@@ -6567,6 +6675,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_FROM_TABLE:
     case MYLITE_SQL_AST_WHERE_CLAUSE:
     case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
+    case MYLITE_SQL_AST_HAVING_CLAUSE:
     case MYLITE_SQL_AST_COMPARISON_PREDICATE:
     case MYLITE_SQL_AST_IS_NULL_PREDICATE:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
@@ -10967,6 +11076,16 @@ static int plan_grouped_aggregate(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = plan_grouped_aggregate_having(
+            database,
+            clauses.having_clause,
+            &source_context,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_grouped_aggregate_order(
             database,
             clauses.order_clause,
@@ -11000,6 +11119,9 @@ static int collect_grouped_aggregate_clauses(
         case MYLITE_SQL_AST_GROUP_BY_CLAUSE:
             out_clauses->group_clause = optional_clause;
             break;
+        case MYLITE_SQL_AST_HAVING_CLAUSE:
+            out_clauses->having_clause = optional_clause;
+            break;
         case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
             out_clauses->order_clause = optional_clause;
             break;
@@ -11009,7 +11131,7 @@ static int collect_grouped_aggregate_clauses(
         default:
             set_unsupported_error(
                 database,
-                "GROUP BY supports only WHERE, GROUP BY, ORDER BY, and LIMIT"
+                "GROUP BY supports only WHERE, GROUP BY, HAVING, ORDER BY, and LIMIT"
             );
             return MYLITE_ERROR;
         }
@@ -11266,6 +11388,451 @@ static bool grouped_aggregate_function_is_bitwise(
     }
 
     return false;
+}
+
+static int plan_grouped_aggregate_having(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *having_clause,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+) {
+    out_plan->having = (struct planned_grouped_having){0};
+    if (having_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (having_clause->kind != MYLITE_SQL_AST_HAVING_CLAUSE) {
+        set_unsupported_error(database, "HAVING supports only one grouped predicate");
+        return MYLITE_ERROR;
+    }
+
+    return plan_grouped_having_node(
+        database,
+        child_at(having_clause, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        out_plan
+    );
+}
+
+static int plan_grouped_having_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *having_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+) {
+    const struct mylite_sql_ast_node *current = having_node;
+    enum planned_grouped_having_operand operand = PLANNED_GROUPED_HAVING_OPERAND_NONE;
+    int rc = MYLITE_OK;
+
+    while (current != NULL && current->kind == MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION) {
+        current = child_at(current, 0U);
+    }
+    if (current == NULL) {
+        set_unsupported_error(database, "HAVING supports only one grouped predicate");
+        return MYLITE_ERROR;
+    }
+    if (current->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
+        current->kind != MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+        set_unsupported_error(database, "HAVING supports only one grouped predicate");
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_grouped_having_operand(
+        database,
+        child_at(current, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        out_plan,
+        &operand
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_plan->having.operand = operand;
+    out_plan->having.operator_kind = mylite_sql_ast_node_operator(current);
+    if (current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+        out_plan->having.kind = PLANNED_GROUPED_HAVING_IS_NULL;
+        return MYLITE_OK;
+    }
+
+    rc = convert_grouped_having_integer_literal(
+        database,
+        child_at(current, 1U),
+        out_plan,
+        operand,
+        &out_plan->having.value
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_plan->having.kind = PLANNED_GROUPED_HAVING_COMPARISON;
+    return MYLITE_OK;
+}
+
+static int plan_grouped_having_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    enum planned_grouped_having_operand *out_operand
+) {
+    const struct mylite_sql_ast_node *operand = unwrap_parenthesized_expression(operand_node);
+    int rc = MYLITE_OK;
+
+    *out_operand = PLANNED_GROUPED_HAVING_OPERAND_NONE;
+    if (operand == NULL) {
+        set_unsupported_error(database, "HAVING supports only grouped columns or aggregates");
+        return MYLITE_ERROR;
+    }
+    if (operand->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        operand->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return plan_grouped_having_identifier_operand(
+            database,
+            operand,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_plan,
+            out_operand
+        );
+    }
+
+    rc = plan_grouped_having_aggregate_operand(
+        database,
+        operand,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_plan
+    );
+    if (rc == MYLITE_OK) {
+        *out_operand = PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE;
+    }
+
+    return rc;
+}
+
+static int plan_grouped_having_identifier_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    enum planned_grouped_having_operand *out_operand
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t part_count = 0U;
+    size_t column_index = 0U;
+    bool matches_alias = false;
+    struct mylite_catalog_column_descriptor resolved_column = {0};
+    int rc = collect_column_reference_parts(database, operand_node, parts, &part_count);
+
+    if (rc == MYLITE_OK) {
+        rc = format_column_reference_name(
+            database,
+            parts,
+            part_count,
+            column_name,
+            sizeof(column_name)
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (part_count > 1U) {
+        rc = resolve_descriptor_column_reference(
+            database,
+            operand_node,
+            source_context,
+            COLUMN_REFERENCE_HAVING,
+            "HAVING supports only grouped columns or selected aggregate aliases",
+            table_columns,
+            table_column_count,
+            &resolved_column
+        );
+        if (rc == MYLITE_OK && resolved_column.column_id != out_plan->group_column.column_id) {
+            set_unknown_having_column_error(database, column_name);
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            *out_operand = PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN;
+        }
+        return rc;
+    }
+
+    if (text_equals_ascii_case_insensitive(parts[0], out_plan->group_column.name)) {
+        *out_operand = PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN;
+        return MYLITE_OK;
+    }
+
+    rc = order_identifier_matches_alias(
+        database,
+        operand_node,
+        out_plan->aggregate_alias,
+        &matches_alias
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (matches_alias) {
+        if (grouped_aggregate_function_is_bitwise(out_plan->function)) {
+            set_unsupported_error(database, "HAVING does not support bitwise aggregate predicates");
+            return MYLITE_ERROR;
+        }
+        *out_operand = PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE;
+        return MYLITE_OK;
+    }
+
+    rc = order_identifier_matches_alias(
+        database,
+        operand_node,
+        out_plan->group_alias,
+        &matches_alias
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (matches_alias) {
+        *out_operand = PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN;
+        return MYLITE_OK;
+    }
+
+    if (find_column_index(table_columns, table_column_count, parts[0], &column_index) ==
+        MYLITE_OK) {
+        set_unknown_having_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    set_unknown_having_column_error(database, column_name);
+    return MYLITE_ERROR;
+}
+
+static int plan_grouped_having_aggregate_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_grouped_aggregate *plan
+) {
+    enum planned_grouped_aggregate_function function =
+        grouped_aggregate_function_from_expression(operand_node);
+    struct mylite_catalog_column_descriptor column = {0};
+    struct integer_column_range range = {0};
+    int rc = MYLITE_OK;
+
+    if (function == PLANNED_GROUPED_AGGREGATE_NONE) {
+        set_unsupported_error(database, "HAVING supports only grouped columns or aggregates");
+        return MYLITE_ERROR;
+    }
+    if (grouped_aggregate_function_is_bitwise(function)) {
+        set_unsupported_error(database, "HAVING does not support bitwise aggregate predicates");
+        return MYLITE_ERROR;
+    }
+    if (function != plan->function) {
+        set_unsupported_error(database, "HAVING supports only the selected aggregate result");
+        return MYLITE_ERROR;
+    }
+    if (!grouped_aggregate_function_has_column(function)) {
+        return MYLITE_OK;
+    }
+
+    rc = resolve_descriptor_column_reference(
+        database,
+        child_at(operand_node, 0U),
+        source_context,
+        COLUMN_REFERENCE_HAVING,
+        "HAVING supports only descriptor aggregate columns",
+        table_columns,
+        table_column_count,
+        &column
+    );
+    if (rc == MYLITE_OK && function != PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN) {
+        rc = integer_range_for_column(
+            database,
+            &column,
+            "HAVING supports only integer aggregate columns",
+            &range
+        );
+    }
+    if (rc == MYLITE_OK && column.column_id != plan->aggregate_column.column_id) {
+        set_unsupported_error(database, "HAVING supports only the selected aggregate result");
+        rc = MYLITE_ERROR;
+    }
+
+    return rc;
+}
+
+static int convert_grouped_having_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct planned_grouped_aggregate *plan,
+    enum planned_grouped_having_operand operand,
+    struct planned_value *out_value
+) {
+    const char *operand_name = operand == PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN
+                                   ? plan->group_column.name
+                                   : "aggregate";
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = parse_grouped_having_integer_literal(
+        database,
+        value_node,
+        operand_name,
+        &is_negative,
+        &magnitude
+    );
+
+    *out_value = (struct planned_value){.is_null = false, .integer = 0};
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (operand == PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN) {
+        return convert_grouped_having_group_value(
+            database,
+            magnitude,
+            is_negative,
+            plan,
+            out_value
+        );
+    }
+
+    return convert_grouped_having_aggregate_value(
+        database,
+        magnitude,
+        is_negative,
+        operand_name,
+        out_value
+    );
+}
+
+static int parse_grouped_having_integer_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *operand_name,
+    bool *out_is_negative,
+    uint64_t *out_magnitude
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+    int rc = MYLITE_OK;
+
+    *out_is_negative = false;
+    *out_magnitude = 0U;
+    if (value_node == NULL) {
+        set_unsupported_error(database, "HAVING supports only integer or boolean literals");
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(value_node);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            *out_is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, "HAVING supports only integer or boolean literals");
+            return MYLITE_ERROR;
+        }
+        literal = child_at(value_node, 0U);
+    }
+    if (!boolean_literal_magnitude(literal, out_magnitude)) {
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            set_unsupported_error(database, "HAVING supports only integer or boolean literals");
+            return MYLITE_ERROR;
+        }
+        rc = parse_unsigned_integer_literal(&literal->span, out_magnitude);
+        if (rc != MYLITE_OK) {
+            set_having_out_of_range_error(database, operand_name);
+            return MYLITE_ERROR;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int convert_grouped_having_group_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const struct planned_grouped_aggregate *plan,
+    struct planned_value *out_value
+) {
+    const uint64_t int64_negative_abs_max = 9223372036854775808ULL;
+    struct integer_column_range range = {0};
+    int rc = integer_range_for_column(
+        database,
+        &plan->group_column,
+        "HAVING supports only integer grouped columns",
+        &range
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_negative) {
+        if ((range.negative_abs_max == 0U && magnitude != 0U) ||
+            magnitude > range.negative_abs_max) {
+            set_having_out_of_range_error(database, plan->group_column.name);
+            return MYLITE_ERROR;
+        }
+        if (magnitude == int64_negative_abs_max) {
+            out_value->integer = INT64_MIN;
+        } else {
+            out_value->integer = -(int64_t)magnitude;
+        }
+        out_value->is_null = false;
+        return MYLITE_OK;
+    }
+    if (magnitude > range.positive_max) {
+        set_having_out_of_range_error(database, plan->group_column.name);
+        return MYLITE_ERROR;
+    }
+
+    out_value->integer = (int64_t)magnitude;
+    out_value->is_null = false;
+    return MYLITE_OK;
+}
+
+static int convert_grouped_having_aggregate_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const char *operand_name,
+    struct planned_value *out_value
+) {
+    const uint64_t int64_positive_max = 9223372036854775807ULL;
+    const uint64_t int64_negative_abs_max = 9223372036854775808ULL;
+
+    if (is_negative && magnitude > int64_negative_abs_max) {
+        set_having_out_of_range_error(database, operand_name);
+        return MYLITE_ERROR;
+    }
+    if (!is_negative && magnitude > int64_positive_max) {
+        set_having_out_of_range_error(database, operand_name);
+        return MYLITE_ERROR;
+    }
+    if (is_negative && magnitude == int64_negative_abs_max) {
+        out_value->integer = INT64_MIN;
+    } else if (is_negative) {
+        out_value->integer = -(int64_t)magnitude;
+    } else {
+        out_value->integer = (int64_t)magnitude;
+    }
+    out_value->is_null = false;
+
+    return MYLITE_OK;
 }
 
 static int plan_grouped_aggregate_order(
@@ -15335,6 +15902,10 @@ static void set_unknown_column_reference_error(
         set_unknown_group_column_error(database, column_name);
         return;
     }
+    if (context == COLUMN_REFERENCE_HAVING) {
+        set_unknown_having_column_error(database, column_name);
+        return;
+    }
 
     set_unknown_column_error(database, column_name);
 }
@@ -19254,6 +19825,9 @@ static int build_grouped_aggregate_sql(
         rc = dynamic_string_append_quoted_identifier(&string, plan->group_column.name);
     }
     if (rc == MYLITE_OK) {
+        rc = append_grouped_having_sql(&string, plan, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
         rc = append_select_order_sql(&string, &plan->order);
     }
     if (rc == MYLITE_OK) {
@@ -19346,6 +19920,91 @@ static const char *grouped_aggregate_sql_function(
     }
 
     return "";
+}
+
+static int append_grouped_having_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (plan->having.kind == PLANNED_GROUPED_HAVING_NONE) {
+        return MYLITE_OK;
+    }
+
+    rc = dynamic_string_append(string, " HAVING ");
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_having_operand_sql(string, plan);
+    }
+    if (plan->having.kind == PLANNED_GROUPED_HAVING_COMPARISON) {
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ' ');
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, comparison_operator_sql(plan->having.operator_kind));
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ' ');
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, *next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+    } else if (plan->having.kind == PLANNED_GROUPED_HAVING_IS_NULL) {
+        if (plan->having.operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
+            if (rc == MYLITE_OK) {
+                rc = dynamic_string_append(string, " IS NOT NULL");
+            }
+        } else if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, " IS NULL");
+        }
+    }
+
+    return rc;
+}
+
+static int append_grouped_having_operand_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan
+) {
+    if (plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN) {
+        return dynamic_string_append_quoted_identifier(string, plan->group_column.name);
+    }
+    if (plan->having.operand == PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE) {
+        return append_grouped_having_aggregate_sql(string, plan);
+    }
+
+    return MYLITE_OK;
+}
+
+static int append_grouped_having_aggregate_sql(
+    struct dynamic_string *string,
+    const struct planned_grouped_aggregate *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan->function == PLANNED_GROUPED_AGGREGATE_COUNT_STAR) {
+        return dynamic_string_append(string, "COUNT(*)");
+    }
+    if (plan->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+        rc = dynamic_string_append(string, "AVG(");
+    } else if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(string, grouped_aggregate_sql_function(plan->function));
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, '(');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->aggregate_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
 }
 
 static int append_select_predicate_sql(
@@ -19908,6 +20567,12 @@ static int bind_grouped_aggregate_parameters(
 
     if (plan->predicate.kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
         rc = bind_int64_parameter(statement, parameter_index, plan->predicate.value.integer);
+        if (rc == MYLITE_OK) {
+            ++parameter_index;
+        }
+    }
+    if (rc == MYLITE_OK && plan->having.kind == PLANNED_GROUPED_HAVING_COMPARISON) {
+        rc = bind_int64_parameter(statement, parameter_index, plan->having.value.integer);
         if (rc == MYLITE_OK) {
             ++parameter_index;
         }
@@ -21005,6 +21670,22 @@ static void set_unknown_group_column_error(struct mylite_db *database, const cha
     );
 }
 
+static void set_unknown_having_column_error(struct mylite_db *database, const char *column_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Unknown column '%s' in 'having clause'", column_name);
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_column,
+        "42S22",
+        message
+    );
+}
+
 static void set_ambiguous_order_column_error(struct mylite_db *database, const char *column_name) {
     char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int written =
@@ -21284,6 +21965,22 @@ static void set_predicate_out_of_range_error(struct mylite_db *database, const c
         "Out of range value for column '%s' in WHERE",
         column_name
     );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_data_out_of_range,
+        "22003",
+        message
+    );
+}
+
+static void set_having_out_of_range_error(struct mylite_db *database, const char *operand_name) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written =
+        snprintf(message, sizeof(message), "Out of range value for '%s' in HAVING", operand_name);
 
     if (written < 0) {
         message[0] = '\0';

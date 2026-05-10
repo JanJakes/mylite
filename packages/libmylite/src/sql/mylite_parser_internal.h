@@ -71,6 +71,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
     struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause,
     struct mylite_sql_ast_node *group_clause,
+    struct mylite_sql_ast_node *having_clause,
     struct mylite_sql_ast_node *order_clause,
     struct mylite_sql_ast_node *limit_clause
 );
@@ -81,6 +82,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_distinct_statement(
     struct mylite_sql_ast_node *from_clause,
     struct mylite_sql_ast_node *where_clause,
     struct mylite_sql_ast_node *group_clause,
+    struct mylite_sql_ast_node *having_clause,
     struct mylite_sql_ast_node *order_clause,
     struct mylite_sql_ast_node *limit_clause
 );
@@ -571,6 +573,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_by_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token group_token,
     struct mylite_sql_ast_node *group_key
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_having_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token having_token,
+    struct mylite_sql_ast_node *predicate
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_comparison_predicate(
     struct mylite_sql_parser_state *state,

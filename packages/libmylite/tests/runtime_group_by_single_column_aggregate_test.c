@@ -28,6 +28,7 @@ enum {
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_data_out_of_range = 1264,
 };
 
 struct expected_sql_error {
@@ -123,6 +124,23 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const alias_columns[] = {"k", "s"};
     static const char *const alias_values[] = {"2", "50", "1", "10"};
     static const char *const offset_values[] = {"1", "2"};
+    static const char *const having_count_columns[] = {"g", "c"};
+    static const char *const having_count_values[] = {"1", "2", "2", "2"};
+    static const char *const having_count_n_columns[] = {"g", "c"};
+    static const char *const having_count_n_zero_values[] = {NULL, "0"};
+    static const char *const having_duplicate_alias_columns[] = {"x", "x"};
+    static const char *const having_descriptor_precedence_columns[] = {"g", "g"};
+    static const char *const having_sum_columns[] = {"g", "s"};
+    static const char *const having_sum_values[] = {"1", "10", "2", "50"};
+    static const char *const having_sum_null_values[] = {NULL, NULL};
+    static const char *const having_max_columns[] = {"g", "m"};
+    static const char *const having_max_values[] = {"2", "30"};
+    static const char *const having_min_values[] = {"1", "10"};
+    static const char *const having_avg_values[] = {"2", "25.0000"};
+    static const char *const having_group_null_values[] = {NULL, "1"};
+    static const char *const having_group_alias_columns[] = {"k", "COUNT(*)"};
+    static const char *const having_group_alias_values[] = {"1", "2"};
+    static const char *const having_where_limit_values[] = {"2", "2"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -278,6 +296,184 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = alias_values,
             .row_count = 2U,
             .context = "schema qualified aliased group order limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING c > 1 ORDER BY g",
+            .columns = having_count_columns,
+            .column_count = 2U,
+            .values = having_count_values,
+            .row_count = 2U,
+            .context = "having aggregate alias comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g AS x, COUNT(*) AS x FROM grouped_numbers "
+                   "GROUP BY g HAVING x > 1 ORDER BY g",
+            .columns = having_duplicate_alias_columns,
+            .column_count = 2U,
+            .values = having_count_values,
+            .row_count = 2U,
+            .context = "having duplicate alias aggregate precedence",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS g FROM grouped_numbers "
+                   "GROUP BY g HAVING g > 1",
+            .columns = having_descriptor_precedence_columns,
+            .column_count = 2U,
+            .values = having_where_limit_values,
+            .row_count = 1U,
+            .context = "having descriptor name before aggregate alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING c > TRUE ORDER BY g",
+            .columns = having_count_columns,
+            .column_count = 2U,
+            .values = having_count_values,
+            .row_count = 2U,
+            .context = "having boolean literal comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(n) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING c = 0 ORDER BY g",
+            .columns = having_count_n_columns,
+            .column_count = 2U,
+            .values = having_count_n_zero_values,
+            .row_count = 1U,
+            .context = "having count nullable zero comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n) AS s FROM grouped_numbers "
+                   "GROUP BY g HAVING s IS NOT NULL ORDER BY g",
+            .columns = having_sum_columns,
+            .column_count = 2U,
+            .values = having_sum_values,
+            .row_count = 2U,
+            .context = "having aggregate alias is not null",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n) AS s FROM grouped_numbers "
+                   "GROUP BY g HAVING s IS NULL ORDER BY g",
+            .columns = having_sum_columns,
+            .column_count = 2U,
+            .values = having_sum_null_values,
+            .row_count = 1U,
+            .context = "having aggregate alias is null",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, MIN(n) FROM grouped_numbers "
+                   "GROUP BY g HAVING MIN(n) < 20 ORDER BY g",
+            .columns = g_min_columns,
+            .column_count = 2U,
+            .values = having_min_values,
+            .row_count = 1U,
+            .context = "having selected min expression comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, MAX(n) AS m FROM grouped_numbers "
+                   "GROUP BY g HAVING m >= +30 ORDER BY g",
+            .columns = having_max_columns,
+            .column_count = 2U,
+            .values = having_max_values,
+            .row_count = 1U,
+            .context = "having max alias unary plus comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, AVG(n) FROM grouped_numbers "
+                   "GROUP BY g HAVING AVG(n) = 25 ORDER BY g",
+            .columns = g_avg_columns,
+            .column_count = 2U,
+            .values = having_avg_values,
+            .row_count = 1U,
+            .context = "having selected avg expression comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g HAVING g IS NULL",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = having_group_null_values,
+            .row_count = 1U,
+            .context = "having grouped column is null",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g AS k, COUNT(*) FROM grouped_numbers GROUP BY g HAVING k <=> 1",
+            .columns = having_group_alias_columns,
+            .column_count = 2U,
+            .values = having_group_alias_values,
+            .row_count = 1U,
+            .context = "having grouped alias null-safe comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c FROM grouped_numbers WHERE id >= 2 "
+                   "GROUP BY g HAVING c > 1 ORDER BY g DESC LIMIT 1",
+            .columns = having_count_columns,
+            .column_count = 2U,
+            .values = having_where_limit_values,
+            .row_count = 1U,
+            .context = "having with where order and limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT t.g AS k, SUM(t.n) AS s FROM app.grouped_numbers AS t "
+                   "GROUP BY t.g HAVING s IS NOT NULL ORDER BY k DESC",
+            .columns = alias_columns,
+            .column_count = 2U,
+            .values = alias_values,
+            .row_count = 2U,
+            .context = "schema qualified aliased group having order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING c > 1 ORDER BY g LIMIT 0",
+            .columns = having_count_columns,
+            .column_count = 2U,
+            .values = having_count_values,
+            .row_count = 0U,
+            .context = "having limit zero",
         }
     );
     failures += expect_grouped_query(
@@ -498,6 +694,79 @@ static int test_grouped_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g HAVING missing > 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'having clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g HAVING id > 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'id' in 'having clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, SUM(n) FROM grouped_numbers GROUP BY g HAVING SUM(missing) > 1",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'having clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g HAVING SUM(n) > 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "HAVING supports only the selected aggregate result",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, BIT_OR(nn) AS bits FROM grouped_numbers GROUP BY g HAVING bits > 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "HAVING does not support bitwise aggregate predicates",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g HAVING COUNT(*) + 1 > 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) AS c FROM grouped_numbers "
+        "GROUP BY g HAVING c > 9223372036854775808",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for 'aggregate' in HAVING",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g HAVING g < -2147483649",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for 'g' in HAVING",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT n, COUNT(*) FROM grouped_numbers GROUP BY g",
         (struct expected_sql_error){
             .code = mysql_error_not_group_by,
@@ -591,6 +860,7 @@ static int test_grouped_diagnostics(void) {
 static int test_independent_grouped_handles(void) {
     static const char *const first_columns[] = {"g", "SUM(n)"};
     static const char *const first_values[] = {NULL, NULL, "1", "10", "2", "50"};
+    static const char *const first_having_values[] = {"1", "10", "2", "50"};
     static const char *const second_columns[] = {"g", "SUM(n)"};
     static const char *const second_values[] = {"9", "300"};
     char first_path[test_path_capacity];
@@ -636,6 +906,18 @@ static int test_independent_grouped_handles(void) {
             .values = first_values,
             .row_count = 3U,
             .context = "first handle grouped sum",
+        }
+    );
+    failures += expect_grouped_query(
+        first,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n) FROM grouped_numbers "
+                   "GROUP BY g HAVING SUM(n) IS NOT NULL ORDER BY g",
+            .columns = first_columns,
+            .column_count = 2U,
+            .values = first_having_values,
+            .row_count = 2U,
+            .context = "first handle grouped having sum",
         }
     );
     failures += expect_grouped_query(

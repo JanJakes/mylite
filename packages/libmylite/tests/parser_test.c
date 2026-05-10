@@ -46,6 +46,7 @@ static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_alter_table_default_charset_collation_statements(void);
 static int test_alter_table_order_by_statements(void);
+static int test_alter_table_force_statements(void);
 static int test_show_columns_introspection_statements(void);
 static int test_show_triggers_empty_introspection_statements(void);
 static int test_show_events_empty_introspection_statements(void);
@@ -156,6 +157,7 @@ int main(void) {
     failures += test_table_lifecycle_statements();
     failures += test_alter_table_default_charset_collation_statements();
     failures += test_alter_table_order_by_statements();
+    failures += test_alter_table_force_statements();
     failures += test_show_columns_introspection_statements();
     failures += test_show_triggers_empty_introspection_statements();
     failures += test_show_events_empty_introspection_statements();
@@ -4015,9 +4017,6 @@ static int test_alter_table_default_charset_collation_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parse_sql("ALTER TABLE old_name FORCE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql(
         "ALTER TABLE old_name ALGORITHM=INSTANT;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
@@ -4115,6 +4114,55 @@ static int test_alter_table_order_by_statements(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_force_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql("ALTER TABLE old_name FORCE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT,
+        "alter table force statement"
+    );
+    failures += expect_child_count(statement, 1U, "alter table force child count");
+    failures += expect_span_text(child_at(statement, 0U), "old_name", "alter table force target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE app.old_name FORCE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_span_text(child_at(statement, 0U), "app.old_name", "qualified force target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name FORCE ORDER BY id;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name FORCE, FORCE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name FORCE, ALGORITHM=COPY;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name FORCE LOCK=NONE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE old_name FORCE id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

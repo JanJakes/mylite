@@ -1503,6 +1503,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_order_by_statemen
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_force_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token insert_token,
@@ -2788,6 +2809,7 @@ static bool map_keyword_token(
         {"MODIFY", MYLITE_SQL_PARSE_MODIFY},
         {"CHANGE", MYLITE_SQL_PARSE_CHANGE},
         {"COLUMN", MYLITE_SQL_PARSE_COLUMN},
+        {"FORCE", MYLITE_SQL_PARSE_FORCE},
         {"INSERT", MYLITE_SQL_PARSE_INSERT},
         {"REPLACE", MYLITE_SQL_PARSE_REPLACE},
         {"INTO", MYLITE_SQL_PARSE_INTO},

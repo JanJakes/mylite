@@ -171,6 +171,9 @@ statement(A) ::= alter_table_default_charset_collation_statement(B). {
 statement(A) ::= alter_table_order_by_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_force_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -671,6 +674,10 @@ alter_table_order_item_list(A) ::= alter_table_order_item_list(L) COMMA alter_ta
 
 alter_table_order_item(A) ::= qualified_identifier(K) order_direction_opt(D). {
     A = mylite_sql_parser_make_order_by_item(state, K, D);
+}
+
+alter_table_force_statement(A) ::= ALTER(A1) TABLE table_name(T) FORCE. {
+    A = mylite_sql_parser_make_alter_table_force_statement(state, A1, T);
 }
 
 column_keyword_opt(A) ::= . {

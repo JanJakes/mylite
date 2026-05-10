@@ -343,6 +343,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "order_by_item_list";
     case MYLITE_SQL_AST_ORDER_BY_ITEM:
         return "order_by_item";
+    case MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT:
+        return "alter_table_force_statement";
     case MYLITE_SQL_AST_IDENTIFIER_LIST:
         return "identifier_list";
     case MYLITE_SQL_AST_INSERT_ROW_LIST:

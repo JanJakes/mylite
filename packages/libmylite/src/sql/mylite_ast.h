@@ -121,6 +121,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT = 112,
     MYLITE_SQL_AST_ORDER_BY_ITEM_LIST = 113,
     MYLITE_SQL_AST_ORDER_BY_ITEM = 114,
+    MYLITE_SQL_AST_ALTER_TABLE_FORCE_STATEMENT = 115,
 };
 
 enum mylite_sql_ast_literal_kind {

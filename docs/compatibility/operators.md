@@ -30,8 +30,8 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `DIV` | ❌ | Integer division |
 | `EXISTS()` | ❌ | Whether the result of a query contains any rows |
 | `IN()` | 🟡 | Limited descriptor-backed `WHERE` membership predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and a nonempty list of decimal integer, `TRUE`/`FALSE`, or `NULL` values; no expression operands, subqueries, row constructors, strings, temporals, or full expression-level operator support |
-| `IS` | ❌ | Test a value against a boolean |
-| `IS NOT` | ❌ | Test a value against a boolean |
+| `IS` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates for `IS NULL`, `IS TRUE`, `IS FALSE`, and `IS UNKNOWN` only; no literal-left or general expression truth tests |
+| `IS NOT` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates for `IS NOT NULL`, `IS NOT TRUE`, `IS NOT FALSE`, and `IS NOT UNKNOWN` only; no literal-left or general expression truth tests |
 | `IS NOT NULL` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only |
 | `IS NULL` | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates only |
 | `LIKE` | ❌ | Simple pattern matching |

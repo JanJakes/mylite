@@ -5,7 +5,7 @@ Aggregate functions and grouping helpers.
 | Function | Status | Notes |
 | --- | --- | --- |
 | `ANY_VALUE()` | ❌ | Suppress ONLY_FULL_GROUP_BY value rejection |
-| `AVG()` | ❌ | Return average value of the argument |
+| `AVG()` | 🟡 | Limited one-item `SELECT AVG(column) [AS alias]` over one descriptor-backed persistent base table with optional source table alias, source-qualified column argument, and baseline `WHERE`; integer/`NULL` descriptor columns only, with four-fractional-digit text results while the intermediate signed-64 `SUM(column)` stays in range; no expression arguments, `DISTINCT`, exact decimal widening beyond the signed-64 intermediate envelope, grouping, ordering, limiting, or window forms |
 | `BIT_AND()` | ❌ | Return bitwise AND |
 | `BIT_OR()` | ❌ | Return bitwise OR |
 | `BIT_XOR()` | ❌ | Return bitwise XOR |

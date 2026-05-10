@@ -23,7 +23,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, or `NULL`; `SET` statements and expression assignments remain unsupported |
 | `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
 | `^` | ❌ | Bitwise XOR |
-| `AND, &&` | ❌ | Logical AND |
+| `AND, &&` | 🟡 | Limited descriptor-backed `WHERE` conjunctions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `&&` is accepted with deprecation warning 1287; no general expression-level boolean semantics |
 | `BETWEEN ... AND ...` | ❌ | Whether a value is within a range of values |
 | `BINARY` | ❌ | Cast a string to a binary string |
 | `CASE` | ❌ | Case operator |

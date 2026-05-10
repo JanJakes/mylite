@@ -13,15 +13,15 @@
   diagnostics, and tests.
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Add parser grammar, AST node names, keyword mapping, and parser tests.
-- [ ] Register internal SQLite bitwise aggregate callbacks during connection
+- [x] Add parser grammar, AST node names, keyword mapping, and parser tests.
+- [x] Register internal SQLite bitwise aggregate callbacks during connection
   bootstrap.
-- [ ] Implement descriptor-driven bitwise aggregate planning and execution
+- [x] Implement descriptor-driven bitwise aggregate planning and execution
   while keeping SQLite responsible for scans and predicate filtering.
-- [ ] Add C runtime tests for success, diagnostics, persistence, labels,
+- [x] Add C runtime tests for success, diagnostics, persistence, labels,
   unsigned-64 formatting, and callback registration.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, result semantics,
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, result semantics,
   descriptor authority, scope control, and compatibility wording.
-- [ ] Commit the implementation slice.
+- [x] Commit the implementation slice.

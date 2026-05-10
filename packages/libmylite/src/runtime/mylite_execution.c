@@ -394,6 +394,9 @@ enum planned_column_aggregate_function {
     PLANNED_COLUMN_AGGREGATE_MAX = 2,
     PLANNED_COLUMN_AGGREGATE_SUM = 3,
     PLANNED_COLUMN_AGGREGATE_AVG = 4,
+    PLANNED_COLUMN_AGGREGATE_BIT_AND = 5,
+    PLANNED_COLUMN_AGGREGATE_BIT_OR = 6,
+    PLANNED_COLUMN_AGGREGATE_BIT_XOR = 7,
 };
 
 struct planned_column_aggregate {
@@ -1428,6 +1431,7 @@ static enum planned_column_aggregate_function column_aggregate_function_from_exp
 static enum planned_column_aggregate_function select_list_column_aggregate_function(
     const struct mylite_sql_ast_node *select_list
 );
+static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function);
 static const char *column_aggregate_single_item_error(
     enum planned_column_aggregate_function function
 );
@@ -1492,6 +1496,11 @@ static int step_column_aggregate_statement(
     mylite_result *result
 );
 static int append_avg_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    mylite_result *result
+);
+static int append_bitwise_aggregate_sqlite_row(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     mylite_result *result
@@ -3035,6 +3044,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
@@ -6438,6 +6450,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
@@ -11518,6 +11533,15 @@ static enum planned_column_aggregate_function column_aggregate_function_from_exp
     if (expression->kind == MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION) {
         return PLANNED_COLUMN_AGGREGATE_AVG;
     }
+    if (expression->kind == MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_BIT_AND;
+    }
+    if (expression->kind == MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_BIT_OR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_BIT_XOR;
+    }
 
     return PLANNED_COLUMN_AGGREGATE_NONE;
 }
@@ -11541,9 +11565,18 @@ static enum planned_column_aggregate_function select_list_column_aggregate_funct
     return PLANNED_COLUMN_AGGREGATE_NONE;
 }
 
+static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function) {
+    return (function == PLANNED_COLUMN_AGGREGATE_BIT_AND ||
+            function == PLANNED_COLUMN_AGGREGATE_BIT_OR ||
+            function == PLANNED_COLUMN_AGGREGATE_BIT_XOR) != 0;
+}
+
 static const char *column_aggregate_single_item_error(
     enum planned_column_aggregate_function function
 ) {
+    if (column_aggregate_function_is_bitwise(function)) {
+        return "BIT_AND/BIT_OR/BIT_XOR(column) supports exactly one aggregate select item";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
         return "AVG(column) supports exactly one aggregate select item";
     }
@@ -11557,6 +11590,9 @@ static const char *column_aggregate_single_item_error(
 static const char *column_aggregate_optional_clause_error(
     enum planned_column_aggregate_function function
 ) {
+    if (column_aggregate_function_is_bitwise(function)) {
+        return "BIT_AND/BIT_OR/BIT_XOR(column) supports only WHERE";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
         return "AVG(column) supports only WHERE";
     }
@@ -11568,6 +11604,9 @@ static const char *column_aggregate_optional_clause_error(
 }
 
 static const char *column_aggregate_source_error(enum planned_column_aggregate_function function) {
+    if (column_aggregate_function_is_bitwise(function)) {
+        return "BIT_AND/BIT_OR/BIT_XOR(column) supports only descriptor-backed table reads";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
         return "AVG(column) supports only descriptor-backed table reads";
     }
@@ -11579,6 +11618,9 @@ static const char *column_aggregate_source_error(enum planned_column_aggregate_f
 }
 
 static const char *column_aggregate_column_error(enum planned_column_aggregate_function function) {
+    if (column_aggregate_function_is_bitwise(function)) {
+        return "BIT_AND/BIT_OR/BIT_XOR(column) supports only descriptor columns";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
         return "AVG(column) supports only descriptor columns";
     }
@@ -11590,6 +11632,9 @@ static const char *column_aggregate_column_error(enum planned_column_aggregate_f
 }
 
 static const char *column_aggregate_integer_error(enum planned_column_aggregate_function function) {
+    if (column_aggregate_function_is_bitwise(function)) {
+        return "BIT_AND/BIT_OR/BIT_XOR(column) supports only integer descriptor columns";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
         return "AVG(column) supports only integer descriptor columns";
     }
@@ -11729,6 +11774,8 @@ static int step_column_aggregate_statement(
 
     if (plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
         rc = append_avg_sqlite_row(database, statement, result);
+    } else if (column_aggregate_function_is_bitwise(plan->function)) {
+        rc = append_bitwise_aggregate_sqlite_row(database, statement, result);
     } else {
         rc = append_selected_sqlite_row(statement, result);
     }
@@ -11741,6 +11788,30 @@ static int step_column_aggregate_statement(
     }
 
     return MYLITE_OK;
+}
+
+static int append_bitwise_aggregate_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    mylite_result *result
+) {
+    const char *values[] = {NULL};
+    int rc = MYLITE_OK;
+
+    if (sqlite3_column_type(statement, 0) != SQLITE_TEXT) {
+        return MYLITE_ERROR;
+    }
+
+    values[0] = (const char *)sqlite3_column_text(statement, 0);
+    if (values[0] == NULL) {
+        return MYLITE_ERROR;
+    }
+    rc = mylite_result_append_text_row(result, values);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+
+    return rc;
 }
 
 static int append_avg_sqlite_row(
@@ -18231,6 +18302,12 @@ static const char *column_aggregate_sql_function(enum planned_column_aggregate_f
         return "SUM";
     case PLANNED_COLUMN_AGGREGATE_AVG:
         return "";
+    case PLANNED_COLUMN_AGGREGATE_BIT_AND:
+        return "_mylite_bit_and";
+    case PLANNED_COLUMN_AGGREGATE_BIT_OR:
+        return "_mylite_bit_or";
+    case PLANNED_COLUMN_AGGREGATE_BIT_XOR:
+        return "_mylite_bit_xor";
     }
 
     return "";

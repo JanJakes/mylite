@@ -1,5 +1,6 @@
 #include "mylite_sqlite_bootstrap.h"
 
+#include "mylite_bitwise_aggregate.h"
 #include "mylite_sqlite_registration.h"
 #include "sqlite3.h"
 
@@ -177,6 +178,9 @@ static int initialize_function_registration_surface(
 ) {
     int rc = mylite_sqlite_register_functions(sqlite, NULL, 0U);
 
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_bitwise_aggregate_functions(sqlite);
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }

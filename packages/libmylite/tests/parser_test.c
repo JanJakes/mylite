@@ -41,6 +41,7 @@ static int test_count_star_aggregate(void);
 static int test_min_max_aggregate(void);
 static int test_sum_aggregate(void);
 static int test_avg_aggregate(void);
+static int test_bitwise_aggregate(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -160,6 +161,7 @@ int main(void) {
     failures += test_min_max_aggregate();
     failures += test_sum_aggregate();
     failures += test_avg_aggregate();
+    failures += test_bitwise_aggregate();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -2016,6 +2018,119 @@ static int test_avg_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT AVG(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_bitwise_aggregate(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *fourth_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT BIT_AND(id), bit_or(n), Bit_Xor( n ) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION,
+        "bit_and aggregate"
+    );
+    failures += expect_span_text(first_expression, "BIT_AND(id)", "bit_and aggregate span");
+    failures +=
+        expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "bit_and arg");
+    failures += expect_span_text(child_at(first_expression, 0U), "id", "bit_and arg span");
+    failures +=
+        expect_node(second_expression, MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION, "lower bit_or");
+    failures += expect_span_text(second_expression, "bit_or(n)", "lower bit_or span");
+    failures +=
+        expect_node(third_expression, MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION, "mixed bit_xor");
+    failures += expect_span_text(third_expression, "Bit_Xor( n )", "mixed bit_xor span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT BIT_AND(/*x*/n), BIT_OR(t.n), BIT_XOR(db.t.n) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_span_text(first_expression, "BIT_AND(/*x*/n)", "commented bit_and span");
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified bit_or argument"
+    );
+    failures += expect_span_text(second_expression, "BIT_OR(t.n)", "qualified bit_or span");
+    failures += expect_node(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "schema-qualified bit_xor argument"
+    );
+    failures += expect_span_text(third_expression, "BIT_XOR(db.t.n)", "schema bit_xor span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT (BIT_AND(id));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized bit_and aggregate"
+    );
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION,
+        "wrapped bit_and aggregate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT BIT_AND (n), BIT_OR/**/(n), BIT_XOR /*x*/ (n) FROM t;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("CREATE TABLE bit_and (bit_or INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures +=
+        expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "bitwise identifier table");
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT BIT_XOR;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    fourth_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(fourth_expression, MYLITE_SQL_AST_IDENTIFIER, "bare bit_xor identifier");
+    failures += expect_span_text(fourth_expression, "BIT_XOR", "bare bit_xor span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT BIT_AND();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT BIT_AND(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT BIT_OR(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT BIT_XOR(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT BIT_AND(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT BIT_XOR(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -340,7 +340,7 @@ tests.
 | `COALESCE()` | ❌ | First non-NULL argument. | [control-flow functions](docs/compatibility/functions-control-flow.md) |
 | `CONVERT()` | ❌ | Explicit conversion. | [cast functions](docs/compatibility/functions-casts.md) |
 | `GREATEST()` | ❌ | Largest argument. | [comparison functions](docs/compatibility/functions-comparison.md) |
-| `IF()` | ❌ | If/else expression. | [control-flow functions](docs/compatibility/functions-control-flow.md) |
+| `IF()` | 🟡 | Limited no-source and `FROM DUAL` scalar `SELECT IF(condition, true_value, false_value)` over signed-64 decimal integer, `TRUE`/`FALSE`, `NULL`, and nested `IF()` operands; no table-backed evaluation, predicates, DML assignments, string/decimal/float/hex/bit operands, arithmetic arguments, subqueries, or expression metadata. | [control-flow functions](docs/compatibility/functions-control-flow.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md) |
 | `IFNULL()` | ❌ | NULL fallback expression. | [control-flow functions](docs/compatibility/functions-control-flow.md) |
 | `INTERVAL()` | ❌ | Argument interval index. | [comparison functions](docs/compatibility/functions-comparison.md) |
 | `ISNULL()` | ❌ | NULL test function. | [comparison functions](docs/compatibility/functions-comparison.md) |

@@ -26,7 +26,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `AND, &&` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `AND` binds tighter than `XOR` and `OR`, `&&` is accepted with deprecation warning 1287, and limited no-source/`DUAL` scalar logical projection admits keyword `AND` only |
 | `BETWEEN ... AND ...` | 🟡 | Limited descriptor-backed `WHERE` range predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and two decimal integer or `TRUE`/`FALSE` bounds; no expression operands, string/temporal ranges, row ranges, or full expression-level operator support |
 | `BINARY` | ❌ | Cast a string to a binary string |
-| `CASE` | ❌ | Case operator |
+| `CASE` | 🟡 | Limited no-source and `FROM DUAL` scalar searched and simple `CASE` projection over admitted signed-64 scalar expressions; no table-backed evaluation, predicates, DML assignments, string/collation behavior, subqueries, full result type aggregation, or expression metadata |
 | `DIV` | 🟡 | Limited no-source/`DUAL` signed-64 scalar integer division projection; no table-backed expression support |
 | `EXISTS()` | ❌ | Whether the result of a query contains any rows |
 | `IN()` | 🟡 | Limited descriptor-backed `WHERE` membership predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and a nonempty list of decimal integer, `TRUE`/`FALSE`, or `NULL` values; no expression operands, subqueries, row constructors, strings, temporals, or full expression-level operator support |

@@ -25,7 +25,7 @@ Numeric conversion, arithmetic, trigonometric, random, and rounding functions.
 | `LOG()` | ❌ | Return natural logarithm of the first argument |
 | `LOG10()` | ❌ | Return base-10 logarithm of the argument |
 | `LOG2()` | ❌ | Return base-2 logarithm of the argument |
-| `MOD()` | 🟡 | Specified for upcoming limited no-source/`DUAL` signed-64 scalar modulo projection with `MOD(left, right)`, `%`, and infix `MOD`; not implemented yet, and no table-backed expression support |
+| `MOD()` | 🟡 | Limited no-source/`DUAL` signed-64 scalar modulo projection with `MOD(left, right)`, `%`, and infix `MOD`; no table-backed expression support |
 | `OCT()` | ❌ | Return a string containing octal representation of a number |
 | `PI()` | ❌ | Return value of pi |
 | `POW()` | ❌ | Return argument raised to the specified power |

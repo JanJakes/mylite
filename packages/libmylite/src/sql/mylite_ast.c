@@ -348,6 +348,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "isnull_function";
     case MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR:
         return "isnull_argument_count_error";
+    case MYLITE_SQL_AST_MOD_FUNCTION:
+        return "mod_function";
     case MYLITE_SQL_AST_RENAME_TABLE_STATEMENT:
         return "rename_table_statement";
     case MYLITE_SQL_AST_INSERT_STATEMENT:
@@ -674,6 +676,8 @@ const char *mylite_sql_ast_operator_name(enum mylite_sql_ast_operator operator_k
         return "is_unknown";
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
         return "is_not_unknown";
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        return "modulo";
     }
 
     return "unknown";

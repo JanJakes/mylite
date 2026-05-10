@@ -318,17 +318,29 @@ static int test_use_statements(void) {
 }
 
 static int test_select_expression_list(void) {
-    enum { expected_select_item_count = 5 };
+    enum {
+        expected_select_item_count = 8,
+        percent_item_index = 1,
+        mod_operator_item_index = 2,
+        mod_function_item_index = 3,
+        string_item_index = 4,
+        true_item_index = 5,
+        false_item_index = 6,
+        null_item_index = 7,
+    };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select = NULL;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *first_item = NULL;
     const struct mylite_sql_ast_node *add = NULL;
     const struct mylite_sql_ast_node *multiply = NULL;
+    const struct mylite_sql_ast_node *percent = NULL;
+    const struct mylite_sql_ast_node *mod_operator = NULL;
+    const struct mylite_sql_ast_node *mod_function = NULL;
     int failures = 0;
 
     failures += parse_sql(
-        "SELECT 1 + 2 * 3, 'text', TRUE, FALSE, NULL FROM DUAL;",
+        "SELECT 1 + 2 * 3, 5 % 2, 5 MOD 2, MOD(5,2), 'text', TRUE, FALSE, NULL FROM DUAL;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -338,6 +350,9 @@ static int test_select_expression_list(void) {
     first_item = child_at(select_list, 0U);
     add = child_at(first_item, 0U);
     multiply = child_at(add, 1U);
+    percent = child_at(child_at(select_list, percent_item_index), 0U);
+    mod_operator = child_at(child_at(select_list, mod_operator_item_index), 0U);
+    mod_function = child_at(child_at(select_list, mod_function_item_index), 0U);
 
     failures += expect_node(select, MYLITE_SQL_AST_SELECT_STATEMENT, "select statement");
     failures += expect_node(select_list, MYLITE_SQL_AST_SELECT_LIST, "select list");
@@ -351,29 +366,70 @@ static int test_select_expression_list(void) {
     failures += expect_operator(multiply, MYLITE_SQL_AST_OPERATOR_MULTIPLY, "multiply expression");
     failures += expect_span_text(child_at(multiply, 0U), "2", "multiply left");
     failures += expect_span_text(child_at(multiply, 1U), "3", "multiply right");
+    failures += expect_node(percent, MYLITE_SQL_AST_BINARY_EXPRESSION, "percent expression");
+    failures += expect_operator(percent, MYLITE_SQL_AST_OPERATOR_MODULO, "percent operator");
+    failures += expect_span_text(child_at(percent, 0U), "5", "percent left");
+    failures += expect_span_text(child_at(percent, 1U), "2", "percent right");
+    failures += expect_node(mod_operator, MYLITE_SQL_AST_BINARY_EXPRESSION, "mod expression");
+    failures += expect_operator(mod_operator, MYLITE_SQL_AST_OPERATOR_MODULO, "mod operator");
+    failures += expect_span_text(child_at(mod_operator, 0U), "5", "mod left");
+    failures += expect_span_text(child_at(mod_operator, 1U), "2", "mod right");
+    failures += expect_node(mod_function, MYLITE_SQL_AST_MOD_FUNCTION, "mod function");
+    failures += expect_child_count(mod_function, 2U, "mod function argument count");
+    failures += expect_span_text(mod_function, "MOD(5,2)", "mod function span");
 
     failures += expect_literal(
-        child_at(child_at(select_list, 1U), 0U),
+        child_at(child_at(select_list, string_item_index), 0U),
         MYLITE_SQL_AST_LITERAL_STRING,
         "string literal"
     );
     failures += expect_literal(
-        child_at(child_at(select_list, 2U), 0U),
+        child_at(child_at(select_list, true_item_index), 0U),
         MYLITE_SQL_AST_LITERAL_TRUE,
         "true literal"
     );
     failures += expect_literal(
-        child_at(child_at(select_list, 3U), 0U),
+        child_at(child_at(select_list, false_item_index), 0U),
         MYLITE_SQL_AST_LITERAL_FALSE,
         "false literal"
     );
     failures += expect_literal(
-        child_at(child_at(select_list, 4U), 0U),
+        child_at(child_at(select_list, null_item_index), 0U),
         MYLITE_SQL_AST_LITERAL_NULL,
         "null literal"
     );
 
     mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1+5%2*3, 5*3%4, 5%3%2, -(5%2);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    add = child_at(child_at(select_list, 0U), 0U);
+    multiply = child_at(add, 1U);
+    percent = child_at(multiply, 0U);
+    failures += expect_operator(add, MYLITE_SQL_AST_OPERATOR_ADD, "modulo addition precedence");
+    failures += expect_operator(multiply, MYLITE_SQL_AST_OPERATOR_MULTIPLY, "modulo multiply");
+    failures += expect_operator(percent, MYLITE_SQL_AST_OPERATOR_MODULO, "modulo before multiply");
+    percent = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_operator(percent, MYLITE_SQL_AST_OPERATOR_MODULO, "multiply before modulo");
+    failures += expect_operator(
+        child_at(percent, 0U),
+        MYLITE_SQL_AST_OPERATOR_MULTIPLY,
+        "modulo left multiplication"
+    );
+    percent = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_operator(percent, MYLITE_SQL_AST_OPERATOR_MODULO, "modulo associativity");
+    failures += expect_operator(
+        child_at(percent, 0U),
+        MYLITE_SQL_AST_OPERATOR_MODULO,
+        "modulo left associativity"
+    );
+    failures += expect_operator(
+        child_at(child_at(child_at(child_at(select_list, 3U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_OPERATOR_MODULO,
+        "unary modulo child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 
@@ -8316,6 +8372,15 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT CURRENT_USER LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT MOD();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT MOD(5);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT MOD(5,2,1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE DATABASE IF EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

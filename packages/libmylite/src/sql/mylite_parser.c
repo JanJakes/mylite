@@ -3307,6 +3307,7 @@ static bool map_keyword_token(
         {"COALESCE", MYLITE_SQL_PARSE_COALESCE},
         {"NULLIF", MYLITE_SQL_PARSE_NULLIF},
         {"ISNULL", MYLITE_SQL_PARSE_ISNULL},
+        {"MOD", MYLITE_SQL_PARSE_MOD},
         {"IGNORE", MYLITE_SQL_PARSE_IGNORE},
         {"EXISTS", MYLITE_SQL_PARSE_EXISTS},
         {"DATABASE", MYLITE_SQL_PARSE_DATABASE},
@@ -3475,6 +3476,9 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
     case MYLITE_SQL_OPERATOR_SLASH:
         *out_parser_token = MYLITE_SQL_PARSE_SLASH;
         return true;
+    case MYLITE_SQL_OPERATOR_PERCENT:
+        *out_parser_token = MYLITE_SQL_PARSE_PERCENT;
+        return true;
     case MYLITE_SQL_OPERATOR_LOGICAL_AND:
         *out_parser_token = MYLITE_SQL_PARSE_LOGICAL_AND;
         return true;
@@ -3487,7 +3491,6 @@ static bool map_operator_token(const struct mylite_sql_token *token, int *out_pa
     case MYLITE_SQL_OPERATOR_LEFT_SHIFT:
     case MYLITE_SQL_OPERATOR_RIGHT_SHIFT:
     case MYLITE_SQL_OPERATOR_ASSIGN:
-    case MYLITE_SQL_OPERATOR_PERCENT:
     case MYLITE_SQL_OPERATOR_NOT:
     case MYLITE_SQL_OPERATOR_BITWISE_NOT:
     case MYLITE_SQL_OPERATOR_BITWISE_XOR:

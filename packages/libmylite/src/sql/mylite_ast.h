@@ -156,6 +156,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR = 147,
     MYLITE_SQL_AST_ISNULL_FUNCTION = 148,
     MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR = 149,
+    MYLITE_SQL_AST_MOD_FUNCTION = 150,
 };
 
 enum mylite_sql_ast_literal_kind {
@@ -201,6 +202,7 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE = 25,
     MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN = 26,
     MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN = 27,
+    MYLITE_SQL_AST_OPERATOR_MODULO = 28,
 };
 
 enum mylite_sql_ast_integer_type {

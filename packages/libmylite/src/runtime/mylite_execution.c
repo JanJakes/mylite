@@ -59,6 +59,7 @@ enum {
     mysql_error_display_width_out_of_range = 1439,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,
+    mysql_warning_division_by_zero = 1365,
     mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_integer_display_width_deprecated = 1681,
     mysql_error_must_have_visible_column = 4028,
@@ -622,11 +623,13 @@ struct session_scalar_cell {
     const char *value;
     char integer_text[integer_text_capacity];
     char literal_text[literal_projection_text_capacity];
+    size_t staged_division_by_zero_warning_count;
 };
 
 struct scalar_arithmetic_value {
     bool is_null;
     int64_t integer;
+    size_t division_by_zero_warning_count;
 };
 
 struct scalar_arithmetic_operation {
@@ -1891,6 +1894,12 @@ static int append_session_scalar_select_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list
 );
+static int accumulate_staged_division_by_zero_warnings(
+    struct mylite_db *database,
+    size_t cell_warning_count,
+    size_t *total_warning_count
+);
+static int append_division_by_zero_warnings(struct mylite_db *database, size_t warning_count);
 static int copy_scalar_projection_column_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1983,6 +1992,7 @@ static void scalar_arithmetic_node_stack_deinit(struct scalar_arithmetic_node_st
 static bool checked_int64_add(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_subtract(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_multiply(int64_t left, int64_t right, int64_t *out_result);
+static bool checked_int64_modulo(int64_t left, int64_t right, int64_t *out_result);
 static bool checked_int64_negate(int64_t value, int64_t *out_result);
 static void set_scalar_arithmetic_unsupported_error(struct mylite_db *database);
 static void set_scalar_arithmetic_operand_out_of_range_error(struct mylite_db *database);
@@ -3957,6 +3967,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
     case MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MOD_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -5426,7 +5437,8 @@ static int execute_select_statement(
             database,
             "SELECT scalar projection supports only session scalar values, signed 64-bit integer, "
             "boolean, NULL, nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() values, and "
-            "signed 64-bit +, binary -, and * arithmetic plus unary + and unary -"
+            "signed 64-bit +, binary -, and * arithmetic plus unary +, unary -, %, infix MOD, "
+            "and MOD()"
         );
         return MYLITE_ERROR;
     }
@@ -7393,6 +7405,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_ISNULL_FUNCTION:
     case MYLITE_SQL_AST_ISNULL_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MOD_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_VERSION_FUNCTION:
@@ -14298,6 +14311,7 @@ static int execute_scalar_projection_select_statement(
     mylite_result *result = NULL;
     size_t column_count = mylite_sql_ast_node_child_count(select_list);
     size_t column_index = 0U;
+    size_t staged_division_by_zero_warning_count = 0U;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -14346,6 +14360,11 @@ static int execute_scalar_projection_select_statement(
         }
         if (rc == MYLITE_OK) {
             values[column_index] = cells[column_index].value;
+            rc = accumulate_staged_division_by_zero_warnings(
+                database,
+                cells[column_index].staged_division_by_zero_warning_count,
+                &staged_division_by_zero_warning_count
+            );
         }
         ++column_index;
         select_item = select_item->next_sibling;
@@ -14355,6 +14374,9 @@ static int execute_scalar_projection_select_statement(
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
         }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_division_by_zero_warnings(database, staged_division_by_zero_warning_count);
     }
     free((void *)values);
     free(cells);
@@ -14432,6 +14454,41 @@ static int append_session_scalar_select_warnings(
             }
         }
         select_item = select_item->next_sibling;
+    }
+
+    return rc;
+}
+
+static int accumulate_staged_division_by_zero_warnings(
+    struct mylite_db *database,
+    size_t cell_warning_count,
+    size_t *total_warning_count
+) {
+    if (total_warning_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (*total_warning_count > SIZE_MAX - cell_warning_count) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    *total_warning_count += cell_warning_count;
+    return MYLITE_OK;
+}
+
+static int append_division_by_zero_warnings(struct mylite_db *database, size_t warning_count) {
+    int rc = MYLITE_OK;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < warning_count; ++index) {
+        rc = mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_division_by_zero,
+            "22012",
+            "Division by 0"
+        );
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
     }
 
     return rc;
@@ -14605,6 +14662,7 @@ static int session_scalar_value(
         }
         return scalar_arithmetic_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_MOD_FUNCTION:
         return scalar_arithmetic_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IF_FUNCTION:
         return if_function_value(database, expression, out_cell);
@@ -14638,6 +14696,9 @@ static int scalar_arithmetic_value(
     *out_cell = (struct session_scalar_cell){0};
     rc = evaluate_scalar_arithmetic_expression(database, expression, &value);
     if (rc != MYLITE_OK || value.is_null) {
+        if (rc == MYLITE_OK) {
+            out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
+        }
         return rc;
     }
 
@@ -14649,6 +14710,7 @@ static int scalar_arithmetic_value(
     }
 
     out_cell->value = out_cell->integer_text;
+    out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
     return MYLITE_OK;
 }
 
@@ -14737,8 +14799,23 @@ static int evaluate_scalar_arithmetic_apply_frame(
         set_runtime_error(database, "invalid scalar arithmetic evaluation stack");
         return MYLITE_ERROR;
     }
+    if (left.division_by_zero_warning_count > SIZE_MAX - right.division_by_zero_warning_count) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    result.division_by_zero_warning_count =
+        left.division_by_zero_warning_count + right.division_by_zero_warning_count;
     if (left.is_null || right.is_null) {
         result.is_null = true;
+        return scalar_arithmetic_value_stack_push(database, value_stack, result);
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_MODULO && right.integer == 0) {
+        result.is_null = true;
+        if (result.division_by_zero_warning_count == SIZE_MAX) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        ++result.division_by_zero_warning_count;
         return scalar_arithmetic_value_stack_push(database, value_stack, result);
     }
 
@@ -14808,6 +14885,40 @@ static int evaluate_scalar_arithmetic_enter_frame(
             NULL,
             operator_kind
         );
+        if (rc == MYLITE_OK) {
+            rc = scalar_arithmetic_eval_stack_push(
+                database,
+                expression_stack,
+                SCALAR_ARITHMETIC_EVAL_ENTER,
+                child_at(expression, 0U),
+                MYLITE_SQL_AST_OPERATOR_NONE
+            );
+        }
+        return rc;
+    }
+    if (expression->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        int rc = MYLITE_OK;
+
+        if (mylite_sql_ast_node_child_count(expression) != 2U) {
+            set_scalar_arithmetic_unsupported_error(database);
+            return MYLITE_ERROR;
+        }
+        rc = scalar_arithmetic_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_ARITHMETIC_EVAL_APPLY,
+            NULL,
+            MYLITE_SQL_AST_OPERATOR_MODULO
+        );
+        if (rc == MYLITE_OK) {
+            rc = scalar_arithmetic_eval_stack_push(
+                database,
+                expression_stack,
+                SCALAR_ARITHMETIC_EVAL_ENTER,
+                child_at(expression, 1U),
+                MYLITE_SQL_AST_OPERATOR_NONE
+            );
+        }
         if (rc == MYLITE_OK) {
             rc = scalar_arithmetic_eval_stack_push(
                 database,
@@ -14946,6 +15057,8 @@ static int parse_scalar_arithmetic_operand(
         return MYLITE_MISUSE;
     }
     *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
+    out_value->division_by_zero_warning_count =
+        cell == NULL ? 0U : cell->staged_division_by_zero_warning_count;
     if (text == NULL) {
         out_value->is_null = true;
         return MYLITE_OK;
@@ -15005,6 +15118,9 @@ static int apply_scalar_arithmetic_operator(
         break;
     case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
         overflow = checked_int64_multiply(operation->left, operation->right, out_result);
+        break;
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        overflow = checked_int64_modulo(operation->left, operation->right, out_result);
         break;
     default:
         set_scalar_arithmetic_unsupported_error(database);
@@ -15202,6 +15318,16 @@ static bool checked_int64_multiply(int64_t left, int64_t right, int64_t *out_res
     return false;
 }
 
+static bool checked_int64_modulo(int64_t left, int64_t right, int64_t *out_result) {
+    if (left == INT64_MIN && right == -1) {
+        *out_result = 0;
+        return false;
+    }
+
+    *out_result = left % right;
+    return false;
+}
+
 static bool checked_int64_negate(int64_t value, int64_t *out_result) {
     if (value == INT64_MIN) {
         return true;
@@ -15216,7 +15342,7 @@ static void set_scalar_arithmetic_unsupported_error(struct mylite_db *database) 
         database,
         "SELECT scalar arithmetic projection supports only signed 64-bit integer, boolean, "
         "NULL, and nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() operands with +, "
-        "binary -, and * arithmetic plus unary + and unary -"
+        "binary -, and * arithmetic plus unary +, unary -, %, infix MOD, and MOD()"
     );
 }
 
@@ -16742,6 +16868,15 @@ static bool scalar_arithmetic_projection_node_is_admitted(
         }
         return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
     }
+    if (expression->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        if (mylite_sql_ast_node_child_count(expression) != 2U) {
+            return false;
+        }
+        if (!scalar_arithmetic_node_stack_push(stack, child_at(expression, 1U))) {
+            return false;
+        }
+        return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+    }
     if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
         return is_scalar_value_projection_expression(expression);
     }
@@ -16762,6 +16897,9 @@ static bool is_scalar_arithmetic_operator(enum mylite_sql_ast_operator operator_
         return true;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_MULTIPLY) {
+        return true;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_MODULO) {
         return true;
     }
     return false;
@@ -16881,6 +17019,15 @@ static bool scalar_arithmetic_attempt_node_is_admitted(
 
         if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
             operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+    }
+    if (expression->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        if (mylite_sql_ast_node_child_count(expression) != 2U) {
+            return false;
+        }
+        if (!scalar_arithmetic_node_stack_push(stack, child_at(expression, 1U))) {
             return false;
         }
         return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
@@ -19824,6 +19971,7 @@ static bool planned_predicate_kind_for_operator(
     case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
     case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -23427,6 +23575,7 @@ static int append_select_is_boolean_predicate_term_sql(
     case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
     case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
     case MYLITE_SQL_AST_OPERATOR_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
@@ -23891,6 +24040,7 @@ static const char *comparison_operator_sql(enum mylite_sql_ast_operator operator
     case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
     case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
     case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
     case MYLITE_SQL_AST_OPERATOR_IS_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
     case MYLITE_SQL_AST_OPERATOR_IS_TRUE:

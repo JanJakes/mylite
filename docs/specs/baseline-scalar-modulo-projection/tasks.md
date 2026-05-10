@@ -13,26 +13,26 @@
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the specified but not yet
   implemented subset.
-- [ ] Commit and push the start-feature artifacts.
-- [ ] Add parser/AST support for `%` token mapping, infix `MOD` expression
+- [x] Commit and push the start-feature artifacts.
+- [x] Add parser/AST support for `%` token mapping, infix `MOD` expression
   nodes, and two-argument `MOD()` function syntax without admitting
   wrong-arity `MOD()` forms.
-- [ ] Admit no-source and `FROM DUAL` scalar modulo projection without widening
+- [x] Admit no-source and `FROM DUAL` scalar modulo projection without widening
   table-backed expression projection.
-- [ ] Add MyLite-owned signed-64 modulo evaluation with `NULL` propagation,
+- [x] Add MyLite-owned signed-64 modulo evaluation with `NULL` propagation,
   safe `INT64_MIN % -1`, and staged division-by-zero warnings.
-- [ ] Preserve in-statement diagnostics-count and row-count ordering for mixed
+- [x] Preserve in-statement diagnostics-count and row-count ordering for mixed
   scalar projections.
-- [ ] Add runtime/parser tests for values, precedence, labels, aliases, warning
+- [x] Add runtime/parser tests for values, precedence, labels, aliases, warning
   counts, diagnostics snapshot behavior, boundary values, file safety,
   independent handles, and deterministic rejection of unsupported forms.
-- [ ] Update existing scalar projection tests that currently expect `%` or
+- [x] Update existing scalar projection tests that currently expect `%` or
   infix `MOD` rejection where this feature now admits them.
-- [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt`, or
+- [x] Register any new test binary in `packages/libmylite/CMakeLists.txt`, or
   document that an existing test binary is reused.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, expression-scope
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, expression-scope
   control, diagnostics sequencing, modulo-by-zero warning correctness,
   signed-64 arithmetic safety, performance, cleanup, compatibility wording, and
   test relevance.

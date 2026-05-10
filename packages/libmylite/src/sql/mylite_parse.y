@@ -69,6 +69,9 @@ statement(A) ::= create_table_statement(B). {
 statement(A) ::= create_table_like_statement(B). {
     A = B;
 }
+statement(A) ::= create_table_select_statement(B). {
+    A = B;
+}
 statement(A) ::= create_schema_statement(B). {
     A = B;
 }
@@ -253,6 +256,14 @@ create_table_like_statement(A) ::=
     RPAREN. {
     A = mylite_sql_parser_make_create_table_like_statement(state, C, E, T, S);
 }
+create_table_select_statement(A) ::=
+    CREATE(C) TABLE create_if_not_exists_opt(E) table_name(T) create_table_select_as_opt
+    select_statement(S). {
+    A = mylite_sql_parser_make_create_table_select_statement(state, C, E, T, S);
+}
+
+create_table_select_as_opt ::= .
+create_table_select_as_opt ::= AS.
 
 create_if_not_exists_opt(A) ::= . {
     A = NULL;

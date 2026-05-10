@@ -45,6 +45,7 @@ static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_create_table_like_statements(void);
+static int test_create_table_select_statements(void);
 static int test_alter_table_default_charset_collation_statements(void);
 static int test_alter_table_order_by_statements(void);
 static int test_alter_table_force_statements(void);
@@ -158,6 +159,7 @@ int main(void) {
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
     failures += test_create_table_like_statements();
+    failures += test_create_table_select_statements();
     failures += test_alter_table_default_charset_collation_statements();
     failures += test_alter_table_order_by_statements();
     failures += test_alter_table_force_statements();
@@ -3953,6 +3955,85 @@ static int test_create_table_like_statements(void) {
 
     failures +=
         parse_sql("CREATE TEMPORARY TABLE t LIKE source;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_create_table_select_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *table_name = NULL;
+    const struct mylite_sql_ast_node *select_statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *from_clause = NULL;
+    const struct mylite_sql_ast_node *if_not_exists = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "CREATE TABLE IF NOT EXISTS app.copy AS "
+        "SELECT id AS copied_id, n FROM other.source s "
+        "WHERE id >= 1 ORDER BY n DESC LIMIT 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    table_name = child_at(statement, 0U);
+    select_statement = child_at(statement, 1U);
+    if_not_exists = child_at(statement, 2U);
+    select_list = child_at(select_statement, 0U);
+    from_clause = child_at(select_statement, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT,
+        "create table select statement"
+    );
+    failures += expect_node(table_name, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "ctas target");
+    failures += expect_span_text(child_at(table_name, 0U), "app", "ctas target schema");
+    failures += expect_span_text(child_at(table_name, 1U), "copy", "ctas target table");
+    failures += expect_node(
+        if_not_exists,
+        MYLITE_SQL_AST_CREATE_IF_NOT_EXISTS_CLAUSE,
+        "ctas if not exists clause"
+    );
+    failures +=
+        expect_node(select_statement, MYLITE_SQL_AST_SELECT_STATEMENT, "ctas source select");
+    failures +=
+        expect_span_text(child_at(child_at(select_list, 0U), 1U), "copied_id", "ctas source alias");
+    failures += expect_node(from_clause, MYLITE_SQL_AST_FROM_TABLE, "ctas source from");
+    failures += expect_span_text(child_at(from_clause, 0U), "other.source", "ctas source table");
+    failures += expect_span_text(child_at(from_clause, 1U), "s", "ctas source alias");
+    failures +=
+        expect_node(child_at(select_statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "ctas where");
+    failures +=
+        expect_node(child_at(select_statement, 3U), MYLITE_SQL_AST_ORDER_BY_CLAUSE, "ctas order");
+    failures +=
+        expect_node(child_at(select_statement, 4U), MYLITE_SQL_AST_LIMIT_CLAUSE, "ctas limit");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE copy SELECT * FROM source;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT,
+        "create table select without as"
+    );
+    failures += expect_span_text(child_at(statement, 0U), "copy", "ctas no-as target");
+    failures += expect_child_count(statement, 2U, "ctas no-as child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TEMPORARY TABLE copy AS SELECT * FROM source;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE copy (id INT) AS SELECT id FROM source;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

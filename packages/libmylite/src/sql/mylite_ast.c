@@ -307,6 +307,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "create_table_statement";
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
         return "create_table_like_statement";
+    case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
+        return "create_table_select_statement";
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
         return "drop_table_statement";
     case MYLITE_SQL_AST_SHOW_TABLES_STATEMENT:

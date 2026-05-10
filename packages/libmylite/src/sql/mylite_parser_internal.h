@@ -118,6 +118,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_like_statement(
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *source_table
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_table_select_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *if_not_exists_clause,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *select_statement
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_if_not_exists_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token if_token,

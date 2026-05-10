@@ -352,6 +352,11 @@ struct planned_insert_select {
     size_t target_count;
 };
 
+struct planned_create_table_select {
+    struct planned_create_table create_table;
+    struct planned_select source;
+};
+
 enum planned_count_function {
     PLANNED_COUNT_NONE = 0,
     PLANNED_COUNT_STAR = 1,
@@ -581,6 +586,11 @@ static int execute_create_table_statement(
     mylite_result **out_result
 );
 static int execute_create_table_like_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_create_table_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -894,6 +904,38 @@ static int plan_create_table_like(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_create_table_like *out_plan
+);
+static int plan_create_table_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_create_table_select *out_plan
+);
+static void planned_create_table_select_deinit(struct planned_create_table_select *plan);
+static int create_table_select_from_plan(
+    struct mylite_db *database,
+    struct planned_create_table_select *plan,
+    int64_t *out_affected_rows
+);
+static int infer_create_table_select_columns(
+    struct mylite_db *database,
+    struct planned_create_table_select *plan
+);
+static int validate_create_table_select_source_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
+static int copy_create_table_select_column_name(
+    struct mylite_db *database,
+    const struct planned_select *source,
+    size_t column_index,
+    struct planned_column *out_column
+);
+static int execute_create_table_select_copy(
+    struct mylite_db *database,
+    const struct planned_create_table_select *plan,
+    const char *physical_name,
+    int64_t *out_affected_rows
 );
 static int clone_create_table_like_columns(
     struct mylite_db *database,
@@ -2285,6 +2327,19 @@ static bool find_insert_select_target_position(
     size_t column_index,
     size_t *out_target_position
 );
+static int build_create_table_select_insert_sql(
+    const struct planned_create_table_select *plan,
+    const char *physical_name,
+    char **out_sql
+);
+static int append_create_table_select_target_column_names(
+    struct dynamic_string *string,
+    const struct planned_create_table_select *plan
+);
+static int append_create_table_select_source_projection(
+    struct dynamic_string *string,
+    const struct planned_create_table_select *plan
+);
 static int build_select_sql(const struct planned_select *plan, char **out_sql);
 static int build_count_sql(const struct planned_count *plan, char **out_sql);
 static int build_min_max_aggregate_sql(
@@ -2707,6 +2762,8 @@ static int execute_parsed_statement(
         return execute_create_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:
         return execute_create_table_like_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
+        return execute_create_table_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_DROP_TABLE_STATEMENT:
         return execute_drop_table_statement(database, statement, out_result);
     case MYLITE_SQL_AST_TRUNCATE_TABLE_STATEMENT:
@@ -3130,6 +3187,44 @@ static int execute_create_table_like_statement(
         return rc;
     }
 
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_create_table_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct planned_create_table_select plan = {0};
+    mylite_result *result = NULL;
+    bool finished = false;
+    int64_t affected_rows = 0;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    rc = plan_create_table_select(database, statement, &plan);
+    if (rc == MYLITE_OK) {
+        rc = maybe_finish_create_if_not_exists_noop(
+            database,
+            statement,
+            &plan.create_table,
+            &finished
+        );
+    }
+    if (rc == MYLITE_OK && !finished) {
+        rc = create_table_select_from_plan(database, &plan, &affected_rows);
+    }
+    planned_create_table_select_deinit(&plan);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, affected_rows);
     return finish_successful_result(database, result, out_result);
 }
 
@@ -6010,6 +6105,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_CREATE_SCHEMA_STATEMENT:
     case MYLITE_SQL_AST_INSERT_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SELECT_STATEMENT:
+    case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
@@ -6359,6 +6455,273 @@ static void planned_create_table_like_deinit(struct planned_create_table_like *p
 
     planned_create_table_deinit(&plan->create_table);
     *plan = (struct planned_create_table_like){0};
+}
+
+static int plan_create_table_select(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_create_table_select *out_plan
+) {
+    int rc = MYLITE_OK;
+
+    *out_plan = (struct planned_create_table_select){0};
+    rc = plan_select(database, child_at(statement, 1U), &out_plan->source);
+    if (rc == MYLITE_OK) {
+        rc = resolve_table_name(database, child_at(statement, 0U), &out_plan->create_table.target);
+    }
+    if (rc == MYLITE_OK &&
+        mylite_catalog_name_is_reserved(out_plan->create_table.target.table_name)) {
+        set_reserved_name_error(database, "table", out_plan->create_table.target.table_name);
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        planned_create_table_select_deinit(out_plan);
+    }
+
+    return rc;
+}
+
+static void planned_create_table_select_deinit(struct planned_create_table_select *plan) {
+    if (plan == NULL) {
+        return;
+    }
+
+    planned_create_table_deinit(&plan->create_table);
+    planned_select_deinit(&plan->source);
+    *plan = (struct planned_create_table_select){0};
+}
+
+static int create_table_select_from_plan(
+    struct mylite_db *database,
+    struct planned_create_table_select *plan,
+    int64_t *out_affected_rows
+) {
+    struct mylite_catalog_table_descriptor existing_table = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
+    char physical_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    bool existing_table_found = false;
+    int64_t table_id = 0;
+    int rc = MYLITE_OK;
+
+    *out_affected_rows = 0;
+    rc = mylite_catalog_try_read_table_by_name(
+        database,
+        plan->create_table.target.schema.schema_id,
+        plan->create_table.target.table_name,
+        &existing_table,
+        &existing_table_found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read table descriptor");
+        return rc;
+    }
+    if (existing_table_found) {
+        set_table_exists_error(database, plan->create_table.target.table_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = infer_create_table_select_columns(database, plan);
+    if (rc == MYLITE_OK) {
+        rc = check_duplicate_column_names(
+            database,
+            plan->create_table.columns,
+            plan->create_table.column_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_begin_mutation(database, &mutation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_allocate_table_id_in_mutation(database, &mutation, &table_id);
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_physical_table_name(table_id, physical_name, sizeof(physical_name));
+    }
+    if (rc == MYLITE_OK) {
+        rc = insert_create_table_catalog_rows(
+            database,
+            &plan->create_table,
+            &mutation,
+            table_id,
+            physical_name,
+            &table
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_physical_create_table(database, &plan->create_table, table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_create_table_select_copy(
+            database,
+            plan,
+            table.physical_name,
+            out_affected_rows
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_commit_mutation(database, &mutation);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_catalog_rollback_mutation(database, &mutation);
+        return rc;
+    }
+
+    ++database->session.sqlite_schema_generation;
+
+    return MYLITE_OK;
+}
+
+static int infer_create_table_select_columns(
+    struct mylite_db *database,
+    struct planned_create_table_select *plan
+) {
+    int rc = validate_create_table_select_source_columns(
+        database,
+        plan->source.columns,
+        plan->source.column_count
+    );
+
+    if (rc == MYLITE_OK &&
+        plan->source.column_count > SIZE_MAX / sizeof(*plan->create_table.columns)) {
+        set_nomem_error(database);
+        rc = MYLITE_NOMEM;
+    }
+    if (rc == MYLITE_OK) {
+        plan->create_table.columns =
+            calloc(plan->source.column_count, sizeof(*plan->create_table.columns));
+        if (plan->create_table.columns == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        plan->create_table.column_count = plan->source.column_count;
+        for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->source.column_count;
+             ++column_index) {
+            struct planned_column *column = &plan->create_table.columns[column_index];
+
+            planned_column_from_catalog_descriptor(
+                &plan->source.columns[column_index],
+                NULL,
+                column
+            );
+            column->is_visible = true;
+            rc =
+                copy_create_table_select_column_name(database, &plan->source, column_index, column);
+        }
+    }
+
+    return rc;
+}
+
+static int validate_create_table_select_source_columns(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    for (size_t column_index = 0U; column_index < column_count; ++column_index) {
+        struct integer_column_range range = {0};
+        int rc = MYLITE_OK;
+
+        if (strcmp(columns[column_index].physical_type, "INTEGER") != 0) {
+            set_unsupported_error(
+                database,
+                "CREATE TABLE SELECT supports only integer descriptor columns"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = integer_range_for_column(
+            database,
+            &columns[column_index],
+            "CREATE TABLE SELECT supports only integer descriptor columns",
+            &range
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+
+    return MYLITE_OK;
+}
+
+static int copy_create_table_select_column_name(
+    struct mylite_db *database,
+    const struct planned_select *source,
+    size_t column_index,
+    struct planned_column *out_column
+) {
+    const struct mylite_sql_ast_node *alias = source->column_aliases[column_index];
+    char *alias_text = NULL;
+    int rc = MYLITE_OK;
+
+    if (alias == NULL) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_select_item_alias_text(database, alias, &alias_text);
+    if (rc == MYLITE_OK && alias_text[0] == '\0') {
+        set_reserved_name_error(database, "column", alias_text);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && strlen(alias_text) >= sizeof(out_column->name)) {
+        set_identifier_too_long_error(database, "column");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && mylite_catalog_name_is_reserved(alias_text)) {
+        set_reserved_name_error(database, "column", alias_text);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        snprintf(out_column->name, sizeof(out_column->name), "%s", alias_text);
+    }
+    free(alias_text);
+
+    return rc;
+}
+
+static int execute_create_table_select_copy(
+    struct mylite_db *database,
+    const struct planned_create_table_select *plan,
+    const char *physical_name,
+    int64_t *out_affected_rows
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = build_create_table_select_insert_sql(plan, physical_name, &sql);
+
+    *out_affected_rows = 0;
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_parameters(statement, &plan->source);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            *out_affected_rows = sqlite3_changes64(database->sqlite);
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+            return rc;
+        }
+        if (mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) != MYLITE_OK) {
+            return rc;
+        }
+        set_physical_sqlite_row_error(database);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int validate_create_table_options(
@@ -16886,6 +17249,110 @@ static bool find_insert_select_target_position(
     }
 
     return false;
+}
+
+static int build_create_table_select_insert_sql(
+    const struct planned_create_table_select *plan,
+    const char *physical_name,
+    char **out_sql
+) {
+    struct dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    dynamic_string_init(&string);
+
+    rc = dynamic_string_append(&string, "INSERT INTO ");
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " (");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_create_table_select_target_column_names(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        if (plan->source.is_distinct) {
+            rc = dynamic_string_append(&string, ") SELECT DISTINCT ");
+        } else {
+            rc = dynamic_string_append(&string, ") SELECT ");
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_create_table_select_source_projection(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append(&string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(&string, plan->source.table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(&string, &plan->source.predicate, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_order_sql(&string, &plan->source.order);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_limit_sql(&string, &plan->source.limit, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_create_table_select_target_column_names(
+    struct dynamic_string *string,
+    const struct planned_create_table_select *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < plan->create_table.column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(
+                string,
+                plan->create_table.columns[column_index].name
+            );
+        }
+    }
+
+    return rc;
+}
+
+static int append_create_table_select_source_projection(
+    struct dynamic_string *string,
+    const struct planned_create_table_select *plan
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < plan->source.column_count;
+         ++column_index) {
+        if (column_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(
+                string,
+                plan->source.columns[column_index].name
+            );
+        }
+    }
+
+    return rc;
 }
 
 static int build_select_sql(const struct planned_select *plan, char **out_sql) {

@@ -11,18 +11,18 @@
   test plan.
 - [x] Add MySQL-runtime expectation script for user-visible behavior.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Extend AST/parser support for `CREATE TABLE [IF NOT EXISTS] table [AS]
+- [x] Extend AST/parser support for `CREATE TABLE [IF NOT EXISTS] table [AS]
   SELECT ...` without admitting deferred CTAS forms.
-- [ ] Add analyzer/planner support for source-first planning, target
+- [x] Add analyzer/planner support for source-first planning, target
   resolution, output descriptor inference, duplicate output names, and cleanup.
-- [ ] Implement atomic catalog/physical table creation plus SQLite-side
+- [x] Implement atomic catalog/physical table creation plus SQLite-side
   `INSERT INTO ... SELECT ...` row copying.
-- [ ] Add focused runtime C tests for success paths, diagnostics, persistence,
+- [x] Add focused runtime C tests for success paths, diagnostics, persistence,
   file format safety, independent handles, unsupported forms, and generation
   counters.
-- [ ] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
-- [ ] Run focused parser/runtime tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review final diff for MySQL behavior, descriptor authority, performance,
+- [x] Register any new test binary in `packages/libmylite/CMakeLists.txt`.
+- [x] Run focused parser/runtime tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review final diff for MySQL behavior, descriptor authority, performance,
   cleanup, scope control, and compatibility accuracy.
-- [ ] Commit the implementation slice.
+- [x] Commit the implementation slice.

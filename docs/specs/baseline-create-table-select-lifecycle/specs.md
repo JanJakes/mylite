@@ -79,6 +79,8 @@ records the runtime probes for this feature. Observed behavior:
   `ROW_COUNT() == 0`, `@@warning_count == 1`, and no row insertion.
 - If the target exists but the source is missing, the missing source error is
   reported before the `IF NOT EXISTS` no-op.
+- If the target exists, MySQL reports the existing target or `IF NOT EXISTS`
+  no-op before duplicate selected output-name validation.
 - Selected source column descriptors retain the tested integer type,
   nullability, and default metadata in the created table.
 - `SELECT *` excludes invisible source columns. Explicitly selected invisible
@@ -217,6 +219,8 @@ Resolution follows MySQL's observed source-first behavior for this statement:
 3. If `IF NOT EXISTS` is present and the target already exists, append the
    existing table note and finish without mutation.
 4. Otherwise, fail if the target already exists.
+5. Infer destination columns and reject duplicate output names only after the
+   target will actually be created.
 
 Unqualified names require the selected schema at the point they are resolved.
 Schema-qualified names use the explicit schema and do not require a selected

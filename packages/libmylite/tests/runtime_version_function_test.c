@@ -133,6 +133,19 @@ static int test_version_function_values(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(database, "SELECT ALL VERSION()", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = version_columns,
+            .values = version_values,
+            .count = 1U,
+            .context = "all version value",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_ok(database, "SELECT version() FROM DUAL", &result);
     failures += expect_scalar_result(
         result,
@@ -141,6 +154,19 @@ static int test_version_function_values(void) {
             .values = version_values,
             .count = 1U,
             .context = "lower version value",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT ALL version() FROM DUAL", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = lower_columns,
+            .values = version_values,
+            .count = 1U,
+            .context = "all lower version dual value",
         }
     );
     mylite_result_free(result);

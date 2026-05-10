@@ -722,12 +722,25 @@ update_value(A) ::= FALSE(T). {
 select_statement(A) ::= SELECT(T) select_item_list(B). {
     A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL);
 }
+select_statement(A) ::= SELECT(T) ALL select_item_list(B). {
+    A = mylite_sql_parser_make_select_statement(state, T, B, NULL, NULL, NULL, NULL);
+}
 select_statement(A) ::= SELECT(T) select_item_list(B) FROM(F) DUAL(D). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
+}
+select_statement(A) ::= SELECT(T) ALL select_item_list(B) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, B, mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
 }
 select_statement(A) ::=
     SELECT(T) select_item_list(B) FROM(F) table_name(N) where_clause_opt(W)
+    order_clause_opt(O) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, B, mylite_sql_parser_make_from_table(state, F, N), W, O, L);
+}
+select_statement(A) ::=
+    SELECT(T) ALL select_item_list(B) FROM(F) table_name(N) where_clause_opt(W)
     order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
         state, T, B, mylite_sql_parser_make_from_table(state, F, N), W, O, L);
@@ -748,13 +761,29 @@ select_statement(A) ::= SELECT(T) STAR(S). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL);
 }
+select_statement(A) ::= SELECT(T) ALL STAR(S). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S), NULL, NULL, NULL, NULL);
+}
 select_statement(A) ::= SELECT(T) STAR(S) FROM(F) DUAL(D). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
+}
+select_statement(A) ::= SELECT(T) ALL STAR(S) FROM(F) DUAL(D). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
         mylite_sql_parser_make_from_dual(state, F, D), NULL, NULL, NULL);
 }
 select_statement(A) ::=
     SELECT(T) STAR(S) FROM(F) table_name(N) where_clause_opt(W)
+    order_clause_opt(O) limit_clause_opt(L). {
+    A = mylite_sql_parser_make_select_statement(
+        state, T, mylite_sql_parser_make_wildcard_select_list(state, S),
+        mylite_sql_parser_make_from_table(state, F, N), W, O, L);
+}
+select_statement(A) ::=
+    SELECT(T) ALL STAR(S) FROM(F) table_name(N) where_clause_opt(W)
     order_clause_opt(O) limit_clause_opt(L). {
     A = mylite_sql_parser_make_select_statement(
         state, T, mylite_sql_parser_make_wildcard_select_list(state, S),

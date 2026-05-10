@@ -109,10 +109,28 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
     failures += expect_count_query(
         database,
         (struct expected_count_query){
+            .sql = "SELECT ALL COUNT(*)",
+            .column = "COUNT(*)",
+            .value = "1",
+            .context = "no-source all count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
             .sql = "SELECT COUNT(1)",
             .column = "COUNT(1)",
             .value = "1",
             .context = "no-source integer literal count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT ALL COUNT(1)",
+            .column = "COUNT(1)",
+            .value = "1",
+            .context = "no-source all integer literal count",
         }
     );
     failures += expect_count_query(
@@ -163,6 +181,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
     failures += expect_count_query(
         database,
         (struct expected_count_query){
+            .sql = "SELECT ALL count(*) FROM DUAL",
+            .column = "count(*)",
+            .value = "1",
+            .context = "dual all count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
             .sql = "SELECT Count( +1 ) FROM DUAL",
             .column = "Count( +1 )",
             .value = "1",
@@ -207,6 +234,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .column = "COUNT(*)",
             .value = "0",
             .context = "empty table count",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT ALL COUNT(*) FROM numbers",
+            .column = "COUNT(*)",
+            .value = "0",
+            .context = "empty table all count",
         }
     );
     failures += expect_count_query(
@@ -559,6 +595,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
     failures += expect_count_query(
         database,
         (struct expected_count_query){
+            .sql = "SELECT ALL COUNT(n) FROM numbers",
+            .column = "COUNT(n)",
+            .value = "3",
+            .context = "all explicit invisible nullable count column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
             .sql = "SELECT COUNT(nn) FROM numbers",
             .column = "COUNT(nn)",
             .value = "4",
@@ -716,6 +761,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .column = "COUNT(DISTINCT n)",
             .value = "2",
             .context = "nullable count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT ALL COUNT(DISTINCT n) FROM numbers",
+            .column = "COUNT(DISTINCT n)",
+            .value = "2",
+            .context = "all nullable count distinct column",
         }
     );
     failures += expect_count_query(

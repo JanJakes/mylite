@@ -2494,6 +2494,7 @@ static bool map_keyword_token(
         int parser_token;
     } keyword_mappings[] = {
         {"SELECT", MYLITE_SQL_PARSE_SELECT},
+        {"ALL", MYLITE_SQL_PARSE_ALL},
         {"ALTER", MYLITE_SQL_PARSE_ALTER},
         {"AS", MYLITE_SQL_PARSE_AS},
         {"FROM", MYLITE_SQL_PARSE_FROM},

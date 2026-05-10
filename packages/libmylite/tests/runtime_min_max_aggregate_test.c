@@ -134,10 +134,28 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
     failures += expect_aggregate_query(
         database,
         (struct expected_aggregate_query){
+            .sql = "SELECT ALL MIN(i) FROM numbers",
+            .column = "MIN(i)",
+            .value = "-2",
+            .context = "all signed int minimum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
             .sql = "SELECT MAX(i) FROM numbers",
             .column = "MAX(i)",
             .value = "2147483647",
             .context = "signed int maximum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT ALL MAX(i) FROM numbers",
+            .column = "MAX(i)",
+            .value = "2147483647",
+            .context = "all signed int maximum",
         }
     );
     failures += expect_aggregate_query(

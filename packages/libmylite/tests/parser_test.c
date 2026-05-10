@@ -56,6 +56,7 @@ static int test_show_index_empty_introspection_statements(void);
 static int test_select_where_predicates(void);
 static int test_select_order_limit_clauses(void);
 static int test_select_distinct_clause(void);
+static int test_select_all_clause(void);
 static int test_delete_statement(void);
 static int test_update_statement(void);
 static int test_comments_are_skipped(void);
@@ -161,6 +162,7 @@ int main(void) {
     failures += test_select_where_predicates();
     failures += test_select_order_limit_clauses();
     failures += test_select_distinct_clause();
+    failures += test_select_all_clause();
     failures += test_delete_statement();
     failures += test_update_statement();
     failures += test_comments_are_skipped();
@@ -4786,8 +4788,149 @@ static int test_select_distinct_clause(void) {
     failures +=
         parse_sql("SELECT DISTINCTROW n FROM DUAL;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_select_all_clause(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT ALL 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "select all scalar modifier"
+    );
+    failures += expect_child_count(select_list, 1U, "select all scalar item count");
+    failures += expect_literal(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "select all scalar literal"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ALL 1 FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "select all dual modifier"
+    );
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_DUAL, "select all dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT ALL n FROM simple_lifecycle WHERE n IS NOT NULL ORDER BY n DESC "
+        "LIMIT 1 OFFSET 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    order_clause = first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    limit_clause = first_child_kind(statement, MYLITE_SQL_AST_LIMIT_CLAUSE);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "select all table modifier"
+    );
+    failures += expect_span_text(child_at(child_at(select_list, 0U), 0U), "n", "select all column");
+    failures += expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_TABLE, "select all table");
     failures +=
-        parse_sql("SELECT ALL n FROM simple_lifecycle;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        expect_node(child_at(statement, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "select all where");
+    failures += expect_span_text(child_at(order_clause, 0U), "n", "select all order key");
+    failures += expect_order_direction(
+        child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "select all desc direction"
+    );
+    failures += expect_span_text(child_at(limit_clause, 0U), "1", "select all limit row count");
+    failures += expect_span_text(child_at(limit_clause, 1U), "0", "select all limit offset");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT ALL * FROM simple_lifecycle ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "select all wildcard modifier"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 0U), 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "select all wildcard"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ALL *;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "select all bare wildcard modifier"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 0U), 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "select all bare wildcard"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ALL * FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "select all dual wildcard modifier"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(statement, 0U), 0U), 0U),
+        MYLITE_SQL_AST_WILDCARD,
+        "select all dual wildcard"
+    );
+    failures +=
+        expect_node(child_at(statement, 1U), MYLITE_SQL_AST_FROM_DUAL, "select all dual wildcard");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT ALL COUNT(*) FROM simple_lifecycle;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    select_list = child_at(statement, 0U);
+    failures += expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "select all aggregate modifier"
+    );
+    failures += expect_node(
+        child_at(child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_COUNT_STAR_FUNCTION,
+        "select all count star"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT ALL ALL 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT ALL DISTINCT n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT ALL DISTINCTROW n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql(
+        "SELECT DISTINCT ALL n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

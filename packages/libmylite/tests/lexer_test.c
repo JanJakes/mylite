@@ -86,6 +86,7 @@ static int test_keywords(void) {
     failures += expect_keyword("version", 0U);
     failures += expect_keyword("connection_id", 0U);
     failures += expect_keyword("count", 0U);
+    failures += expect_keyword("avg", 0U);
     failures += expect_keyword("min", 0U);
     failures += expect_keyword("max", 0U);
     failures += expect_keyword("sum", 0U);

@@ -90,6 +90,9 @@ enum {
     show_engines_result_column_count = 6,
     select_item_alias_max_length = 256,
     select_item_alias_capacity = select_item_alias_max_length + 1,
+    avg_fraction_digits = 4,
+    avg_fraction_scale = 10000,
+    avg_round_half_digit = 5,
 };
 
 struct table_name_resolution {
@@ -390,6 +393,7 @@ enum planned_column_aggregate_function {
     PLANNED_COLUMN_AGGREGATE_MIN = 1,
     PLANNED_COLUMN_AGGREGATE_MAX = 2,
     PLANNED_COLUMN_AGGREGATE_SUM = 3,
+    PLANNED_COLUMN_AGGREGATE_AVG = 4,
 };
 
 struct planned_column_aggregate {
@@ -400,6 +404,16 @@ struct planned_column_aggregate {
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor aggregate_column;
     struct planned_select_predicate predicate;
+};
+
+struct avg_accumulator {
+    int64_t sum;
+    int64_t count;
+};
+
+struct uint128_parts {
+    uint64_t high;
+    uint64_t low;
 };
 
 struct planned_show_create_table {
@@ -1477,6 +1491,22 @@ static int step_column_aggregate_statement(
     const struct planned_column_aggregate *plan,
     mylite_result *result
 );
+static int append_avg_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    mylite_result *result
+);
+static int format_avg_value(
+    struct mylite_db *database,
+    struct avg_accumulator accumulator,
+    char *buffer,
+    size_t buffer_size
+);
+static uint64_t absolute_int64_magnitude(int64_t value);
+static int next_decimal_digit(uint64_t *remainder, uint64_t denominator);
+static struct uint128_parts multiply_u64_by_decimal_radix(uint64_t value);
+static bool uint128_ge_u64(const struct uint128_parts *left, uint64_t right);
+static void uint128_subtract_u64(struct uint128_parts *left, uint64_t right);
 static int column_aggregate_step_error(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -2417,6 +2447,10 @@ static int append_create_table_select_source_projection(
 static int build_select_sql(const struct planned_select *plan, char **out_sql);
 static int build_count_sql(const struct planned_count *plan, char **out_sql);
 static int build_column_aggregate_sql(const struct planned_column_aggregate *plan, char **out_sql);
+static int append_column_aggregate_select_list_sql(
+    struct dynamic_string *string,
+    const struct planned_column_aggregate *plan
+);
 static const char *column_aggregate_sql_function(enum planned_column_aggregate_function function);
 static int append_select_predicate_sql(
     struct dynamic_string *string,
@@ -3000,6 +3034,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
@@ -6402,6 +6437,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
@@ -11479,6 +11515,9 @@ static enum planned_column_aggregate_function column_aggregate_function_from_exp
     if (expression->kind == MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION) {
         return PLANNED_COLUMN_AGGREGATE_SUM;
     }
+    if (expression->kind == MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_AVG;
+    }
 
     return PLANNED_COLUMN_AGGREGATE_NONE;
 }
@@ -11505,6 +11544,9 @@ static enum planned_column_aggregate_function select_list_column_aggregate_funct
 static const char *column_aggregate_single_item_error(
     enum planned_column_aggregate_function function
 ) {
+    if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        return "AVG(column) supports exactly one aggregate select item";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports exactly one aggregate select item";
     }
@@ -11515,6 +11557,9 @@ static const char *column_aggregate_single_item_error(
 static const char *column_aggregate_optional_clause_error(
     enum planned_column_aggregate_function function
 ) {
+    if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        return "AVG(column) supports only WHERE";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports only WHERE";
     }
@@ -11523,6 +11568,9 @@ static const char *column_aggregate_optional_clause_error(
 }
 
 static const char *column_aggregate_source_error(enum planned_column_aggregate_function function) {
+    if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        return "AVG(column) supports only descriptor-backed table reads";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports only descriptor-backed table reads";
     }
@@ -11531,6 +11579,9 @@ static const char *column_aggregate_source_error(enum planned_column_aggregate_f
 }
 
 static const char *column_aggregate_column_error(enum planned_column_aggregate_function function) {
+    if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        return "AVG(column) supports only descriptor columns";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports only descriptor columns";
     }
@@ -11539,6 +11590,9 @@ static const char *column_aggregate_column_error(enum planned_column_aggregate_f
 }
 
 static const char *column_aggregate_integer_error(enum planned_column_aggregate_function function) {
+    if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        return "AVG(column) supports only integer descriptor columns";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports only integer descriptor columns";
     }
@@ -11673,7 +11727,11 @@ static int step_column_aggregate_statement(
         return column_aggregate_step_error(database, statement, plan, sqlite_rc);
     }
 
-    rc = append_selected_sqlite_row(statement, result);
+    if (plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        rc = append_avg_sqlite_row(database, statement, result);
+    } else {
+        rc = append_selected_sqlite_row(statement, result);
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -11685,6 +11743,171 @@ static int step_column_aggregate_statement(
     return MYLITE_OK;
 }
 
+static int append_avg_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    mylite_result *result
+) {
+    const char *values[] = {NULL};
+    char average_text[integer_text_capacity + sizeof(".0000")];
+    int64_t count = 0;
+    int rc = MYLITE_OK;
+
+    if (sqlite3_column_type(statement, 1) != SQLITE_INTEGER) {
+        return MYLITE_ERROR;
+    }
+
+    count = (int64_t)sqlite3_column_int64(statement, 1);
+    if (count == 0) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+        return rc;
+    }
+    if (count < 0 || sqlite3_column_type(statement, 0) != SQLITE_INTEGER) {
+        return MYLITE_ERROR;
+    }
+
+    rc = format_avg_value(
+        database,
+        (struct avg_accumulator){
+            .sum = (int64_t)sqlite3_column_int64(statement, 0),
+            .count = count,
+        },
+        average_text,
+        sizeof(average_text)
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    values[0] = average_text;
+    rc = mylite_result_append_text_row(result, values);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+
+    return rc;
+}
+
+static int format_avg_value(
+    struct mylite_db *database,
+    struct avg_accumulator accumulator,
+    char *buffer,
+    size_t buffer_size
+) {
+    uint64_t magnitude = absolute_int64_magnitude(accumulator.sum);
+    uint64_t denominator = (uint64_t)accumulator.count;
+    uint64_t integer_part = magnitude / denominator;
+    uint64_t remainder = magnitude % denominator;
+    unsigned int fraction = 0U;
+    int round_digit = 0;
+    bool is_negative = accumulator.sum < 0;
+    int written = 0;
+
+    for (size_t digit_index = 0U; digit_index < avg_fraction_digits; ++digit_index) {
+        int digit = next_decimal_digit(&remainder, denominator);
+
+        if (digit < 0) {
+            set_runtime_error(database, "failed to format AVG(column) value");
+            return MYLITE_ERROR;
+        }
+        fraction = (fraction * decimal_base) + (unsigned int)digit;
+    }
+
+    round_digit = next_decimal_digit(&remainder, denominator);
+    if (round_digit < 0) {
+        set_runtime_error(database, "failed to format AVG(column) value");
+        return MYLITE_ERROR;
+    }
+    if (round_digit >= avg_round_half_digit) {
+        ++fraction;
+        if (fraction == avg_fraction_scale) {
+            fraction = 0U;
+            ++integer_part;
+        }
+    }
+
+    written = snprintf(
+        buffer,
+        buffer_size,
+        "%s%" PRIu64 ".%04u",
+        is_negative && (integer_part != 0U || fraction != 0U) ? "-" : "",
+        integer_part,
+        fraction
+    );
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format AVG(column) value");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static uint64_t absolute_int64_magnitude(int64_t value) {
+    const uint64_t int64_negative_abs_max = 9223372036854775808ULL;
+
+    if (value >= 0) {
+        return (uint64_t)value;
+    }
+    if (value == INT64_MIN) {
+        return int64_negative_abs_max;
+    }
+
+    return (uint64_t)-value;
+}
+
+static int next_decimal_digit(uint64_t *remainder, uint64_t denominator) {
+    struct uint128_parts product = {0};
+    int digit = 0;
+
+    if (remainder == NULL || denominator == 0U || *remainder >= denominator) {
+        return -1;
+    }
+
+    product = multiply_u64_by_decimal_radix(*remainder);
+    while (uint128_ge_u64(&product, denominator)) {
+        uint128_subtract_u64(&product, denominator);
+        ++digit;
+    }
+
+    *remainder = product.low;
+    return digit;
+}
+
+static struct uint128_parts multiply_u64_by_decimal_radix(uint64_t value) {
+    struct uint128_parts product = {0};
+
+    for (unsigned int index = 0U; index < decimal_base; ++index) {
+        uint64_t previous_low = product.low;
+
+        product.low += value;
+        if (product.low < previous_low) {
+            ++product.high;
+        }
+    }
+
+    return product;
+}
+
+static bool uint128_ge_u64(const struct uint128_parts *left, uint64_t right) {
+    if (left->high != 0U) {
+        return true;
+    }
+
+    return left->low >= right;
+}
+
+static void uint128_subtract_u64(struct uint128_parts *left, uint64_t right) {
+    uint64_t previous_low = left->low;
+
+    left->low -= right;
+    if (previous_low < right) {
+        --left->high;
+    }
+}
+
 static int column_aggregate_step_error(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -11693,13 +11916,21 @@ static int column_aggregate_step_error(
 ) {
     const char *message = NULL;
 
-    if (sqlite_rc == SQLITE_ERROR && plan->function == PLANNED_COLUMN_AGGREGATE_SUM) {
+    if (sqlite_rc == SQLITE_ERROR && (plan->function == PLANNED_COLUMN_AGGREGATE_SUM ||
+                                      plan->function == PLANNED_COLUMN_AGGREGATE_AVG)) {
         message = sqlite3_errmsg(sqlite3_db_handle(statement));
         if (message != NULL && strcmp(message, "integer overflow") == 0) {
-            set_unsupported_error(
-                database,
-                "SUM(column) result exceeds MyLite signed 64-bit range"
-            );
+            if (plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+                set_unsupported_error(
+                    database,
+                    "AVG(column) intermediate sum exceeds MyLite signed 64-bit range"
+                );
+            } else {
+                set_unsupported_error(
+                    database,
+                    "SUM(column) result exceeds MyLite signed 64-bit range"
+                );
+            }
             return MYLITE_ERROR;
         }
     }
@@ -17928,16 +18159,10 @@ static int build_column_aggregate_sql(const struct planned_column_aggregate *pla
 
     rc = dynamic_string_append(&string, "SELECT ");
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, column_aggregate_sql_function(plan->function));
+        rc = append_column_aggregate_select_list_sql(&string, plan);
     }
     if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_char(&string, '(');
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append_quoted_identifier(&string, plan->aggregate_column.name);
-    }
-    if (rc == MYLITE_OK) {
-        rc = dynamic_string_append(&string, ") FROM ");
+        rc = dynamic_string_append(&string, " FROM ");
     }
     if (rc == MYLITE_OK) {
         rc = dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
@@ -17957,6 +18182,43 @@ static int build_column_aggregate_sql(const struct planned_column_aggregate *pla
     return rc;
 }
 
+static int append_column_aggregate_select_list_sql(
+    struct dynamic_string *string,
+    const struct planned_column_aggregate *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        rc = dynamic_string_append(string, "SUM(");
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, plan->aggregate_column.name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append(string, "), COUNT(");
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_quoted_identifier(string, plan->aggregate_column.name);
+        }
+        if (rc == MYLITE_OK) {
+            rc = dynamic_string_append_char(string, ')');
+        }
+        return rc;
+    }
+
+    rc = dynamic_string_append(string, column_aggregate_sql_function(plan->function));
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_quoted_identifier(string, plan->aggregate_column.name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
 static const char *column_aggregate_sql_function(enum planned_column_aggregate_function function) {
     switch (function) {
     case PLANNED_COLUMN_AGGREGATE_NONE:
@@ -17967,6 +18229,8 @@ static const char *column_aggregate_sql_function(enum planned_column_aggregate_f
         return "MAX";
     case PLANNED_COLUMN_AGGREGATE_SUM:
         return "SUM";
+    case PLANNED_COLUMN_AGGREGATE_AVG:
+        return "";
     }
 
     return "";

@@ -2456,12 +2456,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_no_space_one_argument_functio
     struct mylite_sql_ast_node *argument,
     struct mylite_sql_token right_paren
 ) {
-    struct mylite_sql_ast_node *function = NULL;
-
     if (left_paren.offset != function_token.offset + function_token.length) {
         mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_LPAREN, left_paren);
         return NULL;
     }
+
+    return mylite_sql_parser_make_one_argument_function(
+        state,
+        function_token,
+        function_kind,
+        argument,
+        right_paren
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_one_argument_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    enum mylite_sql_ast_node_kind function_kind,
+    struct mylite_sql_ast_node *argument,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *function = NULL;
 
     function = make_node(
         state,
@@ -2927,6 +2943,7 @@ static bool map_keyword_token(
         {"BY", MYLITE_SQL_PARSE_BY},
         {"CONNECTION_ID", MYLITE_SQL_PARSE_CONNECTION_ID},
         {"COUNT", MYLITE_SQL_PARSE_COUNT},
+        {"AVG", MYLITE_SQL_PARSE_AVG},
         {"DISTINCT", MYLITE_SQL_PARSE_DISTINCT},
         {"DISTINCTROW", MYLITE_SQL_PARSE_DISTINCTROW},
         {"CURRENT_ROLE", MYLITE_SQL_PARSE_CURRENT_ROLE},

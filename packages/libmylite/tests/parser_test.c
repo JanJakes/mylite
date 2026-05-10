@@ -40,6 +40,7 @@ static int test_diagnostics_count_system_variables(void);
 static int test_count_star_aggregate(void);
 static int test_min_max_aggregate(void);
 static int test_sum_aggregate(void);
+static int test_avg_aggregate(void);
 static int test_unary_and_parenthesized_expression(void);
 static int test_literal_categories(void);
 static int test_qualified_identifier_keyword_part(void);
@@ -158,6 +159,7 @@ int main(void) {
     failures += test_count_star_aggregate();
     failures += test_min_max_aggregate();
     failures += test_sum_aggregate();
+    failures += test_avg_aggregate();
     failures += test_unary_and_parenthesized_expression();
     failures += test_literal_categories();
     failures += test_qualified_identifier_keyword_part();
@@ -1901,6 +1903,119 @@ static int test_sum_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT SUM(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_avg_aggregate(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *fourth_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql("SELECT AVG(id), avg(n), Avg( n ) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, "avg aggregate");
+    failures += expect_span_text(first_expression, "AVG(id)", "avg aggregate span");
+    failures += expect_node(child_at(first_expression, 0U), MYLITE_SQL_AST_IDENTIFIER, "avg arg");
+    failures += expect_span_text(child_at(first_expression, 0U), "id", "avg arg span");
+    failures += expect_node(second_expression, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, "lower avg");
+    failures += expect_span_text(second_expression, "avg(n)", "lower avg span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, "mixed avg");
+    failures += expect_span_text(third_expression, "Avg( n )", "mixed avg span");
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_TABLE, "avg from table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT AVG (n), AVG/**/(n), AVG /*x*/ (n), AVG( /*x*/ n ) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    fourth_expression = child_at(child_at(select_list, 3U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION,
+        "avg whitespace aggregate"
+    );
+    failures += expect_span_text(first_expression, "AVG (n)", "avg whitespace span");
+    failures += expect_span_text(second_expression, "AVG/**/(n)", "avg comment span");
+    failures += expect_span_text(third_expression, "AVG /*x*/ (n)", "avg spaced comment span");
+    failures += expect_span_text(fourth_expression, "AVG( /*x*/ n )", "avg inner comment span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT AVG(t.id), AVG(db.t.n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified avg argument"
+    );
+    failures += expect_span_text(first_expression, "AVG(t.id)", "qualified avg span");
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "schema-qualified avg argument"
+    );
+    failures += expect_span_text(second_expression, "AVG(db.t.n)", "schema avg span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT (AVG(id));", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized avg aggregate"
+    );
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION,
+        "wrapped avg aggregate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("CREATE TABLE avg (avg INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    failures += expect_node(select, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "avg identifier table");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT AVG;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare avg identifier");
+    failures += expect_span_text(first_expression, "AVG", "bare avg span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT AVG();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT AVG(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT AVG(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT AVG(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT AVG(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT AVG(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

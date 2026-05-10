@@ -94,6 +94,7 @@ run_mysql \
      CREATE TABLE all_null_t(id INT NOT NULL, n INT NULL, b BIGINT NULL) ENGINE=InnoDB;
      CREATE TABLE overflow_t(b BIGINT NOT NULL, bu BIGINT UNSIGNED NOT NULL) ENGINE=InnoDB;
      CREATE TABLE rounding_t(n INT NOT NULL) ENGINE=InnoDB;
+     CREATE TABLE fifth_decimal_t(pos BIGINT NOT NULL, neg BIGINT NOT NULL) ENGINE=InnoDB;
      CREATE TABLE negative_zero_t(n BIGINT NOT NULL) ENGINE=InnoDB;
      CREATE TABLE digits(n INT NOT NULL) ENGINE=InnoDB;
      CREATE TABLE quoted_t(\`weird name\` INT NULL, \`double\"quote\` INT NULL) ENGINE=InnoDB;
@@ -110,6 +111,15 @@ run_mysql \
        (1, 9223372036854775807);
      INSERT INTO rounding_t VALUES (1), (2), (2), (-1), (0), (0);
      INSERT INTO digits VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+     INSERT INTO fifth_decimal_t
+       SELECT CASE WHEN a.n = 0 AND b.n = 0 AND c.n = 0 AND d.n = 0 AND e.n = 0
+                   THEN 1 ELSE 0 END,
+              CASE WHEN a.n = 0 AND b.n = 0 AND c.n = 0 AND d.n = 0 AND e.n = 0
+                   THEN -1 ELSE 0 END
+       FROM digits a CROSS JOIN digits b CROSS JOIN digits c CROSS JOIN digits d
+       CROSS JOIN digits e
+       ORDER BY a.n, b.n, c.n, d.n, e.n
+       LIMIT 20000;
      INSERT INTO negative_zero_t
        SELECT CASE WHEN a.n = 0 AND b.n = 0 AND c.n = 0 AND d.n = 0 AND e.n = 0
                    THEN -1 ELSE 0 END
@@ -187,27 +197,32 @@ rounding=$(run_mysql \
      SELECT AVG(n) FROM (SELECT 1 AS n UNION ALL SELECT 6) AS r;
      SELECT AVG(n) FROM (SELECT -1 AS n UNION ALL SELECT -2 UNION ALL SELECT 0) AS r;
      SELECT AVG(n) FROM (SELECT -1 AS n UNION ALL SELECT 0 UNION ALL SELECT 0) AS r;
+     SELECT AVG(pos), AVG(neg) FROM fifth_decimal_t;
      SELECT AVG(n) FROM negative_zero_t;"
 )
 expect_value "round half away positive" "1.6667" "$(printf '%s\n' "$rounding" | sed -n '1p')"
 expect_value "exact half average" "3.5000" "$(printf '%s\n' "$rounding" | sed -n '2p')"
 expect_value "negative integer average" "-1.0000" "$(printf '%s\n' "$rounding" | sed -n '3p')"
 expect_value "round half away negative" "-0.3333" "$(printf '%s\n' "$rounding" | sed -n '4p')"
-expect_value "rounded negative zero average" "0.0000" "$(printf '%s\n' "$rounding" | sed -n '5p')"
+expect_value "fifth decimal tie averages" "0.0001	-0.0001" \
+    "$(printf '%s\n' "$rounding" | sed -n '5p')"
+expect_value "rounded negative zero average" "0.0000" "$(printf '%s\n' "$rounding" | sed -n '6p')"
 
 headers_output=$(run_mysql_with_headers \
     "USE ${DATABASE};
-     SELECT AVG(n), avg(n), Avg( n ), AVG(/*x*/n), (AVG(n)), AVG(N), AVG(t.n) FROM t;"
+     SELECT AVG(n), avg(n), Avg( n ), AVG(/*x*/n), (AVG(n)), AVG(N), AVG(t.n),
+            AVG(${DATABASE}.t.n)
+       FROM ${DATABASE}.t;"
 )
 headers=$(printf '%s\n' "$headers_output" | sed -n '1p')
 values=$(printf '%s\n' "$headers_output" | sed -n '2p')
 expect_value \
     "avg labels" \
-    "AVG(n)	avg(n)	Avg( n )	AVG(/*x*/ n)	(AVG(n))	AVG(N)	AVG(t.n)" \
+    "AVG(n)	avg(n)	Avg( n )	AVG(/*x*/ n)	(AVG(n))	AVG(N)	AVG(t.n)	AVG(${DATABASE}.t.n)" \
     "$headers"
 expect_value \
     "avg label values" \
-    "23.3333	23.3333	23.3333	23.3333	23.3333	23.3333	23.3333" \
+    "23.3333	23.3333	23.3333	23.3333	23.3333	23.3333	23.3333	23.3333" \
     "$values"
 
 whitespace_output=$(run_mysql_with_headers \

@@ -1270,6 +1270,10 @@ expression(A) ::= SUM(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R);
 }
+expression(A) ::= AVG(T) LPAREN qualified_identifier(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R);
+}
 expression(A) ::= VERSION(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_VERSION_FUNCTION, R);
@@ -1423,6 +1427,9 @@ identifier(A) ::= MAX(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SUM(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= AVG(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= VERSION(T). {

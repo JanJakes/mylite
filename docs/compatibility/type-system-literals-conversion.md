@@ -82,7 +82,7 @@
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported no-source/`DUAL` literal projection values, column default values, `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE ... VALUES`, `REPLACE ... SET`, and single-table `UPDATE` assignment inputs plus supported filtered `SELECT`/`DELETE`/`UPDATE` predicate right operands; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE`/`UPDATE LIMIT`; no table-backed expression-level numeric semantics, non-decimal formats, decimals, floats, hex, or bit literals |
+| Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported no-source/`DUAL` literal projection values, column default values, `INSERT ... VALUES`, `INSERT ... SET`, `REPLACE ... VALUES`, `REPLACE ... SET`, and single-table `UPDATE` assignment inputs plus supported filtered `SELECT`/`DELETE`/`UPDATE` predicate right operands; `INSERT IGNORE ... VALUES` and `INSERT IGNORE ... SET` clip out-of-range descriptor integer inputs to the current supported range with warnings; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE`/`UPDATE LIMIT`; no table-backed expression-level numeric semantics, non-decimal formats, decimals, floats, hex, or bit literals |
 | Boolean literals | 🟡 | `TRUE` and `FALSE` are accepted as `1` and `0` only in supported no-source/`DUAL` literal projection values, column default values, integer row-value, `INSERT ... SET`, `REPLACE ... VALUES`, `REPLACE ... SET`, single-table `UPDATE` assignment, filtered `SELECT`/`DELETE`/`UPDATE` predicate right-operand positions, and `COUNT(TRUE)` / `COUNT(FALSE)` aggregate argument positions; no `WHERE TRUE`, `IS TRUE`, boolean operators, unary boolean expressions, scalar truth metadata, general expression evaluation, or `LIMIT TRUE` / `LIMIT FALSE` |
 | String literals | ❌ | Escapes, introducers, sql_mode |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP literal syntax and coercion |
@@ -94,7 +94,7 @@
 | --- | --- | --- |
 | User variables | ❌ | Retention, coercion, metadata |
 | Local variables | ❌ | Stored-program variable typing, scope, and diagnostics |
-| Type conversion | 🟡 | Limited strict conversion for supported integer/`NULL`/`TRUE`/`FALSE` defaults plus inserted, replaced, and updated values, descriptor-driven existing-row validation for supported `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]`, descriptor-driven integer and boolean-literal predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only |
+| Type conversion | 🟡 | Limited strict conversion for supported integer/`NULL`/`TRUE`/`FALSE` defaults plus inserted, replaced, and updated values, limited `INSERT IGNORE ... VALUES` / `SET` adjustment for omitted numeric `NOT NULL` no-default columns, explicit `NULL` into numeric `NOT NULL`, and out-of-range descriptor integer inputs, descriptor-driven existing-row validation for supported `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]`, descriptor-driven integer and boolean-literal predicate conversion for `SELECT`/`DELETE`/`UPDATE`, and unsigned signed-64 range conversion for supported `SELECT` `LIMIT`/`OFFSET` plus `DELETE`/`UPDATE LIMIT` literals only |
 | Collation coercibility | ❌ | Coercibility and diagnostics |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

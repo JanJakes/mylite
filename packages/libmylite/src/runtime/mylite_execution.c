@@ -746,6 +746,16 @@ static int execute_insert_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_replace_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_planned_insert_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_insert_set_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -2804,6 +2814,8 @@ static int execute_parsed_statement(
         return execute_insert_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
         return execute_replace_values_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT:
+        return execute_replace_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
         return execute_insert_set_statement(database, statement, out_result);
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
@@ -4102,6 +4114,22 @@ static int execute_planned_insert_statement(
 }
 
 static int execute_insert_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_planned_insert_select_statement(database, statement, out_result);
+}
+
+static int execute_replace_select_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    return execute_planned_insert_select_statement(database, statement, out_result);
+}
+
+static int execute_planned_insert_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -6107,6 +6135,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_INSERT_SELECT_STATEMENT:
     case MYLITE_SQL_AST_CREATE_TABLE_SELECT_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
+    case MYLITE_SQL_AST_REPLACE_SELECT_STATEMENT:
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:
     case MYLITE_SQL_AST_DELETE_STATEMENT:

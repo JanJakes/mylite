@@ -189,6 +189,9 @@ statement(A) ::= insert_select_statement(B). {
 statement(A) ::= replace_values_statement(B). {
     A = B;
 }
+statement(A) ::= replace_select_statement(B). {
+    A = B;
+}
 statement(A) ::= replace_set_statement(B). {
     A = B;
 }
@@ -744,6 +747,15 @@ replace_values_statement(A) ::=
 replace_values_statement(A) ::=
     REPLACE(R) table_name(T) insert_column_list_opt(C) VALUES insert_row_list(V). {
     A = mylite_sql_parser_make_replace_values_statement(state, R, T, C, V);
+}
+
+replace_select_statement(A) ::=
+    REPLACE(R) INTO table_name(T) insert_column_list_opt(C) select_statement(S). {
+    A = mylite_sql_parser_make_replace_select_statement(state, R, T, C, S);
+}
+replace_select_statement(A) ::=
+    REPLACE(R) table_name(T) insert_column_list_opt(C) select_statement(S). {
+    A = mylite_sql_parser_make_replace_select_statement(state, R, T, C, S);
 }
 
 replace_set_statement(A) ::=

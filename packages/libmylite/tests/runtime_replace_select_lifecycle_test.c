@@ -2,7 +2,6 @@
 
 #include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
-#include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -18,8 +17,7 @@
 enum {
     test_path_capacity = 1024,
     sql_capacity = 2048,
-    replace_integer_family_column_count = 8,
-    replace_success_row_count = 6,
+    copied_query_column_count = 9,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -47,14 +45,15 @@ struct expected_query {
     const char *context;
 };
 
-static int test_replace_values_success_persistence_rename_and_drop(void);
-static int test_replace_values_schema_resolution_and_diagnostics(void);
-static int test_replace_values_independent_handles(void);
+static int test_replace_select_success_persistence_and_visibility(void);
+static int test_replace_select_schema_resolution_and_diagnostics(void);
+static int test_replace_select_independent_handles(void);
 static int seed_schema(mylite_db *database, const char *name);
-static int create_numbers_table(mylite_db *database, const char *table_name);
+static int create_source_table(mylite_db *database, const char *table_name);
+static int create_target_table(mylite_db *database, const char *table_name);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
-static int expect_replace_ok(mylite_db *database, const char *sql, int64_t affected_rows);
+static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_result_value(
     const mylite_result *result,
@@ -68,7 +67,6 @@ static int current_process_id(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int read_file_at(const char *path, long offset, void *buffer, size_t size);
-static int query_physical_row_count(sqlite3 *connection, const char *table_name, int *out_count);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
@@ -86,61 +84,65 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
-    failures += test_replace_values_success_persistence_rename_and_drop();
-    failures += test_replace_values_schema_resolution_and_diagnostics();
-    failures += test_replace_values_independent_handles();
+    failures += test_replace_select_success_persistence_and_visibility();
+    failures += test_replace_select_schema_resolution_and_diagnostics();
+    failures += test_replace_select_independent_handles();
 
     return failures == 0 ? 0 : 1;
 }
 
-static int test_replace_values_success_persistence_rename_and_drop(void) {
-    static const char *const integer_family_values[] = {
+static int test_replace_select_success_persistence_and_visibility(void) {
+    static const char *const copied_rows[] = {
+        "1",
         "-2147483648",
         "2147483647",
         "4294967295",
-        "0",
         "-9223372036854775808",
         "9223372036854775807",
         NULL,
-        "9",
-    };
-    static const char *const ordered_rows[] = {
-        "1",
-        "-3",
-        "-4",
-        "6",
-        "1",
+        "11",
+        "101",
+        "2",
+        "2147483647",
+        "-1",
         "0",
-        "1",
-        "-2147483648",
-        "9",
+        "9223372036854775807",
+        "0",
+        "20",
+        "12",
+        "102",
         "3",
         NULL,
-        "10",
-        "4",
         NULL,
+        "42",
+        NULL,
+        "42",
+        NULL,
+        "13",
+        "44",
+    };
+    static const char *const visible_copy_rows[] = {
+        "1",
+        "-2147483648",
         "11",
-        "5",
-        NULL,
+        "1",
+        "-2147483648",
+        "11",
+        "2",
+        "2147483647",
         "12",
     };
-    static const char *const row_count_two[] = {"2"};
-    static const char *const persisted_row[] = {"1", "-2147483648", "9"};
-    static const char *const renamed_row[] = {"7", "77"};
-    static const char *const last_insert_and_row_count[] = {"0", "1"};
+    static const char *const row_count_one[] = {"1"};
+    static const char *const persisted_rows[] = {"3", "13", "44"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
-    mylite_db *database = NULL;
-    mylite_result *result = NULL;
-    sqlite3 *sqlite = NULL;
     const struct mylite_catalog *catalog = NULL;
     const struct mylite_session_state *session = NULL;
-    struct mylite_catalog_schema_descriptor schema = {0};
-    struct mylite_catalog_table_descriptor table = {0};
-    uint64_t catalog_generation_before_replace = 0U;
-    uint64_t sqlite_generation_before_replace = 0U;
-    int physical_rows = 0;
+    uint64_t catalog_generation_before_replace_select = 0U;
+    uint64_t sqlite_generation_before_replace_select = 0U;
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "success") != 0) {
@@ -154,103 +156,105 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += create_numbers_table(database, "numbers");
+    failures += create_source_table(database, "src");
+    failures += create_target_table(database, "dst");
 
-    catalog = mylite_connection_catalog_for_test(database);
-    session = mylite_connection_session_state(database);
-    if (catalog != NULL) {
-        catalog_generation_before_replace = catalog->generation;
-    }
-    if (session != NULL) {
-        sqlite_generation_before_replace = session->sqlite_schema_generation;
-    }
-
-    failures += expect_replace_ok(
+    failures += expect_dml_ok(
         database,
-        "REPLACE INTO numbers VALUES (1, -2147483648, 2147483647, 4294967295, "
-        "0, -9223372036854775808, 9223372036854775807, NULL, 9)",
+        "INSERT INTO src(id, i, ii, iu, b, bu, n, nn, hidden) VALUES "
+        "(1, -2147483648, 2147483647, 4294967295, -9223372036854775808, "
+        "9223372036854775807, NULL, 11, 101), "
+        "(2, 2147483647, -1, 0, 9223372036854775807, 0, 20, 12, 102), "
+        "(3, NULL, NULL, 42, NULL, 42, NULL, 13, 103)",
+        3
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        catalog_generation_before_replace_select = catalog->generation;
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        sqlite_generation_before_replace_select = session->sqlite_schema_generation;
+    }
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO dst(id, i, ii, iu, b, bu, n, nn, hidden) "
+        "SELECT id, i, ii, iu, b, bu, n, nn, hidden "
+        "FROM src WHERE id >= 1 ORDER BY id LIMIT 2",
+        2
+    );
+    catalog = mylite_connection_catalog_for_test(database);
+    if (catalog != NULL) {
+        failures += expect_uint64(
+            catalog->generation,
+            catalog_generation_before_replace_select,
+            "replace select leaves catalog generation unchanged"
+        );
+    }
+    session = mylite_connection_session_state(database);
+    if (session != NULL) {
+        failures += expect_uint64(
+            session->sqlite_schema_generation,
+            sqlite_generation_before_replace_select,
+            "replace select leaves SQLite schema generation unchanged"
+        );
+    }
+    failures += expect_dml_ok(
+        database,
+        "REPLACE dst(id, i, ii, iu, b, bu, n, nn) "
+        "SELECT id, i, ii, iu, b, bu, n, nn FROM src WHERE id = 3",
         1
     );
-    failures += expect_replace_ok(database, "REPLACE numbers (id, i, nn) VALUES (1, -3, -4)", 1);
-    failures += expect_replace_ok(database, "REPLACE INTO numbers (id, nn) VALUES (3, +10)", 1);
-    failures +=
-        expect_replace_ok(database, "REPLACE INTO numbers (id, nn) VALUES (4, 11), (5, 12)", 2);
     failures += expect_query_values(
         database,
         (struct expected_query){
             .sql = "SELECT ROW_COUNT()",
-            .values = row_count_two,
+            .values = row_count_one,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "replace row count function",
+            .context = "replace select row count function",
         }
     );
-    failures +=
-        expect_replace_ok(database, "REPLACE INTO numbers (id, i, nn) VALUES (6, TRUE, FALSE)", 1);
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT LAST_INSERT_ID(), ROW_COUNT()",
-            .values = last_insert_and_row_count,
-            .column_count = 2U,
-            .row_count = 1U,
-            .context = "replace leaves last insert id",
+            .sql = "SELECT id, i, ii, iu, b, bu, n, nn, hidden FROM dst ORDER BY id",
+            .values = copied_rows,
+            .column_count = copied_query_column_count,
+            .row_count = 3U,
+            .context = "replace select copied rows",
         }
     );
 
-    catalog = mylite_connection_catalog_for_test(database);
-    session = mylite_connection_session_state(database);
-    if (catalog != NULL) {
-        failures += expect_uint64(
-            catalog->generation,
-            catalog_generation_before_replace,
-            "replace leaves catalog generation"
-        );
-    }
-    if (session != NULL) {
-        failures += expect_uint64(
-            session->sqlite_schema_generation,
-            sqlite_generation_before_replace,
-            "replace leaves SQLite schema generation"
-        );
-    }
-
-    failures += expect_query_values(
+    failures += execute_ok(
         database,
-        (struct expected_query){
-            .sql = "SELECT i, ii, iu, integeru, b, bu, n, nn FROM numbers WHERE nn = 9",
-            .values = integer_family_values,
-            .column_count = replace_integer_family_column_count,
-            .row_count = 1U,
-            .context = "replace integer family values",
-        }
+        "CREATE TABLE visible_copy (id INT NOT NULL, i INT, ii INTEGER, iu INT UNSIGNED, "
+        "b BIGINT, bu BIGINT UNSIGNED, n INT NULL, nn INT NOT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO visible_copy SELECT * FROM src ORDER BY id LIMIT 2",
+        2
+    );
+    failures += expect_dml_ok(database, "REPLACE INTO visible_copy SELECT * FROM src LIMIT 0", 0);
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO visible_copy SELECT * FROM visible_copy WHERE id = 1",
+        1
     );
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, i, nn FROM numbers ORDER BY nn",
-            .values = ordered_rows,
+            .sql = "SELECT id, i, nn FROM visible_copy ORDER BY id",
+            .values = visible_copy_rows,
             .column_count = 3U,
-            .row_count = replace_success_row_count,
-            .context = "replace values rows",
+            .row_count = 3U,
+            .context = "replace select visible star and no-key repeat rows",
         }
     );
-
-    failures += expect_int(
-        mylite_catalog_read_schema_by_name(database, "app", &schema),
-        MYLITE_OK,
-        "read replace schema"
-    );
-    failures += expect_int(
-        mylite_catalog_read_table_by_name(database, schema.schema_id, "numbers", &table),
-        MYLITE_OK,
-        "read replace table"
-    );
-    sqlite = mylite_connection_sqlite_for_test(database);
-    if (sqlite != NULL) {
-        failures += query_physical_row_count(sqlite, table.physical_name, &physical_rows);
-    }
-    failures += expect_int(physical_rows, replace_success_row_count, "physical rows after replace");
 
     mylite_close(database);
     database = NULL;
@@ -260,7 +264,7 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
         actual_preamble,
         expected_preamble,
         sizeof(expected_preamble),
-        "replace preserves preamble"
+        "replace select preserves preamble"
     );
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen success file");
@@ -270,40 +274,31 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, i, nn FROM numbers WHERE nn = 9",
-            .values = persisted_row,
+            .sql = "SELECT id, nn, hidden FROM dst WHERE id = 3",
+            .values = persisted_rows,
             .column_count = 3U,
             .row_count = 1U,
-            .context = "persisted replace row",
+            .context = "persisted replace select row",
         }
     );
-
-    failures += execute_ok(database, "RENAME TABLE numbers TO renamed_numbers", &result);
+    failures += execute_ok(database, "RENAME TABLE dst TO renamed_dst", &result);
     mylite_result_free(result);
     result = NULL;
-    failures +=
-        expect_replace_ok(database, "REPLACE INTO renamed_numbers (id, nn) VALUES (7, 77)", 1);
-    failures += expect_query_values(
+    failures += expect_dml_ok(
         database,
-        (struct expected_query){
-            .sql = "SELECT id, nn FROM renamed_numbers WHERE id = 7",
-            .values = renamed_row,
-            .column_count = 2U,
-            .row_count = 1U,
-            .context = "replace after rename",
-        }
+        "REPLACE INTO renamed_dst(id, nn) SELECT id, nn FROM src WHERE id = 1",
+        1
     );
-
-    failures += execute_ok(database, "DROP TABLE renamed_numbers", &result);
+    failures += execute_ok(database, "DROP TABLE renamed_dst", &result);
     mylite_result_free(result);
     result = NULL;
     failures += execute_error(
         database,
-        "REPLACE INTO renamed_numbers (id, nn) VALUES (8, 88)",
+        "REPLACE INTO renamed_dst(id, nn) SELECT id, nn FROM src WHERE id = 1",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
-            .message_part = "Table 'app.renamed_numbers' doesn't exist",
+            .message_part = "Table 'app.renamed_dst' doesn't exist",
         }
     );
 
@@ -313,9 +308,9 @@ static int test_replace_values_success_persistence_rename_and_drop(void) {
     return failures;
 }
 
-static int test_replace_values_schema_resolution_and_diagnostics(void) {
-    static const char *const qualified_values[] = {"1", "2"};
-    static const char *const empty_values[] = {NULL};
+static int test_replace_select_schema_resolution_and_diagnostics(void) {
+    static const char *const qualified_rows[] = {"1", "11"};
+    static const char *const zero_rows[] = {"0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -328,9 +323,34 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open diagnostics file");
     failures += seed_schema(database, "app");
+    failures += create_source_table(database, "app.src");
+    failures += create_target_table(database, "app.dst");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO app.src(id, i, ii, iu, b, bu, n, nn, hidden) VALUES "
+        "(1, 1, 1, 1, 1, 1, 11, 11, 11), "
+        "(2, 2, 2, 2, 2147483648, 2, NULL, 12, 12)",
+        2
+    );
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO app.dst(id, nn) SELECT id, nn FROM app.src WHERE id = 1",
+        1
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, nn FROM app.dst",
+            .values = qualified_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "qualified replace select",
+        }
+    );
+
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (1, 2)",
+        "REPLACE INTO dst(id) SELECT id FROM app.src",
         (struct expected_sql_error){
             .code = mysql_error_no_database_selected,
             .sqlstate = "3D000",
@@ -339,50 +359,37 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO missing_schema.numbers (id, nn) VALUES (1, 2)",
+        "REPLACE INTO app.dst(id) SELECT id FROM src",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_error(
+        database,
+        "REPLACE INTO missing_schema.dst(id) SELECT id FROM missing_source.src",
         (struct expected_sql_error){
             .code = mysql_error_unknown_database,
             .sqlstate = "42000",
             .message_part = "Unknown database",
         }
     );
-
-    failures += execute_ok(
-        database,
-        "CREATE TABLE app.qualified_numbers (id INT NOT NULL, nn INT NOT NULL)",
-        &result
-    );
-    mylite_result_free(result);
-    result = NULL;
-    failures += expect_replace_ok(database, "REPLACE INTO app.qualified_numbers VALUES (1, 2)", 1);
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id, nn FROM app.qualified_numbers",
-            .values = qualified_values,
-            .column_count = 2U,
-            .row_count = 1U,
-            .context = "schema-qualified replace",
-        }
-    );
-
-    failures += execute_ok(database, "USE app", &result);
-    mylite_result_free(result);
-    result = NULL;
-    failures += create_numbers_table(database, "numbers");
-
     failures += execute_error(
         database,
-        "REPLACE INTO missing_table VALUES (1)",
+        "REPLACE INTO app.missing_dst(id) SELECT id FROM app.missing_src",
         (struct expected_sql_error){
             .code = mysql_error_table_does_not_exist,
             .sqlstate = "42S02",
-            .message_part = "Table 'app.missing_table' doesn't exist",
+            .message_part = "Table 'app.missing_dst' doesn't exist",
         }
     );
     failures += execute_error(
         database,
-        "REPLACE INTO _mylite_reserved VALUES (1)",
+        "REPLACE INTO _mylite_reserved(id) SELECT id FROM app.src",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_table_name,
             .sqlstate = "42000",
@@ -391,16 +398,84 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (missing, nn) VALUES (1, 2)",
+        "REPLACE INTO app.dst(id) SELECT id FROM _mylite_reserved",
         (struct expected_sql_error){
-            .code = mysql_error_unknown_column,
-            .sqlstate = "42S22",
-            .message_part = "Unknown column 'missing' in 'field list'",
+            .code = mysql_error_incorrect_table_name,
+            .sqlstate = "42000",
+            .message_part = "Incorrect table name",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE required_target(id INT NOT NULL, must INT NOT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        database,
+        "REPLACE INTO required_target(id) SELECT id FROM src WHERE id > 100",
+        0
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM required_target",
+            .values = zero_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "zero row source with omitted required column",
         }
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, id, nn) VALUES (1, 2, 3)",
+        "REPLACE INTO required_target(id) SELECT id FROM src WHERE id = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_field_no_default,
+            .sqlstate = "HY000",
+            .message_part = "Field 'must' doesn't have a default value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO required_target(id, must) SELECT id, n FROM src WHERE id = 2",
+        (struct expected_sql_error){
+            .code = mysql_error_bad_null,
+            .sqlstate = "23000",
+            .message_part = "Column 'must' cannot be null",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO dst(id, i) SELECT id, b FROM src ORDER BY id",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' at row 2",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO dst(id, i) SELECT id FROM src",
+        (struct expected_sql_error){
+            .code = mysql_error_column_count_mismatch,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO dst(id) SELECT id, i FROM src WHERE id > 100",
+        (struct expected_sql_error){
+            .code = mysql_error_column_count_mismatch,
+            .sqlstate = "21S01",
+            .message_part = "Column count doesn't match value count at row 1",
+        }
+    );
+    failures += execute_error(
+        database,
+        "REPLACE INTO dst(id, id) SELECT id, i FROM src",
         (struct expected_sql_error){
             .code = mysql_error_column_specified_twice,
             .sqlstate = "42000",
@@ -409,97 +484,62 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers VALUES (1)",
+        "REPLACE INTO dst(missing) SELECT id FROM src",
         (struct expected_sql_error){
-            .code = mysql_error_column_count_mismatch,
-            .sqlstate = "21S01",
-            .message_part = "Column count doesn't match value count at row 1",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (1, 2, 3)",
+        "REPLACE INTO dst(id) SELECT missing FROM src",
         (struct expected_sql_error){
-            .code = mysql_error_column_count_mismatch,
-            .sqlstate = "21S01",
-            .message_part = "Column count doesn't match value count at row 1",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id) VALUES (1)",
+        "REPLACE INTO dst(id) SELECT id FROM src WHERE missing = 1",
         (struct expected_sql_error){
-            .code = mysql_error_field_no_default,
-            .sqlstate = "HY000",
-            .message_part = "Field 'nn' doesn't have a default value",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
         }
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (NULL, 1)",
+        "REPLACE INTO dst(id) SELECT id FROM src ORDER BY missing LIMIT 1",
         (struct expected_sql_error){
-            .code = mysql_error_bad_null,
-            .sqlstate = "23000",
-            .message_part = "Column 'id' cannot be null",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'order clause'",
         }
     );
+
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, i, nn) VALUES (1, 2147483648, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'i' at row 1",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, iu, nn) VALUES (1, -1, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'iu' at row 1",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, bu, nn) VALUES (1, 9223372036854775808, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_data_out_of_range,
-            .sqlstate = "22003",
-            .message_part = "Out of range value for column 'bu' at row 1",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers VALUE (1)",
+        "REPLACE INTO dst(id) SELECT id + 1 FROM src",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "SELECT supports only descriptor table columns",
         }
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers VALUES ROW(1)",
+        "REPLACE INTO dst(id) SELECT '1' FROM src",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "SELECT supports only descriptor table columns",
         }
     );
     failures += execute_error(
         database,
-        "REPLACE LOW_PRIORITY INTO numbers VALUES (1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers SELECT 1",
+        "REPLACE INTO dst SELECT 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -508,7 +548,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers PARTITION (p0) VALUES (1)",
+        "REPLACE LOW_PRIORITY INTO dst(id) SELECT id FROM src",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -517,7 +557,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (app.id) VALUES (1)",
+        "REPLACE INTO dst PARTITION (p0) (id) SELECT id FROM src",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -526,7 +566,7 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (?, 1)",
+        "REPLACE INTO dst(app.id) SELECT id FROM src",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -535,94 +575,11 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "REPLACE INTO numbers (id, nn) VALUES (ABS(1), 1)",
+        "REPLACE INTO dst TABLE src",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES ((SELECT 1), 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES ('1', 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (1 + 2, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (DEFAULT, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (1.5, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (1e0, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (0x1, 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "REPLACE INTO numbers (id, nn) VALUES (b'1', 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-
-    failures += expect_query_values(
-        database,
-        (struct expected_query){
-            .sql = "SELECT id FROM numbers",
-            .values = empty_values,
-            .column_count = 1U,
-            .row_count = 0U,
-            .context = "failed replace leaves no rows",
         }
     );
 
@@ -632,9 +589,9 @@ static int test_replace_values_schema_resolution_and_diagnostics(void) {
     return failures;
 }
 
-static int test_replace_values_independent_handles(void) {
-    static const char *const first_values[] = {"1", "11"};
-    static const char *const second_values[] = {"2", "22"};
+static int test_replace_select_independent_handles(void) {
+    static const char *const first_values[] = {"1", "10"};
+    static const char *const second_values[] = {"2", "20"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -649,8 +606,8 @@ static int test_replace_values_independent_handles(void) {
     remove_related_files(first_path);
     remove_related_files(second_path);
 
-    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
-    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
+    failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first file");
+    failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second file");
     failures += seed_schema(first, "app");
     failures += seed_schema(second, "app");
     failures += execute_ok(first, "USE app", &result);
@@ -659,29 +616,46 @@ static int test_replace_values_independent_handles(void) {
     failures += execute_ok(second, "USE app", &result);
     mylite_result_free(result);
     result = NULL;
-    failures += create_numbers_table(first, "numbers");
-    failures += create_numbers_table(second, "numbers");
-
-    failures += expect_replace_ok(first, "REPLACE INTO numbers (id, nn) VALUES (1, 11)", 1);
-    failures += expect_replace_ok(second, "REPLACE INTO numbers (id, nn) VALUES (2, 22)", 1);
+    failures += create_source_table(first, "src");
+    failures += create_source_table(second, "src");
+    failures += execute_ok(first, "CREATE TABLE dst(id INT NOT NULL, nn INT NOT NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(second, "CREATE TABLE dst(id INT NOT NULL, nn INT NOT NULL)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_dml_ok(
+        first,
+        "INSERT INTO src(id, i, ii, iu, b, bu, n, nn, hidden) VALUES "
+        "(1, 1, 1, 1, 1, 1, 1, 10, 1)",
+        1
+    );
+    failures += expect_dml_ok(
+        second,
+        "INSERT INTO src(id, i, ii, iu, b, bu, n, nn, hidden) VALUES "
+        "(2, 2, 2, 2, 2, 2, 2, 20, 2)",
+        1
+    );
+    failures += expect_dml_ok(first, "REPLACE INTO dst SELECT id, nn FROM src", 1);
+    failures += expect_dml_ok(second, "REPLACE INTO dst SELECT id, nn FROM src", 1);
     failures += expect_query_values(
         first,
         (struct expected_query){
-            .sql = "SELECT id, nn FROM numbers",
+            .sql = "SELECT id, nn FROM dst",
             .values = first_values,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "first independent replace rows",
+            .context = "first independent replace select rows",
         }
     );
     failures += expect_query_values(
         second,
         (struct expected_query){
-            .sql = "SELECT id, nn FROM numbers",
+            .sql = "SELECT id, nn FROM dst",
             .values = second_values,
             .column_count = 2U,
             .row_count = 1U,
-            .context = "second independent replace rows",
+            .context = "second independent replace select rows",
         }
     );
 
@@ -703,7 +677,7 @@ static int seed_schema(mylite_db *database, const char *name) {
     );
 }
 
-static int create_numbers_table(mylite_db *database, const char *table_name) {
+static int create_source_table(mylite_db *database, const char *table_name) {
     char sql[sql_capacity];
     mylite_result *result = NULL;
     int written = snprintf(
@@ -714,20 +688,67 @@ static int create_numbers_table(mylite_db *database, const char *table_name) {
         "i INT, "
         "ii INTEGER, "
         "iu INT UNSIGNED, "
-        "integeru INTEGER UNSIGNED, "
         "b BIGINT, "
         "bu BIGINT UNSIGNED, "
         "n INT NULL, "
-        "nn INT NOT NULL)",
+        "nn INT NOT NULL, "
+        "hidden INT DEFAULT 7)",
         table_name
     );
     int failures = 0;
 
     if (written < 0 || (size_t)written >= sizeof(sql)) {
-        fprintf(stderr, "create table SQL is too long for %s\n", table_name);
+        fprintf(stderr, "create source table SQL is too long for %s\n", table_name);
         return 1;
     }
 
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+    result = NULL;
+    written = snprintf(sql, sizeof(sql), "ALTER TABLE %s ALTER hidden SET INVISIBLE", table_name);
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "alter source table SQL is too long for %s\n", table_name);
+        return failures + 1;
+    }
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+
+    return failures;
+}
+
+static int create_target_table(mylite_db *database, const char *table_name) {
+    char sql[sql_capacity];
+    mylite_result *result = NULL;
+    int written = snprintf(
+        sql,
+        sizeof(sql),
+        "CREATE TABLE %s ("
+        "id INT NOT NULL, "
+        "i INTEGER, "
+        "ii INTEGER, "
+        "iu INTEGER UNSIGNED, "
+        "b BIGINT, "
+        "bu BIGINT UNSIGNED, "
+        "n INT NULL, "
+        "nn INT NOT NULL DEFAULT 5, "
+        "hidden INT DEFAULT 44)",
+        table_name
+    );
+    int failures = 0;
+
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "create target table SQL is too long for %s\n", table_name);
+        return 1;
+    }
+
+    failures += execute_ok(database, sql, &result);
+    mylite_result_free(result);
+    result = NULL;
+    written = snprintf(sql, sizeof(sql), "ALTER TABLE %s ALTER hidden SET INVISIBLE", table_name);
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        fprintf(stderr, "alter target table SQL is too long for %s\n", table_name);
+        return failures + 1;
+    }
     failures += execute_ok(database, sql, &result);
     mylite_result_free(result);
 
@@ -771,15 +792,15 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     return failures;
 }
 
-static int expect_replace_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
+static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, sql, &result);
 
-    failures += expect_size(mylite_result_column_count(result), 0U, "replace column count");
-    failures += expect_size(mylite_result_row_count(result), 0U, "replace row count");
+    failures += expect_size(mylite_result_column_count(result), 0U, "DML column count");
+    failures += expect_size(mylite_result_row_count(result), 0U, "DML row count");
     failures +=
-        expect_int64(mylite_result_affected_rows(result), affected_rows, "replace affected rows");
-    failures += expect_size(mylite_result_warning_count(result), 0U, "replace warning count");
+        expect_int64(mylite_result_affected_rows(result), affected_rows, "DML affected rows");
+    failures += expect_size(mylite_result_warning_count(result), 0U, "DML warning count");
     mylite_result_free(result);
 
     return failures;
@@ -836,7 +857,7 @@ static int make_test_path(char *path, size_t path_size, const char *name) {
     written = snprintf(
         path,
         path_size,
-        "%s/mylite_replace_values_lifecycle_%d_%s.mylite",
+        "%s/mylite_replace_select_lifecycle_%d_%s.mylite",
         directory,
         current_process_id(),
         name
@@ -894,37 +915,6 @@ static int read_file_at(const char *path, long offset, void *buffer, size_t size
     }
     if (fclose(file) != 0) {
         fprintf(stderr, "failed to close %s\n", path);
-        return 1;
-    }
-
-    return 0;
-}
-
-static int query_physical_row_count(sqlite3 *connection, const char *table_name, int *out_count) {
-    char sql[sql_capacity];
-    sqlite3_stmt *statement = NULL;
-    int written = snprintf(sql, sizeof(sql), "SELECT count(*) FROM \"%s\"", table_name);
-    int rc = SQLITE_OK;
-
-    *out_count = 0;
-    if (written < 0 || (size_t)written >= sizeof(sql)) {
-        fprintf(stderr, "physical count SQL is too long\n");
-        return 1;
-    }
-
-    rc = sqlite3_prepare_v2(connection, sql, -1, &statement, NULL);
-    if (rc == SQLITE_OK) {
-        rc = sqlite3_step(statement);
-        if (rc == SQLITE_ROW) {
-            *out_count = sqlite3_column_int(statement, 0);
-            rc = SQLITE_OK;
-        }
-    }
-    if (statement != NULL && sqlite3_finalize(statement) != SQLITE_OK && rc == SQLITE_OK) {
-        rc = SQLITE_ERROR;
-    }
-    if (rc != SQLITE_OK) {
-        fprintf(stderr, "failed to query physical row count for %s: %d\n", table_name, rc);
         return 1;
     }
 
@@ -989,10 +979,13 @@ static int expect_true(int condition, const char *context) {
 }
 
 static int expect_text(const char *actual, const char *expected, const char *context) {
+    if (actual == NULL && expected == NULL) {
+        return 0;
+    }
     if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
         fprintf(
             stderr,
-            "%s: expected text '%s', got '%s'\n",
+            "%s: expected text [%s], got [%s]\n",
             context,
             expected == NULL ? "(null)" : expected,
             actual == NULL ? "(null)" : actual
@@ -1004,13 +997,13 @@ static int expect_text(const char *actual, const char *expected, const char *con
 }
 
 static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
+    if (actual == NULL || strstr(actual, needle) == NULL) {
         fprintf(
             stderr,
-            "%s: expected '%s' to contain '%s'\n",
+            "%s: expected [%s] to contain [%s]\n",
             context,
             actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
+            needle
         );
         return 1;
     }
@@ -1025,7 +1018,7 @@ static int expect_bytes(
     const char *context
 ) {
     if (memcmp(actual, expected, size) != 0) {
-        fprintf(stderr, "%s: byte comparison failed\n", context);
+        fprintf(stderr, "%s: bytes differ\n", context);
         return 1;
     }
 

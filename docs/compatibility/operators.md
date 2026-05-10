@@ -23,7 +23,7 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `=` (assignment) | 🟡 | One unqualified descriptor-column single-table `UPDATE` assignment to a supported decimal integer literal, `TRUE`, `FALSE`, or `NULL`; `SET` statements and expression assignments remain unsupported |
 | `=` (comparison) | 🟡 | Descriptor-driven filtered table `SELECT`, `DELETE`, and `UPDATE` predicates with non-`NULL` decimal integer or `TRUE`/`FALSE` right operands only |
 | `^` | ❌ | Bitwise XOR |
-| `AND, &&` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `AND` binds tighter than `OR`, `&&` is accepted with deprecation warning 1287, and no general expression-level boolean semantics are supported |
+| `AND, &&` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `AND` binds tighter than `XOR` and `OR`, `&&` is accepted with deprecation warning 1287, and no general expression-level boolean semantics are supported |
 | `BETWEEN ... AND ...` | 🟡 | Limited descriptor-backed `WHERE` range predicates for existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate contexts with one descriptor column and two decimal integer or `TRUE`/`FALSE` bounds; no expression operands, string/temporal ranges, row ranges, or full expression-level operator support |
 | `BINARY` | ❌ | Cast a string to a binary string |
 | `CASE` | ❌ | Case operator |
@@ -41,11 +41,11 @@ Operators, predicates, assignment forms, and SQL expression syntax that MySQL li
 | `NOT IN()` | 🟡 | Limited negation of the descriptor-backed `IN` predicate subset, including MySQL three-valued `NULL` list semantics; no expression operands, subqueries, row constructors, strings, temporals, or full expression-level operator support |
 | `NOT LIKE` | ❌ | Negation of simple pattern matching |
 | `NOT REGEXP` | ❌ | Negation of REGEXP |
-| `OR, \|\|` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `OR` binds looser than `AND`, `\|\|` is accepted as logical OR with deprecation warning 1287, and no `PIPES_AS_CONCAT` or general expression-level boolean semantics are supported |
+| `OR, \|\|` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `OR` binds looser than `XOR` and `AND`, `\|\|` is accepted as logical OR with deprecation warning 1287, and no `PIPES_AS_CONCAT` or general expression-level boolean semantics are supported |
 | `REGEXP` | ❌ | Whether string matches regular expression |
 | `RLIKE` | ❌ | Whether string matches regular expression |
 | `SOUNDS LIKE` | ❌ | Compare sounds |
-| `XOR` | ❌ | Logical XOR |
+| `XOR` | 🟡 | Limited descriptor-backed `WHERE` boolean expressions over existing `SELECT`/aggregate-source/`DELETE`/`UPDATE` predicate atoms; `XOR` binds looser than `AND` and tighter than `OR`, propagates `NULL` for the admitted predicate subset, and has no scalar expression-level support |
 | `\|` | ❌ | Bitwise OR |
 | `~` | ❌ | Bitwise inversion |
 

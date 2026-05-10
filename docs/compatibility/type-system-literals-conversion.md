@@ -83,7 +83,7 @@
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Numeric literals | 🟡 | Decimal integer literals with optional unary sign only as supported column default values, `INSERT ... VALUES`, `INSERT ... SET`, and single-table `UPDATE` assignment inputs plus supported filtered `SELECT`/`DELETE`/`UPDATE` predicate right operands; unsigned decimal integer literals for supported `SELECT` `LIMIT`/`OFFSET` and `DELETE`/`UPDATE LIMIT`; no expression-level numeric semantics, non-decimal formats, decimals, floats, hex, or bit literals |
-| Boolean literals | 🟡 | `TRUE` and `FALSE` are accepted as `1` and `0` only in supported column default values, integer row-value, `INSERT ... SET`, single-table `UPDATE` assignment, and filtered `SELECT`/`DELETE`/`UPDATE` predicate right-operand positions; no `WHERE TRUE`, `IS TRUE`, boolean operators, unary boolean expressions, scalar truth metadata, or `LIMIT TRUE` / `LIMIT FALSE` |
+| Boolean literals | 🟡 | `TRUE` and `FALSE` are accepted as `1` and `0` only in supported column default values, integer row-value, `INSERT ... SET`, single-table `UPDATE` assignment, filtered `SELECT`/`DELETE`/`UPDATE` predicate right-operand positions, and `COUNT(TRUE)` / `COUNT(FALSE)` aggregate argument positions; no `WHERE TRUE`, `IS TRUE`, boolean operators, unary boolean expressions, scalar truth metadata, general expression evaluation, or `LIMIT TRUE` / `LIMIT FALSE` |
 | String literals | ❌ | Escapes, introducers, sql_mode |
 | Temporal literals | ❌ | DATE/TIME/TIMESTAMP literal syntax and coercion |
 | JSON path literals | ❌ | Path grammar, quoting, wildcards, ranges, and errors |

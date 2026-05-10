@@ -12,9 +12,11 @@ subset, and the existing `COUNT(*)` / `COUNT(column)` aggregate paths.
 The feature is intentionally not full expression aggregate support. It admits
 exactly one aggregate select item, with either no table source, `FROM DUAL`, or
 one persistent base table with an optional baseline `WHERE` predicate. It does
-not add string, decimal, float, hex, bit, boolean, column expression,
+not add string, decimal, float, hex, bit, column expression,
 arithmetic expression, function, `DISTINCT`, grouping, having, ordering,
 limiting, window, join, subquery, alias, or mixed-projection aggregate support.
+Bare boolean-literal aggregate arguments are specified separately in
+`docs/specs/baseline-count-boolean-aggregate/specs.md`.
 
 ## Sources
 
@@ -122,7 +124,7 @@ Existing `COUNT(*)` and `COUNT(column)` behavior remains unchanged.
 This feature must not implement:
 
 - general `COUNT(expr)`, `COUNT(DISTINCT expr)`, table-qualified arguments,
-  qualified wildcards, string/decimal/float/hex/bit/boolean literal arguments,
+  qualified wildcards, string/decimal/float/hex/bit literal arguments,
   arithmetic expressions, function calls, parameters, or subqueries;
 - aliases, mixed projections, multiple aggregate select items, aggregate
   comparisons, aggregate arithmetic, or nested aggregates;
@@ -281,10 +283,10 @@ cleanup behavior:
 - unsupported object kind: deterministic unsupported object diagnostic once
   non-base descriptors exist;
 - unknown predicate column: existing unknown column in `where clause`;
-- unsupported aggregate argument expression, string/decimal/float/hex/bit/
-  boolean literal, table-qualified argument, `DISTINCT`, qualified wildcard,
-  multiple aggregate items, mixed projection, aliases, grouping, having,
-  ordering, limiting, joins, CTEs, subqueries, and window clauses:
+- unsupported aggregate argument expression, string/decimal/float/hex/bit
+  literal, table-qualified argument, `DISTINCT`, qualified wildcard, multiple
+  aggregate items, mixed projection, aliases, grouping, having, ordering,
+  limiting, joins, CTEs, subqueries, and window clauses:
   deterministic syntax or unsupported-scope diagnostic;
 - physical SQLite failure: current internal SQLite row-operation diagnostic;
 - allocation failure: current allocation failure diagnostic;
@@ -303,7 +305,7 @@ shifted SQLite payload invariant and work after closing and reopening a file.
 
 This slice moves MyLite from `COUNT(*)` plus `COUNT(column)` to also support
 integer-literal and `NULL` arguments for one-item aggregate selects. MySQL-
-compatible string, decimal, float, hex, bit, boolean, expression, table-
-qualified, `DISTINCT`, alias, `ORDER BY`, `LIMIT`, grouping, and window forms
-remain explicitly unsupported.
-
+compatible string, decimal, float, hex, bit, expression, table-qualified,
+`DISTINCT`, alias, `ORDER BY`, `LIMIT`, grouping, and window forms remain
+explicitly unsupported. Bare boolean-literal aggregate arguments are covered by
+the separate count-boolean aggregate slice.

@@ -131,11 +131,11 @@ expect_value "count literal label values" "4	4	4	4	0	4	4	4	0" "$values"
 
 accepted_but_deferred=$(run_mysql \
     "USE ${DATABASE};
-     SELECT COUNT(1.0), COUNT('x'), COUNT(TRUE), COUNT(FALSE), COUNT(id + 1) FROM t;
+     SELECT COUNT(1.0), COUNT('x'), COUNT(id + 1) FROM t;
      SELECT COUNT(1) FROM t ORDER BY id;
      SELECT COUNT(1) FROM t LIMIT 1;"
 )
-expect_value "deferred count expr forms" "4	4	4	4	4" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '1p')"
+expect_value "deferred count expr forms" "4	4	4" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '1p')"
 expect_value "deferred order by aggregate" "4" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '2p')"
 expect_value "deferred limit one returns row" "4" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '3p')"
 

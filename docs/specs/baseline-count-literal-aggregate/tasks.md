@@ -94,7 +94,7 @@ still lowered to SQLite aggregates and optional baseline predicate conversion.
 ## Out Of Scope
 
 - Full aggregate support, general `COUNT(expr)`, `COUNT(DISTINCT)`, aliases,
-  table-qualified aggregate arguments, string/decimal/float/hex/bit/boolean
+  table-qualified aggregate arguments, string/decimal/float/hex/bit
   literal arguments, expression arguments, multiple aggregate items, mixed
   projections, grouping, having, order/limit aggregate semantics, window
   functions, joins, CTEs, subqueries, temporary tables, views, privileges,

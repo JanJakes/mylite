@@ -12,13 +12,13 @@
   ownership boundaries, warning semantics, diagnostics, and tests.
 - [x] Add MySQL-runtime expectation script for this feature.
 - [x] Update compatibility documentation for the exact limited subset.
-- [ ] Add parser grammar, AST modifier nodes, AST names, and parser helpers.
-- [ ] Implement modifier handling for supported `INSERT ... VALUES`,
+- [x] Add parser grammar, AST modifier nodes, AST names, and parser helpers.
+- [x] Implement modifier handling for supported `INSERT ... VALUES`,
   `INSERT ... SET`, and `INSERT ... SELECT` without changing descriptor
   planning or physical SQLite generation.
-- [ ] Add C parser/runtime tests for success, warning, and diagnostic paths.
-- [ ] Run focused build/tests and the MySQL expectation script.
-- [ ] Run `cmake --workflow --preset check`.
-- [ ] Review the final diff for architecture boundaries, warning semantics,
+- [x] Add C parser/runtime tests for success, warning, and diagnostic paths.
+- [x] Run focused build/tests and the MySQL expectation script.
+- [x] Run `cmake --workflow --preset check`.
+- [x] Review the final diff for architecture boundaries, warning semantics,
   descriptor authority, scope control, and compatibility wording.
-- [ ] Commit the implementation slice.
+- [x] Commit the implementation slice.

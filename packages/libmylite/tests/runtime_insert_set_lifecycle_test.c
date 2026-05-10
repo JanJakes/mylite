@@ -486,7 +486,7 @@ static int test_insert_set_schema_resolution_and_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "INSERT LOW_PRIORITY INTO numbers SET id = 1, nn = 1",
+        "INSERT LOW_PRIORITY HIGH_PRIORITY INTO numbers SET id = 1, nn = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

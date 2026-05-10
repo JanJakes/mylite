@@ -337,6 +337,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "replace_low_priority_modifier";
     case MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER:
         return "replace_delayed_modifier";
+    case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
+        return "insert_low_priority_modifier";
+    case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
+        return "insert_high_priority_modifier";
+    case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:
+        return "insert_delayed_modifier";
     case MYLITE_SQL_AST_REPLACE_VALUES_STATEMENT:
         return "replace_values_statement";
     case MYLITE_SQL_AST_REPLACE_SET_STATEMENT:

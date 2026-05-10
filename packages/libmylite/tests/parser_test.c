@@ -65,6 +65,7 @@ static int test_select_all_clause(void);
 static int test_select_table_alias_clause(void);
 static int test_select_item_alias_clause(void);
 static int test_insert_select_statement(void);
+static int test_insert_modifier_statements(void);
 static int test_replace_select_statement(void);
 static int test_replace_modifier_statements(void);
 static int test_delete_statement(void);
@@ -181,6 +182,7 @@ int main(void) {
     failures += test_select_table_alias_clause();
     failures += test_select_item_alias_clause();
     failures += test_insert_select_statement();
+    failures += test_insert_modifier_statements();
     failures += test_replace_select_statement();
     failures += test_replace_modifier_statements();
     failures += test_delete_statement();
@@ -6076,6 +6078,104 @@ static int test_replace_modifier_statements(void) {
     return failures;
 }
 
+static int test_insert_modifier_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "INSERT LOW_PRIORITY INTO app.simple_lifecycle (id) VALUES (1);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "low priority insert values");
+    failures += expect_child_count(statement, 4U, "low priority insert values child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER,
+        "low priority insert values modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT HIGH_PRIORITY simple_lifecycle VALUES (2);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "high priority insert values");
+    failures += expect_child_count(statement, 4U, "high priority insert values child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER,
+        "high priority insert values modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("INSERT simple_lifecycle VALUES (3);", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_STATEMENT, "insert values no into");
+    failures += expect_child_count(statement, 3U, "insert values no into child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "simple_lifecycle", "insert values target");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT DELAYED INTO app.simple_lifecycle SET id = 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(statement, MYLITE_SQL_AST_INSERT_SET_STATEMENT, "delayed insert set");
+    failures += expect_child_count(statement, 3U, "delayed insert set child count");
+    failures += expect_node(
+        child_at(statement, 2U),
+        MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER,
+        "delayed insert set modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT HIGH_PRIORITY INTO app.simple_lifecycle (id) SELECT id FROM app.source_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_INSERT_SELECT_STATEMENT,
+        "high priority insert select"
+    );
+    failures += expect_child_count(statement, 4U, "high priority insert select child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER,
+        "high priority insert select modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT DELAYED simple_lifecycle SELECT * FROM source_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    failures +=
+        expect_node(statement, MYLITE_SQL_AST_INSERT_SELECT_STATEMENT, "delayed insert select");
+    failures += expect_child_count(statement, 4U, "delayed insert select child count");
+    failures += expect_node(
+        child_at(statement, 3U),
+        MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER,
+        "delayed insert select modifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
 static int test_delete_statement(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -7334,10 +7434,6 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
-        parse_sql("INSERT LOW_PRIORITY INTO t SET id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures +=
         parse_sql("REPLACE INTO t VALUES ('text');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
@@ -7355,6 +7451,38 @@ static int test_syntax_errors(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT LOW_PRIORITY HIGH_PRIORITY INTO t VALUES (1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT HIGH_PRIORITY LOW_PRIORITY INTO t VALUES (1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT LOW_PRIORITY DELAYED INTO t VALUES (1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "INSERT LOW_PRIORITY IGNORE INTO t VALUES (1);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("INSERT INTO LOW_PRIORITY t VALUES (1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(

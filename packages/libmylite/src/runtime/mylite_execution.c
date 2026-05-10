@@ -55,7 +55,7 @@ enum {
     mysql_error_bad_null = 1048,
     mysql_error_unknown_storage_engine = 1286,
     mysql_error_display_width_out_of_range = 1439,
-    mysql_warning_replace_delayed_unsupported = 3005,
+    mysql_warning_legacy_syntax_converted = 3005,
     mysql_warning_integer_display_width_deprecated = 1681,
     mysql_error_must_have_visible_column = 4028,
     sqlite_use_nul_terminated_string = -1,
@@ -736,6 +736,10 @@ static int execute_replace_values_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
+);
+static int append_insert_delayed_warning_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
 );
 static int append_replace_delayed_warning_if_needed(
     struct mylite_db *database,
@@ -2938,6 +2942,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
+    case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
+    case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
+    case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER:
         break;
@@ -4082,7 +4089,34 @@ static int execute_insert_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    int rc = append_insert_delayed_warning_if_needed(database, statement);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     return execute_planned_insert_statement(database, statement, out_result);
+}
+
+static int append_insert_delayed_warning_if_needed(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    int rc = MYLITE_OK;
+
+    if (child_with_kind(statement, MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER) == NULL) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_legacy_syntax_converted,
+        "HY000",
+        "INSERT DELAYED is no longer supported. The statement was converted to INSERT."
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
 }
 
 static int execute_replace_values_statement(
@@ -4110,7 +4144,7 @@ static int append_replace_delayed_warning_if_needed(
 
     rc = mylite_diagnostics_append_warning(
         mylite_connection_diagnostics(database),
-        mysql_warning_replace_delayed_unsupported,
+        mysql_warning_legacy_syntax_converted,
         "HY000",
         "REPLACE DELAYED is no longer supported. The statement was converted to REPLACE."
     );
@@ -4152,6 +4186,11 @@ static int execute_insert_select_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    int rc = append_insert_delayed_warning_if_needed(database, statement);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     return execute_planned_insert_select_statement(database, statement, out_result);
 }
 
@@ -4200,6 +4239,11 @@ static int execute_insert_set_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    int rc = append_insert_delayed_warning_if_needed(database, statement);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     return execute_planned_insert_set_statement(database, statement, out_result);
 }
 
@@ -6298,6 +6342,9 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SET_CHARACTER_SET_DEFAULT_TARGET:
+    case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
+    case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
+    case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_REPLACE_DELAYED_MODIFIER:
         break;
@@ -13943,6 +13990,10 @@ static int collect_insert_target_indexes(
     }
     if (explicit_column_count == 0U) {
         column_count = count_visible_insert_target_columns(plan);
+    }
+    if (column_count == 0U) {
+        set_unsupported_error(database, "INSERT requires at least one target column");
+        return MYLITE_ERROR;
     }
     if (column_count > SIZE_MAX / sizeof(*indexes)) {
         set_nomem_error(database);

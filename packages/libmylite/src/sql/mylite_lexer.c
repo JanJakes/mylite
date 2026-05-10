@@ -647,6 +647,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"NTH_VALUE", MYLITE_SQL_KEYWORD_RESERVED},
         {"NTILE", MYLITE_SQL_KEYWORD_RESERVED},
         {"NULL", MYLITE_SQL_KEYWORD_RESERVED},
+        {"NULLIF", 0U},
         {"NULLS", 0U},
         {"NUMBER", 0U},
         {"NUMERIC", MYLITE_SQL_KEYWORD_RESERVED},

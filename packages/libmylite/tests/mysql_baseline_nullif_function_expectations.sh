@@ -209,6 +209,7 @@ accepted_but_deferred=$(run_mysql_with_headers \
      SELECT NULLIF(0x0a,10);
      SELECT NULLIF(b'1',1);
      SELECT NULLIF(id,7) FROM t ORDER BY id IS NULL, id;
+     SELECT NULLIF(1,2) WHERE TRUE;
      SELECT NULLIF(1,2) LIMIT 1;
      SELECT NULLIF(1,2) ORDER BY 1;" \
     "$DATABASE"
@@ -238,6 +239,8 @@ NULLIF(id,7)
 1
 NULL
 NULL
+NULLIF(1,2)
+1
 NULLIF(1,2)
 1
 NULLIF(1,2)

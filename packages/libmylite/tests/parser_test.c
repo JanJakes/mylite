@@ -35,6 +35,7 @@ static int test_current_role_function(void);
 static int test_if_function(void);
 static int test_ifnull_function(void);
 static int test_coalesce_function(void);
+static int test_nullif_function(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
@@ -159,6 +160,7 @@ int main(void) {
     failures += test_if_function();
     failures += test_ifnull_function();
     failures += test_coalesce_function();
+    failures += test_nullif_function();
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
@@ -1116,6 +1118,145 @@ static int test_coalesce_function(void) {
         parse_sql("SELECT COALESCE(NULL, COALESCE());", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT COALESCE(1,,2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_nullif_function(void) {
+    enum {
+        nullif_nested_if_item_index = 3,
+        nullif_nested_ifnull_item_index = 4,
+        nullif_nested_coalesce_item_index = 5,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *parenthesized = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT NULLIF(1,1), NullIf(TRUE,FALSE), nullif(+0,-0) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_NULLIF_FUNCTION, "nullif function");
+    failures += expect_span_text(first_expression, "NULLIF(1,1)", "nullif function span");
+    failures += expect_child_count(first_expression, 2U, "nullif function argument count");
+    failures += expect_literal(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "nullif left value"
+    );
+    failures += expect_literal(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "nullif right value"
+    );
+    failures += expect_node(second_expression, MYLITE_SQL_AST_NULLIF_FUNCTION, "mixed nullif");
+    failures +=
+        expect_literal(child_at(second_expression, 0U), MYLITE_SQL_AST_LITERAL_TRUE, "nullif TRUE");
+    failures += expect_literal(
+        child_at(second_expression, 1U),
+        MYLITE_SQL_AST_LITERAL_FALSE,
+        "nullif FALSE"
+    );
+    failures += expect_node(third_expression, MYLITE_SQL_AST_NULLIF_FUNCTION, "lower nullif");
+    failures += expect_operator(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        "nullif positive value"
+    );
+    failures += expect_operator(
+        child_at(third_expression, 1U),
+        MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        "nullif negative comparison value"
+    );
+    failures += expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "nullif from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT NULLIF (1,1), (NULLIF(1,2)), NULLIF(NULLIF(1,1),1), "
+        "NULLIF(IF(1,2,3),2), NULLIF(IFNULL(NULL,4),4), "
+        "NULLIF(COALESCE(NULL,6),6);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    parenthesized = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_NULLIF_FUNCTION, "spaced nullif");
+    failures += expect_span_text(first_expression, "NULLIF (1,1)", "spaced nullif span");
+    failures +=
+        expect_node(parenthesized, MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION, "parenthesized nullif");
+    failures +=
+        expect_node(child_at(parenthesized, 0U), MYLITE_SQL_AST_NULLIF_FUNCTION, "wrapped nullif");
+    failures += expect_span_text(parenthesized, "(NULLIF(1,2))", "parenthesized nullif span");
+    failures += expect_node(third_expression, MYLITE_SQL_AST_NULLIF_FUNCTION, "outer nullif");
+    failures +=
+        expect_node(child_at(third_expression, 0U), MYLITE_SQL_AST_NULLIF_FUNCTION, "inner nullif");
+    failures += expect_node(
+        child_at(child_at(child_at(select_list, nullif_nested_if_item_index), 0U), 0U),
+        MYLITE_SQL_AST_IF_FUNCTION,
+        "nested if in nullif"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(select_list, nullif_nested_ifnull_item_index), 0U), 0U),
+        MYLITE_SQL_AST_IFNULL_FUNCTION,
+        "nested ifnull in nullif"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(select_list, nullif_nested_coalesce_item_index), 0U), 0U),
+        MYLITE_SQL_AST_COALESCE_FUNCTION,
+        "nested coalesce in nullif"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT NULLIF(1, 2 + 3);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(first_expression, MYLITE_SQL_AST_NULLIF_FUNCTION, "deferred nullif");
+    failures += expect_node(
+        child_at(first_expression, 1U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "deferred nullif arithmetic argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT NULLIF();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR,
+        "empty nullif argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT NULLIF(1);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR,
+        "one nullif argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT NULLIF(1,2,3);", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = child_at(child_at(child_at(child_at(result.root, 0U), 0U), 0U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_NULLIF_ARGUMENT_COUNT_ERROR,
+        "three nullif argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT NULLIF(1,,2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

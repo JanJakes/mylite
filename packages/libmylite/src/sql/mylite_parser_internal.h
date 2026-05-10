@@ -600,6 +600,22 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_between_predicate(
     struct mylite_sql_ast_node *lower,
     struct mylite_sql_ast_node *upper
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_in_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token in_token,
+    struct mylite_sql_ast_node *values,
+    struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_predicate_value_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_predicate_value(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *value
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_and_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,

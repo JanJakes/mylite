@@ -229,6 +229,15 @@ static int test_where_and_predicates(void) {
     static const char *const between_delete_limited_rows[] = {"1", "2", "3"};
     static const char *const between_warning_rows[] = {"1"};
     static const char *const between_persisted_rows[] = {"7", "7", "7"};
+    static const char *const in_duplicate_rows[] = {"2", "4"};
+    static const char *const in_not_rows[] = {"3"};
+    static const char *const in_nullable_rows[] = {"2", "4"};
+    static const char *const in_precedence_rows[] = {"1", "3"};
+    static const char *const in_bool_rows[] = {"2", "4"};
+    static const char *const in_unsigned_boundary_rows[] = {"1", "3"};
+    static const char *const in_bigint_boundary_rows[] = {"1", "3"};
+    static const char *const in_warning_rows[] = {"1"};
+    static const char *const in_persisted_rows[] = {"8", "8", "8"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -640,6 +649,201 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (-2, 1, 0) ORDER BY id",
+            .values = between_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (1, 1, 0) ORDER BY id",
+            .values = in_duplicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "duplicate in predicate values",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i NOT IN (-2, 1, 0) ORDER BY id",
+            .values = in_not_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE NOT i IN (-2, 1, 0) ORDER BY id",
+            .values = in_not_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "prefix not in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n IN (NULL, 9) ORDER BY id",
+            .values = in_nullable_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "nullable in predicate with null list value",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n IN (NULL, 8)",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "nullable in predicate without match",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n NOT IN (NULL, 9)",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not in predicate with null list value",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE n NOT IN (9)",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "not in predicate over nullable column",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (FALSE, TRUE) ORDER BY id",
+            .values = in_bool_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "boolean in predicate values",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE iu IN (0, 4294967295) ORDER BY id",
+            .values = in_unsigned_boundary_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "unsigned int boundary in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers "
+                   "WHERE b IN (-9223372036854775808, 9223372036854775807) ORDER BY id",
+            .values = in_bigint_boundary_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "bigint boundary in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE ia IN (-2, 2147483647) ORDER BY id",
+            .values = in_bigint_boundary_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "integer alias boundary in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE bu IN (0, 9223372036854775807) ORDER BY id",
+            .values = in_unsigned_boundary_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "unsigned bigint boundary in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (-2, 1) AND nn = 5 OR id = 3 "
+                   "ORDER BY id",
+            .values = in_precedence_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "in and or precedence predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (-2, 1) && nn = 5",
+            .values = in_warning_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .affected_rows = 0,
+            .context = "deprecated symbolic and in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SHOW WARNINGS",
+            .values = warning_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "deprecated symbolic and in warning",
+        }
+    );
+
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT DISTINCT n FROM numbers WHERE n IS NOT NULL AND tie = 1",
             .values = distinct_row,
             .column_count = 1U,
@@ -836,6 +1040,56 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT DISTINCT n FROM numbers WHERE i IN (-2, 1, 0) ORDER BY n",
+            .values = between_distinct_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "distinct source in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT COUNT(*) FROM numbers WHERE i IN (-2, 1, 0)",
+            .values = between_count_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "count source in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT MAX(i) FROM numbers WHERE i IN (-2, 1, 0)",
+            .values = between_max_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "aggregate source in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT tie, COUNT(*) FROM numbers WHERE i IN (-2, 1, 0) GROUP BY tie "
+                   "ORDER BY tie",
+            .values = between_grouped_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped aggregate source in predicate",
+        }
+    );
+
     failures += execute_ok(
         database,
         "CREATE TABLE copy_numbers SELECT id, i, n FROM numbers WHERE i = 1 AND n IS NOT NULL",
@@ -930,6 +1184,31 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "create table select between copied rows",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE copy_in_numbers SELECT id, i, n FROM numbers WHERE i IN (-2, 1, 0)",
+        &result
+    );
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "create table select in affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i, n FROM copy_in_numbers ORDER BY id",
+            .values = between_copy_rows,
+            .column_count = 3U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "create table select in copied rows",
         }
     );
 
@@ -1045,6 +1324,32 @@ static int test_where_and_predicates(void) {
     );
 
     failures +=
+        execute_ok(database, "CREATE TABLE in_inserted_numbers (id INT NOT NULL, i INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO in_inserted_numbers SELECT id, i FROM numbers WHERE i IN (-2, 1, 0)",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "insert select in affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM in_inserted_numbers ORDER BY id",
+            .values = between_inserted_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "insert select source in predicate",
+        }
+    );
+
+    failures +=
         execute_ok(database, "CREATE TABLE replaced_numbers (id INT NOT NULL, i INT)", &result);
     mylite_result_free(result);
     result = NULL;
@@ -1152,6 +1457,32 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "replace select source between predicate",
+        }
+    );
+
+    failures +=
+        execute_ok(database, "CREATE TABLE in_replaced_numbers (id INT NOT NULL, i INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "REPLACE INTO in_replaced_numbers SELECT id, i FROM numbers WHERE i IN (-2, 1, 0)",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "replace select in affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, i FROM in_replaced_numbers ORDER BY id",
+            .values = between_replaced_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "replace select source in predicate",
         }
     );
 
@@ -1336,6 +1667,46 @@ static int test_where_and_predicates(void) {
     );
 
     failures += reset_numbers(database);
+    failures += execute_ok(database, "UPDATE numbers SET n = 11 WHERE i IN (-2, 1, 0)", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 3, "update in affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = between_update_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update in row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "UPDATE numbers SET n = NULL WHERE i IN (-2, 1, 0) ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "update in limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers ORDER BY id",
+            .values = between_update_limited_rows,
+            .column_count = 2U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update in limit row state",
+        }
+    );
+
+    failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i > 1 AND n IS NULL", &result);
     failures += expect_int64(mylite_result_affected_rows(result), 1, "delete and affected rows");
     mylite_result_free(result);
@@ -1497,6 +1868,46 @@ static int test_where_and_predicates(void) {
         }
     );
 
+    failures += reset_numbers(database);
+    failures += execute_ok(database, "DELETE FROM numbers WHERE i IN (-2, 1, 0)", &result);
+    failures += expect_int64(mylite_result_affected_rows(result), 3, "delete in affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = between_delete_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete in row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "DELETE FROM numbers WHERE i IN (-2, 1, 0) ORDER BY id DESC LIMIT 1",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 1, "delete in limit affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = between_delete_limited_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete in limit row state",
+        }
+    );
+
     failures += execute_error(
         database,
         "SELECT id FROM numbers WHERE id = 1 AND missing = 1",
@@ -1643,6 +2054,123 @@ static int test_where_and_predicates(void) {
     );
     failures += execute_error(
         database,
+        "SELECT id FROM numbers WHERE missing IN (1, 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'where clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i IN (1, 2147483648)",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'i' in WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE iu IN (-1, 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for column 'iu' in WHERE",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE id IN ()",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i IN (nn)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i IN ('1')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i IN (1.0)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i IN (0x1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i IN (?)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i IN (SELECT i FROM numbers)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id FROM numbers WHERE i IN ((1, 2))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SQL syntax",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM numbers WHERE numbers.i IN (-2, 1, 0)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE supports only unqualified predicate columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE numbers SET n = 1 WHERE numbers.i IN (-2, 1, 0)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "WHERE supports only unqualified predicate columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT id FROM numbers WHERE ! (id = 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -1685,6 +2213,9 @@ static int test_where_and_predicates(void) {
     result = NULL;
     failures +=
         execute_ok(database, "UPDATE numbers SET tie = 7 WHERE i BETWEEN -2 AND 1", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "UPDATE numbers SET b = 8 WHERE i IN (-2, 1, 0)", &result);
     mylite_result_free(result);
     result = NULL;
 
@@ -1749,6 +2280,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "reopened between updated rows",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT b FROM numbers WHERE i IN (-2, 1, 0) ORDER BY id",
+            .values = in_persisted_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "reopened in updated rows",
         }
     );
 
@@ -1858,6 +2401,30 @@ static int test_independent_where_and_handles(void) {
             .context = "second independent handle between predicate",
         }
     );
+    failures += expect_result(
+        first,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE id IN (2, 100)",
+            .values = first_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "first independent handle in predicate",
+        }
+    );
+    failures += expect_result(
+        second,
+        (struct expected_result){
+            .sql = "SELECT n FROM numbers WHERE id IN (2, 100)",
+            .values = second_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "second independent handle in predicate",
+        }
+    );
 
     mylite_close(first);
     mylite_close(second);
@@ -1892,7 +2459,7 @@ static int reset_numbers(mylite_db *database) {
     failures += execute_ok(
         database,
         "CREATE TABLE numbers (id INT NOT NULL, i INT, iu INT UNSIGNED, b BIGINT, "
-        "bu BIGINT UNSIGNED, n INT NULL, nn INT NOT NULL, tie INT NULL)",
+        "bu BIGINT UNSIGNED, n INT NULL, nn INT NOT NULL, tie INT NULL, ia INTEGER)",
         &result
     );
     mylite_result_free(result);
@@ -1900,10 +2467,11 @@ static int reset_numbers(mylite_db *database) {
     failures += execute_ok(
         database,
         "INSERT INTO numbers VALUES "
-        "(1, -2, 0, -9223372036854775808, 0, NULL, 5, 1), "
-        "(2, 1, 2, 3, 4, 9, 6, 1), "
-        "(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, NULL, 7, 2), "
-        "(4, 0, 8, 8, 8, 9, 8, 2)",
+        "(1, -2, 0, -9223372036854775808, 0, NULL, 5, 1, -2), "
+        "(2, 1, 2, 3, 4, 9, 6, 1, 1), "
+        "(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, NULL, 7, 2, "
+        "2147483647), "
+        "(4, 0, 8, 8, 8, 9, 8, 2, 0)",
         &result
     );
     mylite_result_free(result);

@@ -5548,6 +5548,8 @@ static int test_show_index_empty_introspection_statements(void) {
 }
 
 static int test_select_where_predicates(void) {
+    static const char *const in_predicate_values[] = {"-2", "+1", "NULL", "TRUE", "FALSE"};
+
     static const struct {
         const char *sql;
         enum mylite_sql_ast_operator expected_operator;
@@ -5713,6 +5715,120 @@ static int test_select_where_predicates(void) {
         child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U), 0U),
         MYLITE_SQL_AST_BETWEEN_PREDICATE,
         "between precedence child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id IN (-2, +1, NULL, TRUE, FALSE);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_IN_PREDICATE,
+        "in predicate"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        "id",
+        "in predicate column"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U),
+        MYLITE_SQL_AST_PREDICATE_VALUE_LIST,
+        "in predicate list"
+    );
+    failures += expect_child_count(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U),
+        sizeof(in_predicate_values) / sizeof(in_predicate_values[0]),
+        "in predicate list count"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U), 0U),
+        "-2",
+        "in predicate first value"
+    );
+    failures += expect_span_text(
+        child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 1U), 2U),
+        "NULL",
+        "in predicate null value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id NOT IN (-2, 1, NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "not in predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_IN_PREDICATE,
+        "not in child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE NOT id IN (-2, 1, NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_NOT_PREDICATE,
+        "prefix not in predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_IN_PREDICATE,
+        "prefix not in child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id IN (-2, 1) AND nn = 5 OR id = 3;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OR_PREDICATE,
+        "in and or precedence root"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U),
+        MYLITE_SQL_AST_AND_PREDICATE,
+        "in binds before later and"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(child_at(child_at(result.root, 0U), 2U), 0U), 0U), 0U),
+        MYLITE_SQL_AST_IN_PREDICATE,
+        "in precedence child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id IN ();",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id IN (nn);",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE id IN ('1');",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

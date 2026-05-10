@@ -390,6 +390,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "not_predicate";
     case MYLITE_SQL_AST_BETWEEN_PREDICATE:
         return "between_predicate";
+    case MYLITE_SQL_AST_IN_PREDICATE:
+        return "in_predicate";
+    case MYLITE_SQL_AST_PREDICATE_VALUE_LIST:
+        return "predicate_value_list";
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
         return "order_by_clause";
     case MYLITE_SQL_AST_ORDER_DIRECTION:

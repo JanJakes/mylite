@@ -318,6 +318,7 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_OR = 4,
     PLANNED_SELECT_PREDICATE_NOT = 5,
     PLANNED_SELECT_PREDICATE_BETWEEN = 6,
+    PLANNED_SELECT_PREDICATE_IN = 7,
 };
 
 struct planned_select_predicate_node {
@@ -326,6 +327,8 @@ struct planned_select_predicate_node {
     struct mylite_catalog_column_descriptor column;
     struct planned_value value;
     struct planned_value upper_value;
+    struct planned_value *values;
+    size_t value_count;
     size_t left_index;
     size_t right_index;
 };
@@ -2519,6 +2522,28 @@ static int plan_between_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static int plan_in_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int convert_predicate_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value **out_values,
+    size_t *out_value_count
+);
+static int convert_predicate_in_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+);
 static int append_planned_select_predicate_node(
     struct mylite_db *database,
     struct planned_select_predicate *predicate,
@@ -2577,6 +2602,16 @@ static int pop_predicate_result_index(
 static int bind_select_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate *predicate,
+    int *parameter_index
+);
+static int bind_select_predicate_node_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_select_in_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
     int *parameter_index
 );
 static int resolve_predicate_column(
@@ -2953,6 +2988,11 @@ static int append_select_is_null_predicate_term_sql(
 );
 static int append_select_between_predicate_term_sql(
     struct dynamic_string *string,
+    size_t *next_parameter
+);
+static int append_select_in_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
 static int append_predicate_sql_work_node(
@@ -3530,6 +3570,8 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_OR_PREDICATE:
     case MYLITE_SQL_AST_NOT_PREDICATE:
     case MYLITE_SQL_AST_BETWEEN_PREDICATE:
+    case MYLITE_SQL_AST_IN_PREDICATE:
+    case MYLITE_SQL_AST_PREDICATE_VALUE_LIST:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
@@ -6953,6 +6995,8 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_OR_PREDICATE:
     case MYLITE_SQL_AST_NOT_PREDICATE:
     case MYLITE_SQL_AST_BETWEEN_PREDICATE:
+    case MYLITE_SQL_AST_IN_PREDICATE:
+    case MYLITE_SQL_AST_PREDICATE_VALUE_LIST:
     case MYLITE_SQL_AST_ORDER_BY_CLAUSE:
     case MYLITE_SQL_AST_ORDER_DIRECTION:
     case MYLITE_SQL_AST_LIMIT_CLAUSE:
@@ -17347,6 +17391,9 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
         return;
     }
 
+    for (size_t node_index = 0U; node_index < predicate->node_count; ++node_index) {
+        free(predicate->nodes[node_index].values);
+    }
     free(predicate->nodes);
     *predicate = (struct planned_select_predicate){0};
 }
@@ -17541,7 +17588,8 @@ static int plan_select_predicate_ast_node(
     }
     if (current != NULL && (current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE ||
-                            current->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE)) {
+                            current->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE ||
+                            current->kind == MYLITE_SQL_AST_IN_PREDICATE)) {
         return plan_select_predicate_leaf_node(
             database,
             current,
@@ -17675,8 +17723,18 @@ static int plan_select_predicate_leaf_node(
             out_predicate,
             &node_index
         );
-    } else {
+    } else if (predicate_node->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE) {
         rc = plan_between_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
+    } else {
+        rc = plan_in_predicate(
             database,
             predicate_node,
             source_context,
@@ -17844,6 +17902,110 @@ static int plan_between_predicate(
     }
 
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int plan_in_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_IN,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = resolve_predicate_column(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node.column
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = convert_predicate_in_value_list(
+            database,
+            child_at(predicate_node, 1U),
+            &node.column,
+            &node.values,
+            &node.value_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        free(node.values);
+    }
+
+    return rc;
+}
+
+static int convert_predicate_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value **out_values,
+    size_t *out_value_count
+) {
+    struct planned_value *values = NULL;
+    size_t value_count = mylite_sql_ast_node_child_count(value_list);
+    int rc = MYLITE_OK;
+
+    *out_values = NULL;
+    *out_value_count = 0U;
+    if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST ||
+        value_count == 0U) {
+        set_unsupported_error(database, "WHERE supports only nonempty IN predicate lists");
+        return MYLITE_ERROR;
+    }
+    if (value_count > SIZE_MAX / sizeof(*values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    values = calloc(value_count, sizeof(*values));
+    if (values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+        rc = convert_predicate_in_value(
+            database,
+            child_at(value_list, value_index),
+            column,
+            &values[value_index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        free(values);
+        return rc;
+    }
+
+    *out_values = values;
+    *out_value_count = value_count;
+    return MYLITE_OK;
+}
+
+static int convert_predicate_in_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *column,
+    struct planned_value *out_value
+) {
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_value = (struct planned_value){.is_null = true, .integer = 0};
+        return MYLITE_OK;
+    }
+
+    return convert_predicate_integer_literal(database, value_node, column, out_value);
 }
 
 static int append_planned_select_predicate_node(
@@ -21098,6 +21260,8 @@ static int append_select_predicate_node_sql(
         rc = append_select_is_null_predicate_term_sql(string, node);
     } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
         rc = append_select_between_predicate_term_sql(string, next_parameter);
+    } else if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_IN) {
+        rc = append_select_in_predicate_term_sql(string, node, next_parameter);
     } else if (rc == MYLITE_OK) {
         rc = MYLITE_ERROR;
     }
@@ -21162,6 +21326,37 @@ static int append_select_between_predicate_term_sql(
     }
     if (rc == MYLITE_OK) {
         ++(*next_parameter);
+    }
+
+    return rc;
+}
+
+static int append_select_in_predicate_term_sql(
+    struct dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (node->value_count == 0U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = dynamic_string_append(string, " IN (");
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < node->value_count;
+         ++value_index) {
+        if (value_index != 0U) {
+            rc = dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, *next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = dynamic_string_append_char(string, ')');
     }
 
     return rc;
@@ -21704,23 +21899,57 @@ static int bind_select_predicate_parameters(
             rc = append_predicate_sql_work_node(&items, &item_count, node->left_index);
             continue;
         }
-        if (node->kind != PLANNED_SELECT_PREDICATE_COMPARISON &&
-            node->kind != PLANNED_SELECT_PREDICATE_BETWEEN) {
-            continue;
-        }
-        rc = bind_int64_parameter(statement, *parameter_index, node->value.integer);
-        if (rc == MYLITE_OK) {
-            ++(*parameter_index);
-        }
-        if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
-            rc = bind_int64_parameter(statement, *parameter_index, node->upper_value.integer);
-            if (rc == MYLITE_OK) {
-                ++(*parameter_index);
-            }
-        }
+        rc = bind_select_predicate_node_parameters(statement, node, parameter_index);
     }
 
     free(items);
+    return rc;
+}
+
+static int bind_select_predicate_node_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
+        return bind_select_in_predicate_parameters(statement, node, parameter_index);
+    }
+    if (node->kind != PLANNED_SELECT_PREDICATE_COMPARISON &&
+        node->kind != PLANNED_SELECT_PREDICATE_BETWEEN) {
+        return MYLITE_OK;
+    }
+
+    rc = bind_int64_parameter(statement, *parameter_index, node->value.integer);
+    if (rc == MYLITE_OK) {
+        ++(*parameter_index);
+    }
+    if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
+        rc = bind_int64_parameter(statement, *parameter_index, node->upper_value.integer);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+
+    return rc;
+}
+
+static int bind_select_in_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < node->value_count;
+         ++value_index) {
+        rc = bind_planned_value_parameter(statement, *parameter_index, &node->values[value_index]);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+
     return rc;
 }
 

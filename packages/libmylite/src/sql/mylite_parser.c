@@ -2250,6 +2250,58 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_between_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_in_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token in_token,
+    struct mylite_sql_ast_node *values,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span = left == NULL ? span_from_token(&in_token) : left->span;
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    span = span_join(span, span_from_token(&right_paren));
+    predicate = make_node(state, MYLITE_SQL_AST_IN_PREDICATE, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(predicate, left);
+    mylite_sql_ast_node_append_child(predicate, values);
+    return predicate;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_predicate_value_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span =
+        value == NULL ? (struct mylite_sql_source_span){0} : value->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_PREDICATE_VALUE_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, value);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_predicate_value(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *value
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, value);
+    if (value != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, value->span));
+    }
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_and_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,

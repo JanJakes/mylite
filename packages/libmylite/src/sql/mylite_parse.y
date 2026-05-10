@@ -1248,6 +1248,28 @@ predicate_atom(A) ::= qualified_identifier(C) NOT(N) BETWEEN(B) predicate_intege
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
 }
+predicate_atom(A) ::= qualified_identifier(C) IN(I) LPAREN predicate_in_value_list(V) RPAREN(R). {
+    A = mylite_sql_parser_make_in_predicate(state, C, I, V, R);
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) IN(I) LPAREN predicate_in_value_list(V)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_in_predicate(state, C, I, V, R));
+}
+
+predicate_in_value_list(A) ::= predicate_in_value(V). {
+    A = mylite_sql_parser_make_predicate_value_list(state, V);
+}
+predicate_in_value_list(A) ::= predicate_in_value_list(L) COMMA predicate_in_value(V). {
+    A = mylite_sql_parser_append_predicate_value(state, L, V);
+}
+
+predicate_in_value(A) ::= predicate_integer_value(V). {
+    A = V;
+}
+predicate_in_value(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
 
 predicate_integer_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);

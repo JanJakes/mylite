@@ -19,7 +19,7 @@ statements.
 | `LOAD DATA LOCAL INFILE` | ❌ | LOCAL INFILE flow and security |
 | `LOAD XML INFILE` | ❌ | XML import syntax |
 | `LOAD XML LOCAL INFILE` | ❌ | Client-side XML import request behavior diagnostics |
-| `REPLACE ... VALUES` | ❌ | Delete-insert semantics |
+| `REPLACE ... VALUES` | 🟡 | Limited no-key-descriptor `REPLACE [INTO] table_name [(column_name[, ...])] VALUES (value[, ...])[, ...]` insert-equivalent path for persistent base tables with integer/`NULL`/`TRUE`/`FALSE` values, descriptor column resolution including explicitly named invisible columns, omitted-column descriptor default filling, strict range/nullability/no-default diagnostics, affected rows equal to inserted rows, and all-or-nothing statement behavior; duplicate-key delete-insert semantics await primary/unique key descriptors, and there is no `VALUE` synonym, row constructors, modifiers, partitions, `SET`, `SELECT`, generated values, warnings, or insert ids |
 | `REPLACE ... SET` | ❌ | SET-form replace semantics |
 | `REPLACE ... SELECT` | ❌ | Replace from query expression semantics |
 | `REPLACE LOW_PRIORITY` / `DELAYED` | ❌ | Priority and deprecated delayed modifiers for REPLACE |

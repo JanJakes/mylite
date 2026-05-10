@@ -387,6 +387,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_default_charset_c
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *table_options
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_order_by_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *order_items
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token insert_token,
@@ -511,6 +517,20 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_is_null_predicate(
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token order_token,
+    struct mylite_sql_ast_node *order_key,
+    struct mylite_sql_ast_node *direction
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_item_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *item
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_order_by_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *item
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_item(
+    struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *order_key,
     struct mylite_sql_ast_node *direction
 );

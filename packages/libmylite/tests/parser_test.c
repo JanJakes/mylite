@@ -45,6 +45,7 @@ static int test_qualified_identifier_keyword_part(void);
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
 static int test_alter_table_default_charset_collation_statements(void);
+static int test_alter_table_order_by_statements(void);
 static int test_show_columns_introspection_statements(void);
 static int test_show_triggers_empty_introspection_statements(void);
 static int test_show_events_empty_introspection_statements(void);
@@ -154,6 +155,7 @@ int main(void) {
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
     failures += test_alter_table_default_charset_collation_statements();
+    failures += test_alter_table_order_by_statements();
     failures += test_show_columns_introspection_statements();
     failures += test_show_triggers_empty_introspection_statements();
     failures += test_show_events_empty_introspection_statements();
@@ -4016,10 +4018,6 @@ static int test_alter_table_default_charset_collation_statements(void) {
     failures += parse_sql("ALTER TABLE old_name FORCE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parse_sql("ALTER TABLE old_name ORDER BY id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parse_sql(
         "ALTER TABLE old_name ALGORITHM=INSTANT;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
@@ -4029,6 +4027,94 @@ static int test_alter_table_default_charset_collation_statements(void) {
 
     failures +=
         parse_sql("ALTER TABLE old_name LOCK=DEFAULT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_alter_table_order_by_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *items = NULL;
+    const struct mylite_sql_ast_node *first_item = NULL;
+    const struct mylite_sql_ast_node *second_item = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "ALTER TABLE app.old_name ORDER BY app.old_name.id DESC, `value` ASC;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    first_item = child_at(items, 0U);
+    second_item = child_at(items, 1U);
+    failures += expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT,
+        "alter table order by statement"
+    );
+    failures += expect_child_count(statement, 2U, "alter table order by child count");
+    failures +=
+        expect_span_text(child_at(statement, 0U), "app.old_name", "alter table order by target");
+    failures += expect_node(items, MYLITE_SQL_AST_ORDER_BY_ITEM_LIST, "alter order list");
+    failures += expect_child_count(items, 2U, "alter order list count");
+    failures += expect_node(first_item, MYLITE_SQL_AST_ORDER_BY_ITEM, "alter first order item");
+    failures +=
+        expect_span_text(child_at(first_item, 0U), "app.old_name.id", "alter first order key");
+    failures += expect_order_direction(
+        child_at(first_item, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "alter first order direction"
+    );
+    failures += expect_node(second_item, MYLITE_SQL_AST_ORDER_BY_ITEM, "alter second order item");
+    failures += expect_span_text(child_at(second_item, 0U), "`value`", "alter second order key");
+    failures += expect_order_direction(
+        child_at(second_item, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "alter second order direction"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE old_name ORDER BY id;", MYLITE_SQL_PARSE_OK, &result);
+    statement = child_at(result.root, 0U);
+    items = child_at(statement, 1U);
+    first_item = child_at(items, 0U);
+    failures += expect_node(first_item, MYLITE_SQL_AST_ORDER_BY_ITEM, "alter default order item");
+    failures += expect_order_direction(
+        child_at(first_item, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DEFAULT,
+        "alter default order direction"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name ORDER BY old_name.id ASC;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name ORDER BY 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("ALTER TABLE old_name ORDER BY id + 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ORDER BY id LIMIT 1;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("ALTER TABLE old_name ORDER BY;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "ALTER TABLE old_name ORDER BY id, ADD COLUMN added INT;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

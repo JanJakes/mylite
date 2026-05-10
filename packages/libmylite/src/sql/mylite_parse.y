@@ -168,6 +168,9 @@ statement(A) ::= alter_table_column_visibility_statement(B). {
 statement(A) ::= alter_table_default_charset_collation_statement(B). {
     A = B;
 }
+statement(A) ::= alter_table_order_by_statement(B). {
+    A = B;
+}
 statement(A) ::= insert_values_statement(B). {
     A = B;
 }
@@ -652,6 +655,22 @@ alter_table_default_charset_collation_option(A) ::=
 alter_table_default_charset_collation_option(A) ::=
     default_opt COLLATE(C) equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_collation_option(state, C, N);
+}
+
+alter_table_order_by_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ORDER BY alter_table_order_item_list(O). {
+    A = mylite_sql_parser_make_alter_table_order_by_statement(state, A1, T, O);
+}
+
+alter_table_order_item_list(A) ::= alter_table_order_item(I). {
+    A = mylite_sql_parser_make_order_by_item_list(state, I);
+}
+alter_table_order_item_list(A) ::= alter_table_order_item_list(L) COMMA alter_table_order_item(I). {
+    A = mylite_sql_parser_append_order_by_item(state, L, I);
+}
+
+alter_table_order_item(A) ::= qualified_identifier(K) order_direction_opt(D). {
+    A = mylite_sql_parser_make_order_by_item(state, K, D);
 }
 
 column_keyword_opt(A) ::= . {

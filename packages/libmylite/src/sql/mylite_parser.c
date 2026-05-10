@@ -1478,6 +1478,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_default_charset_c
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_order_by_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *order_items
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (order_items != NULL) {
+        span = span_join(span, order_items->span);
+    } else if (table_name != NULL) {
+        span = span_join(span, table_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_TABLE_ORDER_BY_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, table_name);
+    mylite_sql_ast_node_append_child(statement, order_items);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_insert_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token insert_token,
@@ -1971,6 +1996,60 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_clause(
     mylite_sql_ast_node_append_child(order_clause, order_key);
     mylite_sql_ast_node_append_child(order_clause, direction);
     return order_clause;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_item_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *item
+) {
+    struct mylite_sql_source_span span =
+        item == NULL ? (struct mylite_sql_source_span){0} : item->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_ORDER_BY_ITEM_LIST, span);
+    if (list == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(list, item);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_order_by_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *item
+) {
+    if (!is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, item);
+    if (item != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, item->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_order_by_item(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *order_key,
+    struct mylite_sql_ast_node *direction
+) {
+    struct mylite_sql_source_span span =
+        order_key == NULL ? (struct mylite_sql_source_span){0} : order_key->span;
+    struct mylite_sql_ast_node *item = NULL;
+
+    if (direction != NULL) {
+        span = span_join(span, direction->span);
+    }
+
+    item = make_node(state, MYLITE_SQL_AST_ORDER_BY_ITEM, span);
+    if (item == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(item, order_key);
+    mylite_sql_ast_node_append_child(item, direction);
+    return item;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_order_direction(

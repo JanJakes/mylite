@@ -129,6 +129,26 @@ expect_value \
 
 run_mysql \
     "USE ${DATABASE};
+     CREATE TABLE ordered_quoted(id INT, \`value\` INT) ENGINE=InnoDB;
+     INSERT INTO ordered_quoted VALUES (1, 10), (2, 20), (3, 5);
+     ALTER TABLE ordered_quoted ORDER BY \`value\` DESC;
+     SELECT ROW_COUNT(), @@warning_count, @@error_count;
+     SELECT CONCAT(id, ':', \`value\`) FROM ordered_quoted;" \
+    >"/tmp/${DATABASE}_ordered_quoted.out"
+
+expect_value \
+    "quoted order status" \
+    "3	0	0" \
+    "$(sed -n '1p' "/tmp/${DATABASE}_ordered_quoted.out")"
+expect_value \
+    "quoted order rows" \
+    "2:20
+1:10
+3:5" \
+    "$(sed -n '2,$p' "/tmp/${DATABASE}_ordered_quoted.out")"
+
+run_mysql \
+    "USE ${DATABASE};
      CREATE TABLE ordered_nulls(id INT NULL, v INT) ENGINE=InnoDB;
      INSERT INTO ordered_nulls VALUES (2, 20), (NULL, 99), (1, 10);
      ALTER TABLE ordered_nulls ORDER BY id;
@@ -254,5 +274,6 @@ rm -f \
     "/tmp/${DATABASE}_ordered_default.out" \
     "/tmp/${DATABASE}_ordered_desc.out" \
     "/tmp/${DATABASE}_ordered_multi.out" \
+    "/tmp/${DATABASE}_ordered_quoted.out" \
     "/tmp/${DATABASE}_ordered_nulls.out" \
     "/tmp/${DATABASE}_qualified_target.out"

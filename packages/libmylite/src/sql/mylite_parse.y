@@ -25,6 +25,7 @@
     mylite_sql_parser_state_stack_overflow(state);
 }
 
+%left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL.
 %left PLUS MINUS.
 %left STAR SLASH DIV PERCENT MOD.
 %right UPLUS UMINUS.
@@ -1588,6 +1589,34 @@ expression(A) ::= PLUS(T) expression(B). [UPLUS] {
 expression(A) ::= MINUS(T) expression(B). [UMINUS] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE, B);
+}
+expression(A) ::= expression(B) EQUAL(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_EQUAL, C);
+}
+expression(A) ::= expression(B) NULL_SAFE_EQUAL(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, C);
+}
+expression(A) ::= expression(B) NOT_EQUAL(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, C);
+}
+expression(A) ::= expression(B) LESS(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LESS, C);
+}
+expression(A) ::= expression(B) LESS_EQUAL(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, C);
+}
+expression(A) ::= expression(B) GREATER(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_GREATER, C);
+}
+expression(A) ::= expression(B) GREATER_EQUAL(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, C);
 }
 expression(A) ::= expression(B) PLUS(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(

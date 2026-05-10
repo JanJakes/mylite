@@ -52,8 +52,12 @@ Runtime probes against MySQL 8.4.9 establish these expectations for this slice:
 - `<=>` returns `1` if both operands are `NULL`, `0` if exactly one operand is
   `NULL`, and otherwise follows equality over the supported integer domain;
 - `TRUE` and `FALSE` behave as `1` and `0`;
-- arithmetic operands are evaluated before comparison, so child overflow raises
-  error `1690` / SQLSTATE `22003` before comparison can return a value;
+- comparison operands are evaluated left to right; for ordinary comparisons, a
+  left operand that evaluates to `NULL` makes the comparison `NULL` without
+  evaluating the right operand, while `<=>` still evaluates both operands;
+- evaluated arithmetic operands are evaluated before comparison, so child
+  overflow raises error `1690` / SQLSTATE `22003` before comparison can return
+  a value;
 - warning-producing child arithmetic, such as `5 DIV 0`, produces `NULL`
   operand values and stages one warning per evaluated child expression;
 - comparison expressions in a scalar `SELECT` do not affect `@@warning_count`
@@ -187,12 +191,15 @@ scalar arithmetic evaluator.
    comparison expression.
 2. Preserve existing scalar function wrong-arity diagnostics before generic
    comparison unsupported diagnostics.
-3. Evaluate nested child expressions before applying their parent comparison.
-   Child arithmetic overflow wins over comparison result evaluation.
+3. Evaluate comparison operands left to right. For `=`, `<>`, `!=`, `<`, `<=`,
+   `>`, and `>=`, stop after a left operand that evaluates to `NULL` and return
+   `NULL` with only the left operand's staged warnings. `<=>` evaluates both
+   operands because it needs to distinguish one-`NULL` and two-`NULL` cases.
+   Evaluated child arithmetic overflow wins over comparison result evaluation.
 4. Convert supported non-`NULL` operands to signed 64-bit integer values.
    `TRUE` and `FALSE` become `1` and `0` through the existing scalar arithmetic
    operand conversion path.
-5. Accumulate staged division-by-zero warnings from both operands.
+5. Accumulate staged division-by-zero warnings from evaluated operands.
 6. For `=`, `<>`, `!=`, `<`, `<=`, `>`, and `>=`, return `NULL` if either
    operand is `NULL`.
 7. For `<=>`, return `1` if both operands are `NULL`, `0` if exactly one

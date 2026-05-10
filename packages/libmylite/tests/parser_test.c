@@ -330,6 +330,15 @@ static int test_select_expression_list(void) {
         null_item_index = 8,
         div_precedence_item_index = 4,
         div_associativity_item_index = 5,
+        comparison_item_count = 8,
+        comparison_arithmetic_precedence_item_index = 0,
+        comparison_associativity_item_index = 1,
+        greater_associativity_item_index = 2,
+        null_safe_equality_item_index = 3,
+        angle_not_equal_item_index = 4,
+        bang_not_equal_item_index = 5,
+        less_equal_item_index = 6,
+        greater_equal_item_index = 7,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select = NULL;
@@ -341,6 +350,7 @@ static int test_select_expression_list(void) {
     const struct mylite_sql_ast_node *mod_operator = NULL;
     const struct mylite_sql_ast_node *mod_function = NULL;
     const struct mylite_sql_ast_node *div_operator = NULL;
+    const struct mylite_sql_ast_node *comparison = NULL;
     int failures = 0;
 
     failures += parse_sql(
@@ -410,6 +420,63 @@ static int test_select_expression_list(void) {
         "null literal"
     );
 
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT 1+2=3, 1<2=1, 3>2>1, NULL<=>NULL, 1<>2, 1!=1, 2<=2, 3>=4;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    failures += expect_child_count(select_list, comparison_item_count, "comparison select list");
+    comparison = child_at(child_at(select_list, comparison_arithmetic_precedence_item_index), 0U);
+    failures += expect_operator(comparison, MYLITE_SQL_AST_OPERATOR_EQUAL, "comparison equality");
+    failures += expect_operator(
+        child_at(comparison, 0U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "comparison arithmetic precedence"
+    );
+    comparison = child_at(child_at(select_list, comparison_associativity_item_index), 0U);
+    failures +=
+        expect_operator(comparison, MYLITE_SQL_AST_OPERATOR_EQUAL, "comparison associativity");
+    failures += expect_operator(
+        child_at(comparison, 0U),
+        MYLITE_SQL_AST_OPERATOR_LESS,
+        "comparison left associativity"
+    );
+    comparison = child_at(child_at(select_list, greater_associativity_item_index), 0U);
+    failures +=
+        expect_operator(comparison, MYLITE_SQL_AST_OPERATOR_GREATER, "greater associativity");
+    failures += expect_operator(
+        child_at(comparison, 0U),
+        MYLITE_SQL_AST_OPERATOR_GREATER,
+        "greater left associativity"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, null_safe_equality_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+        "null safe equality expression"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, angle_not_equal_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+        "angle not equal expression"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, bang_not_equal_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+        "bang not equal expression"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, less_equal_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
+        "less equal expression"
+    );
+    failures += expect_operator(
+        child_at(child_at(select_list, greater_equal_item_index), 0U),
+        MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+        "greater equal expression"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql(
@@ -8423,6 +8490,15 @@ static int test_syntax_errors(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("SELECT DIV 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1=;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT =1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT 1<=>;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parse_sql("CREATE DATABASE IF EXISTS app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

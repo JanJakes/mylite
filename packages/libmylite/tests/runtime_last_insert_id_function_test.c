@@ -472,7 +472,7 @@ static int test_last_insert_id_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only unqualified table columns",
+            .message_part = "SELECT supports only descriptor table columns",
         }
     );
     failures += expect_last_insert_id(database, "table-backed error leaves last insert id");

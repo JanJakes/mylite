@@ -2130,9 +2130,9 @@ static int test_count_aggregate_diagnostics(void) {
         database,
         "SELECT COUNT(t.n) FROM numbers",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 't.n' in 'field list'",
         }
     );
     failures += execute_error(
@@ -2166,9 +2166,9 @@ static int test_count_aggregate_diagnostics(void) {
         database,
         "SELECT COUNT(DISTINCT t.n) FROM numbers",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 't.n' in 'field list'",
         }
     );
     failures += execute_error(

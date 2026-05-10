@@ -440,7 +440,7 @@ static int test_version_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only unqualified table columns",
+            .message_part = "SELECT supports only descriptor table columns",
         }
     );
 

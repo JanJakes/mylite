@@ -783,11 +783,11 @@ static int test_min_max_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT MIN(numbers.i) FROM numbers",
+        "SELECT MIN(wrong.i) FROM numbers",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'wrong.i' in 'field list'",
         }
     );
     failures += execute_error(

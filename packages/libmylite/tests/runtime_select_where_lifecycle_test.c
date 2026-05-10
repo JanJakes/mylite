@@ -494,11 +494,11 @@ static int test_filtered_select_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT i FROM numbers WHERE numbers.i = 1",
+        "SELECT i FROM numbers WHERE wrong.i = 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'wrong.i' in 'where clause'",
         }
     );
     failures += execute_error(

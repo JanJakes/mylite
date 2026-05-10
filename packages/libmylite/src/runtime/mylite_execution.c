@@ -90,6 +90,18 @@ struct table_name_resolution {
     char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 };
 
+struct select_source_context {
+    const struct table_name_resolution *source;
+    char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool has_alias;
+};
+
+enum column_reference_diagnostic_context {
+    COLUMN_REFERENCE_FIELD = 0,
+    COLUMN_REFERENCE_WHERE = 1,
+    COLUMN_REFERENCE_ORDER = 2,
+};
+
 struct planned_column {
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     const char *logical_type;
@@ -1081,6 +1093,7 @@ static int plan_count_literal(
 static int plan_count_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column
@@ -1102,6 +1115,7 @@ static enum planned_min_max_aggregate_function min_max_aggregate_function_from_e
 static int plan_min_max_aggregate_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column
@@ -1394,6 +1408,12 @@ static int update_matches_any_row(
     const struct planned_update *plan,
     bool *out_matches
 );
+static int init_select_source_context(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    const struct table_name_resolution *source,
+    struct select_source_context *out_context
+);
 
 static int resolve_table_name(
     struct mylite_db *database,
@@ -1543,6 +1563,39 @@ static int find_column_index(
     const char *name,
     size_t *out_index
 );
+static int resolve_descriptor_column_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
+    enum column_reference_diagnostic_context diagnostic_context,
+    const char *unsupported_message,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+);
+static int collect_column_reference_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t *out_part_count
+);
+static int format_column_reference_name(
+    struct mylite_db *database,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count,
+    char *destination,
+    size_t destination_size
+);
+static bool column_reference_qualifier_matches_source(
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count,
+    const struct select_source_context *source_context
+);
+static void set_unknown_column_reference_error(
+    struct mylite_db *database,
+    enum column_reference_diagnostic_context context,
+    const char *column_name
+);
 static size_t count_visible_columns(
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count
@@ -1646,6 +1699,7 @@ static int convert_integer_for_column(
 static int plan_select_columns(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select *out_plan
@@ -1653,13 +1707,19 @@ static int plan_select_columns(
 static int plan_select_distinct_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select *out_plan
 );
+static int select_item_column_reference(
+    const struct mylite_sql_ast_node *item,
+    const struct mylite_sql_ast_node **out_column
+);
 static int plan_select_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
@@ -1667,6 +1727,7 @@ static int plan_select_predicate(
 static int plan_select_predicate_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
@@ -1674,6 +1735,7 @@ static int plan_select_predicate_node(
 static int plan_comparison_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
@@ -1681,6 +1743,7 @@ static int plan_comparison_predicate(
 static int plan_is_null_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
@@ -1688,6 +1751,7 @@ static int plan_is_null_predicate(
 static int resolve_predicate_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column
@@ -1708,6 +1772,7 @@ static int convert_integer_for_predicate(
 static int plan_select_order(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_order *out_order
@@ -1715,6 +1780,7 @@ static int plan_select_order(
 static int resolve_order_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column
@@ -1769,11 +1835,6 @@ static int append_select_column(
     struct planned_select *plan,
     const struct mylite_catalog_column_descriptor *column
 );
-static int is_unqualified_identifier_select_item(
-    const struct mylite_sql_ast_node *item,
-    const struct mylite_sql_ast_node **out_identifier
-);
-
 static int append_show_table(const struct mylite_catalog_table_descriptor *table, void *user_data);
 static int append_show_table_status(
     const struct mylite_catalog_table_descriptor *table,
@@ -8038,6 +8099,7 @@ static int plan_update(
         rc = plan_select_predicate(
             database,
             where_clause,
+            NULL,
             table_columns,
             table_column_count,
             &out_plan->predicate
@@ -8047,6 +8109,7 @@ static int plan_update(
         rc = plan_select_order(
             database,
             order_clause,
+            NULL,
             table_columns,
             table_column_count,
             &out_plan->order
@@ -8190,6 +8253,33 @@ static int update_matches_any_row(
     return rc;
 }
 
+static int init_select_source_context(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *from_clause,
+    const struct table_name_resolution *source,
+    struct select_source_context *out_context
+) {
+    const struct mylite_sql_ast_node *alias = child_at(from_clause, 1U);
+
+    *out_context = (struct select_source_context){.source = source};
+    if (alias == NULL) {
+        return MYLITE_OK;
+    }
+    if (alias->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    int rc = copy_identifier_text(alias, out_context->alias, sizeof(out_context->alias), database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_context->has_alias = true;
+
+    return MYLITE_OK;
+}
+
 static int plan_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -8202,6 +8292,7 @@ static int plan_select(
     const struct mylite_sql_ast_node *limit_clause = NULL;
     const struct mylite_sql_ast_node *optional_clause = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct select_source_context source_context = {0};
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -8236,6 +8327,9 @@ static int plan_select(
         rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
     }
     if (rc == MYLITE_OK) {
+        rc = init_select_source_context(database, from_clause, &out_plan->source, &source_context);
+    }
+    if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
             out_plan->table.table_id,
@@ -8248,6 +8342,7 @@ static int plan_select(
             rc = plan_select_distinct_column(
                 database,
                 select_list,
+                &source_context,
                 table_columns,
                 table_column_count,
                 out_plan
@@ -8256,6 +8351,7 @@ static int plan_select(
             rc = plan_select_columns(
                 database,
                 select_list,
+                &source_context,
                 table_columns,
                 table_column_count,
                 out_plan
@@ -8266,6 +8362,7 @@ static int plan_select(
         rc = plan_select_predicate(
             database,
             where_clause,
+            &source_context,
             table_columns,
             table_column_count,
             &out_plan->predicate
@@ -8275,6 +8372,7 @@ static int plan_select(
         rc = plan_select_order(
             database,
             order_clause,
+            &source_context,
             table_columns,
             table_column_count,
             &out_plan->order
@@ -8453,14 +8551,25 @@ static int plan_count_without_source(
     const struct planned_count_source_nodes *nodes,
     struct planned_count *out_plan
 ) {
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
     int rc = MYLITE_OK;
 
     if (out_plan->function == PLANNED_COUNT_COLUMN ||
         out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN) {
         const struct mylite_sql_ast_node *column_node = child_at(nodes->count_expression, 0U);
+        char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+        size_t part_count = 0U;
 
-        rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+        rc = collect_column_reference_parts(database, column_node, parts, &part_count);
+        if (rc == MYLITE_OK) {
+            rc = format_column_reference_name(
+                database,
+                parts,
+                part_count,
+                column_name,
+                sizeof(column_name)
+            );
+        }
         if (rc == MYLITE_OK) {
             set_unknown_column_error(database, column_name);
             rc = MYLITE_ERROR;
@@ -8488,6 +8597,7 @@ static int plan_count_table_source(
     struct planned_count *out_plan
 ) {
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct select_source_context source_context = {0};
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -8499,6 +8609,14 @@ static int plan_count_table_source(
     }
     if (rc == MYLITE_OK) {
         rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
+    }
+    if (rc == MYLITE_OK) {
+        rc = init_select_source_context(
+            database,
+            nodes->from_clause,
+            &out_plan->source,
+            &source_context
+        );
     }
     if (rc == MYLITE_OK &&
         (nodes->where_clause != NULL || out_plan->function == PLANNED_COUNT_COLUMN ||
@@ -8515,6 +8633,7 @@ static int plan_count_table_source(
         rc = plan_count_column(
             database,
             nodes->count_expression,
+            &source_context,
             table_columns,
             table_column_count,
             &out_plan->count_column
@@ -8524,6 +8643,7 @@ static int plan_count_table_source(
         rc = plan_select_predicate(
             database,
             nodes->where_clause,
+            &source_context,
             table_columns,
             table_column_count,
             &out_plan->predicate
@@ -8666,36 +8786,23 @@ static int plan_count_literal(
 static int plan_count_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column
 ) {
     const struct mylite_sql_ast_node *column_node = child_at(function, 0U);
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    size_t column_index = 0U;
-    int rc = MYLITE_OK;
 
-    *out_column = (struct mylite_catalog_column_descriptor){0};
-    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(
-            database,
-            "COUNT(column) supports only unqualified descriptor columns"
-        );
-        return MYLITE_ERROR;
-    }
-
-    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
-    if (rc != MYLITE_OK) {
-        set_unknown_column_error(database, column_name);
-        return MYLITE_ERROR;
-    }
-
-    *out_column = table_columns[column_index];
-    return MYLITE_OK;
+    return resolve_descriptor_column_reference(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "COUNT(column) supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        out_column
+    );
 }
 
 static int execute_count_from_plan(
@@ -8997,6 +9104,7 @@ static int plan_min_max_aggregate(
     const struct mylite_sql_ast_node *optional_clause = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct select_source_context source_context = {0};
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -9044,6 +9152,9 @@ static int plan_min_max_aggregate(
         rc = resolve_readable_base_table(database, &out_plan->source, &out_plan->table);
     }
     if (rc == MYLITE_OK) {
+        rc = init_select_source_context(database, from_clause, &out_plan->source, &source_context);
+    }
+    if (rc == MYLITE_OK) {
         rc = load_table_columns(
             database,
             out_plan->table.table_id,
@@ -9055,6 +9166,7 @@ static int plan_min_max_aggregate(
         rc = plan_min_max_aggregate_column(
             database,
             expression,
+            &source_context,
             table_columns,
             table_column_count,
             &out_plan->aggregate_column
@@ -9064,6 +9176,7 @@ static int plan_min_max_aggregate(
         rc = plan_select_predicate(
             database,
             where_clause,
+            &source_context,
             table_columns,
             table_column_count,
             &out_plan->predicate
@@ -9093,34 +9206,31 @@ static enum planned_min_max_aggregate_function min_max_aggregate_function_from_e
 static int plan_min_max_aggregate_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column
 ) {
     const struct mylite_sql_ast_node *column_node = child_at(function, 0U);
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     struct integer_column_range range;
-    size_t column_index = 0U;
     int rc = MYLITE_OK;
 
-    *out_column = (struct mylite_catalog_column_descriptor){0};
-    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, "MIN/MAX supports only unqualified descriptor columns");
-        return MYLITE_ERROR;
-    }
-
-    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
+    rc = resolve_descriptor_column_reference(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "MIN/MAX supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        out_column
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
-    if (rc != MYLITE_OK) {
-        set_unknown_column_error(database, column_name);
-        return MYLITE_ERROR;
-    }
     rc = integer_range_for_column(
         database,
-        &table_columns[column_index],
+        out_column,
         "MIN/MAX supports only integer descriptor columns",
         &range
     );
@@ -9128,7 +9238,6 @@ static int plan_min_max_aggregate_column(
         return rc;
     }
 
-    *out_column = table_columns[column_index];
     return MYLITE_OK;
 }
 
@@ -10066,6 +10175,7 @@ static int plan_delete(
         rc = plan_select_predicate(
             database,
             where_clause,
+            NULL,
             table_columns,
             table_column_count,
             &out_plan->predicate
@@ -10075,6 +10185,7 @@ static int plan_delete(
         rc = plan_select_order(
             database,
             order_clause,
+            NULL,
             table_columns,
             table_column_count,
             &out_plan->order
@@ -11125,6 +11236,167 @@ static int find_column_index(
     return MYLITE_ERROR;
 }
 
+static int resolve_descriptor_column_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
+    enum column_reference_diagnostic_context diagnostic_context,
+    const char *unsupported_message,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t part_count = 0U;
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_column = (struct mylite_catalog_column_descriptor){0};
+    if (column_node == NULL || (column_node->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                                column_node->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    rc = collect_column_reference_parts(database, column_node, parts, &part_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc =
+        format_column_reference_name(database, parts, part_count, column_name, sizeof(column_name));
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (source_context == NULL && part_count > 1U) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (source_context != NULL &&
+        !column_reference_qualifier_matches_source(parts, part_count, source_context)) {
+        set_unknown_column_reference_error(database, diagnostic_context, column_name);
+        return MYLITE_ERROR;
+    }
+
+    rc =
+        find_column_index(table_columns, table_column_count, parts[part_count - 1U], &column_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_reference_error(database, diagnostic_context, column_name);
+        return MYLITE_ERROR;
+    }
+
+    *out_column = table_columns[column_index];
+    return MYLITE_OK;
+}
+
+static int collect_column_reference_parts(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_node,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t *out_part_count
+) {
+    *out_part_count = 0U;
+    return collect_identifier_parts(
+        column_node,
+        parts,
+        table_name_part_capacity,
+        out_part_count,
+        database
+    );
+}
+
+static int format_column_reference_name(
+    struct mylite_db *database,
+    char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count,
+    char *destination,
+    size_t destination_size
+) {
+    size_t offset = 0U;
+
+    if (part_count == 0U || part_count > table_name_part_capacity || destination == NULL ||
+        destination_size == 0U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    destination[0] = '\0';
+    for (size_t part_index = 0U; part_index < part_count; ++part_index) {
+        int written = 0;
+
+        if (part_index > 0U) {
+            if (offset + 1U >= destination_size) {
+                set_parse_error(database, NULL);
+                return MYLITE_ERROR;
+            }
+            destination[offset] = '.';
+            ++offset;
+            destination[offset] = '\0';
+        }
+        written =
+            snprintf(destination + offset, destination_size - offset, "%s", parts[part_index]);
+        if (written < 0 || (size_t)written >= destination_size - offset) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        offset += (size_t)written;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool column_reference_qualifier_matches_source(
+    const char parts[][MYLITE_CATALOG_IDENTIFIER_CAPACITY],
+    size_t part_count,
+    const struct select_source_context *source_context
+) {
+    if (part_count == 1U) {
+        return true;
+    }
+    if (source_context == NULL || source_context->source == NULL) {
+        return false;
+    }
+    if (part_count == 2U) {
+        const char *expected = source_context->source->table_name;
+
+        if (source_context->has_alias) {
+            expected = source_context->alias;
+        }
+
+        return text_equals_ascii_case_insensitive(parts[0], expected);
+    }
+    if (part_count == 3U && !source_context->has_alias) {
+        bool schema_matches =
+            text_equals_ascii_case_insensitive(parts[0], source_context->source->schema.name);
+        bool table_matches =
+            text_equals_ascii_case_insensitive(parts[1], source_context->source->table_name);
+
+        if (schema_matches && table_matches) {
+            return true;
+        }
+        return false;
+    }
+
+    return false;
+}
+
+static void set_unknown_column_reference_error(
+    struct mylite_db *database,
+    enum column_reference_diagnostic_context context,
+    const char *column_name
+) {
+    if (context == COLUMN_REFERENCE_WHERE) {
+        set_unknown_where_column_error(database, column_name);
+        return;
+    }
+    if (context == COLUMN_REFERENCE_ORDER) {
+        set_unknown_order_column_error(database, column_name);
+        return;
+    }
+
+    set_unknown_column_error(database, column_name);
+}
+
 static size_t count_visible_columns(
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count
@@ -11713,6 +11985,7 @@ static int convert_integer_for_column(
 static int plan_select_columns(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select *out_plan
@@ -11740,25 +12013,28 @@ static int plan_select_columns(
 
     item = child_at(select_list, 0U);
     while (item != NULL) {
-        const struct mylite_sql_ast_node *identifier = NULL;
-        char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-        size_t column_index = 0U;
-        int rc = is_unqualified_identifier_select_item(item, &identifier);
+        const struct mylite_sql_ast_node *column_node = NULL;
+        struct mylite_catalog_column_descriptor column = {0};
+        int rc = select_item_column_reference(item, &column_node);
 
         if (rc != MYLITE_OK) {
-            set_unsupported_error(database, "SELECT supports only unqualified table columns");
+            set_unsupported_error(database, "SELECT supports only descriptor table columns");
             return MYLITE_ERROR;
         }
-        rc = copy_identifier_text(identifier, column_name, sizeof(column_name), database);
+        rc = resolve_descriptor_column_reference(
+            database,
+            column_node,
+            source_context,
+            COLUMN_REFERENCE_FIELD,
+            "SELECT supports only descriptor table columns",
+            table_columns,
+            table_column_count,
+            &column
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }
-        rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
-        if (rc != MYLITE_OK) {
-            set_unknown_column_error(database, column_name);
-            return MYLITE_ERROR;
-        }
-        rc = append_select_column(out_plan, &table_columns[column_index]);
+        rc = append_select_column(out_plan, &column);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
             return rc;
@@ -11772,14 +12048,14 @@ static int plan_select_columns(
 static int plan_select_distinct_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select *out_plan
 ) {
     const struct mylite_sql_ast_node *item = NULL;
-    const struct mylite_sql_ast_node *identifier = NULL;
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    size_t column_index = 0U;
+    const struct mylite_sql_ast_node *column_node = NULL;
+    struct mylite_catalog_column_descriptor column = {0};
     int rc = MYLITE_OK;
 
     if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
@@ -11792,26 +12068,26 @@ static int plan_select_distinct_column(
     }
 
     item = child_at(select_list, 0U);
-    rc = is_unqualified_identifier_select_item(item, &identifier);
+    rc = select_item_column_reference(item, &column_node);
     if (rc != MYLITE_OK) {
-        set_unsupported_error(
-            database,
-            "SELECT DISTINCT supports only one unqualified descriptor column"
-        );
+        set_unsupported_error(database, "SELECT DISTINCT supports only one descriptor column");
         return MYLITE_ERROR;
     }
 
-    rc = copy_identifier_text(identifier, column_name, sizeof(column_name), database);
+    rc = resolve_descriptor_column_reference(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "SELECT DISTINCT supports only one descriptor column",
+        table_columns,
+        table_column_count,
+        &column
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
-    if (rc != MYLITE_OK) {
-        set_unknown_column_error(database, column_name);
-        return MYLITE_ERROR;
-    }
-
-    rc = append_select_column(out_plan, &table_columns[column_index]);
+    rc = append_select_column(out_plan, &column);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
@@ -11855,19 +12131,20 @@ static int append_select_column(
     return MYLITE_OK;
 }
 
-static int is_unqualified_identifier_select_item(
+static int select_item_column_reference(
     const struct mylite_sql_ast_node *item,
-    const struct mylite_sql_ast_node **out_identifier
+    const struct mylite_sql_ast_node **out_column
 ) {
     const struct mylite_sql_ast_node *expression = child_at(item, 0U);
 
-    *out_identifier = NULL;
+    *out_column = NULL;
     if (item == NULL || item->kind != MYLITE_SQL_AST_SELECT_ITEM || expression == NULL ||
-        expression->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        (expression->kind != MYLITE_SQL_AST_IDENTIFIER &&
+         expression->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
         return MYLITE_ERROR;
     }
 
-    *out_identifier = expression;
+    *out_column = expression;
 
     return MYLITE_OK;
 }
@@ -11875,6 +12152,7 @@ static int is_unqualified_identifier_select_item(
 static int plan_select_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *where_clause,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
@@ -11891,6 +12169,7 @@ static int plan_select_predicate(
     return plan_select_predicate_node(
         database,
         child_at(where_clause, 0U),
+        source_context,
         table_columns,
         table_column_count,
         out_predicate
@@ -11900,6 +12179,7 @@ static int plan_select_predicate(
 static int plan_select_predicate_node(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
@@ -11917,6 +12197,7 @@ static int plan_select_predicate_node(
         return plan_comparison_predicate(
             database,
             current,
+            source_context,
             table_columns,
             table_column_count,
             out_predicate
@@ -11926,6 +12207,7 @@ static int plan_select_predicate_node(
         return plan_is_null_predicate(
             database,
             current,
+            source_context,
             table_columns,
             table_column_count,
             out_predicate
@@ -11939,6 +12221,7 @@ static int plan_select_predicate_node(
 static int plan_comparison_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
@@ -11946,6 +12229,7 @@ static int plan_comparison_predicate(
     int rc = resolve_predicate_column(
         database,
         child_at(predicate_node, 0U),
+        source_context,
         table_columns,
         table_column_count,
         &out_predicate->column
@@ -11971,6 +12255,7 @@ static int plan_comparison_predicate(
 static int plan_is_null_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_predicate *out_predicate
@@ -11978,6 +12263,7 @@ static int plan_is_null_predicate(
     int rc = resolve_predicate_column(
         database,
         child_at(predicate_node, 0U),
+        source_context,
         table_columns,
         table_column_count,
         &out_predicate->column
@@ -11995,32 +12281,21 @@ static int plan_is_null_predicate(
 static int resolve_predicate_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column
 ) {
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    size_t column_index = 0U;
-    int rc = MYLITE_OK;
-
-    *out_column = (struct mylite_catalog_column_descriptor){0};
-    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, "WHERE supports only unqualified predicate columns");
-        return MYLITE_ERROR;
-    }
-
-    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
-    if (rc != MYLITE_OK) {
-        set_unknown_where_column_error(database, column_name);
-        return MYLITE_ERROR;
-    }
-
-    *out_column = table_columns[column_index];
-    return MYLITE_OK;
+    return resolve_descriptor_column_reference(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_WHERE,
+        "WHERE supports only unqualified predicate columns",
+        table_columns,
+        table_column_count,
+        out_column
+    );
 }
 
 static int convert_predicate_integer_literal(
@@ -12127,6 +12402,7 @@ static int convert_integer_for_predicate(
 static int plan_select_order(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_order *out_order
@@ -12148,6 +12424,7 @@ static int plan_select_order(
     rc = resolve_order_column(
         database,
         child_at(order_clause, 0U),
+        source_context,
         table_columns,
         table_column_count,
         &out_order->column
@@ -12169,32 +12446,21 @@ static int plan_select_order(
 static int resolve_order_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
+    const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct mylite_catalog_column_descriptor *out_column
 ) {
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-    size_t column_index = 0U;
-    int rc = MYLITE_OK;
-
-    *out_column = (struct mylite_catalog_column_descriptor){0};
-    if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(database, "ORDER BY supports only unqualified descriptor columns");
-        return MYLITE_ERROR;
-    }
-
-    rc = copy_identifier_text(column_node, column_name, sizeof(column_name), database);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    rc = find_column_index(table_columns, table_column_count, column_name, &column_index);
-    if (rc != MYLITE_OK) {
-        set_unknown_order_column_error(database, column_name);
-        return MYLITE_ERROR;
-    }
-
-    *out_column = table_columns[column_index];
-    return MYLITE_OK;
+    return resolve_descriptor_column_reference(
+        database,
+        column_node,
+        source_context,
+        COLUMN_REFERENCE_ORDER,
+        "ORDER BY supports only unqualified descriptor columns",
+        table_columns,
+        table_column_count,
+        out_column
+    );
 }
 
 static int plan_select_limit(

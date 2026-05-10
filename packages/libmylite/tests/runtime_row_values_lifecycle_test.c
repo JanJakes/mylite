@@ -526,11 +526,11 @@ static int test_failure_diagnostics_and_unwinding(void) {
     );
     failures += execute_error(
         database,
-        "SELECT numbers.i FROM numbers",
+        "SELECT numbers.missing FROM numbers",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only unqualified table columns",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'numbers.missing' in 'field list'",
         }
     );
     failures += execute_error(
@@ -539,7 +539,7 @@ static int test_failure_diagnostics_and_unwinding(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only unqualified table columns",
+            .message_part = "SELECT supports only descriptor table columns",
         }
     );
     failures += execute_error(

@@ -1005,11 +1005,11 @@ expression(A) ::= COUNT(T) LPAREN(L) STAR RPAREN(R). {
     A = mylite_sql_parser_make_no_space_zero_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_STAR_FUNCTION, R);
 }
-expression(A) ::= COUNT(T) LPAREN(L) DISTINCT identifier(B) RPAREN(R). {
+expression(A) ::= COUNT(T) LPAREN(L) DISTINCT qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION, B, R);
 }
-expression(A) ::= COUNT(T) LPAREN(L) identifier(B) RPAREN(R). {
+expression(A) ::= COUNT(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION, B, R);
 }
@@ -1017,11 +1017,11 @@ expression(A) ::= COUNT(T) LPAREN(L) count_literal(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION, B, R);
 }
-expression(A) ::= MIN(T) LPAREN(L) identifier(B) RPAREN(R). {
+expression(A) ::= MIN(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R);
 }
-expression(A) ::= MAX(T) LPAREN(L) identifier(B) RPAREN(R). {
+expression(A) ::= MAX(T) LPAREN(L) qualified_identifier(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R);
 }

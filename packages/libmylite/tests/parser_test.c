@@ -1273,6 +1273,37 @@ static int test_count_star_aggregate(void) {
         expect_node(child_at(select, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "count column where");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql(
+        "SELECT COUNT(t.n), COUNT(db.t.n), COUNT(DISTINCT t.nn) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified count argument"
+    );
+    failures += expect_span_text(first_expression, "COUNT(t.n)", "qualified count span");
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "schema-qualified count argument"
+    );
+    failures += expect_span_text(second_expression, "COUNT(db.t.n)", "schema count span");
+    failures += expect_node(
+        child_at(third_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified count distinct argument"
+    );
+    failures +=
+        expect_span_text(third_expression, "COUNT(DISTINCT t.nn)", "qualified distinct span");
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parse_sql("SELECT COUNT(1), count(-1), Count( +1 ) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     select = child_at(result.root, 0U);
@@ -1542,8 +1573,6 @@ static int test_count_star_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT COUNT(t.*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT COUNT(t.id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT COUNT (DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -1552,9 +1581,6 @@ static int test_count_star_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT COUNT(DISTINCT *) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parse_sql("SELECT COUNT(DISTINCT t.id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT COUNT(DISTINCT id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -1614,6 +1640,25 @@ static int test_min_max_aggregate(void) {
     failures += expect_node(child_at(select, 2U), MYLITE_SQL_AST_WHERE_CLAUSE, "max where");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parse_sql("SELECT MIN(t.id), MAX(db.t.n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        child_at(first_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified min argument"
+    );
+    failures += expect_span_text(first_expression, "MIN(t.id)", "qualified min span");
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "schema-qualified max argument"
+    );
+    failures += expect_span_text(second_expression, "MAX(db.t.n)", "schema max span");
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parse_sql("SELECT (MIN(id));", MYLITE_SQL_PARSE_OK, &result);
     select_list = child_at(child_at(result.root, 0U), 0U);
     first_expression = child_at(child_at(select_list, 0U), 0U);
@@ -1658,8 +1703,6 @@ static int test_min_max_aggregate(void) {
     failures += parse_sql("SELECT MIN(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT MIN(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-    failures += parse_sql("SELECT MIN(t.id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parse_sql("SELECT MIN(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -1788,6 +1831,29 @@ static int test_qualified_identifier_keyword_part(void) {
     );
     failures += expect_span_text(child_at(qualified, 0U), "mydb", "commented qualified left");
     failures += expect_span_text(child_at(qualified, 1U), "select", "commented qualified right");
+
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "SELECT a.n FROM numbers AS a WHERE a.n IS NOT NULL ORDER BY a.id DESC LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    qualified = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(qualified, MYLITE_SQL_AST_QUALIFIED_IDENTIFIER, "qualified selected column");
+    failures += expect_span_text(qualified, "a.n", "qualified selected span");
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_IS_NULL_PREDICATE,
+        "qualified where predicate"
+    );
+    failures += expect_node(
+        child_at(child_at(child_at(result.root, 0U), 3U), 0U),
+        MYLITE_SQL_AST_QUALIFIED_IDENTIFIER,
+        "qualified order key"
+    );
 
     mylite_sql_parse_result_deinit(&result);
     return failures;

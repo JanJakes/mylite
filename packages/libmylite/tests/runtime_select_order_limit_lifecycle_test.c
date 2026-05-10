@@ -1269,38 +1269,38 @@ static int test_order_limit_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT nums.id FROM ordered_numbers AS nums ORDER BY id LIMIT 1",
+        "SELECT wrong.id FROM ordered_numbers AS nums ORDER BY id LIMIT 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only unqualified table columns",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'wrong.id' in 'field list'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM ordered_numbers AS nums WHERE nums.id = 1 ORDER BY id LIMIT 1",
+        "SELECT id FROM ordered_numbers AS nums WHERE wrong.id = 1 ORDER BY id LIMIT 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'wrong.id' in 'where clause'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM ordered_numbers AS nums ORDER BY nums.id LIMIT 1",
+        "SELECT id FROM ordered_numbers AS nums ORDER BY wrong.id LIMIT 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ORDER BY supports only unqualified descriptor columns",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'wrong.id' in 'order clause'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT id FROM ordered_numbers ORDER BY ordered_numbers.id LIMIT 1",
+        "SELECT id FROM ordered_numbers ORDER BY wrong.id LIMIT 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ORDER BY supports only unqualified descriptor columns",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'wrong.id' in 'order clause'",
         }
     );
     failures += execute_error(
@@ -1363,7 +1363,7 @@ static int test_order_limit_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports only one unqualified descriptor column",
+            .message_part = "SELECT DISTINCT supports only one descriptor column",
         }
     );
     failures += execute_error(
@@ -1372,7 +1372,7 @@ static int test_order_limit_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports only one unqualified descriptor column",
+            .message_part = "SELECT DISTINCT supports only one descriptor column",
         }
     );
     failures += execute_error(
@@ -1381,25 +1381,25 @@ static int test_order_limit_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports only one unqualified descriptor column",
+            .message_part = "SELECT DISTINCT supports only one descriptor column",
         }
     );
     failures += execute_error(
         database,
-        "SELECT DISTINCT ordered_numbers.n FROM ordered_numbers",
+        "SELECT DISTINCT wrong.n FROM ordered_numbers",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports only one unqualified descriptor column",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'wrong.n' in 'field list'",
         }
     );
     failures += execute_error(
         database,
-        "SELECT DISTINCTROW ordered_numbers.n FROM ordered_numbers",
+        "SELECT DISTINCTROW wrong.n FROM ordered_numbers",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT DISTINCT supports only one unqualified descriptor column",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'wrong.n' in 'field list'",
         }
     );
     failures += execute_error(

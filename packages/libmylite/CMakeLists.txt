@@ -237,6 +237,17 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_row_count_function_test)
 
+  add_executable(mylite_runtime_last_insert_id_function_test
+    tests/runtime_last_insert_id_function_test.c
+  )
+  target_link_libraries(mylite_runtime_last_insert_id_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_last_insert_id_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_last_insert_id_function_test)
+
   add_executable(mylite_runtime_count_aggregate_test
     tests/runtime_count_aggregate_test.c
   )
@@ -964,6 +975,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.row_count_function
     COMMAND mylite_runtime_row_count_function_test
+  )
+  add_test(
+    NAME libmylite.runtime.last_insert_id_function
+    COMMAND mylite_runtime_last_insert_id_function_test
   )
   add_test(
     NAME libmylite.runtime.count_aggregate

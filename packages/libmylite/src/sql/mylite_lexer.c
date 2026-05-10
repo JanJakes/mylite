@@ -553,6 +553,7 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"LAG", MYLITE_SQL_KEYWORD_RESERVED},
         {"LANGUAGE", MYLITE_SQL_KEYWORD_RESTRICTED_LABEL},
         {"LAST", 0U},
+        {"LAST_INSERT_ID", 0U},
         {"LAST_VALUE", MYLITE_SQL_KEYWORD_RESERVED},
         {"LATERAL", MYLITE_SQL_KEYWORD_RESERVED},
         {"LEAD", MYLITE_SQL_KEYWORD_RESERVED},

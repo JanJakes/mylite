@@ -35,6 +35,7 @@ static int test_current_role_function(void);
 static int test_version_function(void);
 static int test_connection_id_function(void);
 static int test_row_count_function(void);
+static int test_last_insert_id_function(void);
 static int test_diagnostics_count_system_variables(void);
 static int test_count_star_aggregate(void);
 static int test_unary_and_parenthesized_expression(void);
@@ -137,6 +138,7 @@ int main(void) {
     failures += test_version_function();
     failures += test_connection_id_function();
     failures += test_row_count_function();
+    failures += test_last_insert_id_function();
     failures += test_diagnostics_count_system_variables();
     failures += test_count_star_aggregate();
     failures += test_unary_and_parenthesized_expression();
@@ -975,6 +977,107 @@ static int test_row_count_function(void) {
     failures += parse_sql("SELECT ROW_COUNT(1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parse_sql("SELECT ROW_COUNT() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_last_insert_id_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *second_expression = NULL;
+    const struct mylite_sql_ast_node *third_expression = NULL;
+    int failures = 0;
+
+    failures += parse_sql(
+        "SELECT LAST_INSERT_ID(), Last_Insert_Id(), last_insert_id() FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    select_list = child_at(select, 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    third_expression = child_at(child_at(select_list, 2U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION,
+        "last insert id function"
+    );
+    failures +=
+        expect_span_text(first_expression, "LAST_INSERT_ID()", "last insert id function span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION,
+        "mixed-case last insert id function"
+    );
+    failures +=
+        expect_span_text(second_expression, "Last_Insert_Id()", "mixed-case last insert id span");
+    failures += expect_node(
+        third_expression,
+        MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION,
+        "lower last insert id function"
+    );
+    failures += expect_span_text(third_expression, "last_insert_id()", "lower last insert id span");
+    failures +=
+        expect_node(child_at(select, 1U), MYLITE_SQL_AST_FROM_DUAL, "last insert id from dual");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parse_sql("SELECT LAST_INSERT_ID (), (LAST_INSERT_ID());", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    second_expression = child_at(child_at(select_list, 1U), 0U);
+    failures += expect_node(
+        first_expression,
+        MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION,
+        "spaced last insert id function"
+    );
+    failures +=
+        expect_span_text(first_expression, "LAST_INSERT_ID ()", "spaced last insert id span");
+    failures += expect_node(
+        second_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized last insert id function"
+    );
+    failures += expect_node(
+        child_at(second_expression, 0U),
+        MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION,
+        "wrapped last insert id function"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql(
+        "CREATE TABLE last_insert_id (last_insert_id INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = child_at(result.root, 0U);
+    failures += expect_node(
+        select,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "last insert id identifier table"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LAST_INSERT_ID;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = child_at(child_at(result.root, 0U), 0U);
+    first_expression = child_at(child_at(select_list, 0U), 0U);
+    failures +=
+        expect_node(first_expression, MYLITE_SQL_AST_IDENTIFIER, "bare last insert id identifier");
+    failures += expect_span_text(first_expression, "LAST_INSERT_ID", "bare last insert id span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parse_sql("SELECT LAST_INSERT_ID(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT LAST_INSERT_ID(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parse_sql("SELECT LAST_INSERT_ID(1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parse_sql("SELECT LAST_INSERT_ID() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

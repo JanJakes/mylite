@@ -2275,6 +2275,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         break;
@@ -5197,6 +5198,7 @@ static int64_t row_count_for_completed_statement(
     case MYLITE_SQL_AST_VERSION_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
     case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         break;
@@ -8796,6 +8798,20 @@ static int session_scalar_value(
         out_cell->value = out_cell->integer_text;
         return MYLITE_OK;
     }
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION: {
+        int written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRIu64,
+            database->session.last_insert_id
+        );
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+            set_runtime_error(database, "failed to format LAST_INSERT_ID() value");
+            return MYLITE_ERROR;
+        }
+        out_cell->value = out_cell->integer_text;
+        return MYLITE_OK;
+    }
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return system_variable_value(database, expression, out_cell);
     default:
@@ -9274,6 +9290,9 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
